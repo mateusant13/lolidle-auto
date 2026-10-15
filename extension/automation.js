@@ -198,7 +198,30 @@
   };
   let cfg = structuredClone(DEFAULT);
 
-  const parseNum = (s) => { const d = String(s ?? '').replace(/[^\d]/g, ''); return d ? Number(d) : NaN; };
+  // Sufixo que o `fmt` do JOGO mete nos números do HUD (docs/game-src/cena.js:225):
+  //   fmt = n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e4 ? (n/1e3).toFixed(1)+'k' : Math.round(n)
+  // A MESMA regra que fechou o bug do content.js (prováda lá, mesmos casos): o parser antigo
+  // (`replace(/[^\d]/g,'')`) APAGAVA o sufixo — "12.3k" virava 123 e "1.2M" virava 12 — e
+  // corrompia readGold, readPotions, `vendaLojista` (scanBag) e o ouro do loot EM SILÊNCIO
+  // acima de 10 000. Com inteiros o comportamento é idêntico (sem regressão).
+  const SUFIXO = { k: 1e3, K: 1e3, m: 1e6, M: 1e6 };   // cena.js:225: k = x1000, M = x1000000
+  /**
+   * Número do HUD como o jogo o escreve.
+   * @param {string} raw campo numérico (sem o sufixo)
+   * @param {string} [suf] 'k'/'m' que vinha imediatamente a seguir ao campo
+   */
+  const parseNum = (raw, suf) => {
+    const s = String(raw ?? '').replace(/[\s\u00a0\u202f]/g, '');
+    if (!s) return NaN;
+    const d = s.replace(/[^\d.,]/g, '');                       // "12.3" | "4.188" | "1.234.567"
+    if (!d) return NaN;
+    // "4.188" (grupo de 3) é MILHAR em pt-BR; "12.3" é decimal (o `fmt` dá 1 casa, cena.js:225).
+    const v = /^\d{1,3}([.,]\d{3})+$/.test(d) ? Number(d.replace(/[.,]/g, ''))
+      : /^\d+[.,]\d+$/.test(d) ? Number(d.replace(',', '.'))
+        : Number(d.replace(/[.,]/g, ''));
+    const mult = SUFIXO[String(suf ?? '').trim()] || 1;
+    return Number.isFinite(v) ? v * mult : NaN;
+  };
   const numOr = (v, d) => Number.isFinite(v) ? v : d;
 
   // ------------------------------------------------------------- keybinds
@@ -211,9 +234,11 @@
   // ------------------------------------------------------------- leitura
   function readGold() {
     const t = document.querySelector('#st-ouro')?.textContent || '';
-    if (/M/i.test(t)) return Math.round(parseFloat(t) * 1e6);
-    if (/k/i.test(t)) return Math.round(parseFloat(t) * 1e3);
-    return parseNum(t);
+    // O `fmt` do jogo mete k/M (cena.js:225): "12.3k" / "1.2M". O sufixo tem de entrar no
+    // grupo da regex e ser passado ao parseNum — senão 12.3k virava 123 (bug medido, mesmos
+    // casos provados no content.js).
+    const m = t.match(/([\d.,]+)\s*([kKmM])?/);
+    return m ? parseNum(m[1], m[2]) : NaN;
   }
   function readLocation() {
     const t = document.querySelector('#local-nome')?.textContent || '';
@@ -223,7 +248,8 @@
   function readPotions() {
     const out = {};
     for (const b of document.querySelectorAll('#hud-pocoes [data-pocao]')) {
-      out[b.dataset.pocao] = parseNum(b.querySelector('b')?.textContent);
+      const pt = (b.querySelector('b')?.textContent || '').match(/([\d.,]+)\s*([kKmM])?/);
+      out[b.dataset.pocao] = pt ? parseNum(pt[1], pt[2]) : NaN;
     }
     return out;
   }
@@ -270,10 +296,12 @@
         const cls = String(s.className || '');
         const rar = cls.includes('lendario') ? 'lendario' : cls.includes('epico') ? 'epico' : cls.includes('basico') ? 'basico' : '?';
         const dica = s.getAttribute('data-dica') || '';
-        const vendaM = dica.match(/Vale\s+([\d.]+)\s+de ouro no Lojista/i);
+        // O sufixo k/M do `fmt` (cena.js:225) também aparece no "Vale X de ouro no Lojista":
+        // sem ele uma peça de 12.3k valia 123 e o `custoIdaBase` subestimava a renda.
+        const vendaM = dica.match(/Vale\s+([\d.,]+)\s*([kKmM])?\s+de ouro no Lojista/i);
         items.push({
           kind: 'item', base, qual: qual || 'C', raridade: rar, id, refino: (id.match(/\+(\d+)/) || [])[1] ? +(id.match(/\+(\d+)/)[1]) : 0,
-          vendaLojista: vendaM ? parseNum(vendaM[1]) : null, dica, stats: parseDica(dica),
+          vendaLojista: vendaM ? parseNum(vendaM[1], vendaM[2]) : null, dica, stats: parseDica(dica),
         });
       }
     }
@@ -506,11 +534,26 @@
       // a arrancar (o `basExcesso` já existia mas era CÓDIGO MORTO — o ramo "básico -> Lojista"
       // vinha antes dele e vendia tudo, ver docs/itens-ideal.md §2.2).
       else if (it.raridade === 'basico' && basExcesso.has(it)) acts.push({ action: 'VENDER_LOJISTA', it, why: `básico em EXCESSO (a build precisa de ${necBas[it.base] || 0})` });
-      // REGRA DO DONO (2026-10-14, verbatim): "eu nao mandei nunca montar itens. e sempre comprar
-      // do mercado." -> NAO se guarda materia-prima para receita. Basico inutil vai ao Lojista.
-      // (Antes: `basico COMPONENTE da build -> GUARDAR`, que enchia a mochila com pecas para
-      //  montar algo que nunca se vai montar.)
-      else if (it.raridade === 'basico') acts.push({ action: 'VENDER_LOJISTA', it, why: 'básico → Lojista (regra do dono: nunca se monta)' });
+      // TK-01-51 (P0): o ramo que FALTAVA. Os três ramos acima já decidem o básico:
+      //   1) não é componente da build  -> Lojista;
+      //   2) é componente mas está acima do tecto da receita (`basExcesso`) -> Lojista;
+      //   3) é componente e está DENTRO do tecto -> TEM DE FICAR. Era aqui que ele caía e era
+      //      vendido com o motivo "regra do dono: nunca se monta" — MEDIDO no banco: com
+      //      `componentesDaBuild()` a conter 1001, o `1001~C` saía `VENDER_LOJISTA`.
+      // CONSEQUÊNCIA MEDIDA (histórico, docs/historico/parte-01.md:7728-7735 e :7828): o Yasuo
+      // ficou com ZERO Adagas (1042) e NENHUMA receita do Ornn arrancava — 64.300 de ouro parados.
+      // O actor `venderBase` (l.2274-2286) JÁ tem esta excepção com o MESMO tecto; sem ela aqui,
+      // planeador e actor DISCORDAVAM e a mochila nunca acumulava (o ping-pong que a regra do
+      // comentário l.275-282 existe para impedir).
+      // GUARDAR (e não PROTEGER) de propósito: o transbordo do excesso de espaço, mais abaixo,
+      // rebaixa `GUARDAR` de BÁSICO para `VENDER_LOJISTA` quando a mochila passa da capacidade —
+      // é a válvula que garante que a mochila drena e o loot não para. O `venderBase` faz o
+      // mesmo pelo `transbordo` (tetoEf).
+      else if (it.raridade === 'basico') {
+        const preciso = necBas[it.base] || 0;
+        const tenho = (basPorBase[it.base] || []).length;
+        acts.push({ action: 'GUARDAR', it, why: `componente da build (${tenho}/${preciso}) — matéria-prima da receita, não se vende (TK-01-51)` });
+      }
       // REGRA DO DONO (2026-10-14, verbatim): "eu nao mandei nunca montar itens. e sempre comprar do mercado."
       // -> TODO epico vai ao Lojista. A excepcao 'e componente da build' foi REMOVIDA: era ela que
       // prendia um epico A na mochila, inclusive para montar um lendario QUE JA ESTAVA EQUIPADO.
@@ -764,16 +807,17 @@
       farm.current = naBase ? null : novoCiclo(loc.text, Date.now());
       publishFarm();
     }
-    const g = entry.body.match(/(?:Loot|recebeu)[^:]*:\s*(\d[\d.]*)\s*de ouro/i);
-    const x = entry.body.match(/\+\s*(\d[\d.]*)\s*de experi/i);
+    // Igual para o loot: "recebeu 12.3k de ouro" / "+ 12.3k de experiência" (cena.js:225).
+    const g = entry.body.match(/(?:Loot|recebeu)[^:]*:\s*(\d[\d.,]+)\s*([kKmM])?\s*de ouro/i);
+    const x = entry.body.match(/\+\s*(\d[\d.,]+)\s*([kKmM])?\s*de experi/i);
     const nomeLoot = (entry.body.match(/Loot de\s+(.+?):/i) || [])[1] || null;
     if (g || x) {
-      if (window.__lolidleRlog) window.__lolidleRlog({ t: 'kill', nome: nomeLoot, gold: g ? parseNum(g[1]) : null, xp: x ? parseNum(x[1]) : null });
+      if (window.__lolidleRlog) window.__lolidleRlog({ t: 'kill', nome: nomeLoot, gold: g ? parseNum(g[1], g[2]) : null, xp: x ? parseNum(x[1], x[2]) : null });
       if (!farm.current && !naBase) farm.current = novoCiclo(loc.text, Date.now());
       if (farm.current) {
         const fase = farm.current.fase === 'boss' ? farm.current.bossFase : farm.current.mobFase;
-        if (g) { const v = parseNum(g[1]); farm.current.gold += v; fase.gold += v; fase.kills += 1; lootTimes.push(Date.now()); if (lootTimes.length > 30) lootTimes.shift(); killTimes.push(Date.now()); if (killTimes.length > 200) killTimes.shift(); }
-        if (x) { const v = parseNum(x[1]); farm.current.xp += v; fase.xp += v; }
+        if (g) { const v = parseNum(g[1], g[2]); farm.current.gold += v; fase.gold += v; fase.kills += 1; lootTimes.push(Date.now()); if (lootTimes.length > 30) lootTimes.shift(); killTimes.push(Date.now()); if (killTimes.length > 200) killTimes.shift(); }
+        if (x) { const v = parseNum(x[1], x[2]); farm.current.xp += v; fase.xp += v; }
       }
     }
     const apChefe = entry.body.match(/Um chefe apareceu:\s*(.+?)[!.]?$/i);
@@ -3156,7 +3200,16 @@
     try { n.atrib = podeFazer('atrib').pode && readSkills().pontosAtrib > 0; } catch { n.atrib = false; }
     // EQUIPAR: `n.equip` era `!!cfg.autoEquip` (idem, `true` eterno). Agora pergunta ao MESMO
     // `planoEquipar` que o planeador e o actor usam: só pede o passo quando há mesmo troca a fazer.
-    try { n.equip = podeFazer('equip').pode && planoEquipar(bag).mexe; } catch { n.equip = false; }
+    // TK-01-68 (P0): `n.equip` já não é `!!cfg.autoEquip` (um `true` eterno) — pergunta ao
+    // `planoEquipar`. O que FALTAVA era a segunda metade do ticket: "só true se houver na
+    // MOCHILA **ou no COFRE** item melhor que o equipado". O `planoEquipar` só alcança o que o
+    // actor consegue vestir (mochila+equipado); o cofre entra por `pecasDaFaseNoCofre`.
+    try {
+      const pe = bag ? planoEquipar(bag) : { mexe: false };
+      const noCofre = (() => { try { return pecasDaFaseNoCofre(faseAtual()).length; } catch { return 0; } })();
+      n.equip = podeFazer('equip').pode && !!(pe.mexe || noCofre > 0);
+      n._equip = { mexeMochila: !!pe.mexe, noCofre, motivo: pe.mexe ? 'mochila tem melhor' : (noCofre > 0 ? 'cofre tem peça da build' : 'nada melhor disponível') };
+    } catch { n.equip = false; }
     // REFINO: oportunidade com throttle (como `montar`/`comprar`) — senão nunca fica satisfeita.
     try { n.refino = podeFazer('refino').pode && (Date.now() - _ultimoRefino) > 1800000 && precisaRefino(); } catch { n.refino = false; }
     // ---- BUILD POR FASE: IR BUSCAR AO COFRE O QUE A BUILD DE AGORA TEM LÁ (PEDIDO DO DONO) ----
@@ -3185,7 +3238,18 @@
     // passagem (4 bases da build ideal, cada uma abre grupo e lê ofertas). A
     // rotina da base inteira chegava a 60–90 s por causa disto. Os preços do
     // mercado não mudam de segundo a segundo: no máximo 1 consulta a cada 10 min.
-    n.comprar = (Date.now() - _ultimaCompra) > 600000;
+    // TK-01-68 (P0): `n.comprar` era SÓ um cronómetro — `true` a cada 10 min mesmo sem
+    // nada para comprar. MEDIDO AO VIVO (docs/historico/parte-01.md:8433-8460): com
+    // buildIdeal() = [3172,3046,6631,3085,3031] e o boneco sem NENHUM dos cinco (lendários de
+    // milhões), `comprar` ficava `true` PARA SEMPRE e recordava o boneco à base a cada 20 s —
+    // "a terceira vez nesta sessão que aparece a mesma classe de bug" (n.presente, n.tarefa,
+    // n.equip/n.comprar). Agora exige as três coisas do ticket:
+    //   (a) há item da build em FALTA (nem equipado, nem na mochila, nem no cofre);
+    //   (b) esse item está AO ALCANCE DO OURO ACTUAL (catálogo `preco` × qualidade/refino,
+    //       dentro do tecto de reserva de poções — o MESMO `reservaPoc` do comprarNoMercado);
+    //   (c) a viagem PAGA-SE: o item que se compra vale mais do que a ida à base.
+    n.comprar = podeFazer('comprar').pode && (Date.now() - _ultimaCompra) > 600000 && compraAlcancavel().alguma;
+    n._comprar = compraAlcancavel().detalhe;
     // ---- REGRA DE OURO: OPORTUNIDADES não pagam uma viagem sozinhas ----
     // Se NENHUMA necessidade primária está aberta, as oportunidades (mercado/comprar/refino/
     // montar) são DESLIGADAS nesta passagem: ele fica a farmar em vez de andar para trás e para
@@ -3291,6 +3355,21 @@
         res.passagens = p;
         res.necessidades = n;
         const fila = PASSOS_BASE.filter((x) => n[x[0]] === true);
+        // TK-01-26(a): o CICLO DE MERCADO corre SOZINHO a cada visita à base (throttle de 10 min)
+        // — e não depende de `n.comprar`. As duas coisas são necessidades DIFERENTES:
+        //   · `n.comprar` (TK-01-68) decide se vale VIAJAR até à base: agora é gated pela
+        //     reachabilidade, senão ficava `true` eterno e recordava o boneco a cada 20 s;
+        //   · aqui dentro já ESTAMOS na base (o `acaoBase` só corre na Fonte), logo consultar o
+        //     mercado é de graça — é exactamente o "corre sozinho a cada visita" do ticket.
+        // O `anunciar`/mercado de venda fica como está (já é necessidade própria).
+        const MERCADO_THROTTLE_MS = 600000;   // 10 min (medido: os preços não mudam de segundo a segundo)
+        const cicloMercado = podeFazer('comprar').pode
+          && (Date.now() - _ultimaCompra) > MERCADO_THROTTLE_MS
+          && fila.every((x) => x[0] !== 'comprar');
+        if (cicloMercado) {
+          const passoMercado = PASSOS_BASE.find((x) => x[0] === 'comprar');
+          if (passoMercado) fila.push(passoMercado);
+        }
         if (p === 1) inicio = fila.map((x) => x[0]);
         if (!fila.length) break;               // nada a fazer: sai já, sem passagem extra
         for (const x of fila) res.ordem.push(x[1]);
@@ -5943,6 +6022,50 @@
     return { ok: preco <= custoFarm, taxa: melhor.taxa, kills: Math.round(kills), tempoMin: Math.round(tempoMin), custoFarm: Math.round(custoFarm), regiao: melhor.zona && melhor.zona.nome };
   }
 
+  /** TK-01-68 (P0) — há alguma compra REALMENTE possível agora?
+   *  Sem isto, `n.comprar` era um cronómetro: acendia a cada 10 min e nunca fechava, porque a
+   *  build ideal é feita de lendários de milhões (medido: buildIdeal() = [3172,3046,6631,3085,
+   *  3031], o boneco sem nenhum dos cinco, 15 de nível) — logo `comprar = true` para sempre e o
+   *  ciclo de recall nunca parava.
+   *  Só LEITURA: não abre o mercado, não clica em nada. Usa o preço do CATÁLOGO (o mesmo
+   *  `preco` que o `infoItem` devolve) como estimativa do preço de mercado — quando o mercado
+   *  tiver ofertas lidas, `comprarNoMercado` compara com o preço REAL e decide lá. Aqui a
+   *  pergunta é só "existe alguma coisa que eu POSSA comprar hoje", para a necessidade não ser
+   *  um `true` eterno. */
+  function compraAlcancavel() {
+    try {
+      const ideal = (cfg.buildPorFase !== false ? buildDaFase(faseAtual()) : buildIdeal()) || [];
+      if (!ideal.length) return { alguma: false, detalhe: { motivo: 'sem build identificada' } };
+      const tenho = new Set();
+      try { for (const e of readEquip()) tenho.add(String(e.base)); } catch { /* ignore */ }
+      try { const b = scanBag(); for (const i of ((b && b.items) || [])) if (i.kind === 'item') tenho.add(String(i.base)); } catch { /* ignore */ }
+      try { for (const c of cofreConhecido()) tenho.add(String(c.base)); } catch { /* ignore */ }
+      const faltam = ideal.map(String).filter((b) => !tenho.has(b));
+      if (!faltam.length) return { alguma: false, detalhe: { motivo: 'nada da build em falta', ideal: ideal.length } };
+      const ouro = readGold();
+      // MESMO tecto de reserva do `comprarNoMercado` (l.~5450): piso de 20.000 ou 2x o custo do
+      // stock mínimo de poções — "nunca zerar o ouro", sem reservar metade dele.
+      const minP = cfg.minPotion || { vida: 200, vidaF: 100, vidaS: 30 };
+      const custoMin = (minP.vida || 0) * PRECO_POCAO.vida + (minP.vidaF || 0) * PRECO_POCAO.vidaF + (minP.vidaS || 0) * PRECO_POCAO.vidaS;
+      const teto = Math.max(0, Math.floor(ouro - Math.max(20000, custoMin * 2)));
+      const alcancaveis = faltam.filter((b) => { const pr = (infoItem(b) || {}).preco; return pr != null && pr > 0 && pr <= teto; });
+      const maisBarato = faltam.map((b) => { const pr = (infoItem(b) || {}).preco; return pr != null && pr > 0 ? pr : Infinity; })
+        .reduce((a, c) => Math.min(a, c), Infinity);
+      // (c) A VIAGEM PAGA-SE: se a peça mais barata que falta custa menos do que voltar à base,
+      // a ida à base destrói valor — fica a farmar até ter ouro (é a mesma régua do `n.vender`).
+      const custo = (() => { try { return custoIdaBase().ouro; } catch { return 0; } })();
+      const paga = Number.isFinite(maisBarato) && maisBarato > custo;
+      const alguma = alcancaveis.length > 0 && paga;
+      return { alguma, detalhe: {
+        faltam: faltam.length, alcancaveis: alcancaveis.length, ouro, teto,
+        maisBarato: Number.isFinite(maisBarato) ? maisBarato : null, custoIdaBase: custo, pagaViagem: paga,
+        motivo: !alcancaveis.length
+          ? ('nenhum dos ' + faltam.length + ' em falta cabe em ' + teto + ' de ouro (reserva de poções)')
+          : (!paga ? 'a viagem à base custa ' + custo + ' e não se paga' : (alcancaveis.length + ' peça(s) ao alcance')),
+      } };
+    } catch (e) { return { alguma: false, detalhe: { motivo: 'erro: ' + String(e) } }; }
+  }
+
   /** COMPRA no Mercado o que vale a pena para o campeão: itens da BUILD IDEAL que faltam,
    *  pelo MENOR preço, respeitando o orçamento (nunca zera o ouro). Só no Mercador (base).
    *  Com a alternância LIGADA (`cfg.buildPorFase`, por defeito), a lista de compras é a da
@@ -5961,6 +6084,10 @@
       try { for (const i of (scanBag().items || [])) if (i.kind === 'item') tenho.add(i.base); } catch { /* ignore */ }
       let ouro = readGold();
       const compras = [];
+      // TK-01-26(b): nada em falta -> motivo explícito (era `compras: []` sem explicação).
+      if (!ideal.length) { logEvent('mercado', { acao: 'comprar', compras: [], motivo: 'sem build identificada (campeão não detectado)' }); return { ok: true, compras: [], motivo: 'sem build identificada' }; }
+      const emFalta = ideal.filter((b) => !tenho.has(String(b)));
+      if (!emFalta.length) { logEvent('mercado', { acao: 'comprar', compras: [], motivo: 'nada da build em falta (tudo equipado ou na mochila)' }); return { ok: true, compras: [], motivo: 'nada em falta' }; }
       for (const base of ideal) {
         if (tenho.has(base)) continue;                                    // já tem
         // filtra a lista (190 grupos) pela BUSCA e clica no GRUPO do item (.mj-card[data-grupo]="base~qual")
@@ -5971,7 +6098,10 @@
         let cands = [];
         for (const c of cards) { c.click(); await esperar(600); cands = cands.concat(lerOfertasCompra().map((o) => ({ ...o, base, qual: (String(c.dataset.grupo || '').split('~')[1]) || o.qual }))); }
         cands.sort((a, b) => a.preco - b.preco);
-        if (!cands.length) continue;
+        // TK-01-26(b): quando não há oferta para este item da build, ISSO FICA NO LOG. Antes o
+        // `continue` calava-se e o passo devolvia `compras: []` sem razão — o dono via "foi ao
+        // mercado e não comprou nada" sem saber se era falta de ouro, falta de oferta, ou bug.
+        if (!cands.length) { compras.push({ base, nome: nome || null, comprou: false, motivo: 'sem oferta no mercado para este item' }); continue; }
         const melhor = cands[0];
         // RESERVA DE POÇÃO data-driven. Antes: `ouro * 0.5` — uma reserva de METADE do
         // ouro para poções que custam ~5.200 por lote completo. Efeito medido: com
@@ -6001,8 +6131,12 @@
         compras.push({ base, nome: (infoItem(base) || {}).nome, preco: melhor.preco, comprou: true, ouroDepois: ouro });
         break;                                                            // 1 compra por passada (evita travar)
       }
-      logEvent('mercado', { acao: 'comprar', compras });
-      return { ok: true, compras };
+      const comprados = compras.filter((c) => c.comprou).length;
+      const motivoResumo = comprados ? null
+        : (compras.length ? 'nada comprado: ' + compras.map((c) => (c.motivo || 'sem motivo')).join('; ')
+          : 'nenhum item da build (' + emFalta.length + ' em falta) tinha oferta no mercado');
+      logEvent('mercado', { acao: 'comprar', compras, emFalta: emFalta.length, motivo: motivoResumo });
+      return { ok: true, compras, emFalta: emFalta.length, motivo: motivoResumo };
     } finally { ocupado = false; }
   }
 
@@ -7244,7 +7378,7 @@
     return cfg;
   }
 
-  window.__lolidleAuto = { press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
+  window.__lolidleAuto = { press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, compraAlcancavel, parseNum, SUFIXO, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
     podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
