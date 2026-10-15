@@ -613,3 +613,11 @@ pocoes e quanto custam em ouro?"*. **O banco ja as pede; a extensao nao as tem.*
 - o custo das pocoes e a `decidirPocao` (ja modela o gasto em ouro)
 - a mitigacao da saida do jogador - `automation.js:1198` (a mesma conta do `estimarSet`)
 **Regra Nº 7:** e arrumavel com o que ja existe; fica com contrato e pontos de ancoragem prontos.
+## ADENDA 15:40 - w10 C2/C3 FECHADO (o par funcionou): 11 -> 8 falhas
+O par completo (medido 2x, 8 e 8):
+  1. `ler` passa a usar `...((migrarCfg(s) || {}).cfg || {})` — a migracao corre no ARRANQUE;
+  2. o `cfgVer` fica GRAVADO no arranque (sem isto a migracao voltava a correr e DESFAZIA a escolha
+     explicita do dono — o C3 diz isso mesmo: 'ele desliga a barra; o arranque seguinte ligava-a').
+Sozinho, o (1) dava 11->12; o PAR da 11->8. E o mesmo padrao do H12c e do chefe: a porta so vale
+aberta COM o que esta atras.
+**Estado: 8 falhas, 21/25 suites verdes.**
