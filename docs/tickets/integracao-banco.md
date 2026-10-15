@@ -490,3 +490,16 @@ As 4 tentativas: modulo (16->23) · por-funcao (18->21) · refinarMelhores (18->
 e agregar()[0] pioram). Falta saber QUE medicao e essa: ler as assercoes que leem `diag`/`medido`
 no `refinar.test.mjs` (ou `score.test.mjs`) e ver a FORMA esperada (xpMin? goldMin? da regiao certa?).
 **Estado mantido: 14 falhas (piso), 21/25 suites verdes.**
+## ADENDA 13:20 - medido: CONTRATO encontrado (refinar.test.mjs), implementado e ainda 14->20
+O contrato exacto (refinar.test.mjs R0/R1/R3/R4):
+  R0: sem medicao -> `r0.medido === null`;
+  R1: `r1.medido.n === 4 && Math.round(r1.medido.ouroMin) === 9999` (nota: **`ouroMin`**, nao `goldMin`);
+  R1: `divergenciaMedido` e ARRAY de ids de itens e contem `'3089'`;
+  R3/R4: `medido.n >= 3` e `Array.isArray(divergenciaMedido)`.
+Implementei exactamente isso a partir do `rankBuildsTestadas` (melhor medida: n=confianca.mob,
+ouroMin=mob.goldMin, itens, e divergencia = itens fora da buildIdeal) -> **14 -> 20** nas DUAS corridas.
+**Leitura:** a FORMA esta certa (21/25 suites verdes, igual ao melhor) mas os VALORES nao batem no mundo
+do teste - provavelmente o `rank` esta vazio nesse mundo e o fixture do R1 monta a medicao por OUTRA via
+(storage `lolidleAutoPotion:testes`?). Proximo passo: ler o `refinar.test.mjs` a volta das linhas 40-75
+para ver COMO o R1 alimenta a medicao (e a que funcao a vai buscar).
+**Estado mantido: 14 falhas (piso), 21/25 suites verdes.** 6 tentativas medidas e registadas.
