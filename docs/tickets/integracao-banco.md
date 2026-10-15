@@ -577,3 +577,9 @@ listar de novo. O estado real, medido agora, e **11 falhas e 21/25 suites verdes
 
 ### nivelDoChefe (alias) tentado: 11 -> 14 (outra PORTA: a suite corre e falha 3 reais)
 Estado mantido: 11 falhas, 21/25 verdes.
+## ADENDA 14:30 - w10 C2: ligar o migrarCfg ao ler (medido 2x) -> 11->12
+`const ler = (s) => { ... }` (7926) passa a usar `...((migrarCfg(s) || {}).cfg || {})` -> **11 -> 12** nas
+DUAS corridas. O par ainda nao fecha: a migracao no load mexe em mais do que as 6 assercoes C2/C3
+(provavelmente o `enabled` a parte e a ordem DEFAULT->guardada). Revertido; estado 11.
+**As tentativas do C2 estao todas medidas:** inline 20->21 (estado intermedio, nao valida), com `ler`
+corrigido 11->12.
