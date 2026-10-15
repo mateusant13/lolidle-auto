@@ -9,7 +9,7 @@
 * Fontes lidas **inteiras**, em etapas com `offset`/`limit`, nunca recomeçadas:
   * `docs/game-src/jogo.js` — 7.073 linhas, 564.543 bytes.
   * `docs/game-src/motor.js` — apenas o que os dois chamam (`viajar`, `voltarBase`, `emCombate`, `comItem`, `ofertaGema`…).
-* `docs/game-src/cena.js` (5.904 linhas) é lida e documentada nas secções 1.6, 2.2 e 8 deste mesmo ficheiro.
+* `docs/game-src/cena.js` (5.904 linhas) foi lido inteiro, em etapas, e é documentado nas secções 1.6, 2.2, 2.3, 5.2 (barra da viagem) e 8 deste mesmo ficheiro.
 * `jogar.html` **não está no repo** (ver secção 7): por isso, "onde o id nasce" é, para cada id, a
   **primeira linha de `jogo.js`/`cena.js` que o escreve ou lê** — não a linha do HTML que cria o elemento.
 * Convenção de papéis de um id: **escreve** = nessa linha há atribuição a `innerHTML`/`textContent`/
@@ -104,7 +104,7 @@ passo 1), por isso um quadro não recupera mais de 5 passos de motor; com a aba 
 `jogo.js` só conhece a cena por `cena.atualizar(dt)` (`jogo.js:1568`), `cena.desenhar()` (`jogo.js:1569`),
 `cena.sincronizar(combate, fracVida, fracMana)` / `cena.sincronizarArena` (`jogo.js:668-669`) e
 `cena.luz = M.luzDoDia(...)` (`jogo.js:1567`). A cena é dona do `canvas` `#tela`, do minimapa e da
-câmara; os ids que ela escreve estão na tabela 2.2.
+câmara; os ids que ela escreve estão na secção 2.2 (resumindo: nenhum).
 
 ---
 
@@ -464,9 +464,10 @@ Varredura de `$('#…')`, `querySelector(All)('#…')`, `closest('#…')` e `get
   `#tela` é `width`/`height` e as classes `cursor-lol`/`cursor-ataque` (`jogo.js:1507`). Tudo o mais vem dos
   ids da tabela 2.1.
 
-### 2.3 A API da `Cena` que o `jogo.js` realmente usa (89 membros)
+### 2.3 A API da `Cena` que o `jogo.js` realmente usa
 
-Métodos/propriedades de `cena` referidos em `jogo.js` (a varredura deu 89; a classe tem 227):
+Métodos/propriedades de `cena` referidos em `jogo.js` (a varredura deu 89, mas um deles é o `js` de
+`from './cena.js'` (`jogo.js:11`); ficam **88** membros reais (a classe tem 227)):
 
 | membro | 1ª linha em jogo.js | o que é |
 |---|---|---|

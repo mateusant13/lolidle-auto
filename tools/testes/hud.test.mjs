@@ -308,7 +308,7 @@ export const suite = {
       definirCampeao(m, 'adtest');
       m.montar('.st', [m.el({ label: 'st rv', textContent: 'Roubo de vida 15%' })]);
       const p = auto.player();
-      t.check('H8: player().rv le o "Roubo de vida" do painel (era lido e deitado fora)', p.rv === 15);
+      t.check('H8: player().rv le o "Roubo de vida" do painel em FRACCAO (painel mostra %, motor guarda fracção — motor.js:538)', p.rv === 0.15);
       t.check('H8: a fonte do rv e o painel do jogo', p.fonte.rv === 'jogo:st');
       // o peso do roubo de vida: derivado do motor (motor.js:1226-1228)
       // 0,15 x 0,03 x 300 x 10 = 13,5 no perfil 'dano' — contra 0,45 que valia antes.
@@ -425,7 +425,7 @@ export const suite = {
       const p = auto.player();
       const antes = auto.avaliar('Tropa Corpo a Corpo', 30, { ...p, rv: 0 }, { skill: 0, pocao: 0 }, 500);
       const depois = auto.avaliar('Tropa Corpo a Corpo', 30, { ...p, rv: 0.15 }, { skill: 0, pocao: 0 }, 500);
-      t.check('H12b: o rv devolvido pelo player() e 15%', p.rv === 15);
+      t.check('H12b: o rv devolvido pelo player() e 0,15 (15% do painel na lingua do motor)', p.rv === 0.15);
       t.check('H12b: avaliar() soma a cura do roubo de vida (motor.js:1226)', depois.curaRv > 0);
       t.check('H12b: e essa cura estica o tempo de vida', depois.tMorrer > antes.tMorrer);
       t.check('H12b: a conta liquida usa a cura total (nao so a das skills)',
