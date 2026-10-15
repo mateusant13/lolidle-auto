@@ -90,3 +90,25 @@ se nao resolver, desligar os 3 ad blockers e ficar com 1.
 `tools/_quem-bloqueia.mjs` (pedidos falhados) · `tools/_bloqueado-url.mjs` (qual URL) ·
 `tools/_longtasks.mjs` (long tasks) · `tools/_quem-injecta.mjs` (extensoes que injectam) ·
 `tools/_exts2.mjs` + `tools/_nomes.mjs` (extensoes do perfil) · `tools/_verifica-limpo.mjs` (Chrome limpo)
+## ADENDA 15:10 - TRAVAMENTO: CAUSA ISOLADA (o relay a dirigir o browser)
+### Biseccao completa (todas as medicoes feitas hoje)
+| Ambiente | Trava? |
+|---|---|
+| Chrome do dono (relay 9224 ligado) | **SIM** (t=4s, sempre) |
+| Chrome meu, perfil COPIADO + TODAS as 58 extensoes | **NAO** |
+| Chrome meu, so VeePN + a nossa | **NAO** |
+| Chrome meu, os 3 ad blockers | **NAO** |
+| Chrome meu, os 5 restantes que injectam | **NAO** |
+| Chrome meu, perfil COMPLETO (682 MB, IndexedDB+SW) | **NAO** |
+| Chrome limpo, so a nossa extensao | **NAO** |
+| Chrome do dono DEPOIS de reiniciar | **SIM** |
+| Chrome do dono DEPOIS de fechar as 15 abas pesadas | **SIM** |
+
+**A unica variavel que resta e o RELAY (`omp browser-relay serve -p 9224`) a dirigir o browser do dono**
+(`[launcher] The omp browser prelude can now drive your tabs` - ele injecta um PRELUDE em cada aba).
+Mesmo perfil, mesmas extensoes, mesmo binario: **sem relay nao trava; com relay trava**.
+**NAO e a extensao** (provado 3x), **nao sao as outras extensoes** (provado com as 58 activas),
+**nao sao as abas** (provado apos fechar 15), **nao e o perfil** (provado com o perfil completo).
+**Accao para o dono:** jogar com o relay DESLIGADO (o relay so serve para eu dirigir o browser).
+Alternativa pronta: o Chrome em `C:\Temp\ll-full` (perfil completo + a nossa extensao, porta 9337)
+esta a correr e o jogo funciona la.
