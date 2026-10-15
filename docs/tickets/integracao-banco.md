@@ -684,3 +684,14 @@ seria mentir ao dono. Fica documentado com tudo o que a implementacao precisa:
     e entao a `vida` = painel esta certa e o erro e outro);
   - F3: `morre === true` contra o Barao ao 29;  F4: com o 3168 -> `vida` E `tMorrer` maiores.
 **Estado mantido: 5 falhas, 21/25 verdes.**
+## ADENDA 17:15 - sobrevivenciaSet: F1-F3 e F5-F8 PASSAM; so o F4 falha (+ 5 de OUTRA feature)
+A implementacao (painel + `detalhe(id).vida` + `tMorrer = vida/dpsChefe` do `estimarLuta`) **acerta**
+F1 (forma), F2 (`vida === 4476`), F3 (`morre === true` vs Barao 29), F5/F6/F7 (o rank tem sobrevive/
+tMorrer/nPocoes/ouroPocao) e F8. **So o F4 falha**: `sVida.vida > s.vida && sVida.tMorrer > s.tMorrer`
+com o 3168 (que TEM `vida: 500` no catalogo do stub, dom-stub.mjs:579).
+E o **F9/G2/G4-G7 sao OUTRA feature** (`compararSets`: DPS dos dois lados, tKill, nPocoes, ouroPocao) que
+a suite passa a ALCANCAR depois do `sobrevivenciaSet` existir. Total 5 -> 11.
+**Proximo passo (1 traco):** imprimir `s.vida`/`sVida.vida` e `s.tMorrer`/`sVida.tMorrer` no F4 - se os
+`tMorrer` forem os DOIS `Infinity`, o `dpsChefe` do `estimarLuta('barao')` nao esta a chegar; se a `vida`
+nao crescer 500, o `detalhe` nao esta a ver o catalogo daquele mundo.
+**Estado mantido: 5 falhas, 21/25 verdes.**
