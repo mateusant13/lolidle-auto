@@ -1423,7 +1423,7 @@
         if (J.xpH != null && extXp > 0) { kXp = (J.xpH / 60) / extXp; fonte = 'jogo'; }
         if (J.ouroH != null && extGold > 0) { kOuro = (J.ouroH / 60) / extGold; }
         if (J.abatesH != null && extAb > 0) kAbates = (J.abatesH / 60) / extAb;
-        cfg.kAbates = +kAbates.toFixed(3); cfg.medicaoJogo = { xpH: J.xpH, ouroH: J.ouroH, abatesH: J.abatesH, dps: J.dps, fonte };
+        cfg.kAbates = +kAbates.toFixed(3); jogo = cfg.medicaoJogo = { tem: true, xpH: J.xpH, ouroH: J.ouroH, abatesH: J.abatesH, dps: J.dps, fonte };
       }
     } catch { /* sem DOM: fica a estimativa */ }
     cfg.kXp = +kXp.toFixed(3); cfg.kOuro = +kOuro.toFixed(3); cfg.kReg = kReg;
