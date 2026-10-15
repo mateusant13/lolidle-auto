@@ -5625,6 +5625,9 @@
       }
       if (tipo === 'chefeInvoca') {           // motor.js:3142 — as 2 larvas do Barão
         if (c) { c.chefeInvoca = (c.chefeInvoca || 0) + 1; }
+        // TK-02-148: as 2 larvas (motor.js:3141-3142) CONTAM para a Voracidade (motor.js:1811, sem
+        // guarda `i.invocado`) e NAO dao loot (motor.js:1792) — nao passam pelo log, entram aqui.
+        try { _larvasInvoca.push({ at: d.at || Date.now(), n: 2 }); if (_larvasInvoca.length > 60) _larvasInvoca.shift(); } catch { /* ignore */ }
         logEvent('evento:chefeInvoca', { alvo: d.alvo != null ? d.alvo : null, chefe: c && c.boss ? c.boss : null });
         return;
       }
