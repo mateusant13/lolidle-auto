@@ -563,3 +563,17 @@ Logo o que sobra esta NO TESTE: o `const waves = auto.analisarWaves()` (linha 30
 se der 3, o defeito e do `t.check`/harness; se der 0, o `scanLog` corre depois da leitura (observer).
 **Metodo que valeu 2x hoje:** o TRACO em execucao (1 linha + 1 corrida) resolveu o que a leitura
 estatica nao resolvia - e provou que o defeito nao estava onde eu o procurava.
+## ADENDA 14:20 - ESTADO REAL: 11 FALHAS (as listas que eu citava eram ANTIGAS)
+**Licao grave:** eu andava a citar mensagens de falha do DOC (de corridas antigas) em vez de correr e
+listar de novo. O estado real, medido agora, e **11 falhas e 21/25 suites verdes** - o `C`, o `B2`, o
+`B3` do w1-regioes e o `T142a` do score ESTAO FECHADOS (nao aparecem).
+**Regra:** a lista de falhas tem de vir de uma corrida NOVA, nunca do que ficou escrito.
+
+### As 11 reais
+  [refinar]  `medido is not defined` (1)
+  [w10]      C2 x4 + C3 x2 + `medido is not defined` (7)
+  [w1-regioes] D x2 (a celula em 2 janelas e o aviso - o fixture nao traz `janela`)
+  [chefe]    `nivelDoChefe is not a function` (1)
+
+### nivelDoChefe (alias) tentado: 11 -> 14 (outra PORTA: a suite corre e falha 3 reais)
+Estado mantido: 11 falhas, 21/25 verdes.
