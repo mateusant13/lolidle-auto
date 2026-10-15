@@ -49,7 +49,8 @@ import { suite as suiteRegiao, suiteW1 } from './regiao.test.mjs';
 import { suite as suiteMotorTabelas } from './motor-tabelas.test.mjs';
 import { suite as suiteRegrasMotor } from './regras-motor.test.mjs';
 import { suite as suiteSnapshots } from './snapshots.test.mjs'
-const argv = process.argv.slice(2);
+import { suite as suiteFuga } from './fuga.test.mjs';
+// W3 (w3-barra) — integração com o inject.js (TK-INT-01).
 if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
   console.log('  --verbose       imprime todas as assercoes (ok/FALHOU)');
@@ -64,12 +65,13 @@ let filtro = null;
 const iF = argv.indexOf('--filter');
 if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 
-const SUITES = [suiteregras, suiteator, suitebarra, suitebarrafase, suiteobjetivo, suiteequip, suiteregiao, suitepontos, suiteinterruptores, suitecofre, suitehud, suiteintegracao, suitenumeros, suitew5Itens, suitescore, suiteplanejar, suitepassivas, suiterefinar, suitew10, suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteW1, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots];
+const SUITES = [suiteregras, suiteator, suitebarra, suitebarrafase, suiteobjetivo, suiteequip, suiteregiao, suitepontos, suiteinterruptores, suitecofre, suitehud, suiteintegracao, suitenumeros, suitew5Itens, suitescore, suiteplanejar, suitepassivas, suiterefinar, suitew10, suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteW1, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteHud, suiteIntegracao, suiteW5, suiteScore];const checks = [];
   suiteIntegracao, suiteNumeros, suiteBarraFase, suitePassivas, suiteAtributos];const checks = [];
 const checks = [];const notas = [];
 const checks = [];
 const notas = [];let populacaoExecutada = 0;
-
+const notas = [];
+let populacaoExecutada = 0;
 function criarT(nome) {
   return {
     nome: nome,

@@ -15,12 +15,18 @@
 
 import {
   criarMundo, carregarAutomation, CATALOGO, alimentarCatalogo, definirCampeao,
+<<<<<<< HEAD
   montarMochila, montarOrnn,
 } from './dom-stub.mjs';
 
 /** Poe o boneco na Fonte (o `naBase()` exige o texto 'Fonte' no #local-nome). */
 function montarLocal(m, texto) { m.montar('#local-nome', [m.el({ tag: 'span', label: 'local', textContent: texto })]); }
 
+=======
+  montarMochila,
+} from './dom-stub.mjs';
+
+>>>>>>> w4-fuga
 function novoMundo(opts) {
   const m = criarMundo(opts);
   const auto = carregarAutomation(m);
@@ -233,6 +239,7 @@ export const suite = {
       }
     }
 
+<<<<<<< HEAD
     /* ===== W5.7 - TK-01-45: receita do Ornn escolhida POR DADO (custo esperado) ===== */
     {
       const w = novoMundo();
@@ -427,6 +434,8 @@ export const suite = {
       t.check('W5.10: epico com basico no slot -> EQUIPAR', eq.indexOf('2002~C') >= 0);
     }
 
+=======
+>>>>>>> w4-fuga
     /* ===== W5.6 - parseNum: o sufixo k/M do fmt do jogo (cena.js:225) ===== */
     {
       const w = novoMundo();
@@ -448,6 +457,7 @@ export const suite = {
       }
       // O sufixo tambem tem de ser reconhecido quando vem no grupo da regex (o `fmt` nao mete espaco).
       t.check('W5.6: sufixo no grupo ("12.3" + "k") da 12300', p('12.3', 'k') === 12300);
+<<<<<<< HEAD
       // parseBig (precos do MERCADO/recompensas): o MESMO defeito, o MESMO conserto.
       const big = w.auto.parseBig;
       t.check('W5.6: parseBig existe', typeof big === 'function');
@@ -468,6 +478,8 @@ export const suite = {
         t.check('W5.6: mercado real "350.000 ouro" = 350000 (era 350)', big(m1[1]) === 350000);
         t.check('W5.6: mercado real "180.000 ouro" = 180000 (era 180)', big(m2[1]) === 180000);
       }
+=======
+>>>>>>> w4-fuga
       // REGRESSAO: sem sufixo, o parser novo tem de dar o MESMO que o antigo dava.
       t.check('W5.6: regressao - inteiro simples inalterado', p('318') === 318);
       t.check('W5.6: regressao - texto sem numero da NaN', Number.isNaN(p('lendario')));

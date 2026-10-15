@@ -209,6 +209,7 @@
   let cfg = structuredClone(DEFAULT);
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   // SUFIXO do `fmt` do JOGO (docs/game-src/cena.js:225):
   //   fmt = n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e4 ? (n/1e3).toFixed(1)+'k' : Math.round(n)
   // O parser antigo (`replace(/[^\d]/g,'')`) APAGAVA o sufixo: "12.3k" virava 123 e "1.2M"
@@ -216,6 +217,14 @@
   // no content.js:83-100 (o MESMO bug, lá com o gatilho da poção a morrer acima de 10k de HP):
   // grupo de 3 casas ("4.188") = MILHAR (pt-BR); com sufixo ("12.3k") = decimal. Com inteiros o
   // comportamento é idêntico (sem regressão).
+=======
+  // Sufixo que o `fmt` do JOGO mete nos números do HUD (docs/game-src/cena.js:225):
+  //   fmt = n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e4 ? (n/1e3).toFixed(1)+'k' : Math.round(n)
+  // A MESMA regra que fechou o bug do content.js (prováda lá, mesmos casos): o parser antigo
+  // (`replace(/[^\d]/g,'')`) APAGAVA o sufixo — "12.3k" virava 123 e "1.2M" virava 12 — e
+  // corrompia readGold, readPotions, `vendaLojista` (scanBag) e o ouro do loot EM SILÊNCIO
+  // acima de 10 000. Com inteiros o comportamento é idêntico (sem regressão).
+>>>>>>> w4-fuga
   const SUFIXO = { k: 1e3, K: 1e3, m: 1e6, M: 1e6 };   // cena.js:225: k = x1000, M = x1000000
   /**
    * Número do HUD como o jogo o escreve.
@@ -233,6 +242,7 @@
         : Number(d.replace(/[.,]/g, ''));
     const mult = SUFIXO[String(suf ?? '').trim()] || 1;
     return Number.isFinite(v) ? v * mult : NaN;
+<<<<<<< HEAD
   };  const numOr = (v, d) => Number.isFinite(v) ? v : d;
 =======
   /** NUMERO DO ECRA DO JOGO — o `fmt` do jogo (cena.js:225) escreve sufixos:
@@ -255,6 +265,8 @@
     if (/k/i.test(m[2])) v *= 1e3;
     if (/M/i.test(m[2])) v *= 1e6;
     return Math.round(v);
+=======
+>>>>>>> w4-fuga
   };
   const numOr = (v, d) => Number.isFinite(v) ? v : d;
 >>>>>>> w1-regioes
@@ -271,12 +283,21 @@
     // `#st-ouro` escreve `fmt(ouro)` (jogo.js:6398) — UM parser só (o `numEcra`), em vez de
     // duas contas do sufixo aqui e nenhuma no `parseNum`. '4188' · '12.3k' · '1.2M' · '4.188'.
     const t = document.querySelector('#st-ouro')?.textContent || '';
+<<<<<<< HEAD
     // O sufixo do `fmt` entra no GRUPO (cena.js:225): "12.3k" = 12.300. A versão antiga
     // testava /k/i e multiplicava por 1e3 — funcionava para "12.3k", mas um "1.234" puro
     // caía no parseNum que apagava o ponto: 1234 virava 123. Agora os dois casos passam
     // pela MESMA regra (grupo de 3 = milhar; com sufixo = decimal).
     const m = String(t).match(/([\d.,]+)\s*([kKmM])?/);
     return m ? parseNum(m[1], m[2]) : NaN;  }
+=======
+    // O `fmt` do jogo mete k/M (cena.js:225): "12.3k" / "1.2M". O sufixo tem de entrar no
+    // grupo da regex e ser passado ao parseNum — senão 12.3k virava 123 (bug medido, mesmos
+    // casos provados no content.js).
+    const m = t.match(/([\d.,]+)\s*([kKmM])?/);
+    return m ? parseNum(m[1], m[2]) : NaN;
+  }
+>>>>>>> w4-fuga
   function readLocation() {
     const t = document.querySelector('#local-nome')?.textContent || '';
     const m = t.match(/nível\s*(\d+)[–-](\d+)/i);
@@ -333,10 +354,16 @@
         const cls = String(s.className || '');
         const rar = cls.includes('lendario') ? 'lendario' : cls.includes('epico') ? 'epico' : cls.includes('basico') ? 'basico' : '?';
         const dica = s.getAttribute('data-dica') || '';
+<<<<<<< HEAD
         // O tooltip do ITEM traz o número CRU (`valorVenda(id)`, jogo.js:192); o do ESPÓLIO traz
         // `fmt` (jogo.js:3759/3769) — logo '5.6k'/'1.2M' podem aparecer. O grupo tem de apanhar o
         // sufixo (e a vírgula decimal), senão '5.6k' era lido como 5,6 e viraria 56 de ouro.
         const vendaM = dica.match(/Vale\s+([\d.,]+\s*[kKmM]?)\s+de ouro no Lojista/i);
+=======
+        // O sufixo k/M do `fmt` (cena.js:225) também aparece no "Vale X de ouro no Lojista":
+        // sem ele uma peça de 12.3k valia 123 e o `custoIdaBase` subestimava a renda.
+        const vendaM = dica.match(/Vale\s+([\d.,]+)\s*([kKmM])?\s+de ouro no Lojista/i);
+>>>>>>> w4-fuga
         items.push({
           kind: 'item', base, qual: qual || 'C', raridade: rar, id, refino: (id.match(/\+(\d+)/) || [])[1] ? +(id.match(/\+(\d+)/)[1]) : 0,
           vendaLojista: vendaM ? parseNum(vendaM[1], vendaM[2]) : null, dica, stats: parseDica(dica),
@@ -420,6 +447,9 @@
    *  deduplicado, nem anunciado. Vale para QUALQUER raridade, não só lendário. */
   const acimaDeA = (it) => it.kind === 'item' && QUAL.includes(it.qual) && qIdx(it.qual) >= qIdx('A');
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> w4-fuga
   /** TIER de uma peça na ESCALA DO MOTOR — não 'qualidade = 10 refinos' (TK-02-64).
    *  motor.js:252  `m = (1 + BONUS_REFINO * ref) * (QUALIDADES[qual]?.mult || 1)`
    *  motor.js:55   `BONUS_REFINO = 0.12` (+12% em todos os bónus por nível de refino)
@@ -430,6 +460,7 @@
    *  (1,12), que o tierDe antigo perdia (0 contra 1). O desempate entre instâncias do MESMO base
    *  passa a usar o `m` do motor — UMA escala só, a do jogo (a mesma do `statsSet`/`infoItem`).
    *  Uso: ordenação (quanto maior, melhor). Qualidade desconhecida ('?'/ausente) = B = 1. */  const tierDe = (i) => (1 + BONUS_REFINO * (i.refino || 0)) * (QUAL_MULT[String(i.qual || 'B').toUpperCase()] || 1);
+<<<<<<< HEAD
 =======
   /** TIER de um item = qualidade × refino (ordena 'qual o maior tier possível'). */
   /** TIER de uma peça na ESCALA DO MOTOR — nao 'qualidade = 10 refinos'.
@@ -444,6 +475,8 @@
    *  Uso: ordenação (quanto maior, melhor). QUALIDADE DESCONHECIDA ('?') = 1 (sem multiplicador). */
   const tierDe = (i) => (1 + BONUS_REFINO * (i.refino || 0)) * (QUAL_MULT[String(i.qual || 'B').toUpperCase()] || 1);
 >>>>>>> w1-regioes
+=======
+>>>>>>> w4-fuga
 
   /** BÁSICOS necessários p/ montar a build ideal (expande `de` recursivamente até a folha). */
   function basicosDaBuild(champ) {
@@ -919,6 +952,7 @@
       publishFarm();
     }
 <<<<<<< HEAD
+<<<<<<< HEAD
     // O log do jogo (cena.js, `Loot de {nome}: {ouro} de ouro{itens}. +{xp} de experiência.`)
     // escreve o ouro e o xp com `fmt` (cena.js:225): acima de 10.000 vem '12.3k' e acima de
     // 1.000.000 '1.2M'. O grupo antigo `(\d[\d.]*)` PARAVA no 'k' — capturava '12.3' e o
@@ -945,12 +979,18 @@
     const g = semAbate ? null : entry.body.match(new RegExp('(?:Loot|recebeu)[^:]*:\\s*' + NUM + '\\s*de ouro', 'i'));
     const x = entry.body.match(new RegExp('\\+\\s*' + NUM + '\\s*de experi', 'i'));
 >>>>>>> w1-regioes
+=======
+    // Igual para o loot: "recebeu 12.3k de ouro" / "+ 12.3k de experiência" (cena.js:225).
+    const g = entry.body.match(/(?:Loot|recebeu)[^:]*:\s*(\d[\d.,]+)\s*([kKmM])?\s*de ouro/i);
+    const x = entry.body.match(/\+\s*(\d[\d.,]+)\s*([kKmM])?\s*de experi/i);
+>>>>>>> w4-fuga
     const nomeLoot = (entry.body.match(/Loot de\s+(.+?):/i) || [])[1] || null;
     if (g || x) {
       if (window.__lolidleRlog) window.__lolidleRlog({ t: 'kill', nome: nomeLoot, gold: g ? parseNum(g[1], g[2]) : null, xp: x ? parseNum(x[1], x[2]) : null });
       if (!farm.current && !naBase) farm.current = novoCiclo(loc.text, Date.now());
       if (farm.current) {
         const fase = farm.current.fase === 'boss' ? farm.current.bossFase : farm.current.mobFase;
+<<<<<<< HEAD
 <<<<<<< HEAD
         if (g) { const v = parseNum(g[1], g[2]); farm.current.gold += v; fase.gold += v; fase.kills += 1; lootTimes.push(Date.now()); if (lootTimes.length > 30) lootTimes.shift(); killTimes.push(Date.now()); if (killTimes.length > 200) killTimes.shift(); }
         if (x) { const v = parseNum(x[1], x[2]); farm.current.xp += v; fase.xp += v; }
@@ -963,6 +1003,10 @@
         if (x && !semAbate) { const v = parseNum(x[1]); farm.current.xp += v; fase.xp += v; fase.kills += 1; killTimes.push(Date.now()); if (killTimes.length > 200) killTimes.shift(); }
         if (semAbate && x) logEvent('caca-offline', { xp: parseNum(x[1]), ouro: g ? parseNum(g[1]) : null });   // nao conta como abate
 >>>>>>> w1-regioes
+=======
+        if (g) { const v = parseNum(g[1], g[2]); farm.current.gold += v; fase.gold += v; fase.kills += 1; lootTimes.push(Date.now()); if (lootTimes.length > 30) lootTimes.shift(); killTimes.push(Date.now()); if (killTimes.length > 200) killTimes.shift(); }
+        if (x) { const v = parseNum(x[1], x[2]); farm.current.xp += v; fase.xp += v; }
+>>>>>>> w4-fuga
       }
     }
     const apChefe = entry.body.match(/Um chefe apareceu:\s*(.+?)[!.]?$/i);
@@ -1165,6 +1209,7 @@
       const nome = (b.getAttribute('data-dica') || '').split('—')[0].trim() || (b.title || '').split('—')[0].trim() || t;
       const frac = varCd(b);
 <<<<<<< HEAD
+<<<<<<< HEAD
       const ex = cdExatoHud(frac, t, rankDe[t] || null, cdrUsado);
       const cd = ex && ex.seg != null ? ex.seg : (recarga ? (seg != null ? seg : 0) : 0);
       return { t, nome, cd, cdFrac: frac, cdEm: seg, cdAprox: !!(ex && ex.aprox), rank: rankDe[t] || null,
@@ -1173,6 +1218,11 @@
       const cd = exato != null ? exato : (recarga ? (seg != null ? seg : 0) : 0);
       return { t, nome, cd, cdFrac: frac, cdEm: seg, rank: rankDe[t] || null,
 >>>>>>> w1-regioes
+=======
+      const ex = cdExatoHud(frac, t, rankDe[t] || null, cdrUsado);
+      const cd = ex && ex.seg != null ? ex.seg : (recarga ? (seg != null ? seg : 0) : 0);
+      return { t, nome, cd, cdFrac: frac, cdEm: seg, cdAprox: !!(ex && ex.aprox), rank: rankDe[t] || null,
+>>>>>>> w4-fuga
         // `sem-mana` (jogo.js:6232) e `aprimorada` (jogo.js:6237, Yasuo: o proximo Q e o tornado):
         // classes que o jogo escreve e que a extensao nunca leu.
         semMana: b.classList.contains('sem-mana'), aprimorada: b.classList.contains('aprimorada'),
@@ -1342,6 +1392,9 @@
     return { hp: poly(c.hp, nivel) * a.vida, ad: poly(c.ad, nivel) * a.dano, armadura: poly(c.armadura, nivel), xp: poly(c.xp, nivel) * a.xp, ouro: poly(c.ouro, nivel) * a.ouro };
   }
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> w4-fuga
   /** NIVEL DO CHEFE — a regra EXACTA do motor (motor.js:1121):
    *    `nivelJogador == null ? n1 + 2 : Math.max(n0 + 2, Math.min(n1 + 2, nivelJogador + 4))`
    *  A extensao usava `nm[1] + 2` — o TOPO da faixa — e afastava o boneco do chefe MEDIDO: um
@@ -1350,6 +1403,7 @@
    *  `nivelJogador` ausente (sem jogador lido) cai no topo + 2, que e o que o motor faz quando
    *  nao ha nivel do jogador (motor.js:1121, ramo `nivelJogador == null`). */
   function nivelChefeDe(local, nivelJogador) {
+<<<<<<< HEAD
 =======
   // ============== NIVEL DO ALVO — UMA calculadora para todo o ficheiro (TK-01-06) =============
   // Havia CINCO convencoes de nivel no mesmo automation.js (768 ok, 1168 errado, 1226 errado,
@@ -1372,15 +1426,21 @@
   //  Um so sitio para corrigrir se o jogo mudar a formula -- e um so sitio a testar.
   function nivelAlvo(local, papel, nivelJogador) {
 >>>>>>> w1-regioes
+=======
+>>>>>>> w4-fuga
     if (!local) return null;
     const nm = local.nm || local.faixa || null;
     if (!nm) return null;
     const n0 = +nm[0] || 1, n1 = nm[1] != null ? +nm[1] : n0;
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> w4-fuga
     const p = nivelJogador != null ? +nivelJogador : (player() || {}).nivel;
     if (p == null || !(p > 0)) return n1 + 2;
     return Math.max(n0 + 2, Math.min(n1 + 2, p + 4));
   }
+<<<<<<< HEAD
 =======
     // `nivelJogador === null` (explicito) = o ramo `nivelJogador == null` do MOTOR: sem jogador
     // lido, o chefe nasce no topo da faixa + 2 e o mob sai uniforme na faixa. `undefined`
@@ -1396,6 +1456,8 @@
    *  mob: o alvo que o jogo realmente poe a frente, nao o mob mais duro da faixa (`nm[1]`). */
   const nivelMobDe = (local, nivelJogador) => nivelAlvo(local, 'mob', nivelJogador);
 >>>>>>> w1-regioes
+=======
+>>>>>>> w4-fuga
 
   /** Stats de um monstro/chefe num nível (do motor). */
   function statsMonstro(nome, nivel) {
@@ -1720,6 +1782,7 @@
   // =====================================================================================
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   /** NUMERO como o ECRÃ do jogo o escreve. `fmt` (cena.js:225):
    *    n >= 1e6 -> (n/1e6).toFixed(1)+'M' · n >= 1e4 -> (n/1e3).toFixed(1)+'k' · senao Math.round(n)
    *  BUG MEDIDO: `#hud-vida-txt` (jogo.js:6203) usa este `fmt`, logo acima de 10.000 a string vem
@@ -1749,6 +1812,8 @@
     let g; while ((g = re.exec(s)) !== null) ult = g;
     return ult ? norm(ult[1], ult[2]) : null;
 =======
+=======
+>>>>>>> w4-fuga
   /** Numero no formato DO ECRA do jogo. `fmt` (cena.js:225):
    *    n >= 1e6 -> (n/1e6).toFixed(1)+'M' · n >= 1e4 -> (n/1e3).toFixed(1)+'k' · senao Math.round(n)
    *  BUG MEDIDO: `#hud-vida-txt` (jogo.js:6203) usa este `fmt`, logo acima de 10.000 a string vem
@@ -1766,7 +1831,10 @@
     if (/k/i.test(m[2])) v *= 1e3;
     if (/M/i.test(m[2])) v *= 1e6;
     return Math.round(v);
+<<<<<<< HEAD
 >>>>>>> w1-regioes
+=======
+>>>>>>> w4-fuga
   };
   /** Valor de uma variavel CSS inline (`--cd`) que O JOGO escreve no elemento.
    *  jogo.js:6228 (recarga das habilidades) · jogo.js:6172 (buffs) · jogo.js:6190 (recarga de item).
@@ -1819,6 +1887,9 @@
     if (f == null || f <= 0) return 0;
     const k = KAT[t];
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> w4-fuga
     const c = cdr == null ? (efeitosEquipados() || {}).cdr || 0 : cdr;
     // O rank vem do arsenal (`#hab-ativas .hab[data-t]`, jogo.js:5846 — sempre no DOM). Se ainda
     // nao estiver la, usa-se o rank 1, que e a recarga MAIS LONGA do kit: sobrestima o segundo,
@@ -1827,12 +1898,15 @@
     const base = (k && k.rec && rank) ? k.rec(rank) : (k && k.rec ? k.rec(1) : null);
     if (base == null) return { seg: null, aprox: true };
     return { seg: +(f * base * (1 - c)).toFixed(2), aprox };
+<<<<<<< HEAD
 =======
     const base = k && k.rec && rank ? k.rec(rank) : null;
     const c = cdr == null ? (efeitosEquipados() || {}).cdr || 0 : cdr;
     if (base == null) return null;                       // sem base nao ha segundo: fica a fraccao
     return +(f * base * (1 - c)).toFixed(2);
 >>>>>>> w1-regioes
+=======
+>>>>>>> w4-fuga
   }
 
   /** EFEITOS ACTIVOS (`#hud-buffs`, jogo.js:6164-6177): um `<span class="hud-buff" data-t="K">`
@@ -1935,6 +2009,7 @@
       const t = e.textContent.replace(/\s+/g, ' ').trim();
       // ROUBO DE VIDA entra na leitura (pedido do Lead): e o stat que decide a luta contra o chefe
       // (cura so em AUTO-ATAQUES, motor.js:1226-1228) e o painel do jogo mostra-o.
+<<<<<<< HEAD
       // ROTULOS do painel: o jogo escreve 'Roubo de Vida' (jogo.js:5999) — com V maiusculo — e
       // 'Vel. ataque', 'Res. mágica' comSiglaMista. O match e case-insensitive e a chave fica
       // NORMALIZADA ('Roubo de vida'), para o `player()` e os testes falarem sempre a mesma
@@ -1949,6 +2024,13 @@
         const rot = m[1].toLowerCase() === 'roubo de vida' ? 'Roubo de vida' : m[1];
         out[rot] = v ? parseNum(v[1], v[2]) : 0;
       }
+=======
+      // TK-02-142: o painel escreve 'Roubo de Vida' com V maiúsculo (jogo.js:5999) e a regex
+      // exigia 'Roubo de vida' — com o `^...$` ancorado e sem flag `i`, o rv NUNCA era lido.
+      // Aceita as DUAS grafias e normaliza a CHAVE (o resto do ficheiro usa 'Roubo de vida').
+      const m = t.match(/^(Dano|Armadura|Vel\. ataque|Res\. mágica|Poder|Mana|Crítico|Esquiva|Roubo de [Vv]ida)(.*)$/);
+      if (m) { const v = (m[2].match(/[\d.,]+/) || [''])[0]; const k = m[1] === 'Roubo de Vida' ? 'Roubo de vida' : m[1]; out[k] = v ? parseFloat(v.replace(',', '.')) : 0; }
+>>>>>>> w4-fuga
     }
     // Stats que o painel escreve por ID (sem rotulo pescavel por texto) — ver `lerStatsId`.
     const sid = lerStatsId();
@@ -1967,15 +2049,22 @@
     const hp = lerVidaHud();
     const sid = lerStatsId();
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     // `va` = velocidade de ataque do HUD — usada como PISO de DPS quando nao ha historico medido
     // (dano × vel. ataque = DPS de auto-ataque). Antes so existia `dano`, e usar o DANO POR GOLPE
     // como se fosse DPS inflacionava qualquer valor de buff (ex.: a Respiracao do Vento).
 >>>>>>> w1-regioes
+=======
+    // `va` = velocidade de ataque do HUD — usada como PISO de DPS quando nao ha historico medido
+    // (dano × vel. ataque = DPS de auto-ataque). Antes so existia `dano`, e usar o DANO POR GOLPE
+    // como se fosse DPS inflacionava qualquer valor de buff (ex.: a Respiracao do Vento).
+>>>>>>> w4-fuga
     return {
       nivel,
       vida: hp.max, vidaCur: hp.cur, escudo: hp.escudo, vidaEff: (hp.vidaEff != null ? hp.vidaEff : hp.max),
       armadura: s['Armadura'] || 0, rm: s['Res. mágica'] || 0, dano: s['Dano'] || 0, poder: s['Poder'] || 0, va: s['Vel. ataque'] || 0,
+<<<<<<< HEAD
 <<<<<<< HEAD
       rv: (s['Roubo de vida'] || 0) / 100,
       critico: sid.critico != null ? sid.critico / 100 : (s['Crítico'] || 0) / 100,
@@ -1985,13 +2074,22 @@
       // era LIDO pelo `readStats` e DEITADO FORA pelo `player()`. Vale ~269 de cura/s numa base AD
       // (AGENTS.md, prova n.o 5) e decide a troca dano→sustento (docs/auditoria-do-jogo.md C8).
       rv: s['Roubo de vida'] || 0,
+=======
+      // ROUBO DE VIDA (motor.js:538 `rouboVida`, aplicado em motor.js:1226-1228 `cura = dano × rv`):
+      // era LIDO pelo `readStats` e DEITADO FORA pelo `player()`. Vale ~269 de cura/s numa base AD
+      // (AGENTS.md, prova n.o 5) e decide a troca dano→sustento (docs/auditoria-do-jogo.md C8).
+      rv: (s['Roubo de vida'] || 0) / 100,   // TK-02-142: o painel mostra % (jogo.js:6001); o motor guarda fracção (motor.js:538)
+>>>>>>> w4-fuga
       // CRITICO (motor.js:541 chance; motor.js:499 base + 515 do 3031 = multiplicador): a build
       // AD/critico e 2,5–2,8x a de AP contra o chefe e nao entrava em conta nenhuma
       // (docs/auditoria-do-jogo.md item 7).
       critico: sid.critico != null ? sid.critico / 100 : (s['Crítico'] || 0) / 100,
       critDano: sid.critDano != null ? sid.critDano : 1.75,          // motor.js:499 (base)
       // CDR TOTAL do painel (motor.js:537: foco + itens, tecto 0,4) — a soma dos itens so nao chega.
+<<<<<<< HEAD
 >>>>>>> w1-regioes
+=======
+>>>>>>> w4-fuga
       cdr: sid.cdr != null ? sid.cdr / 100 : null,
       fonte: { vida: hp.max != null ? 'jogo:hud' : 'fallback', rv: s['Roubo de vida'] != null ? 'jogo:st' : 'ausente' },
     };
@@ -2231,6 +2329,7 @@
         const p = parseSlotId(raw);
         const base = p.base, qual = p.qual, refino = p.refino, mult = p.mult;
         const S = statsSet([base], { mult });
+<<<<<<< HEAD
         // O `statsSet` só escala ap/ad pelo `mult` — o motor escala TUDO (motor.js:252-255:
         // ad/ap/mana/vida/armadura/rm/va/rv/critico/regen/**cdr**). Aqui o cdr/pen levam o `mult`
         // para a qualidade/refino contarem como no jogo ('3175~A' -> pen 0.15*1.15 = 0.1725).
@@ -2244,6 +2343,18 @@
 =======
       return { cdr: Math.min(CAP_CDR, soma('cdr')), penMag: Math.min(CAP_PEN_MAG, soma('penMag')), penArmadura: penArmaduraDe(soma('penArmadura')), apPct: soma('apPct'),
 >>>>>>> w1-regioes
+=======
+        // O `statsSet` escala pelo `mult` (qualidade/refino) EXACTAMENTE a lista do motor
+        // (motor.js:252-255: ad/ap/mana/vida/armadura/rm/va/rv/critico/regen/**cdr**) — e só ela.
+        // O `penMag` NÃO está nessa lista (TK-02-109): '3175~A' dá 15% de pen, NÃO 17,25%
+        // (motor.js:254-255; a dica MEDIDA do jogo confirma, docs/snapshots/farm.json). Quem
+        // escalava o pen aqui introduzia um bug — o valor já vem CRU do `statsSet`, não mexer.
+        return { base, qual, refino, cdr: S.cdr, penMag: S.pen, penArmadura: S.penArmadura || 0, apPct: (S.det || []).some((d) => /Rabadon/.test(d)) ? 0.35 : 0,
+          lich: S.lich, ap: S.ap, ad: S.ad, efeito: ((META.itens || []).find((x) => String(x.id) === base) || {}).efeito || null };
+      });
+      const soma = (k) => itens.reduce((t, x) => t + (x[k] || 0), 0);
+      return { cdr: Math.min(CAP_CDR, soma('cdr')), penMag: Math.min(CAP_PEN_MAG, soma('penMag')), penArmadura: Math.max(0, Math.min(1, soma('penArmadura'))), apPct: soma('apPct'),
+>>>>>>> w4-fuga
         lich: itens.reduce((m, x) => Math.max(m, x.lich || 0), 0), apItens: soma('ap'), itens };
     }
     let cdr = 0, penMag = 0, penArm = 0, apPct = 0, lich = 0, apItens = 0; const itens = [];
@@ -2263,10 +2374,14 @@
     const cdrPainel = (player() || {}).cdr;
     if (cdrPainel != null) cdr = cdrPainel;
 <<<<<<< HEAD
+<<<<<<< HEAD
     return { cdr: Math.min(CAP_CDR, cdr), penMag: Math.min(CAP_PEN_MAG, penMag), penArmadura: Math.max(0, Math.min(1, penArm)), apPct, lich, apItens, itens };
 =======
     return { cdr: Math.min(CAP_CDR, cdr), penMag: Math.min(CAP_PEN_MAG, penMag), penArmadura: penArmaduraDe(penArm), apPct, lich, apItens, itens };
 >>>>>>> w1-regioes
+=======
+    return { cdr: Math.min(CAP_CDR, cdr), penMag: Math.min(CAP_PEN_MAG, penMag), penArmadura: Math.max(0, Math.min(1, penArm)), apPct, lich, apItens, itens };
+>>>>>>> w4-fuga
   }
   const cdrEquipado = () => efeitosEquipados().cdr;
 
@@ -2620,6 +2735,9 @@
     if (rod) for (const mc of rod) {
       const mm = mecanicaDe(mc); if (!mm || !mm.mult) continue;
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> w4-fuga
       const d = s.ad * mm.mult * fM * (100 / (100 + (mm.magico ? (player.rm || 0) : (player.armadura || 0))));
 =======
       // `fM` (motor.js:1201) e o papel (motor.js:2720) multiplicam o golpe do monstro; a
@@ -2645,12 +2763,17 @@
     const alvoGolpe = Math.max(0, danoGolpe - curaSkill * intervalo); // o que a poção precisa cobrir por janela
     const mix = melhorMix(nPocoes, alvoGolpe);
 <<<<<<< HEAD
+<<<<<<< HEAD
     const tMorrer = liquido > 0 ? (vidaPool || 1) / liquido : Infinity;
     return { monstro, nivel, dif, fM, fJ, hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaRv, curaGiroS, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
 =======
     const tMorrer = liquido > 0 ? (player.vida || 1) / liquido : Infinity;
     return { monstro, nivel, dif, fM, fJ, fPapel, recebido: fPapel, hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
 >>>>>>> w1-regioes
+=======
+    const tMorrer = liquido > 0 ? (vidaPool || 1) / liquido : Infinity;
+    return { monstro, nivel, dif, fM, fJ, hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaRv, curaGiroS, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
+>>>>>>> w4-fuga
   }
 
   /** Agrega os ciclos observados por região (médias por minuto + mortes). */
@@ -2690,8 +2813,11 @@
       const curaSkill = (r.hs / d) / 60; // cura/s das skills nos mobs (medido)
       const curaSkillChefe = r.chn ? r.chs / r.chn : curaSkill; // cura/s das skills NO CHEFE
       let curaPocao = (r.hp / d) / 60;    // cura/s EFETIVA das poções (mobs)
-      const curaPocaoChefe = r.chpn ? r.chp / r.chpn : curaPocao;
-      if (!curaPocaoChefe) curaPocao = cp * 0.6; // região nova: estimativa conservadora
+      // TK-01-16: o fallback era escrito na variavel ERRADA (`curaPocao` = cura MEDIDA dos
+      // mobs), pelo que nao fazia NADA ao risco do chefe — e ainda corrompia o campo
+      // `healPotionS` (cura dos mobs) que a GUI e o previsor leem. Escreve-se na certa.
+      let curaPocaoChefe = r.chpn ? r.chp / r.chpn : curaPocao;
+      if (!curaPocaoChefe) curaPocaoChefe = cp * 0.6;   // regiao nova: estimativa conservadora
       const risco = r.boss && nivelChefe ? avaliar(r.boss, nivelChefe, pl, { skill: curaSkillChefe, pocao: curaPocaoChefe || cp * 0.6 }) : null;
       // JANELAS medidas nesta regiao (TK-01-42): a MESMA build na MESMA regiao deu 834 ouro/min
       // numa janela e 1581 noutra (parte-01.md L2528-2551). Sem o id da janela em cada amostra,
@@ -2843,7 +2969,12 @@
 
   /** Id do local (mapa) a partir do texto da região. */
   function localId(regionTxt) {
-    const l = (META.locais || []).find((x) => regionTxt && regionTxt.startsWith(x.nome));
+    // TK-01-17: a comparacao era EXACTA e sensivel a caixa/acento. O nome do local no HUD e o
+    // que o jogo escreve e pode vir com sufixo ("Fonte (nucleo)"), minusculo ou acentuado:
+    // comparar pelo texto EXACTO era o que deixava o giro preso. Normalizam-se os DOIS lados
+    // (o `semAcento` ja existe no ficheiro).
+    const txt = semAcento(regionTxt);
+    const l = (META.locais || []).find((x) => { const n = semAcento(x && x.nome); return txt && n && txt.startsWith(n); });
     return l ? l.id : null;
   }
 
@@ -2873,13 +3004,19 @@
     const regiaoTxt = (c && c.region) ? c.region : (readLocation().text || '');
     const idReg = localId(regiaoTxt);
     const r = (c && c.region) ? agregar().find((x) => x.region === c.region) : null;
-    const morre = !!(r && r.risco && r.risco.morre);          // risco de morte MEDIDO naquela região
+    const morre = !!(r && r.risco && r.risco.morre);          // risco de morte MEDIDO naquela regiao
+    // TK-02-33: fugir de QUALQUER coisa que mata, MOB incluido. O `agregar()` so calcula
+    // `risco` para regioes COM CHEFE (`r.boss && nivelChefe`), pelo que uma regiao de MOBS
+    // que mata nunca punha `morre` a true — exactamente a queixa do dono ("morrer para um
+    // mob nunca contava"). A `estimarRegiao` avalia MONSTRO a monstro e declara `morte===true`.
+    let estReg = null; try { estReg = idReg ? estimarRegiao(idReg) : null; } catch { /* ignore */ }
+    const regiaoMata = !!(estReg && estReg.morte === true);   // PROVADO: um mob da regiao mata
     let est = null; try { est = idReg ? estimarLuta(idReg) : null; } catch { /* ignore */ }
     const perde = !!(est && est.ganha === false);             // a estimativa diz que a luta está perdida
     // AS POÇÕES COBREM A LUTA? REGRA DO DONO, MANTIDA: "se as poções cobrem a luta estimada, NÃO
     // foge — TERMINA o chefe". A fuga é para o que MATA, não para o que assusta.
     let cobrem = false;
-    if (!fatalVivo && est && est.ganha && est.potTotal != null) {
+    if (!fatalVivo && !morre && !regiaoMata && est && est.ganha && est.potTotal != null) {
       try {
         const p = readPotions();
         const temos = (p.vida || 0) * HEALVAL.vida + (p.vidaF || 0) * HEALVAL.vidaF + (p.vidaS || 0) * HEALVAL.vidaS;
@@ -2888,19 +3025,25 @@
       } catch { /* ignore */ }
     }
     // QUEM MANDA FUGIR: golpe injogável OU região que mata OU luta perdida sem poções que cheguem.
-    const foge = fatalVivo || morre || (perde && !cobrem);
+    // QUEM MANDA FUGIR: golpe injogavel OU regiao que mata (MOB incluido) OU luta perdida
+    // sem pocoes que cheguem.
+    const foge = fatalVivo || morre || regiaoMata || (perde && !cobrem);
     if (!foge) return;
-    if (!fatalVivo && cobrem) { logEvent('chefe-fatal', { adiado: 'poções cobrem', regiao: regiaoTxt, perde, morre }); return; }
+    if (!fatalVivo && !morre && !regiaoMata && cobrem) { logEvent('chefe-fatal', { adiado: 'pocoes cobrem', regiao: regiaoTxt, perde, morre }); return; }
     fugindoAte = Date.now() + (cfg.fugirMs || 30000);
     const decisao = { regiao: regiaoTxt, regiaoId: idReg, chefe: (c && c.boss) || null, fatalVivo, morre, perde, cobrem,
-      dps: r && r.risco ? Math.round(r.risco.dps) : null, tMorrer: r && r.risco ? r.risco.tMorrer : null, acao: 'fugir (B → base)' };
+      dps: r && r.risco ? Math.round(r.risco.dps) : null, tMorrer: r && r.risco ? r.risco.tMorrer : null,
+      regiaoMata, riscoMob: estReg ? estReg.riscoMob : null,
+      acao: 'fugir (B → base)' };
     logEvent('chefe-fatal', decisao);
     if (live) live.fatal = false;
     press('b'); // volta pra base
     // VOLTAR À REGIÃO? Só quando a fuga NÃO foi por derrota prevista nem por golpe injogável —
     // `risco.morre` é uma probabilidade medida (a região pode ter mudado), mas "perde a luta" e
     // "golpe que mata" são determinísticos: voltar era o ciclo morte→fuga→morte que o dono proibiu.
-    if (idReg && !fatalVivo && !perde) setTimeout(() => viajarPara(idReg), 8000);
+    // VOLTAR A REGIAO? So quando a fuga NAO foi por derrota prevista, golpe injogavel nem
+    // regiao que MATA (provado) — voltar a uma regiao que mata era o ciclo morte→fuga→morte.
+    if (idReg && !fatalVivo && !perde && !regiaoMata) setTimeout(() => viajarPara(idReg), 8000);
   }
 
   /** Espera após o recall: RECALL do motor (s) + folga pra base/UI. */
@@ -2915,25 +3058,55 @@
    *  chamadores (5221/5235/5244/5264) viajavam do meio do combate e a viagem morria ali — o
    *  boneco ficava preso na regiao errada. A regra passa a viver AQUI, para valer a TODOS os
    *  chamadores (incluindo os que vierem depois), em vez de ser repetida em cada um. */
-  let _viagemTent = 0;
-  function viajarPara(id) {
-    if (/runeterra/i.test(semAcento(String(id || '')))) { logEvent('runeterra', { bloqueado: id }); return; }   // Runeterra é manual
+  // TK-01-12: contadores de tentativa da VIAGEM (recall antes de viajar + clique no mapa).
+  let _viagemTent = 0;        // tentativas de RECALL antes de desistir
+  let _viagemMapaTent = 0;    // tentativas de clique no mapa (retry com backoff)
+  const VIAGEM_MAX_TENT = 3;  // tecto de recalls
+  const VIAGEM_MAPA_MAX = 3;  // tecto de cliques no mapa
+  const VIAGEM_CONFIRMA_MS = 2500;   // espera pela leitura do local depois do clique
+
+  /** O local ONDE o boneco esta, pelo MESMO `localId` normalizado do resto do ficheiro.
+   *  E a VERIFICACAO da viagem: nao basta o clique, o local tem de dizer que chegou. */
+  function localAtual() { return localId(readLocation().text); }
+
+  async function viajarPara(id) {
+    const alvo = String(id || '');
+    if (/runeterra/i.test(semAcento(alvo))) { logEvent('runeterra', { bloqueado: id }); return { ok: false, motivo: 'runeterra-manual' }; }
     // Nao esta na base? RECALL primeiro e so depois viaja. Sem isto a viagem e cancelada.
     if (!naBase()) {
-      if (_viagemTent >= 3) { logEvent('viagem', { desistiu: id, tentativas: _viagemTent }); _viagemTent = 0; return; }
+      if (_viagemTent >= VIAGEM_MAX_TENT) { logEvent('viagem', { desistiu: id, tentativas: _viagemTent }); _viagemTent = 0; return { ok: false, motivo: 'sem-base' }; }
       _viagemTent++;
       logEvent('viagem', { recall: 'para a base antes de viajar', destino: id, tentativa: _viagemTent });
       press('b');
-      setTimeout(() => viajarPara(id), esperaRecallMs());
-      return;
+      await esperar(esperaRecallMs());
+      return viajarPara(alvo);          // RETRY (a recursao tem tecto: VIAGEM_MAX_TENT)
     }
     _viagemTent = 0;
+    // TETO de cliques no mapa: se o marcador/o botao nao estiverem la, insiste com backoff.
+    if (_viagemMapaTent >= VIAGEM_MAPA_MAX) {
+      logEvent('viagem', { falhou: id, motivo: 'sem-confirmacao', tentativas: _viagemMapaTent });
+      _viagemMapaTent = 0;
+      return { ok: false, motivo: 'sem-confirmacao', destino: alvo };
+    }
+    _viagemMapaTent++;
     press('m');
-    setTimeout(() => {
-      const b = document.querySelector(`#marcadores .marcador[data-local="${id}"]`);
-      if (b) b.click();
-      setTimeout(() => { const ir = document.querySelector(`#mapa-info [data-ir="${id}"]`); if (ir) ir.click(); }, 400);
-    }, 700);
+    await esperar(700);
+    const b = document.querySelector(`#marcadores .marcador[data-local="${alvo}"]`);
+    if (b) b.click();
+    await esperar(400);
+    const ir = document.querySelector(`#mapa-info [data-ir="${alvo}"]`);
+    if (ir) ir.click();
+    // VERIFICACAO: le o local DEPOIS da viagem. So conta se o local lido for o destino.
+    await esperar(VIAGEM_CONFIRMA_MS);
+    if (localAtual() === alvo) {
+      _viagemMapaTent = 0;
+      logEvent('viagem', { ok: true, destino: alvo });
+      return { ok: true, destino: alvo, local: readLocation().text };
+    }
+    // BACKOFF antes de tentar de novo (o dobro da espera de confirmacao).
+    logEvent('viagem', { retry: alvo, localLido: readLocation().text, tentativa: _viagemMapaTent });
+    await esperar(VIAGEM_CONFIRMA_MS * 2);
+    return viajarPara(alvo);
   }
 
   // ------------------------------------------------------------- laço (observação)
@@ -4347,6 +4520,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       if (id === '6653') { liandry = true; det.push('Liandry queima 1,5%/s'); }
     }
 <<<<<<< HEAD
+<<<<<<< HEAD
     // Pen de armadura COMPOSTA: o motor multiplica as fontes (motor.js:539
     // `1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`); aqui chegam SOMADAS (0,3 da 3036 mais o que o
     // kit trouxer) — o composto de reduções independentes fica no limite físico [0,1]
@@ -4355,6 +4529,9 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
 =======
     cdr = Math.min(CAP_CDR, cdr); pen = Math.min(CAP_PEN_MAG, pen); penArmadura = penArmaduraDe(penArmadura);
 >>>>>>> w1-regioes
+=======
+    cdr = Math.min(CAP_CDR, cdr); pen = Math.min(CAP_PEN_MAG, pen); penArmadura = penArmaduraDe(penArmadura);
+>>>>>>> w4-fuga
     // `pen` = pen MAGICA (motor.js:529) e `penArmadura` = pen de ARMADURA (motor.js:539, so no ramo fisico).
     // rv = roubo de vida somado dos itens (motor.js:538; cura em motor.js:1226-1228).
     return { ap: apItem * (1 + apPct), ad: adItem, cdr, pen, penArmadura, rv: rvItens, lich, chama, liandry, crit, infinito, det };
@@ -4389,14 +4566,20 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       // VORACIDADE POR ABATE (motor.js:1789): Q/W/E andam 1,5 s mais rapidas por abate.
       const cd = cdBase != null ? cdVoraz(cdBase * (1 - cdr), h.t) : null;
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> w4-fuga
       // CRITICO (motor.js:1700/1213): as habilidades de AUTO (o ataque reforcado, ex. a Sede de
       // Sangue da Katarina) rolam a chance de critico; as skills puras nao.
       let critHab = 1;
       if (k.auto) { const cc = critDoSet(p, S); critHab = multCrit(cc.chance, cc.mult); }
       const d = cd ? (total * critHab) / cd : 0;
+<<<<<<< HEAD
 =======
       const d = cd ? total / cd : 0;
 >>>>>>> w1-regioes
+=======
+>>>>>>> w4-fuga
       dps += d; habs.push({ t: h.t, nome: h.name, dps: Math.round(d) });
     }
     // MITIGAÇÃO PELO TIPO DE DANO do campeão (motor.js:1202):
@@ -4585,9 +4768,12 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     try {
 <<<<<<< HEAD
       if (L?.monstros?.[0]) { const s = statsMonstro(L.monstros[0][0], L.nm ? L.nm[1] : 1); if (s) alvos.mob = { armadura: s.armadura, hp: s.hp, nivel: L.nm ? L.nm[1] : 1, chefe: false }; }
+<<<<<<< HEAD
 =======
       if (L?.monstros?.[0]) { const nmOb = nivelMobDe(L); const s = statsMonstro(L.monstros[0][0], nmOb); if (s) alvos.mob = { armadura: s.armadura, hp: s.hp, nivel: nmOb, chefe: false }; }
 >>>>>>> w1-regioes
+=======
+>>>>>>> w4-fuga
       // NIVEL DO CHEFE pela regra do motor (motor.js:1121), nao `nm[1] + 2`.
       if (L?.chefe) { const nc = nivelChefeDe(L); const s = statsMonstro(L.chefe[0], nc); if (s) alvos.chefe = { armadura: s.armadura, hp: s.hp, nivel: nc, chefe: true }; }
     } catch { /* ignore */ }
@@ -4604,9 +4790,12 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     try {
 <<<<<<< HEAD
       if (L?.monstros?.[0]) { const s = statsMonstro(L.monstros[0][0], L.nm ? L.nm[1] : 1); if (s) alvos.mob = { armadura: s.armadura, hp: s.hp, nivel: L.nm ? L.nm[1] : 1, chefe: false }; }
+<<<<<<< HEAD
 =======
       if (L?.monstros?.[0]) { const nmOb = nivelMobDe(L); const s = statsMonstro(L.monstros[0][0], nmOb); if (s) alvos.mob = { armadura: s.armadura, hp: s.hp, nivel: nmOb, chefe: false }; }
 >>>>>>> w1-regioes
+=======
+>>>>>>> w4-fuga
       // NIVEL DO CHEFE pela regra do motor (motor.js:1121), nao `nm[1] + 2`.
       if (L?.chefe) { const nc = nivelChefeDe(L); const s = statsMonstro(L.chefe[0], nc); if (s) alvos.chefe = { armadura: s.armadura, hp: s.hp, nivel: nc, chefe: true }; }
     } catch { /* ignore */ }
@@ -5172,11 +5361,14 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       const base = l.nm || l.faixa || [1, 1];
       // motor.js:1121: o chefe nasce em max(n0+2, min(n1+2, nivel+4)) — nao no topo da faixa.
       const nivel = chefe ? nivelChefeDe({ nm: base }) : base[0];
+<<<<<<< HEAD
 =======
       // motor.js:1134 (chefe) / 1131-1132 (mob): a UNICA convencao de nivel, sem `base[0]` nem
       // `base[1]` copiados a mao. O MOB de referencia e o que o jogo poe a frente do boneco.
       const nivel = nivelAlvo(l, chefe ? 'chefe' : 'mob');
 >>>>>>> w1-regioes
+=======
+>>>>>>> w4-fuga
       const s = statsMonstro(nome, nivel);
       return s ? { nome, nivel, hp: s.hp } : null;
     };
@@ -7144,6 +7336,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     // recarga efectiva) — não há duas contabilidades de CDR a divergir.
     // ANTES: `d = base * mit / (1 - S.cdr)` -> 15% de CDR valia +17,6% em TODO o dano, autos incluídos.
 <<<<<<< HEAD
+<<<<<<< HEAD
     const fHabs = fracHabs();   // sem dados de habilidades o CDR NÃO pontua (controlo: sem skills, sem ganho)
 =======
     let fracHabs = 0;   // sem dados de habilidades o CDR NÃO pontua (controlo: sem skills, sem ganho)
@@ -7154,12 +7347,18 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       if (dh + da > 0) fracHabs = dh / (dh + da);
     } catch { /* sem arsenal */ }
 >>>>>>> w1-regioes
+=======
+    const fHabs = fracHabs();   // sem dados de habilidades o CDR NÃO pontua (controlo: sem skills, sem ganho)
+>>>>>>> w4-fuga
     // VORACIDADE POR ABATE (motor.js:1789) entra no MESMO factor: o lancamento da Q/W/E fica
     // 1/(1 + 1,5/T) mais rapido, multiplicativo com o CDR. Só a parcela das habilidades acelera.
     const _vor = voracidadeDe();
     const _km = killsMinAoVivo();
     const ganhoVor = (_vor && _km > 0) ? _vor.valor / (60 / _km) : 0;
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> w4-fuga
     const fatorCdr = fHabs / ((1 - S.cdr) * (1 + ganhoVor)) + (1 - fHabs);
     // CRITICO (motor.js:1700/1213): so no auto-ataque, multiplicado pelo `multCrit` medio.
     const _p0 = (typeof player === 'function' ? player() : {}) || {};
@@ -7169,10 +7368,13 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     // multiplicador. `base` de um campeao AD e o dano de ataque — que alimenta os autos.
     const _fa = fracAuto();
     let d = (base * mit) * fatorCdr * ((1 - _fa) + _fa * fCrit) * (1 + (magia ? S.lich * 0.15 : 0));   // Lich: +75%AP/skill ≈ +15% no dano total
+<<<<<<< HEAD
 =======
     const fatorCdr = fracHabs / ((1 - S.cdr) * (1 + ganhoVor)) + (1 - fracHabs);
     let d = (base * mit) * fatorCdr * (1 + (magia ? S.lich * 0.15 : 0));   // Lich: +75%AP/skill ≈ +15% no dano total
 >>>>>>> w1-regioes
+=======
+>>>>>>> w4-fuga
     if (S.chama) d *= 1 + (alvo?.chefe ? 0.066 : 0.033);        // finisher <40% HP
     if (S.liandry && alvo?.hp) {                                 // queima da Liandry
       const cv = (META.curva && META.curva.hp) || [150, 100, 1];
@@ -7205,6 +7407,9 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     let monstro = null, nivel = null;
     if (contexto === 'chefe' && L?.chefe) { monstro = L.chefe[0]; nivel = nivelChefeDe(L); }
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> w4-fuga
     else if (L?.monstros?.length) { monstro = L.monstros[0]; nivel = L.nm ? L.nm[1] : (L.faixa ? L.faixa[1] : 0); }
 =======
     else if (L?.monstros?.length) { monstro = L.monstros[0]; nivel = nivelMobDe(L); }
@@ -7278,9 +7483,26 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
   function giroAtivo() { return !!giro; }
   function salvarGiro() { try { chrome.storage.local.set({ [GIRO_KEY]: giro }); } catch { /* ignore */ } }
   function pararGiro() { giro = null; salvarGiro(); return { ok: true }; }
+  // TK-01-17: contador de tentativas de chegar a Fonte (tecto de seguranca do giro).
+  let _giroTent = 0;
   function proximoGiro() {
     if (!giro || giro.i >= giro.lista.length) { logEvent('giro-fim', { feito: giro ? giro.i : 0 }); giro = null; salvarGiro(); return; }
-    if ((readLocation().text || '') !== 'Fonte') { press('b'); return setTimeout(proximoGiro, 9000); }
+    // TK-01-17: a comparacao era pelo TEXTO EXACTO ('Fonte'). O HUD escreve o local como o jogo
+    // o escreve — "Fonte (nucleo)", minuscula, com acento — e a comparacao nunca passava: o giro
+    // re-agendava-se a cada 9 s e NUNCA saia da Fonte (loop infinito, sem uma linha de log).
+    // Agora: localId NORMALIZADO e um TETO de tentativas que DESISTE com log.
+    if (localId(readLocation().text) !== 'fonte') {
+      _giroTent++;
+      if (_giroTent > 4) {
+        logEvent('giro', { desistiu: 'nao chegou a Fonte', local: readLocation().text, tentativas: _giroTent, i: giro.i, total: giro.lista.length });
+        giro = null; salvarGiro();
+        return;
+      }
+      press('b');
+      logEvent('giro', { esperaFonte: true, local: readLocation().text, tentativas: _giroTent });
+      return setTimeout(proximoGiro, 9000);
+    }
+    _giroTent = 0;
     const id = giro.lista[giro.i];
     logEvent('giro-ir', { regiao: id, i: giro.i, total: giro.lista.length });
     viajarPara(id);
@@ -7866,7 +8088,16 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     // inventa uma região — usa-se o conjunto inteiro.
     const emNivel = cand0.filter((x) => !abaixoDoNivel(x.l, p));
     const cand = emNivel.length ? emNivel : cand0;
-    if (!cand.length) return null;
+    if (!cand.length) {
+      // TK-01-13: `regiaoIdeal()` devolvia null EM SILENCIO — o sintoma exacto do "parado na
+      // base" sem uma linha de log que explicasse porque. Agora diz QUAL campo falta: sem meta,
+      // sem monstros, ou nenhuma regiao que PROVE que ele sobrevive (o filtro e fail-closed).
+      const motivo = !(META.locais || []).length ? 'META.locais vazio (a meta do jogo nao chegou)'
+        : (META.locais || []).every((l) => !l.monstros) ? 'META.locais sem monstros (meta incompleta)'
+          : 'nenhuma regiao provou morte===false (fail-closed: nao sei = nao vou)';
+      logEvent('regiao', { ideal: null, motivo, nivel: p.nivel, locais: (META.locais || []).length, comMonstros: (META.locais || []).filter((l) => l.monstros).length });
+      return null;
+    }
     // NÃO MISTURAR MEDIDO COM TEORIA: a teoria SISTEMATICAMENTE sobrestima (Campo Azul mede
     // 4.719 xp/min contra 6.309 teóricos), por isso comparar as duas numa só ordenação faz a
     // teoria ganhar sempre — que era exactamente o bug. Se houver QUALQUER região com amostra
@@ -7897,7 +8128,10 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     const base = _comAmostra.length ? _comAmostra : cand;
     const doNivel = doNivel0.filter((x) => base.indexOf(x) >= 0);
     (doNivel.length ? doNivel : base).sort((a, b) => score(b) - score(a));
-    return (doNivel[0] || base[0])?.l.id || null;
+    // TK-01-13: tambem a saida por falta de candidatos depois do filtro de nivel era silenciosa.
+    const escolhido = (doNivel[0] || base[0])?.l.id || null;
+    if (!escolhido) logEvent('regiao', { ideal: null, motivo: 'escolha vazia depois dos filtros', nivel: p.nivel });
+    return escolhido;
   }
 
   /** A REGIÃO É SEGURA? (regra do dono: "NAO E PRA MORRER, NUNCA, COM ESSE SCRIPT")
@@ -7969,11 +8203,24 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
         if (temos >= precisa) { logEvent('repor', { adiado: 'chefe', falta, temos, precisa, potTotal: est.potTotal }); return; }
       }
     }
-    reporAte = Date.now() + 15 * 60000;   // trava: no MÁX 1 reposição a cada 15 min (evita loop/gasto)
-    logEvent('repor', { motivo: 'poção baixa', falta, atual: p });
-    if (naBase()) { acaoBase().catch(() => { /* ignore */ }); return; }
+    // TK-01-14: a trava de 15 min era gravada ANTES de o recall dar certo. Se a viagem falhasse
+    // (a VIAGEM e cancelada por dano — jogo.js:492 "Viagem cancelada: voce levou dano" — e o
+    // recall por Esc, jogo.js:1635), a trava ficava 15 min a bloquear QUALQUER reposicao sem
+    // nada ter sido reposto. Agora a trava so e armada quando a BASE esta confirmada; recall
+    // falhado desarma-a e diz-o no log.
+    const armarTravaRepor = () => { reporAte = Date.now() + 15 * 60000; };   // no MAX 1 reposicao/15 min
+    const desarmarTravaRepor = (motivo) => {
+      if (reporAte) { reporAte = 0; logEvent('repor', { trava: 'desarmada', motivo }); }
+    };
+    logEvent('repor', { motivo: 'pocao baixa', falta, atual: p });
+    if (naBase()) { armarTravaRepor(); acaoBase().catch(() => { /* ignore */ }); return; }
     press('b');
-    setTimeout(() => { try { if (naBase()) acaoBase().catch(() => { /* ignore */ }); } catch { /* ignore */ } }, esperaRecallMs());
+    setTimeout(() => {
+      try {
+        if (naBase()) { armarTravaRepor(); acaoBase().catch(() => { /* ignore */ }); }
+        else desarmarTravaRepor('recall nao chegou a base');
+      } catch { /* ignore */ }
+    }, esperaRecallMs());
   }
 
   /** Se ficou parado na base além de `cfg.idleBaseMs` (3 min), volta a farmar sozinho. */
@@ -8010,7 +8257,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
         if (Date.now() - _ultimaBase < 20000) return;
         _ultimaBase = Date.now();
         const regF = regiaoIdeal();
-        if (regF) { logEvent('base', { farmar: 'FORCADO (modo farm — a base não fecha o que falta)', regiao: regF, falta, restaMin: Math.ceil((_farmForcadoAte - Date.now()) / 60000) }); marcarAtiva(); viajarPara(regF); }
+        if (regF) { logEvent('base', { farmar: 'FORCADO (modo farm — a base não fecha o que falta)', regiao: regF, falta, restaMin: Math.ceil((_farmForcadoAte - Date.now()) / 60000) }); viajarPara(regF).then((r) => { if (r && r.ok) marcarAtiva(); }); }
         return;
       }
       // NA BASE com algo pendente → roda a rotina AGORA (antes só esperava o AFK de 3 min)
@@ -8056,7 +8303,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
                 _farmForcadoAte = Date.now() + FARM_FORCADO_MS;
                 const reg = regiaoIdeal();
                 logEvent('base', { farmar: 'FORCADO (3 visitas sem fechar nada — modo farm)', regiao: reg, falta: faltaAgora, restou: (res && res.restou) || null, minutos: FARM_FORCADO_MS / 60000 });
-                if (reg && podeFazer('autoplay').pode && !ocupado && !pausado && !baseLock) { marcarAtiva(); viajarPara(reg); }   // hierarquia, não cfg.enabled
+                if (reg && podeFazer('autoplay').pode && !ocupado && !pausado && !baseLock) { viajarPara(reg).then((r) => { if (r && r.ok) marcarAtiva(); }); }   // hierarquia, não cfg.enabled
                 return;
               }
             } else { _recallsSemFechar = 0; }
@@ -8065,7 +8312,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
             if (_baseFalhas >= 3) {
               _baseFalhas = 0;
               const reg = regiaoIdeal();
-              if (reg) { logEvent('base', { farmar: 'FORCADO apos 3 falhas', regiao: reg }); marcarAtiva(); viajarPara(reg); }
+              if (reg) { logEvent('base', { farmar: 'FORCADO apos 3 falhas', regiao: reg }); viajarPara(reg).then((r) => { if (r && r.ok) marcarAtiva(); }); }
             } else {
               // NÃO viaja e liberta JÁ o throttle de entrada: o próximo tick (5 s) volta a correr
               // a base. É isto que impede o "sai e volta segundos depois" — ele NÃO sai.
@@ -8088,8 +8335,9 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       const reg = regiaoIdeal();
       if (!reg) return;
       logEvent('afk-farmar', { regiao: reg, paradoMin: Math.round((Date.now() - ativaEm) / 60000) });
-      marcarAtiva();
-      viajarPara(reg);
+      // TK-01-12: `marcarAtiva()` so DEPOIS de a viagem estar CONFIRMADA — antes marcava
+      // activo e a viagem falhava em silencio, deixando o boneco parado com o AFK enganado.
+      viajarPara(reg).then((r) => { if (r && r.ok) marcarAtiva(); });
     } else if (!teste && motivo && Date.now() < _farmForcadoAte) {
       // MODO FARM FORÇADO no campo: NÃO recorda (era este o `press('b')` que fechava o ciclo
       // "viaja, mata 1 mob, volta"). Fica a farmar e marca-se activo.
@@ -8230,7 +8478,10 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     return { feito, at: _ultimoTick };
   }
   /** Saude do auto-play: o tick foi chamado nos ultimos N segundos? */
-  function saudeAutoplay() { return { ultimoTickHaMs: _ultimoTick ? Date.now() - _ultimoTick : null, timers: (window.__lolidleAutoTimers || []).length, enabled: cfg.enabled, pausado }; }
+  function saudeAutoplay() { return { ultimoTickHaMs: _ultimoTick ? Date.now() - _ultimoTick : null, timers: (window.__lolidleAutoTimers || []).length, enabled: cfg.enabled, pausado,
+    // TK-01-12: ha quanto tempo o boneco foi marcado activo. E o que prova que o `marcarAtiva`
+    // passou a correr SO depois de a viagem ser CONFIRMADA (antes marcava antes de viajar).
+    ativaHaMs: ativaEm ? Date.now() - ativaEm : null }; }
 
   /** DIAGNOSTICO da base: PORQUE o auto-play esta (ou nao) a sair da Fonte.
    *  Cada early-return do supervisarBase era invisivel: o boneco ficava parado na
@@ -8582,6 +8833,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
   window.__lolidleAuto = { press, ehPrioridadeExtrema, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, escolherConjunto, porMelhorBase, farmarItem, farmarItemParar, farmarItemPasso, farmarItemEstado, farmarItemTenho, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, compraAlcancavel, parseNum, numEcra, parseBig, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
 =======
   window.__lolidleAuto = { press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, escolherReceitaOrnn, escolherRefinoAlvo, valeRefino, compraAlcancavel, parseNum, parseBig, SUFIXO, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
@@ -8590,6 +8842,10 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
   window.__lolidleAuto = { press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, nivelAlvo, nivelMobDe, nivelChefeDe, mediaWaveDe, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
 >>>>>>> w1-regioes
     podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
+=======
+  window.__lolidleAuto = { press, ehPrioridadeExtrema, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, compraAlcancavel, parseNum, SUFIXO, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
+    podeFazer, arvoreInterruptores, checarPocoes, checarChefeFatal, localAtual, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
+>>>>>>> w4-fuga
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
     // modeladas com eles: vida com k/M e escudo, recarga exacta, efeitos activos, recarga de item,
@@ -8607,12 +8863,16 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     primeiraVez: primeiraVezEstado, primeiraVezPasso,
     estadoVivo, eventosVivos, eventosContadores, consumirEvento,
 <<<<<<< HEAD
+<<<<<<< HEAD
     auditoriaPassivas, tierDe, statsSet, statsDePeca, pecaConhecida, PASSIVAS_ESTADO, valorPassivaEstado, ctxEstadoComba,    PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
     auditoriaPassivas,
 =======
     auditoriaPassivas, PASSIVAS_ESTADO, valorPassivaEstado, ctxEstadoComba, recomendarAtributos,
     PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
 >>>>>>> w3-barra
+=======
+    auditoriaPassivas, tierDe, statsSet, statsDePeca, pecaConhecida,   // W9: escala do motor + stats de QUALQUER item    PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
+>>>>>>> w4-fuga
     getMeta: () => META, getFarm: () => farm, getConfig: () => cfg };
 
   // AUTO-LIMPEZA: se o script JÁ rodou (reinjeção), cancela os timers antigos.

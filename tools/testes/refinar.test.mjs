@@ -72,9 +72,12 @@ export const suite = {
       Array.isArray(r1.divergenciaMedido) && r1.divergenciaMedido.indexOf('3089') >= 0);
 
     /* ----R3: o ALVO do refino segue a lista teórica ---- */
+<<<<<<< HEAD
     //Fixture que faltava: o refino corre no NPC do Ornn, que existe na Fonte.
     m.montar('#npcs button[data-npc="Ornn"]', [m.el({ tag: 'button', label: 'npc-ornn' })]);
     m.montar('#janela-npc [data-palavra="forjar"]', [m.el({ tag: 'button', label: 'forjar' })]);
+=======
+>>>>>>> w4-fuga
     montarEquip(m, [sl('2001~A', 'lendario'), sl('3089~A', 'lendario'), sl('2004~A', 'lendario')]);
     const r3 = await auto.refinarMelhores();
     // 2001 e 2004 são da build teórica do AD (buildIdeal = 2007,2001,2004,2005,2006); o 3089 não é.
