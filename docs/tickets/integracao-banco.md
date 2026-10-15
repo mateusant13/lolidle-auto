@@ -478,3 +478,15 @@ Declarar `let medido = null` no `refinarMelhores` -> **24 falhas nas DUAS corrid
 **Proximo passo exacto:** ler o `scoreRegiao(e, obj, medido)` (7378) para ver QUE CAMPOS ele le de `medido`
 (xpMin/goldMin ja vistos) e montar o objecto a partir do `rank[0]`/`agregar()` da regiao actual.
 As 4 tentativas: modulo (16->23) · por-funcao (18->21) · refinarMelhores (18->27 / agora 15->24) · esta analise.
+## ADENDA 13:10 - medido: 5 tentativas medidas (o valor E esperado por uma assercao)
+| tentativa | resultado |
+|---|---|
+| declarar `let medido = null` no refinarMelhores | 15 -> 24 |
+| calcular de `agregar()[0]` ({xpMin,goldMin,killsMin,n}) | 15 -> 23 |
+| TIRAR `medido` do `diag` | 15 -> 20/23 |
+| mover para o modulo | 16 -> 23 |
+| por-funcao (sonda apanhou comentarios) | 18 -> 21 |
+**Leitura:** o `diag.medido` E lido por uma assercao (tirar piora) e o VALOR tem de ser o certo (null
+e agregar()[0] pioram). Falta saber QUE medicao e essa: ler as assercoes que leem `diag`/`medido`
+no `refinar.test.mjs` (ou `score.test.mjs`) e ver a FORMA esperada (xpMin? goldMin? da regiao certa?).
+**Estado mantido: 14 falhas (piso), 21/25 suites verdes.**
