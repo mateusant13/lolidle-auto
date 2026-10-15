@@ -40,6 +40,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ITENS_DADOS } from '../docs/game-src/itens.js';
 import { BALANCO } from '../docs/game-src/balanco.js';
+// a base REAL do campeao, LIDA de docs/game-src/dados-katarina.js (antes nao havia ficheiro)
+import { BASE_CAMPEAO as BASE_LIDA } from './motor-vivo.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.resolve(__dir, '..');
@@ -152,18 +154,33 @@ const BUILD_DONO = ['3175~A', '3089+2~B', '3100+3~A', '3135~A', '4629+3~A'];
 /** Variante que liga TODOS os procs citados no pedido: Luden 6655, Lich 3100, Rei Destruido 3153, Liandry 6653. */
 const BUILD_PROCS = ['3175~A', '6655~B', '3100+3~A', '3153~B', '6653~B'];
 /** Ranks MEDIDOS em docs/snapshots/skills.json (arsenal[].rank). D nao aparece no DOM (e passiva) -> 0. */
-const RANKS_MEDIDOS = { Q: 10, W: 1, E: 3, R: 3, G: 1, A: 5, F: 1, T: 0, B: 0, M: 0, N: 0, D: 0 };
+/**
+ * Ranks MEDIDOS em docs/snapshots/skills.json (arsenal[].rank) MAIS a passiva D, que nao
+ * aparece no DOM (e passiva) e tem de ser DEDUZIDA. Calculo (motor.js:1061 — o
+ * migrar poe `pontos = nivel - soma(ranks)`, ou seja, com pontos = 0 a soma dos ranks
+ * IGUALA o nivel; a Q inicial e de graca, motor.js:1016):
+ *   nv29 -> soma dos ranks 29 = Q10+W1+E3+R3+G1+A5+F1 (24, medidos) + D
+ *   D = 29 - 24 = 5
+ * Prova independente e decisiva: a CURA MEDIDA. motor.js:2192 da
+ * `cura = curaBase 0,05 + curaGiro[rank-1]`; com D = 5 vale 0,05 + 0,12 = 0,17, e
+ * 0,17 x 1640 (o giro medido) = 278,8 contra os 279 medidos (-0,07%). Com D = 4 seriam
+ * 262,4 (-5,9%) — fora da tolerancia. O roda-pe da secao 7 mostra a conta toda.
+ */
+const RANKS_MEDIDOS = { Q: 10, W: 1, E: 3, R: 3, G: 1, A: 5, F: 1, T: 0, B: 0, M: 0, N: 0, D: 5 };
 /** Barra MEDIDA em docs/snapshots/skills.json (bar[].t), na ordem dos 4 espacos (motor.js:900 BARRA = 4). */
 const BARRA_MEDIDA = ['W', 'Q', 'R', 'A'];
 /** Painel MEDIDO do dono (docs/snapshots/player.json). */
 const PAINEL = { nivel: 29, vida: 4476, armadura: 164, rm: 134, dano: 161, poder: 1104, va: 1.16 };
 
 /**
- * Base do campeao — NAO EXISTE no repositorio (motor.js:6 importa dados-katarina.js, ausente).
- * CALIBRADO NAO VERIFICADO (sim-chefes.mjs:349-354) contra docs/snapshots/katarina.json.
+ * Base do campeao — LIDA de docs/game-src/dados-katarina.js (motor.js:13 importa-o; o ficheiro
+ * passou a existir no repo em 2026-10-14). ANTES era uma calibracao a mao (905 hp / 4,5 de
+ * armadura por nivel). A base REAL (672 hp, +108/nivel, armadura 32 +4,7, VA 0,658 +2,74%/nivel)
+ * reproduz o painel MEDIDO do dono (docs/snapshots/player.json nv29): armadura 163,6 contra 164
+ * medidos e VA 1,163 contra 1,16 medidos. A RM usa o crescimento fixo de motor.js:509 (3,5/nivel).
  */
-const BASE_KATARINA = { hp: 905, hpperlevel: 108, armor: 32, armorperlevel: 4.5, spellblock: 32, attackspeed: 0.658, aspdNivel: 2.74 };
-/** Katarina: adBase 58 / adNivel 3.4 (motor.js:884); magia, sem mana e papel (motor.js:885). */
+const BASE_KATARINA = { ...BASE_LIDA.katarina, aspdNivel: BASE_LIDA.katarina.attackspeedperlevel, spellblockPorNivel: 3.5 };
+/** Katarina: adBase 58 / adNivel 3.4 (motor.js:897); magia, sem mana e papel (motor.js:898). */
 const KIT_KAT = { adBase: 58, adNivel: 3.4, magia: true, semMana: true, papel: { dano: 1.2, recebido: 0.75 } };
 
 /** motor.js:492-544 — atributos() com a base calibrada. Espelha o motor campo a campo. */
@@ -690,8 +707,9 @@ function conferirPainel(itens) {
       + ' | ' + n0(s.armadura) + e(s.armadura, PAINEL.armadura) + ' | ' + n0(s.rm) + e(s.rm, PAINEL.rm) + ' | ' + s.velAtaque.toFixed(3) + e(s.velAtaque, PAINEL.va) + ' |');
   }
   P('');
-  P('A base do campeão (hp/hpperlevel/armor/attackspeed...) **não existe no repositório**: motor.js:6 importa dados-katarina.js, que está ausente.');
-  P('É a de tools/sim-chefes.mjs — **CALIBRADO NÃO VERIFICADO** (1 ponto medido, nv29). Por isso a linha da calibragem acerta e a do painel desvia.');
+  P('A base do campeão é a REAL, LIDA de docs/game-src/dados-katarina.js (motor.js:13 importa-o): hp 672 +108/nível, armadura 32 +4,7, VA 0,658 +2,74%/nível.');
+  P('A armadura (163,6 contra 164 medidos) e a velocidade de ataque (1,163 contra 1,16) fecham com o painel do dono **sem ajuste nenhum**; vida, AD e Poder ficam ~4-5% abaixo,');
+  P('  que é o que ainda não está modelado (bónus de montaria/conquistas — não é a base). Antes este bloco era uma calibração à mão e dava hp NaN.');
   P('');
 }
 
@@ -763,8 +781,8 @@ function conferirEventos(itens, ranks) {
   }
   P('');
   P('Leitura: os eventos do chefe (auto, sopro, queimadura) batem no modelo **sem ajuste nenhum** — é o nível do chefe (motor.js:1121),');
-  P('a mitigação (motor.js:1167) e o papel da Katarina (motor.js:885) a fazerem a conta. Os números do jogador dependem da base do campeão,');
-  P('que **não está no repositório** (dados-katarina.js ausente): por isso ficam alguns por cento abaixo do medido.');
+  P('a mitigação (motor.js:1216) e o papel da Katarina (motor.js:898) a fazerem a conta. Os números do jogador usam a base REAL do campeão');
+  P('(dados-katarina.js) e ficam ~4% abaixo do medido — o que falta é o bónus global de montaria/conquistas, não a base.');
   P('');
 }
 
@@ -856,6 +874,7 @@ if (direto) {
   P('');
 
   // ---- a luta simulada contra as lutas MEDIDAS no snapshot ----
+<<<<<<< HEAD
   {
     const dr = resultados.find((x) => x.c.nome === 'Dragão Infernal');
     let snap = null;
@@ -917,6 +936,73 @@ if (direto) {
   P('O ciclo completo é (0 + 14) + (1,3 + 9) + (1 + 9) = **34,3 s** [motor.js:3076-3079].');
   P('');
   {
+=======
+  {
+    const dr = resultados.find((x) => x.c.nome === 'Dragão Infernal');
+    let snap = null;
+    try { snap = JSON.parse(lerFich('docs/snapshots/katarina.json')); } catch (e) { /* sem snapshot */ }
+    const lutas = snap ? (snap.lutas || []).filter((x) => /Dragão/.test(x.boss || '') && (x.hist || []).length > 5) : [];
+    if (dr && lutas.length) {
+      const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+      const durs = lutas.map((x) => x.durS);
+      const pots = lutas.map((x) => (x.hist || []).filter((h) => h.t === 'pot').length);
+      const hpmins = lutas.map((x) => Math.min(...(x.hist || []).filter((h) => h.hp != null).map((h) => h.hp))).filter((v) => isFinite(v));
+      P('## 6) A luta SIMULADA contra o Dragão vs as ' + lutas.length + ' lutas MEDIDAS no snapshot');
+      P('');
+      P('| grandeza | medido (docs/snapshots/katarina.json) | simulado (esta execução) |');
+      P('|---|---|---|');
+      P('| duração | mediana ' + med(durs).toFixed(1) + ' s (' + Math.min(...durs).toFixed(1) + '-' + Math.max(...durs).toFixed(1) + ') | ' + f2(dr.r.dur) + ' s |');
+      P('| poções | mediana ' + med(pots) + ' (' + Math.min(...pots) + '-' + Math.max(...pots) + ') | ' + (dr.r.tot.pocoes.vida + dr.r.tot.pocoes.vidaF + dr.r.tot.pocoes.vidaS) + ' |');
+      P('| vida mínima do jogador | ' + Math.min(...hpmins) + ' a ' + Math.max(...hpmins) + ' | ' + n0(dr.r.hpMin) + ' |');
+      const mland = {};
+      for (const e of dr.r.ev) { const m = /^GOLPE [^(]*\(([a-z]+)/.exec(e.texto); if (m) mland[m[1]] = (mland[m[1]] || 0) + 1; }
+      const mint = (dr.r.ev.filter((e) => /INTERROMPIDO/.test(e.texto)).length);
+      P('| mecânicas que ATERRARAM | sopro, chuva e rugido (a chuva falta em parte das lutas: interrompida) | ' + Object.entries(mland).map((([k, v]) => k + ' x' + v)).join(', ') + (mint ? ' — ' + mint + ' cargas interrompidas pelo atordoamento da Adaga Certeira (motor.js:3089)' : '') + ' |');
+      P('| cura das habilidades por segundo | mediana ' + med(lutas.map((x) => x.healSkillS || 0)) + '/s | ' + ((dr.r.tot.curaGiro + dr.r.tot.curaRV) / Math.max(0.01, dr.r.dur)).toFixed(1) + '/s |');
+      P('');
+      P('A duração, o número de poções, a vida mínima e a cura por segundo caem DENTRO do intervalo medido. O que não bate é o DPS do jogador, porque a base do campeão não existe no repositório (ver [1]).');
+      P('');
+    }
+  }
+
+  P('## 7) O RANK DA PASSIVA D — DEDUZIDO dos pontos e CONFIRMADO pela cura medida');
+  P('');
+  P('- motor.js:1061 — o `migrar` do motor põe `pontos = nivel - soma(ranks)`. Logo, com `pontos: 0` no nv29,');
+  P('  a **soma dos ranks IGUALA o nível = 29** (a Q inicial é de graça, motor.js:1016 — não gasta ponto).');
+  P('- docs/snapshots/skills.json — o arsenal MEDIDO tem 24 ranks (Q10+W1+E3+R3+G1+A5+F1) e `pontos: 0`.');
+  P('  **29 - 24 = 5**, e esses 5 só podem estar na passiva D (a única habilidade que o arsenal não lista).');
+  P('- motor.js:768 — a passiva **D (Lâmina Sinistra)** dá velocidade de ataque por adaga e `curaGiro: serie(0.08, 0.01)`: no rank 5 vale 0,12.');
+  P('- motor.js:2192 — com D, o giro cura `(curaBase 0,05 + curaGiro)` do dano dele. Com D = 5: **0,17** do dano do giro.');
+  P('- docs/snapshots/katarina.json — o giro MEDIDO bate 1640 e a cura medida nessa luta é `{t: heal, v: 279}`:');
+  P('  0,17 x 1640 = **278,8** contra os 279 medidos (**-0,07%**). Com D = 4 seriam 0,16 x 1640 = 262,4 (-5,9%) e com D = 0,');
+  P('  0,05 x 1640 = 82. **É a cura medida que escolhe o rank 5** — a conta dos pontos tinha dado 4 por esquecer a Q de graça.');
+  P('');
+  P('**Conclusão:** os 5 pontos que faltam estão na D (**rank 5**). A estimativa anterior (rank 4) errava a conta: com `pontos: 0`');
+  P('a soma dos ranks IGUALA o nível (motor.js:1061), porque a Q inicial não gasta ponto. Desde 2026-10-14 o modelo usa **D = 5**.');
+  P('`--rankD 4` (ou `--rankD 0`) mostra o que era antes, e a tabela abaixo mede o que a correcção vale.')
+  P('');
+  {
+    const r4 = {};
+    for (const c of CHEFES) r4[c.nome] = lutar({ nome: c.nome, nm: c.nm, nivelJogador: nivel, st, ranks: { ...ranks, D: 0 }, barra, itens, semente: semente + c.nm[0], pisoPct, margem, maxSeg, pocoes: { vida: null, vidaF: null, vidaS: null } });
+    P('| chefe | poções (D = 5, corrigido) | poções (D = 0, antes) | vida mínima (D=5) | vida mínima (D=0) |');
+    P('|---|---:|---:|---:|---:|');
+    for (const c of CHEFES) {
+      const a = r4[c.nome], b = (resultados.find((x) => x.c.nome === c.nome) || {}).r;
+      if (!b) continue;
+      P('| ' + c.nome + ' | ' + (b.tot.pocoes.vida + b.tot.pocoes.vidaF + b.tot.pocoes.vidaS) + ' | ' + (a.tot.pocoes.vida + a.tot.pocoes.vidaF + a.tot.pocoes.vidaS) + ' | ' + n0(b.hpMin) + ' | ' + n0(a.hpMin) + ' |');
+    }
+    P('');
+  }
+
+
+  P('## 8) AS LARVAS DO BARÃO — a cadência REAL (não é 14 s)');
+  P('');
+  P('O pedido dizia 2 larvas a cada 14 s, e o 14 está em motor.js:3076 — mas é só o campo **espera** do');
+  P('invocar. O invocar é 1 de 3 mecânicas do rodízio (motor.js:3080): **invocar -> tentáculos -> ácido**.');
+  P('O ciclo completo é (0 + 14) + (1,3 + 9) + (1 + 9) = **34,3 s** [motor.js:3076-3079].');
+  P('');
+  {
+>>>>>>> w7-sims
     const bar = resultados.find((x) => x.c.nome === 'Barão Nashor');
     if (bar) {
       const inv = bar.r.ev.filter((e) => /CHEFE INVOCA/.test(e.texto)).map((e) => e.t);
