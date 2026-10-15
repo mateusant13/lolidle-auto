@@ -34,7 +34,7 @@ Só podes mexer em: regiaoIdeal, estimarRegiao, rankRegioes, agregar, avaliar, r
 - **Evidencia**: parte-01.md L364 (F-1): "agregar() usa nivelChefe = faixa[0]+2 (Rio: 27) em vez de nm[1]+2 (35); Dragao 32 vs 40 → risco ~2,8x otimista → checarChefeFatal nao foge e recomendar() diz 'sobrevive'"
 - **Fazer**: unificar nivelChefe para nm[1]+2 ( convencao de motor.js:1121 clamp(jog+4, n1+2) ); rever todos os consumidores (checarChefeFatal, recomendar, dpsCenarios) e os testes que codifiquem o valor antigo.
 - **Aceitacao**: teste em tools/testes/ assertando nivelChefe(35/40) para Rio/Dragao; regressao completa rc=0; relatorio diz quais testes mudaram.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:1151 (nivel do chefe pela regra do motor (nivelChefeDe)). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-01-04 | P1 | fatorDanoJogador (motor.js:1221) calculado e nunca consumido — tKill ate 2,7x otimista
 - **Ficheiro(s)**: extension/automation.js
@@ -55,7 +55,7 @@ Só podes mexer em: regiaoIdeal, estimarRegiao, rankRegioes, agregar, avaliar, r
 - **Evidencia**: parte-01.md L370 (F-4): "cinco convenções de nível no mesmo ficheiro (768 ok, 1168 errado, 1226 errado, 2104/2118/2960 errados nm[1], 3135 ok) — a #2 muda o ranking de builds do previaSet/dpsCenarios"
 - **Fazer**: criar uma funcao unica nivelAlvo(local, papel) usada por todos os pontos; remover as cinco calculadoras locais; documentar a convencao escolhida com file:line do motor.js.
 - **Aceitacao**: grep prova uma unica definicao; teste de paridade entre os 6 pontos de chamada antigos e a funcao nova; regressao rc=0.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:5725 (convencoes de nivel unificadas (nivelMobDe/nivelAlvo)). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-01-08 | P1 | ritmoMobs usa grupoSpawn.base=2 em vez da media 3 → valeUlt errado
 - **Ficheiro(s)**: extension/automation.js

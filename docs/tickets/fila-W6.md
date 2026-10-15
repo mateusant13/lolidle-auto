@@ -20,28 +20,28 @@ Só podes mexer em extension/gui.js. NÃO mexas em automation.js, inject.js, con
 - **Evidencia**: parte-02.md:860-877 — `bossFase: { durMs: 35616, gold: 1526, xp: 3654, kills: 1, perMin: {...}, perKill: {...} }`; *"O motor já tem o dado certo — perKill existe na estrutura. É a tabela que mostra perMin, que para uma janela de um só chefe é enganador"*; encaminhado como `3c578d07` em parte-02.md:1002
 - **Fazer**: na tabela/aba do chefe, mostrar **loot por abate** (ouro e xp `perKill`) e o **tempo do chefe** ao lado como custo; deixar de mostrar `perMin` como número de decisão (ou mostrá-lo só como rótulo secundário).
 - **Aceitacao**: ao vivo, números iguais a `bossFase.perKill` do motor (prova: ler `getFarm().cycles[].bossFase.perKill` e comparar com a célula da GUI); marcador discriminante no id/célula nova.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia gui.js:2012 (GUI do chefe (perKill vs perMin)). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-17 | P1 | Erro visível ao dono: "Não foi possível calcular o plano da mochila (o motor não respondeu)"
 - **Ficheiro(s)**: extension/gui.js (e extension/automation.js só se o `planBag` precisar de assinatura nova)
 - **Evidencia**: parte-02.md:1007-1012 — texto exacto do erro na GUI; *"suspeito que a GUI chame o `planBag` sem lhe passar a mochila"*
 - **Fazer**: corrigir a chamada — `planBag(A.scanBag(true))` em vez de `planBag()` sem argumentos (medido em parte-02.md:1086-1090 e 1123-1126: `planBag()` → LANCOU "Cannot read properties of undefined (reading 'items')"; `planBag(scanBag(true))` → ok, 12 acções), com estado vazio honesto se a leitura falhar; **nunca apresentar um erro nosso como falha do motor** (parte-02.md:1130).
 - **Aceitacao**: bloco "O que vai acontecer a cada item" mostra o plano com itens reais (sem a mensagem "o motor não respondeu"), provado ao vivo com marcador discriminante; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia gui.js:162 (GUI: erro do plano da mochila). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-26 | P1 | GUI não conhece a `PRIORIDADE_EXTREMA` — painel “Blindados” esconde o `3031`
 - **Ficheiro(s)**: extension/gui.js (+ expor a tabela em extension/automation.js)
 - **Evidencia**: parte-02.md:1358-1359 — *“Grep em `gui.js`: **0 referencias** a PRIORIDADE_EXTREMA. `gui.js:1521-1531` (`protegidos()`, cartao “Blindados” em `gui.js:1555-1557`) so tem RABADON (`gui.js:1523`, `gui.js:48`) + lendarios da build da classe ... num campeao AP o motor protege o 3031 mas o painel nao o mostra”*; a tabela já existe no motor em `automation.js:26-58` (3031 em 48, 3089 em 49), ligada em 300, 306, 424, 2029, 2572, 3441, 4279
 - **Fazer**: expor `PRIORIDADE_EXTREMA` em `window.__lolidleAuto` (junto de `automation.js:5978`) e consumir em `gui.js:1521`, para o cartão “Blindados” mostrar todos os protegidos com o mesmo critério do motor.
 - **Aceitacao**: ao vivo, num campeão AP o painel mostra o `3031` marcado como protegido, igual ao que o motor faz; marcador discriminante no cartão; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia gui.js:1730 (GUI conhece PRIORIDADE_EXTREMA). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-28 | P1 | Painel de controlo sem switches (mestre “Tudo” + filhos independentes + indicador vermelho/verde)
 - **Ficheiro(s)**: extension/gui.js
 - **Evidencia**: parte-02.md:1206 — *“painel de controle tem q ter switch de cada coisa que consegue fazer sozinho pelo jogador. o switch primeiro é chamado de tudo (auto play), e o resto dos switches sao dentro desse auto play, mas ativar um deles nao ativa o auto play ... pra cada switch ativado, tem q ter uma checkbox q nao e box, e texto vermelho ou verde dizendo oq cada coisa cobre/e oq vai acontecer e oq deixa de acontecer com um switch desativado”*; spec encaminhada em `0b09e91d` (parte-02.md:1212-1219), com os 15 interruptores lidos de `arvoreInterruptores()`
 - **Fazer**: gerar os switches a partir da árvore real do motor (`arvoreInterruptores()` — nunca escrita à mão); mestre “Tudo (auto-play)” no topo; filhos que não ligam o mestre; distinguir *“o dono desligou”* de *“está bloqueado pelo pai”* usando o `porque` do `podeFazer`; indicador de texto **verde** (o que cobre, ligado) e **vermelho** (o que deixa de acontecer, desligado), escrito como efeito no jogo e não como nome técnico.
 - **Aceitacao**: os switches renderizados vêm da árvore (prova: mudar a árvore muda o número de switches); ligar um filho não liga o mestre (medido por `podeFazer` ao vivo); cada switch tem a linha verde/vermelha; marcador discriminante no painel novo.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia gui.js:340 (GUI com switches (mestre + filhos)). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-10 | P2 | GUI sem secções de farm (auto farm sozinho vs auto farm por item, com escolha dos itens)
 - **Ficheiro(s)**: extension/gui.js

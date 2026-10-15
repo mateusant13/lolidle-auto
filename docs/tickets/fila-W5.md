@@ -27,7 +27,7 @@ Só podes mexer em: decisão de guardar/vender épicos, autoEquip, mercado (poll
 - **Evidencia**: parte-01.md L3465: "receitasOrnn() -> filter the pode: true recipes serving the decided build -> write montarItem(id)... The reading half is done; execution is the next piece"; L4063-4071 montarItem executou ao vivo (10x, 16.500 ouro, log {type:ornn, acao:montar, ok:true}); L4107 "the complete chain is proven end-to-end... The next step is simply more attempts"
 - **Fazer**: ligar a montagem ao auto-play: na visita a base (com pausarPor — TK-01-46) correr receitasOrnn() -> escolher receita pode:true que sirva a build (Tiamat primeiro, L3519-3520) -> montarItem(id, 100, arcana) contando tentativas/sucessos e ouro; respeitar teto de reserva e parar em falha.
 - **Aceitacao**: ciclo completo ao vivo sem intervencao: escolha -> montar -> contagem no log ({vezesUsadas, ouroGasto, temAgora}) e >=1 item montado em sessao; regressao POPULATION rc=0.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:5835 (montarItem ligado (receitasOrnn)). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-01-40 | P1 | full build lendaria equipada e verificada (entregavel 1b do goal — NAO cumprido)
 - **Ficheiro(s)**: extension/automation.js
@@ -41,14 +41,14 @@ Só podes mexer em: decisão de guardar/vender épicos, autoEquip, mercado (poll
 - **Evidencia**: parte-02.md:216 e 294 e 399 — *"Hoje o Rabadon é intocável por uma guarda própria (`RABADON = '3089'`); o Gume do Infinito não tem guarda equivalente"*; **ACTUALIZADO pelo lote 3** (parte-02.md:1357-1358): a guarda já existe no motor como `PRIORIDADE_EXTREMA` (`automation.js:26-58`, com 3031 em 48 e 3089 em 49, ligada em 300/306/424/2029/2572/3441/4279) e foi medida a proteger `3031~C`x2 e `3089~C`x2 em Yasuo (AD), Lux (AP) e Zac. Regra do dono: *"mesmo duplicados, é o jogador que decide com eles"*
 - **Fazer**: (a) confirmar ao vivo (com marcador) que a guarda cobre duplicados e que a cobertura é por classe sem excepções; (b) a lacuna real que ficou é a GUI — ver **TK-02-26**; (c) se a lista de prioridade extrema tiver de crescer (outros itens que o dono nomear), acrescentar na mesma tabela `automation.js:26-58`.
 - **Aceitacao**: `bun tools/testes/run.mjs` rc=0 com asserção nova (duplicado de `3031` e de `3089` em campeão da outra classe **não** é vendido/limpo; duplicado de item comum continua a sê-lo).
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:47 (PRIORIDADE_EXTREMA (intocaveis)). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-07 | P1 | Lendário único da classe tem de ser guardado — critério ainda não é a classe
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:401 e 567 — *"Lendário único da classe → guardar, com o critério a ser a classe"*
 - **Fazer**: implementar a guarda de "lendário único da classe do campeão" (usar a classe lida do jogo, não uma tabela fixa), de modo a não vender a única peça lendária que a build da classe pode usar.
 - **Aceitacao**: `bun tools/testes/run.mjs` rc=0 com caso "lendário único da classe e duplicado de lendário de outra classe" a dar resultados diferentes.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:349 (lendario unico pela classe). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-01-26 | P2 | M5: ciclo de mercado por implementar (poll/compra/venda)
 - **Ficheiro(s)**: extension/automation.js; tools/ll.mjs

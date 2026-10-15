@@ -25,7 +25,7 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Evidencia**: parte-02.md:5815-5842 — a linha exacta `automation.js:5333  let d = (base * mit) / (1 - S.cdr) * (1 + (magia ? S.lich * 0.15 : 0));` com a nota *“o CDR aplicado a TODO o dano”*; a explicação da divergência em parte-02.md:5519 e 5533-5537 (*“o scoreSet pontua o CDR como multiplicador de DPS PURO — d = base * mit / (1 - S.cdr) -> 15% de CDR vale 1/0,85 = +17,6% de dano; o pen entra por mit(). O sim-build.mjs calcula o DPS REAL … onde o CDR só multiplica a TAXA de lançamento”*); correcção proposta em parte-02.md:5677 (`danoTotal = danoAutos + danoHabilidades / (1 − cdr)`) com três travões (listar todos os sítios, reutilizar `dpsPorHabilidade`, controle: build sem habilidades não ganha nada com CDR) e a cautela em parte-02.md:5835-5840
 - **Fazer**: ler o contexto da linha e separar o dano em autos e habilidades antes de aplicar o CDR (só às habilidades), **reutilizando** o `dpsPorHabilidade` que já faz a conta certa; listar todos os sítios com a fórmula; a correcção só pode mudar resultados quando há CDR.
 - **Aceitacao**: controle `S.cdr = 0` dá resultado **idêntico** ao de antes; com CDR, a ordem das builds passa a concordar com o simulador (`tools/sim-build.mjs`); se a bota de CDR continuar a ganhar com margem, dizer isso em vez de insistir na hipótese; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:6756 (scoreSet: CDR nao em todo o dano (ler a fonte)). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-87 | P1 | Conflito entre instrumentos: `scoreSet` diz bota de CDR (+154), o simulador diz bota de pen (+227)
 - **Ficheiro(s)**: extension/automation.js, tools/sim-build.mjs
@@ -46,21 +46,21 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Evidencia**: parte-02.md:3197-3198 e 3302 — *“ERRO no mit: automation.js:3109 e 5123 usam 100/(100+armadura*(1-pen)) SEM o RM_MONSTRO=0.6 (motor.js:1179,1202) -> dano MÁGICO subestimado (1,6x a 104 de armadura)”*
 - **Fazer**: alinhar o `mit` da extensão à fórmula do motor (com `RM_MONSTRO`), lendo o valor do jogo e não o escrevendo à mão; confirmar no motor a lista completa de campos da fórmula antes de codar (REGRA Nº 1).
 - **Aceitacao**: teste com armadura 104 a dar dano mágico 1,6× maior que antes e igual ao do motor (comparação contra `motor.js:1179/1202`); `bun tools/testes/run.mjs` rc=0; nenhum número do motor copiado à mão.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:1114 (RM_MONSTRO lido do motor (rmMonstro)). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-64 | P1 | `tierDe` contradiz o motor (1 qualidade ≠ 10 refinos)
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:3201-3202 e 3304 — *“tierDe (automation.js:333) = qIdx*10+refino contradiz o motor (motor.js:252: (1+0.12*ref)*multQual, ou seja 1 refino = +12% e 1 degrau de qualidade = +15%). 1 qualidade NÃO vale 10 refinos.”*
 - **Fazer**: substituir `tierDe` pela fórmula do motor (multiplicativa: qualidade × refino), lida do jogo, e rever todos os sítios que a usam para ordenação/comparação.
 - **Aceitacao**: teste a mostrar que 1 qualidade vale +15% e 1 refino +12% (bater com `motor.js:252`) e que a ordenação de itens muda onde deve; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:379 (tierDe alinhado com o motor). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-66 | P1 | `CAMPOS_MULT` não tem `penMag` — as botas de pen só entram por `ITENS_ESPECIAIS` escrito à mão
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:3205-3206 — *“CAMPOS_MULT não tem ‘penMag’ (motor.js:501 tem) -> as botas de pen só entram por estarem escritas à mão em ITENS_ESPECIAIS”*; e a causa raiz da escolha errada da bota em parte-02.md:3133-3137 (*“o campo penMag NAO EXISTIA em NENHUM perfil … o pen é o stat que o motor multiplica na mitigação”*)
 - **Fazer**: acrescentar `penMag` a `CAMPOS_MULT` e retirar a dependência da lista manual `ITENS_ESPECIAIS` para itens de pen, para que a escolha venha do campo e não de uma lista escrita à mão.
 - **Aceitacao**: teste a mostrar que um item com `penMag` no campo entra na build sem estar em `ITENS_ESPECIAIS`; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:5036 (CAMPOS_MULT com penMag). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-79 | P1 | `infoItem` devolve `stats: null` — o motor não sabe os atributos de itens que não estão equipados
 - **Ficheiro(s)**: extension/automation.js
@@ -81,7 +81,7 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Evidencia**: parte-02.md:1531 — *“quantos hardcodes tu tem na matematica das builds e oq equipar de itens? por que era pra tu ter hardcode só doq tem q ser hardcode … como levar em conta passivas (que nem sei se é hardcode mesmo. pq é matematica do proprio jogo)”*; classificação pedida em parte-02.md:1586-1591 — (a) NECESSÁRIO, (b) DERIVÁVEL — devia sair do `motor.js` e `itens.js`, (c) HEURÍSTICA MINHA; lista actual em parte-02.md:1557-1562 — `pesosItem(perfil)`, `PESO_FASE`, `valorPassiva` (regex + multiplicadores à mão), `ITENS_ESPECIAIS` e `CAMPOS_MULT` (ids à mão), `PRIORIDADE_EXTREMA` (3031+3089 à mão), multiplicador de raridade próprio
 - **Fazer**: inventariar **todos** os hardcodes com contagem total e classificação (a)/(b)/(c); para cada derivável, dizer **de onde** sairia o valor (`file:linha` do jogo) e implementar a leitura; os que forem (c) e precisarem de peso inventado, listar para o dono em vez de os inventar.
 - **Aceitacao**: relatório com o número total e as três contagens; nenhum item da classe (c) continua no código sem decisão do dono; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:5120 (auditoria de hardcodes (relatorio)). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-67 | P1 | 259 hardcodes na matemática de builds: 103 deriváveis e 151 heurísticas — plano de redução
 - **Ficheiro(s)**: extension/automation.js (aplicar) · docs/hardcodes-build.md (fonte da auditoria)
