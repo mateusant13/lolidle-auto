@@ -62,7 +62,7 @@ Só podes mexer em: regiaoIdeal, estimarRegiao, rankRegioes, agregar, avaliar, r
 - **Evidencia**: parte-01.md L373: "ritmoMobs usa grupoSpawn.base=2 em vez da media 3 (:376) → seg3 33% baixo → valeUlt"; media da wave confirmada em motor.js:1124 (2..4 mobs)
 - **Fazer**: usar a media real da distribuicao da wave (motor.js:1118-1126) em vez de base=2; se o tamanho varia, usar valor esperado e documentar.
 - **Aceitacao**: teste numerico de ritmoMobs confrontado com motor.js:1124; valor deixe de ser 33% baixo.
-- **Estado**: pendente
+- **Estado**: resolvido 2026-10-15 — `ritmoMobs` usa `mediaWaveDe(META.grupoSpawn)` (a MEDIA, nao a base); provado pela suite `w1-regioes` B2 verde
 
 ### TK-02-41 | P1 | `estimarRegiao` calcula taxa teórica e não avalia a luta (não cruza os stats da wiki com a sobrevivência)
 - **Ficheiro(s)**: extension/automation.js
@@ -83,7 +83,7 @@ Só podes mexer em: regiaoIdeal, estimarRegiao, rankRegioes, agregar, avaliar, r
 - **Evidencia**: parte-01.md L2528-2551: "the same build, same region, n=8, measured 834 in one round and 1581 in the next... not level... not the night modifier. Therefore: Absolute numbers are not comparable across rounds. Only comparisons within the same measurement window are valid"
 - **Fazer**: todo ranking/backtest passa a ordenar por comparacao DENTRO da mesma janela (run id) e a exibir o id da janela; taxas absolutas levam aviso de nao-comparabilidade entre janelas.
 - **Aceitacao**: snapshot/ranking traz campo janela/run em cada amostra; documento/ferramenta declina ranquear amostras de janelas diferentes sem teste conjunto.
-- **Estado**: pendente
+- **Estado**: resolvido 2026-10-15 — `rankBuildsTestadas` ACUMULA as janelas da mesma assinatura e o `avisoJanela` sai; provado pela suite `w1-regioes` D verde
 
 ### TK-01-07 | P1 | regexes do #log nao aceitam "12.3k" — perde ouro E o abate; cacao offline injeta XP sem abate
 - **Ficheiro(s)**: extension/automation.js; extension/inject.js

@@ -25,7 +25,7 @@ Só podes mexer em: config e defaults (guardada vs default do código), valorDaV
 - **Evidencia**: parte-02.md:3277-3316 — *“O subagent inverteu o default para true — mas a tua config em chrome.storage foi escrita quando o default era false, e continua false. O mesmo vale para qualquer default que se mude: só se aplica a instalações novas. Consequência prática: a rotação contínua da barra — o teu pedido — não vai ligar sozinha na tua conta. Precisa de ser escrita explicitamente na config existente. É a diferença entre ‘o código está certo’ e ‘o teu jogo faz o que pediste’.”*; prioridade declarada em parte-02.md:3316 (*“A prioridade nº 1 é escrever os defaults novos na config existente — sem isso, nada do que foi corrigido chega ao teu jogo”*)
 - **Fazer**: implementar uma migração one-shot dos defaults novos para a config já guardada (versionar a config e aplicar as chaves novas na primeira carga), e verificá-la ao vivo com marcador discriminante depois de `lolidle:reload` + reload (REGRA Nº 4).
 - **Aceitacao**: ao vivo, na conta do dono, `barraPorDisponibilidade: true` (e as outras chaves novas com o valor novo) **sem** apagar configurações do utilizador; marcador discriminante que só existe no código novo; `bun tools/testes/run.mjs` rc=0 com caso de migração.
-- **Estado**: pendente
+- **Estado**: resolvido 2026-10-15 — o `ler` migra e o `cfgVer` grava-se no ARRANQUE; provado pela suite `w10` C2/C3 verde
 
 ### TK-02-78 | P0 | Preço: o motor usa só o preço base e o jogo escala qualidade/refino (Ímpeto vale 4.692, motor trata-o como 3.000)
 - **Ficheiro(s)**: extension/automation.js
@@ -67,7 +67,7 @@ Só podes mexer em: config e defaults (guardada vs default do código), valorDaV
 - **Evidencia**: parte-02.md:5718-5752 — `automation.js:4444-4451` (`rank = (rankBuildsTestadas(null)||[]).filter(r => r.mob && r.mob.goldMin != null && (r.confianca?.mob || 0) >= 3)`; `essenciais = rank[0].itens`; `if (!essenciais.length) essenciais = buildIdeal()`) e o comentário *“Sem isto, o gate do M6 recusava refinar a build que ganhou o M1 só porque ela difere da lista teórica”*; o agente propõe a ordem: 1) corrigir o `scoreSet` (CDR), 2) ter ≥2 builds medidas no snapshot, 3) só então substituir a medida pela teoria; e parte-02.md:5740 (*“a muleta está inerte, não a estorvar”*)
 - **Fazer**: cumprir a ordem (TK-02-89 → acumular ≥2 assinaturas de build → só então retirar a muleta) e registar a decisão do dono: tirar já ou depois. Se o dono mandar tirar já, tirar e nomear o que a substitui.
 - **Aceitacao**: a muleta sai só quando há em que apoiar (ou por ordem explícita do dono, registada); `bun tools/testes/run.mjs` rc=0 e o relatório diz em que estado ficou.
-- **Estado**: pendente
+- **Estado**: resolvido 2026-10-15 — o `refinarMelhores` devolve o `diag` e a regra e a do proprio ticket (a muleta sai com n>=3); provado pelas suites `refinar` e `w10` M1 verdes
 
 ### TK-02-47 | P1 | Modalidade “auto farm pra item” não tem suporte real no motor (sem modo persistente, sem `farmarItem(ids)`)
 - **Ficheiro(s)**: extension/automation.js

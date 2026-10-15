@@ -762,3 +762,15 @@ mandar quando ha apoio (n>=3) -> **o comportamento actual esta CERTO** e o TK-02
 qual mudaste'*), o caminho e ACTUALIZAR esse teste - mas isso e uma decisao de politica, e fica
 REGISTADA para o dono confirmar (nao a tomo sozinho).
 **Estado mantido: 10 falhas, 23/25 suites verdes (o estado em que o TK-02-93 passa).**
+## ADENDA 2026-10-15 (noite) — O LEDGER ESTAVA DESACTUALIZADO: 89 tickets a 'pendente', muitos JA CORRIGIDOS
+Li as 12 filas: **89 tickets, TODOS com `Estado: pendente`**. Mas varios ja estao arrumados no codigo:
+  - **TK-01-08** (ritmoMobs pela media) -> suite `w1-regioes` B2 **verde**;
+  - **TK-01-42** (janelas nao comparaveis) -> suite `w1-regioes` D **verde**;
+  - **TK-02-61** (cfgVer no arranque) -> suite `w10` C2/C3 **verde**;
+  - **TK-02-93** (a muleta do refinar) -> suites `refinar` e `w10` M1 **verdes**.
+E os P0 com evidencia no codigo (verificado por grep, MAS grep nao e prova): TK-02-39/TK-01-01 (`e.morte === false`
+fail-closed), TK-01-07 (regex k/M), TK-02-78 (`valorEquip` escala qualidade/refino), TK-02-85/TK-02-86 (Lojista).
+**O que isto significa:** o `Estado: pendente` do ledger **nao pode ser levado a letra** — e o mesmo defeito do
+`AGENTS.md` (um documento que acusa codigo ja corrigido). **A prova actual e o BANCO: 0 falhas / 25/25 suites.**
+**Proximo passo honesto:** verificar ticket a ticket contra a suite que o testa (cada um tem uma) e marcar o
+`Estado` com a prova. Fiz os 4 que arrumei nesta sessao; os outros 85 precisam do mesmo trabalho.
