@@ -375,3 +375,16 @@ partir da abertura da função), não por `indexOf` global — a mesma armadilha
   de `precisaRefino`, usado em 3 funções). Já tentei movê-lo para o módulo → piorou (16→23). Precisa de
   desenho: cada função com o SEU `medido`, ou repor entre chamadas.
 - **Determinismo CONFIRMADO**: 3 corridas → as mesmas 21 (na altura) / agora 18. As medições são fiáveis.
+
+## ADENDA 11:20 - medido: a sonda apanhou COMENTARIOS (18->21)
+Tentei declarar `medido` em CADA funcao que o usa (o modulo partilhado ja tinha piorado, 16->23).
+A deteccao por regex apanhou **comentarios** ('DPS derivado do medido', 'medido pelo inject',
+'sem HP medido', 'cura/s das skills nos mobs (medido)') e inseriu declaracoes em **5 funcoes erradas**
+-> banco **18 -> 21**. Revertido.
+
+**Metodo certo:** excluir comentarios (`^\s*(//|\*|/\*)`) E confirmar que e codigo a LER/ESCREVER o
+identificador (`medido &&`, `medido.xpMin`, `{ medido`, `divergenciaMedido`). Usos REAIS: ~5647 e ~7265;
+o `precisaRefino` ja o declara em 3261.
+
+**Licao repetida (3.a vez):** sonda por regex engana (comentarios, chaves aninhadas, duplicados).
+Ler o alvo ANTES de escrever e a regra que mais poupa tempo.
