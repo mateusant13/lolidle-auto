@@ -442,3 +442,18 @@ medicao unica e enganadora).
 Mapeados TODOS os pontos de chamada: os testes usam `(0)`, `(1)`, `(99)` (a DIFICULDADE) e nao ha
 outras chamadas no `automation.js`. Trocar para `(d)` -> **20/25 suites verdes** (era 19-20).
 A tentativa anterior (18->19) foi medida em estado intermedio.
+## ADENDA 12:20 - CORRECCAO DEFINITIVA DAS MEDICOES + mapa final das 15
+**3 corridas seguidas com o MESMO ficheiro -> 15 falhas em TODAS, 0 flaky.** O banco e DETERMINISTICO.
+A 'flakiness' que reportei (15 vs 18) era **estado intermedio**: medi logo apos editar, sem confirmar
+que o `git checkout`/escrita tinham assentado. **REGRA FINAL: confirmar o estado (git status +
+node --check) e medir 2x antes de decidir com base no numero.** Duas conclusoes minhas foram erradas
+por isto (o 'trade-off' do H12c e a 'flakiness').
+
+### As 15 (sempre as mesmas, 3/3 corridas)
+  T142a (score) · `medido` x2 (refinar + w10) · C2 x4 + C3 x2 (w10, migracoes no carregamento)
+  C (w1-regioes, n===3) · D x4 (w1-regioes, janelas) · `a2.nivelDifMotor` (chefe)
+
+### nivelDifMotor: o alias NAO chega (15 -> 17-20)
+O teste chama `a2.nivelDifMotor`; a extensao exporta `difNivelMotor`. Exportei o alias -> a suite
+`chefe` corre mais longe e falha noutras 2-5. Logo `nivelDifMotor` tem de ser uma funcao com
+COMPORTAMENTO proprio (nao um alias) - ler o que o teste espera dela (provavelmente (alvo, jogador)).
