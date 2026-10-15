@@ -114,3 +114,39 @@ harness, não para a extensão.**
 
 **Próximo passo:** aumentar as frames da stack (`slice(1, 20)`) e imprimir o `String(fn)` completo no
 erro — isso dá o nome da função do `automation.js` que está a reagendar, sem cortar código nenhum.
+
+
+## RESOLVIDO 08:20 — a causa era `proximoGiro` (retry sem tecto)
+A guarda instrumentada do stub deu o nome: **`FN=function proximoGiro()`**, `ms=9000`, `n=3001`.
+Fonte: `automation.js:6673` (ramo **w4-fuga**):
+
+```js
+if ((readLocation().text || '') !== 'Fonte') { press('b'); return setTimeout(proximoGiro, 9000); }
+```
+
+**Retry INFINITO**: se o boneco não volta à Fonte, reagenda-se a cada 9 s **sem tecto, sem log e sem
+saída**. No banco o `setTimeout` é síncrono → recursão directa (3000+ chamadas, o banco pendurava).
+**No jogo também é bug**: se a viagem para a Fonte falhar, o bot fica a premir `b` para sempre.
+
+### Correcção (aplicada)
+```js
+let _giroVoltas = 0;   // tecto do retry "volta à Fonte"
+…
+if ((readLocation().text || '') !== 'Fonte') {
+  if (_giroVoltas >= 5) {
+    logEvent('giro-desistiu', { motivo: 'nao voltou a Fonte em 5 tentativas', voltas: _giroVoltas });
+    _giroVoltas = 0; giro = null; salvarGiro(); return;
+  }
+  _giroVoltas++;
+  press('b');
+  return setTimeout(proximoGiro, 9000);
+}
+_giroVoltas = 0;
+```
+
+**Resultado medido:** banco **TERMINA**, a guarda do stub **não dispara**, e o detector
+(`checarChefeFatal`) já pode ser exportado → **65 falhas reais · 14/25 suites verdes** (o número sobe
+porque as suites passam a correr de verdade em vez de rebentar com "is not a function").
+
+**Lição de método que destravou isto:** instrumentar o stub com `FN=String(fn)` na mensagem do
+`throw` — deu o nome da função em 1 execução, depois de ~8 tentativas de bisect por cortes de código.

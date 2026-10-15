@@ -384,7 +384,8 @@ export function criarMundo(opts) {
   let seq = 0;
   const pendentes = new Map();
 let __TO_N = 0;
-  const setTimeoutStub = (fn, ms) => { if (++__TO_N > 3000) { throw new Error('STUB GUARD: >3000 setTimeout; stack=' + String(new Error().stack).split('\n').slice(1, 5).join(' | ')); }
+const __TO_MSG = (fn, ms, n) => { const st = String(new Error().stack).split(String.fromCharCode(10)).slice(1, 16).join(' >> '); return 'STUB GUARD n=' + n + ' ms=' + ms + ' FN=' + String(fn).slice(0, 300) + ' STACK ' + st; };
+  const setTimeoutStub = (fn, ms) => { if (++__TO_N > 3000) { throw new Error(__TO_MSG(fn, ms, __TO_N)); }
     const id = ++seq;
     if (typeof fn !== 'function') return id;
     pendentes.set(id, true);
