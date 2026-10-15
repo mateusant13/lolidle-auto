@@ -132,3 +132,17 @@ duplicata saturada). Revertido (não guardo alterações sem efeito medido).
 ### Progresso total: 65 → 46 falhas (6 correcções reais)
 `proximoGiro` (pendura) · `parseNum` k/M · `readStats` cdr/crit · `nivelChefeDe` null · `estimarLuta`
 fator de nível · `scoreSet` crítico dos autos.
+
+
+## ADENDA 08:50 — o `numEcra` JÁ ESTAVA CERTO (erro meu, corrigido)
+Substituí o `numEcra` (`automation.js:1452-1469`) assumindo que era o parser antigo — **sem ler o corpo
+primeiro**. O banco **piorou (45 → 49)** e ao ler vi que ele **já é suffix-aware** (trata `k`/`M`, o
+`9.876 / 12.3k` e o `Vale 5625…`). Revertido.
+
+**A regra que isto confirma (já escrita e violada por mim):** *ler o alvo antes de o substituir* — o
+mesmo erro que me fez criar um `nivelMobDe` duplicado e partir a sintaxe 3 vezes.
+
+**Onde está o N2 então:** o `lerVidaHud` (linha 1488) **tem** a regex certa e o `numEcra` **lê** o
+sufixo — falta a **ligação**: o `player()` tem de expor `vida = max` e `vidaAtual = cur` **do
+`lerVidaHud()`** (o teste usa `player().vida` / `player().vidaAtual`). Procurar onde o `player()`
+monta o objecto e ver se usa `lerVidaHud()` ou outro caminho.
