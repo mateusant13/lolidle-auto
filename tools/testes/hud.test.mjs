@@ -736,5 +736,226 @@ export const suite = {
       t.check('H13: o Darius (sem passiva de giro) nao tem cura do giro', ad.curaGiroDe().tem === false);
       t.check('H13: e curaGiroS() = 0 (nao se inventa cura)', ad.curaGiroS() === 0);
     }
+
+    /* ============ H14 - VORACIDADE: CORTE DIRECTO E LARVAS (TK-02-148) ============
+     * motor.js:1811 `if (HPk?.voracidade) for (const t of ['Q','W','E']) d.recargas[t] = Math.max(0, d.recargas[t] - (i.chefe ? HPk.voracidadeChefe : HPk.voracidade));`
+     * cada abate tira 1,5 s (5 s no chefe). O corte NAO tem guarda `i.invocado`:
+     * as larvas que o Barao invoca CONTAM (motor.js:3141-3142, 2 por invocacao),
+     * ao contrario da tarefa (motor.js:1808 `if (!i.invocado) contarTarefa(...)`).
+     * E as larvas nao dao loot (motor.js:1792), logo nunca passam pelo log do jogo.
+     *
+     * MEDIDA DO TICKET: Q no rank 10 = 6,85 s; com os 23% do Impeto fica 6,85 x 0,77 = 5,24 s
+     * (o que a extensao dizia). Com 3 abates a cortar 1,5 s cada: 5,24 - 4,5 = 0,74 s.
+     * A taxa de lancamento estava subestimada 7,1x (5,24 / 0,74). */
+    {
+      const KIT = {
+        P: { curaBase: 0.05, voracidade: 1.5, voracidadeChefe: 5 },
+        Q: { max: 10, base: [80, 115], ratio: [0.45, 0.48], recarga: [10, 9.65, 9.3, 8.95, 8.6, 8.25, 7.9, 7.55, 7.2, 6.85], adaga: true },
+        W: { max: 10, recarga: [14, 13.6], adaga: true },
+        E: { max: 10, recarga: [10, 9.6] },
+        R: { max: 5, recarga: [75, 65], base: [30, 44], ratio: [0.25, 0.28] },
+        D: { max: 10, passiva: true, curaGiro: [0.08, 0.09, 0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17] },
+      };
+      const mk = () => {
+        const m = criarMundo();
+        const a = carregarAutomation(m);
+        alimentarCatalogo(m);
+        definirCampeao(m, 'katarina', { magia: true, semMana: true, adagas: true, kit: KIT });
+        m.montar('#hab-ativas .hab[data-t]', [ m.el({ label: 'Q', dataset: { t: 'Q' }, textContent: '10 / 10' }) ]);
+        return a;
+      };
+
+      const cdQ10 = 6.85;
+      const cdr = 0.2346;
+      const cruaComCdr = cdQ10 * (1 - cdr);
+      t.check('H14: Q rank 10 com 23% de CDR = 5,24 s (a recarga que a extensao usava)',
+        Math.abs(cruaComCdr - 5.24) < 0.01);
+      const com3 = mk().cdVorazMotor(cruaComCdr, 'Q', null, 3);
+      t.check('H14: e com 3 abates o MOTOR da 0,74 s (corte directo)',
+        Math.abs(com3 - 0.74) < 0.01);
+      t.check('H14: a taxa de lancamento estava subestimada 7,1x',
+        Math.abs(cruaComCdr / com3 - 7.1) < 0.1);
+      const aprox = mk().cdVoraz(cruaComCdr, 'Q', 120);
+      t.check('H14: a aproximacao de regime estacionario fica acima dos 0,74 s do motor',
+        aprox > com3 + 0.5);
+      t.check('H14: sem abates a recarga fica crua (nao se inventa)',
+        mk().cdVorazMotor(5.24, 'Q', null, 0) === 5.24);
+      t.check('H14: a Voracidade NAO mexe na R (motor.js:1811: so Q/W/E)',
+        mk().cdVorazMotor(5.24, 'R', null, 3) === 5.24);
+      t.check('H14: com abates suficientes a recarga vai a 0 (sempre pronta)',
+        mk().cdVorazMotor(5.24, 'Q', null, 10) === 0);
+      const chefe = mk().cdVorazMotor(5.24, 'Q', null, 2);
+      t.check('H14: 2 abates tiram 3 s de 5,24 -> 2,24 s', Math.abs(chefe - 2.24) < 1e-9);
+
+      const mL = criarMundo();
+      const aL = carregarAutomation(mL);
+      alimentarCatalogo(mL);
+      definirCampeao(mL, 'katarina', { magia: true, semMana: true, adagas: true, kit: KIT });
+      mL.montar('#hab-ativas .hab[data-t]', [ mL.el({ label: 'Q', dataset: { t: 'Q' }, textContent: '10 / 10' }) ]);
+      t.check('H14: sem larvas nem historico, killsMinAoVivo() = null (nao se inventa)', aL.killsMinAoVivo() == null);
+      const antes = aL.killsMinAoVivo();
+      mL.dispatchMessage({ __lolidleAuto: 'evento', tipo: 'chefeInvoca', at: Date.now() });
+      const larvas = aL.larvasInvoca();
+      t.check('H14: o chefeInvoca do motor e RECEBIDO (antes ninguem o consumia)',
+        Array.isArray(larvas) && larvas.length === 1);
+      t.check('H14: registado como 2 larvas por invocacao (motor.js:3141)',
+        !!larvas[0] && larvas[0].n === 2);
+      const depois = aL.killsMinAoVivo();
+      t.check('H14: as larvas entram na contagem de abates/min (antes nao)',
+        depois != null && depois > 0 && (antes == null || depois > antes));
+      t.check('H14: 2 larvas numa janela de 90 s = 1,33 abates/min',
+        Math.abs(depois - (2 / (90 / 60))) < 0.01);
+      const cdLarvas = aL.cdVoraz(cdQ10 * (1 - cdr), 'Q');
+      t.check('H14: com as larvas contadas, a recarga efectiva da Q e menor que a crua',
+        cdLarvas < cruaComCdr);
+      t.check('H14: no ciclo do Barao (34,3 s) seriam 3,5 larvas/min',
+        Math.abs(2 * (60 / 34.3) - 3.5) < 0.05);
+    }
+
+    /* ============ H15 - HEMORRAGIA DO DARIUS E PEN DO KIT (TK-02-149) ============
+     * O Darius e o UNICO campeao com `hemorragia: true` (motor.js:883).
+     *   motor.js:1291-1299 `aplicarHemorragia`: 5 acumulos, `tSangue = 5` s; a 5
+     *     liga `c.darius.poder = 5` (Poder de Noxus).
+     *   motor.js:1652 `const danoSangue = (13 + 0.3 * adEfetivo.bonusAd + 4 * estado.nivel) / 5;`
+     *   motor.js:1667 `const dano = mitigar(danoSangue * i.acumulos * dt, i.armadura * (1 - a.penArmadura));`
+     *   motor.js:1345-1351 `efetivo` + `bonusPoder(nivel) = 30 + 200*(min(n,18)-1)/17 + 4*max(0,n-18)`
+     * A extensao tinha ZERO referencias a isto. */
+    {
+      const KIT = {
+        Q: { max: 10, base: [50, 70], ratio: [1, 1.05], recarga: [9, 8.5] },
+        E: { max: 10, recarga: [26, 24], pen: [0.2, 0.23, 0.26, 0.29, 0.32, 0.35, 0.38, 0.41, 0.43, 0.45] },
+      };
+      const mkDarius = (dano, nivel, rankE) => {
+        const m = criarMundo();
+        const a = carregarAutomation(m);
+        alimentarCatalogo(m);
+        definirCampeao(m, 'darius', { magia: false, distancia: false, adBase: 64, adNivel: 3.9,
+          hemorragia: true, kit: KIT });
+        m.montar('#hud-nivel', [m.el({ label: 'nivel', textContent: String(nivel) })]);
+        m.montar('.st', [m.el({ label: 'dano', textContent: 'Dano ' + dano })]);
+        m.montar('#hab-ativas .hab[data-t]', [
+          m.el({ label: 'E', dataset: { t: 'E' }, textContent: (rankE || 10) + ' / 10' }),
+          m.el({ label: 'Q', dataset: { t: 'Q' }, textContent: '2 / 10' }),
+        ]);
+        return a;
+      };
+      // --- o Poder de Noxus: motor.js:1351 ---
+      t.check('H15: bonusPoder(50) = 358 (motor.js:1351) - o numero do ticket',
+        mkDarius(300, 50).bonusPoderDe(50) === 358);
+      t.check('H15: bonusPoder(18) = 230 (motor.js:1351: 30 + 200*17/17)',
+        mkDarius(300, 18).bonusPoderDe(18) === 230);
+      t.check('H15: um Darius de 300 AD passa a 658 com o poder ligado (300 + 358)',
+        300 + mkDarius(300, 50).bonusPoderDe(50) === 658);
+      t.check('H15: 658/300 = x2,19 (o multiplicador do ticket)',
+        Math.abs(658 / 300 - 2.19) < 0.005);
+      // --- danoSangue (motor.js:1652) ---
+      t.check('H15: danoSangue nv50 com bonusAd 0 = (13+200)/5 = 42,6',
+        Math.abs(mkDarius(300, 50).danoSangueDe(50, 0) - 42.6) < 1e-9);
+      t.check('H15: danoSangue nv50 com bonusAd 150 = (13+45+200)/5 = 51,6',
+        Math.abs(mkDarius(300, 50).danoSangueDe(50, 150) - 51.6) < 1e-9);
+      // --- a hemorragia completa, com mitigacao (motor.js:1667) ---
+      const a50 = mkDarius(300, 50, 10);
+      const h50 = a50.hemorragiaDe(50, 150, { armadura: 144, penArmadura: 0.45 });
+      t.check('H15: 5 acumulos (motor.js:1293)', h50.acumulos === 5);
+      t.check('H15: 5 s de duracao (motor.js:1294)', h50.duracao === 5);
+      t.check('H15: bruto = porAcumulo x 5', Math.abs(h50.bruto - h50.porAcumulo * 5) < 0.02);
+      // mit com pen do kit (rank 10, 45%): 100/(100+144*0,55) = 0,558 (TK-02-114)
+      t.check('H15: com a pen do kit (rank 10) o DOT fica mitigado a 0,558',
+        Math.abs((h50.dps / h50.bruto) - (100 / (100 + 144 * 0.55))) < 0.005);
+      // --- o ganho da pen do KIT no DOT: +36,2% contra o Barao ---
+      const semPen = a50.hemorragiaDe(50, 150, { armadura: 144, penArmadura: 0 });
+      t.check('H15: sem a pen do kit o DOT perde 36,2% contra o Barao',
+        Math.abs((h50.dps / semPen.dps - 1) * 100 - 36.2) < 0.1);
+      // --- campeao sem hemorragia devolve null (nao inventa DOT) ---
+      const mK = criarMundo();
+      const aK = carregarAutomation(mK);
+      alimentarCatalogo(mK);
+      definirCampeao(mK, 'katarina', { magia: true, kit: { Q: { max: 10, base: [80], ratio: [0.45], recarga: [10] } } });
+      t.check('H15: a Katarina nao tem hemorragia (motor.js:883 so o Darius)', aK.hemorragiaDe(29, 100, { armadura: 144 }) === null);
+      // --- o DOT entra no estimarSet ---
+      const alvo = { armadura: 144, nivel: 50, hp: 1000 };
+      const comHem = a50.estimarSet(['2001'], alvo);
+      t.check('H15: o estimarSet devolve a hemorragia do Darius', comHem.hemorragia != null);
+      t.check('H15: e ela soma-se ao DPS (dps inclui o DOT)', comHem.hemorragia.dps > 0);
+      // --- bonusAd: lido do painel menos a base do KIT (motor.js:540) ---
+      t.check('H15: AD painel 300, base do kit nv50 = 64+3,9*50 = 259 -> bonusAd 41',
+        Math.abs(mkDarius(300, 50).player().bonusAd - 41) < 0.01);
+      t.check('H15: o bonusAd nunca fica negativo', mkDarius(50, 50).player().bonusAd === 0);
+    }
+
+    /* ============ H16 - CATALOGO REMENDADO DO MOTOR (TK-02-147) ============
+     * O CATALOGO CRU (js/itens.js) nao e o que o jogo usa: o MOTOR remenda 6 itens que o
+     * gerador nao trouxe (motor.js:16-33):
+     *   2022 Partícula Brilhante  -> cdr 0,05   (motor.js:23)
+     *   1006 Pérola do Rejuvenesc. -> regen 3    (motor.js:24)
+     *   3057 Fulgor               -> efeito     (motor.js:25)
+     *   4629 Ímpeto Cósmico       -> cdr 0,15   (motor.js:31)
+     *   3108 Córex Demoníaco      -> cdr 0,05   (motor.js:32)
+     *   3802 Capítulo Perdido     -> cdr 0,05   (motor.js:33)
+     * Mandar o cru (inject.js) fazia a extensao receber esses campos AUSENTES.
+     * O motor exporta o catalogo ja remendado: `ITENS` (motor.js:20 + os Object.assign).
+     * REGRA N.o 3: um sitio so, lido do motor — nao copiado para a extensao. */
+    {
+      // os mesmos 6 itens, CRU e REMENDADO (o remendo e o que o motor faz)
+      const CRU = [
+        { id: '2022', nome: 'Particula Brilhante', raridade: 'basico', espaco: 'acessorio', preco: 250 },
+        { id: '1006', nome: 'Perola do Rejuvenescimento', raridade: 'basico', espaco: 'acessorio', preco: 150 },
+        { id: '3057', nome: 'Fulgor', raridade: 'lendario', espaco: 'arma', preco: 3400, ad: 40 },
+        { id: '4629', nome: 'Impeto Cosmico', raridade: 'lendario', espaco: 'botas', preco: 3000, va: 0.25 },
+        { id: '3108', nome: 'Codex Demoniaco', raridade: 'epico', espaco: 'arma', preco: 900, ap: 35 },
+        { id: '3802', nome: 'Capitulo Perdido', raridade: 'epico', espaco: 'arma', preco: 900, ap: 40 },
+      ];
+      // REMENDA: exactamente os Object.assign de motor.js:23-33
+      const REMENDA = CRU.map((i) => {
+        const o = { ...i };
+        if (o.id === '2022') o.cdr = 0.05;                    // motor.js:23
+        if (o.id === '1006') o.regen = 3;                     // motor.js:24
+        if (o.id === '3057') o.efeito = 'Lamina Encantada';   // motor.js:25
+        if (o.id === '4629') o.cdr = 0.15;                    // motor.js:31
+        if (o.id === '3108') o.cdr = 0.05;                    // motor.js:32
+        if (o.id === '3802') o.cdr = 0.05;                    // motor.js:33
+        return o;
+      });
+      const mundo = (itens) => {
+        const m = criarMundo();
+        const a = carregarAutomation(m);
+        alimentarCatalogo(m, itens);
+        return a;
+      };
+      // --- com o cru, os 6 itens nao tem os campos (o defeito) ---
+      const aCru = mundo(CRU);
+      t.check('H16: com o catalogo CRU o 4629 (Impeto) nao da CDR nenhum', aCru.statsSet(['4629']).cdr === 0);
+      t.check('H16: com o cru o 2022 nao da CDR nenhum', aCru.statsSet(['2022']).cdr === 0);
+      t.check('H16: com o cru o 3108 nao da CDR nenhum', aCru.statsSet(['3108']).cdr === 0);
+      t.check('H16: com o cru o 3802 nao da CDR nenhum', aCru.statsSet(['3802']).cdr === 0);
+      // --- com o remendado, os campos aparecem ---
+      const aRem = mundo(REMENDA);
+      t.check('H16: com o REMENDA o 4629 da 0,15 de CDR (motor.js:31)', aRem.statsSet(['4629']).cdr === 0.15);
+      t.check('H16: com o REMENDA o 2022 da 0,05 de CDR (motor.js:23)', aRem.statsSet(['2022']).cdr === 0.05);
+      t.check('H16: com o REMENDA o 3108 da 0,05 de CDR (motor.js:32)', aRem.statsSet(['3108']).cdr === 0.05);
+      t.check('H16: com o REMENDA o 3802 da 0,05 de CDR (motor.js:33)', aRem.statsSet(['3802']).cdr === 0.05);
+      // o EFEITO do 3057 (motor.js:25) passa a ser visivel
+      t.check('H16: com o REMENDA o 3057 (Fulgor) traz o efeito (motor.js:25)',
+        String(((aRem.efeitosEquipados(['3057']).itens || [])[0] || {}).efeito || '').length > 0);
+      t.check('H16: e com o cru esse efeito NAO existe',
+        String(((aCru.efeitosEquipados(['3057']).itens || [])[0] || {}).efeito || '').length === 0);
+      // regen do 1006 (motor.js:24): o campo chega ao catalogo
+      const perola = REMENDA.filter((i) => i.id === '1006')[0];
+      t.check('H16: o 1006 (Perola) traz regen 3 com o REMENDA (motor.js:24)', perola.regen === 3);
+      t.check('H16: e NAO traz com o cru', CRU.filter((i) => i.id === '1006')[0].regen == null);
+      // --- a media de CDR dos lendarios muda: o Impeto passa a pontuar ---
+      t.check('H16: com o REMENDA o CDR do conjunto 4629+3108 = 0,20',
+        Math.abs(aRem.statsSet(['4629', '3108']).cdr - 0.20) < 1e-9);
+      t.check('H16: e com o cru o mesmo conjunto da 0', aCru.statsSet(['4629', '3108']).cdr === 0);
+      // --- TIERDE (motor.js:252) ja vem da escala do motor: 1 qualidade = 1,25 refinos ---
+      // (H10 prova os casos; aqui confirma-se a formula com os numeros do motor)
+      t.check('H16: tierDe(A+0)=1,15 vs B+2=1,24: 1 qualidade(A)=`~`1,25 refinos',
+        aRem.tierDe({ qual: 'A', refino: 0 }) === 1.15 && aRem.tierDe({ qual: 'B', refino: 2 }) === 1.24);
+      t.check('H16: A+0 (1,15) ja bate B+1 (1,12) - o que o qIdx*10 perdia',
+        aRem.tierDe({ qual: 'A', refino: 0 }) > aRem.tierDe({ qual: 'B', refino: 1 }));
+    }
   },
 };
+
+
+

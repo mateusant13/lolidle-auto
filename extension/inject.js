@@ -260,13 +260,13 @@
     if (M.KITS) for (const id of Object.keys(M.KITS)) {
       const K = M.KITS[id];
       if (!K || !K.hab) continue;
-      meta.kits[id] = { kit: serialKit(K.hab), adBase: K.adBase, adNivel: K.adNivel, magia: !!K.magia, semMana: !!K.semMana, adagas: !!K.adagas, distancia: !!K.distancia, papel: K.papel || null, giroSrc: K.hab.P && K.hab.P.giro ? String(K.hab.P.giro) : null, ordem: K.ordem || null };
+      meta.kits[id] = { kit: serialKit(K.hab), adBase: K.adBase, adNivel: K.adNivel, magia: !!K.magia, semMana: !!K.semMana, adagas: !!K.adagas, distancia: !!K.distancia, papel: K.papel || null, giroSrc: K.hab.P && K.hab.P.giro ? String(K.hab.P.giro) : null, ordem: K.ordem || null, hemorragia: !!K.hemorragia };
     }
     // kit do campeão (Katarina): base/ratio/recarga + stats base
     const K = M.KITS && M.KITS.katarina;
     if (K) {
       meta.kit = serialKit(K.hab);
-      meta.champ = { id: K.id, adBase: K.adBase, adNivel: K.adNivel, magia: !!K.magia, semMana: !!K.semMana, adagas: !!K.adagas, distancia: !!K.distancia, papel: K.papel || null, ordem: K.ordem || null };
+      meta.champ = { id: K.id, adBase: K.adBase, adNivel: K.adNivel, magia: !!K.magia, semMana: !!K.semMana, adagas: !!K.adagas, distancia: !!K.distancia, papel: K.papel || null, ordem: K.ordem || null, hemorragia: !!K.hemorragia };
       meta.ordemHab = K.ordem || null;   // ordem OFICIAL de subir habilidade deste campeão (motor)
     }
     meta.bonusTwitch = M.bonusTwitchAtual ? M.bonusTwitchAtual() : null;
@@ -274,7 +274,20 @@
     enviarMeta();
   }).catch((e) => window.postMessage({ __lolidleAuto: 'meta-erro', erro: String(e) }, '*'));
   import('https://lolidle.com/js/balanco.js').then((B) => { meta.balanco = B.BALANCO; enviarMeta(); }).catch((e) => window.postMessage({ __lolidleAuto: 'meta-erro', erro: String(e) }, '*'));
-  import('https://lolidle.com/js/itens.js').then((I) => { meta.itens = I.ITENS_DADOS; enviarMeta(); }).catch((e) => window.postMessage({ __lolidleAuto: 'meta-erro', erro: String(e) }, '*'));
+  // CATALOGO DE ITENS: o cru (js/itens.js) NAO e o que o jogo usa — o MOTOR remenda 6 itens
+  // que o gerador nao trouxe (motor.js:16-33):
+  //   2022 (dr 0,05) 1006 (regen 3) 3057 (efeito) 4629 (dr 0,15) 3108 (dr 0,05) 3802 (dr 0,05)
+  // Mandar o cru faz a extensao receber cdr/regen/efeito AUSENTES nesses 6 (TK-02-147).
+  // O motor exporta o catalogo ja remendado: `ITENS` (motor.js:20 e os `Object.assign`).
+  // REGRA N.o 3: o numero e LIDO do motor, nao copiado — ha um unico sitio.
+  import('https://lolidle.com/js/motor.js').then((M) => {
+    const cat = (M && M.ITENS) ? Object.values(M.ITENS) : null;
+    if (cat && cat.length) { meta.itens = cat; }
+    enviarMeta();
+  }).catch((e) => {
+    // sem o motor: cai no cru (melhor que nada) e REGISTA que falta o remendo.
+    return import('https://lolidle.com/js/itens.js').then((I) => { meta.itens = I.ITENS_DADOS; enviarMeta(); });
+  }).catch((e) => window.postMessage({ __lolidleAuto: 'meta-erro', erro: String(e) }, '*'));
   import('https://lolidle.com/js/wiki-dados.js').then((W) => { meta.ondeItem = W.ONDE_ITEM; enviarMeta(); }).catch((e) => window.postMessage({ __lolidleAuto: 'meta-erro', erro: String(e) }, '*'));
 
   // ---- eventos do motor que DECIDEM (motor.js:1169: 71 tipos) ----
