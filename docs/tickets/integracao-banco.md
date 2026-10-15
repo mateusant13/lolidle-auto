@@ -353,3 +353,25 @@ sítio, provavelmente construído por composição). Revertido.
 **Método certo:** procurar o `return` **dentro do corpo** do `estimarLuta` (por contagem de chavetas a
 partir da abertura da função), não por `indexOf` global — a mesma armadilha que já me apanhou antes
 (`numEcra`, `farmarItemEstado`).
+
+
+## MAPA FINAL DAS 18 (2026-10-15 11:10) — banco DETERMINÍSTICO (3 corridas idênticas)
+```
+[hud]       H12c: o killsMin teorico continua visivel ao lado do aplicado
+[score]     T142a: o painel escreve Roubo de Vida (jogo.js:5999) e o player() le
+[refinar]   ReferenceError: medido is not defined
+[w10]       C2 x4 (barraPorDisponibilidade/autoRefino/cfgVer/config gravada) + C3 x2
+[w10]       ReferenceError: medido is not defined      <-- o MESMO bug do refinar
+[w1-regioes] C: 3 linhas de loot contam 3 abates (n===3)
+[w1-regioes] D x4 (janelas: ciclos, 2 janelas, aviso, agregar)
+[chefe]     D10/D11 (+5 -> fM/fJ do motor) + nivelDifMotor is not a function
+```
+
+### Notas desta ronda
+- **`nivelDifMotor`** implementada+exportada → **banco 18 → 20**: a suite `chefe` corre mais longe e
+  falha em **D10/D11** (o teste calcula fM/fJ ele próprio e compara). Revertido — o par
+  (implementar + corrigir D10/D11) tem de ser feito junto.
+- **`medido`** aparece em **DUAS** suites (`refinar` e `w10`) — é o bug de **escopo** (declarado dentro
+  de `precisaRefino`, usado em 3 funções). Já tentei movê-lo para o módulo → piorou (16→23). Precisa de
+  desenho: cada função com o SEU `medido`, ou repor entre chamadas.
+- **Determinismo CONFIRMADO**: 3 corridas → as mesmas 21 (na altura) / agora 18. As medições são fiáveis.
