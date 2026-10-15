@@ -2449,7 +2449,11 @@
     const as = s.as || 1;
     const intervalo = 1 / as;                      // janela entre golpes
     const nPocoes = Math.max(1, Math.floor(intervalo / EXAUSTAO())); // cooldown do jogo (motor)
-    const dpsTomado = s.ad * fM * as * mit;
+    // motor.js:898 — o PAPEL do campeão: `recebido` escala o dano que ELE leva (Katarina 0,75;
+    // tanques 0,75; testado com 1 e com 0,5 pelo banco). Vem do META (jogo), nunca copiado.
+    const _papel = (META.champAtual && META.champAtual.papel) || META.papel || {};
+    const _recebido = Number.isFinite(_papel.recebido) ? _papel.recebido : 1;
+    const dpsTomado = s.ad * fM * as * mit * _recebido;
     const danoGolpe = s.ad * fM * mit;             // dano iminente por golpe
     // pior MECÂNICA carregada do chefe (rodízio do motor): pode ser insta-kill
     let piorMec = 0, mecFatalNome = null;
