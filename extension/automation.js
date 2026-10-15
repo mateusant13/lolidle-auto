@@ -3067,6 +3067,12 @@
       const qual = mq[1].toUpperCase();
       const lend = /lendário/i.test(dica), epi = /épico/i.test(dica);
       if (lend && lendaBuild.has(String(puro))) { regras.protegidos.push({ id, motivo: 'lendário da build da classe' }); continue; }
+      // L4 (regra do dono): LENDÁRIO DUPLICADO com o mercado SATURADO fica na MOCHILA — nunca ao
+      // Lojista nem anunciado. A contagem de duplicados é o `dups` do topo desta função (3032).
+      if (lend && mercadoSaturado().sat && (dups[id] || 0) > 1) {
+        regras.protegidos.push({ id, motivo: 'duplicata de lendário — mercado saturado (fica na mochila)' });
+        continue;
+      }
       // PEÇAS RESERVADAS DAS DUAS BUILDS (mob × chefe): NUNCA vão ao Lojista — são as peças da
       // build da outra fase (o que sai da troca fica na mochila). Vem DEPOIS do lendário-da-build
       // para o motivo desse caso continuar a ser o dele (o banco de regressão fixa essa string).
