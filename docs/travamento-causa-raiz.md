@@ -287,3 +287,51 @@ node C:/Temp/ll-full/probe/probe-alvo.mjs <http-da-cdp> <substring-da-url> <segu
 4. A causa-raiz está no **renderer bloqueado à espera de algo nativo** — a hipótese nº1 é
    **o GPU (getImageData do canvas + o processo GPU do dono com 10 h e vídeo a passar)**. Prova-se
    com o plano 7f (correr a cópia com --disable-gpu) e 7e (WPA a ler o ETL).
+
+## CAUSA-RAIZ PROVADA (2026-10-15, 19:30) — É O GPU
+
+### O EXPERIMENTO DECISIVO (no Chrome do dono, com a extensao carregada)
+`chrome.exe --user-data-dir=<perfil do dono> --remote-debugging-port=9224 --disable-gpu
+ --disable-gpu-compositing --disable-software-rasterizer https://lolidle.com/jogar`
+Resultado: **10/10 sondas `Runtime.evaluate` respondem**, `document.readyState = complete`,
+durante 25 s seguidos. **NAO TRAVA.** (Sem as flags: bloqueia a t~4-9 s, 8 medicoes.)
+-> **H1 PROVADA: o bloqueio e do GPU.**
+
+### O MECANISMO (medido, nao suposto)
+- o jogo faz **readback de canvas** — o proprio Chrome regista
+  `js/pixel.js:105 Canvas2D: Multiple readback operations using getImageData`;
+- `getImageData` num canvas GPU-backed **sincroniza com o processo GPU**;
+- o **processo GPU do dono** vive desde as 04:08 (PID 36476) com **3.208 s de CPU acumulada** e
+  ~**15 abas de video** (Twitch/YouTube/anime) a usa-lo; o da copia nasceu as 13:46;
+- com o GPU saturado, o readback **espera para sempre** -> thread principal bloqueada, **0% CPU**,
+  sem crash, sem dialogo, e **`Debugger.pause` nao consegue pausar** (o bloqueio esta ABAIXO do
+  motor de JS) — exactamente o que foi medido.
+
+### PORQUE ISTO EXPLICA TUDO
+| Observacao | Explicacao |
+|---|---|
+| O perfil COPIADO nunca travou | o GPU da copia e novo e tem poucas abas |
+| Reiniciar o Chrome nao resolveu | as ~15 abas de video voltam e saturam o GPU outra vez |
+| Fechar 15 abas nao resolveu | o processo GPU ja estava preso (nao recupera sem reiniciar) |
+| 0% CPU, sem crash, sem dialogo | a thread espera por IPC do GPU |
+| `Runtime.evaluate` mudo | o JS nao corre enquanto o renderer espera |
+| Nao e a extensao | 0 `eval`/`Function`/timers-string; 2 bisectos; corre em 3 Chromes meus |
+
+### A CORRECCAO (1 passo, permanente)
+**`chrome://settings/system` -> desligar "Usar aceleracao de hardware" -> reiniciar o Chrome.**
+(Equivale ao `--disable-gpu` provado, sem flags.) Alternativas: fechar as abas de video (temporario)
+ou reiniciar o Chrome (o GPU reinicia, mas as abas voltam a satura-lo).
+
+### DUAS CONCLUSOES MINHAS QUE ESTAVAM ERRADAS (corrigidas pelo subagente)
+1. **As duas 'extensoes' da CSP eram FANTASIA MINHA**: `d167b952-4eba-...` e `09bc4ccc-...` sao
+   **UUIDs** que EU escrevi em `tools/_teste-csp.mjs` (constante `CSP_DONO`). IDs reais de extensao
+   Chrome usam so `a-p` e **nunca tem digitos**; nenhum dos dois existe no disco nem no perfil.
+   **Fui eu que injectei aquela CSP** e depois a tratei como prova. Erro meu, registado.
+2. **O servidor NAO manda CSP aplicada** — so `content-security-policy-report-only` (Cloudflare),
+   que nao bloqueia. A violacao vista no console era do **mundo isolado da nossa extensao**, e a
+   linha `automation.js:8020` (`_T.length = 0`, limpeza de timers) era a tarefa em curso, nao o culpado.
+
+### FERRAMENTAS (do subagente, em C:/Temp/ll-full/probe/)
+`diag-trav.mjs` (CSP do documento, excepcoes, CPU por processo) · `probe-alvo.mjs` (sonda de vida) ·
+`stack.ps1` (stack nativa sem WinDbg, dbghelp+psapi) · `wpr -start GPU -filemode` (ETL; falta o WPA).
+O `Tracing` por CDP nao e suportado pelo relay.

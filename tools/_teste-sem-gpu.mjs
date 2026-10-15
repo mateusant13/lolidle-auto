@@ -1,0 +1,22 @@
+const v = await (await fetch('http://127.0.0.1:9224/json/version')).json();
+const ws = new WebSocket(v.webSocketDebuggerUrl);
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method: m, params: p || {} })); setTimeout(() => r({ __t: true }), 9000); });
+const r = await send('Extensions.loadUnpacked', { path: 'I:\\!lolidle.com\\extension' });
+console.log('extensao: ' + JSON.stringify(r.result || r.error).slice(0, 80));
+await new Promise(x => setTimeout(x, 2000));
+const list = await (await fetch('http://127.0.0.1:9224/json/list')).json();
+const pg = list.find(t => t.type === 'page' && /lolidle/.test(t.url));
+console.log('aba do jogo: ' + (pg ? 'SIM' : 'NAO') + ' | ws: ' + (pg && pg.webSocketDebuggerUrl ? 'ok' : 'AUSENTE'));
+if (!pg || !pg.webSocketDebuggerUrl) process.exit(0);
+const w2 = new WebSocket(pg.webSocketDebuggerUrl);
+let id2 = 0; const p2 = new Map();
+w2.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && p2.has(m.id)) { p2.get(m.id)(m); p2.delete(m.id); } });
+await new Promise(r2 => w2.addEventListener('open', r2, { once: true }));
+const s2 = (m, p) => new Promise(r => { const i = ++id2; p2.set(i, r); w2.send(JSON.stringify({ id: i, method: m, params: p || {} })); setTimeout(() => r({ __t: true }), 9000); });
+let trav = 0;
+for (let i = 1; i <= 10; i++) { await new Promise(x => setTimeout(x, 2500)); const e = await s2('Runtime.evaluate', { expression: "JSON.stringify({rs:document.readyState, vida:(document.querySelector('#hud-vida-txt')||{}).textContent||null, local:(document.querySelector('#local-nome')||{}).textContent||null})", returnByValue: true }); if (e.__t) { trav++; console.log('t=' + (i*2.5) + 's -> TRAVADO'); } else console.log('t=' + (i*2.5) + 's -> ' + String(e.result?.result?.value)); }
+console.log('=== RESULTADO SEM GPU: ' + (trav === 0 ? '*** NAO TRAVA — H1 PROVADO (era o GPU) ***' : trav + ' travamentos de 10') + ' ===');
+w2.close(); process.exit(0);
