@@ -633,7 +633,9 @@
    *  Voracidade (motor.js:1811, sem guarda `i.invocado`) mas nao dao loot (motor.js:1792),
    *  logo nao aparecem no log do jogo — tem de as contar aqui (TK-02-148).
    *  Formato: [{ at: ms, n: 2 }] (2 larvas por invocacao). */
-  const larvasInvoca = [];
+  const _larvasInvoca = [];
+  /** TK-02-148: leitura publica (o banco chama `auto.larvasInvoca()`). */
+  function larvasInvoca() { return _larvasInvoca.slice(); }
   /** Janela das larvas invocadas (ms): 90 s = 2,6 voltas do rodizio do Barao (34,3 s,
    *  motor.js:3080/:3099/:3103). O que passa dela ja nao conta para a cadencia AGORA. */
   const LARVAS_JANELA_MS = 90000;
@@ -1794,9 +1796,9 @@
     // Janela deslizante propria: 90 s (2,6 voltas do rodizio de 34,3 s) — o que passa dela ja
     // nao conta para a cadencia AGORA. Larvas antigas caiem fora (e o array nao cresce sem fim).
     const agora = Date.now();
-    while (larvasInvoca.length && agora - larvasInvoca[0].at > LARVAS_JANELA_MS) larvasInvoca.shift();
-    if (!larvasInvoca.length) return base;
-    const larvasNaJanela = larvasInvoca.reduce((s, l) => s + (l.n || 0), 0);
+    while (_larvasInvoca.length && agora - _larvasInvoca[0].at > LARVAS_JANELA_MS) _larvasInvoca.shift();
+    if (!_larvasInvoca.length) return base;
+    const larvasNaJanela = _larvasInvoca.reduce((s, l) => s + (l.n || 0), 0);
     const larvasMin = (larvasNaJanela / (LARVAS_JANELA_MS / 60000));
     if (base == null) return larvasMin > 0 ? larvasMin : null;
     return base + larvasMin;
@@ -7820,7 +7822,7 @@
     // lida do kit do motor (motor.js:529 -> 552). So o E do Darius a tem.
     penKitDe, penKitCampeao, rankKitDe, statsSet, aplicarKit,
     // ---- CURA DO GIRO (TK-02-130): a cura propria da Katarina, por rank da D ---
-    curaGiroDe, curaGiroS, cdVorazMotor, larvasInvoca: () => larvasInvoca.slice(),
+    curaGiroDe, curaGiroS, cdVorazMotor, _larvasInvoca: () => _larvasInvoca.slice(),
     // ---- HEMORRAGIA DO DARIUS (TK-02-149) ----
     bonusPoderDe, danoSangueDe, hemorragiaDe, bonusAdDe, adBaseCampeao,
     // ---- BUILD POR FASE (mob × chefe) e AS QUATRO FONTES ----
