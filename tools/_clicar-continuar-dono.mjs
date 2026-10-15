@@ -1,0 +1,20 @@
+const list = await (await fetch('http://127.0.0.1:9224/json/list')).json();
+const pg = list.find(t => t.type === 'page' && /lolidle/.test(t.url));
+if (!pg) { console.log('DONO: sem aba do jogo'); process.exit(0); }
+const url = pg.webSocketDebuggerUrl || ('ws://127.0.0.1:9224/cdp');
+const ws = new WebSocket(url);
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p, sid) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify(sid ? { id: i, method: m, params: p||{}, sessionId: sid } : { id: i, method: m, params: p||{} })); setTimeout(() => r({ __t: true }), 9000); });
+let s = null;
+if (!pg.webSocketDebuggerUrl) { s = (await send('Target.attachToTarget', { targetId: pg.targetId, flatten: true })).result?.sessionId; }
+const ev = (expr) => send('Runtime.evaluate', { expression: expr, returnByValue: true }, s);
+const r = await ev("JSON.stringify({ botoes: [...document.querySelectorAll('button, .botao, [role=button], a')].map(b => (b.textContent||'').trim().slice(0,40)).filter(t => /continuar|jogar aqui|aqui/i.test(t)), todos: [...document.querySelectorAll('button, .botao')].map(b => (b.textContent||'').trim().slice(0,30)).slice(0, 25) })");
+console.log('DONO: ' + (r.__t ? 'SEM RESPOSTA (travado)' : String(r.result?.result?.value).slice(0, 500)));
+const c = await ev("(() => { const els = [...document.querySelectorAll('button, .botao, [role=button], a, div')]; const b = els.find(x => /continuar aqui|jogar aqui|continuar neste|jogar neste/i.test((x.textContent||'').trim())); if (!b) return 'nao achei o botao'; b.click(); return 'CLIQUEI: ' + (b.textContent||'').trim().slice(0,40); })()");
+console.log('DONO: ' + (c.__t ? 'sem resposta' : String(c.result?.result?.value)));
+await new Promise(r2 => setTimeout(r2, 3000));
+const d = await ev("JSON.stringify({ rs: document.readyState, vida: (document.querySelector('#hud-vida-txt')||{}).textContent||null, local: (document.querySelector('#local-nome')||{}).textContent||null })");
+console.log('DONO DEPOIS: ' + (d.__t ? 'ainda travado' : String(d.result?.result?.value)));
+ws.close(); process.exit(0);

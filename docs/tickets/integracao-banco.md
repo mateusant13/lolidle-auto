@@ -731,3 +731,19 @@ Liguei as janelas ao `seen` com match de regiao NORMALIZADO (semAcento, prefixo 
 trazer as janelas, ou (a) as rodadas salvas passam a levar `janela`, ou (b) o `seen` passa a incluir as
 regioes do `agregar()` como celulas. E uma decisao de DESENHO, nao um campo em falta.
 **Estado: 4 falhas, 22/25 verdes.**
+## ADENDA 18:30 - medido APLICADO: a suite w10 fica VERDE (23/25) — 8 do refinar ficam abertas
+Com o `medido` a vir do RANK (rodadas de teste salvas, `mob.goldMin`) e `divergenciaMedido` calculada:
+- **`w10` fica VERDE** (o unico defeito dela era o `ReferenceError: medido`);
+- `refinar` passa a CORRER e falha **8** (R0-R3), que estavam escondidas atras do ReferenceError;
+- total: **4 -> 10 falhas, 22 -> 23 suites verdes**.
+**Mantido** (mesmo principio dos exports: API/area alcancavel > numero baixo com falhas escondidas).
+
+### As 8 do refinar (proximo trabalho, com o contrato do teste a vista)
+  R0: sem historico -> `medido === null` (o meu NAO fica null: o rank tem entrada sem historico);
+  R1: com n=4 a 9999 ouro/min a lista CONTINUA teorica e a fonte 'teorico';
+  R1: a build medida NAO entra na lista de essenciais;
+  R2: `medido` devolvido (n=4, 9999) e a divergencia nomeia o '3089';
+  R3: o 3089 NUNCA e alvo do refino e os itens da teorica SAO os essenciais.
+**Leitura:** o `refinarMelhores` do master difere do do ramo w2 em COMO escolhe `essenciais`
+(`fonteEssenciais`/rank). Nao e o `medido`: e a semantica da lista. E o PAR completo (medido + lista).
+**w1-regioes D (2)**: decisao de desenho (o `seen` do ranking vem das rodadas salvas, nao do `farm.cycles`).

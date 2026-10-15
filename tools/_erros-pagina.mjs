@@ -1,0 +1,13 @@
+const list = await (await fetch('http://127.0.0.1:9224/json/list')).json();
+const pg = list.find(t => t.type === 'page' && /lolidle/.test(t.url));
+const ws = new WebSocket(pg.webSocketDebuggerUrl);
+let id = 0; const pend = new Map(); const evs = [];
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } else if (m.method === 'Log.entryAdded') evs.push('LOG[' + m.params.entry.level + '] ' + (m.params.entry.text||'').slice(0,160)); else if (m.method === 'Runtime.exceptionThrown') evs.push('EXC ' + ((m.params.exceptionDetails.exception && m.params.exceptionDetails.exception.description) || m.params.exceptionDetails.text || '').slice(0,180)); else if (m.method === 'Runtime.consoleAPICalled') evs.push('CONSOLE[' + m.params.type + '] ' + (m.params.args||[]).map(a=>String(a.value||a.description||'')).join(' ').slice(0,160)); });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method: m, params: p || {} })); setTimeout(() => r({ __t: true }), 15000); });
+await send('Log.enable'); await send('Runtime.enable'); await send('Page.enable');
+await send('Page.reload', { ignoreCache: true });
+await new Promise(r => setTimeout(r, 12000));
+console.log('eventos capturados: ' + evs.length);
+for (const e of evs.slice(0, 25)) console.log('  ' + e);
+ws.close(); process.exit(0);

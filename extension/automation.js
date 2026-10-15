@@ -5753,6 +5753,22 @@ const CFG_VER = 1;
       }
     } catch { /* ignore */ }
     if (!essenciais.length) { try { essenciais = (buildIdeal() || []).map(String); } catch { essenciais = []; } }
+    // R0/R1/R2 (refinar.test.mjs): a MEDICAO a validar vem do RANK das rodadas de teste salvas
+    // (com `mob.goldMin`), NAO do `agregar()` - senao havia 'medicao' onde nao ha e o R0 falhava.
+    let medido = null, divergenciaMedido = [];
+    try {
+      const rk = (rankBuildsTestadas(null) || []).filter((x) => x && x.mob && x.mob.goldMin != null)
+        .sort((x, y) => (y.mob.goldMin || 0) - (x.mob.goldMin || 0));
+      if (rk.length) {
+        const m0 = rk[0]; const itensM = (m0.itens || []).map(String);
+        const nM = (m0.confianca && m0.confianca.mob) || itensM.length;
+        if (nM >= 3) {
+          medido = { n: nM, ouroMin: m0.mob.goldMin, xpMin: m0.mob.xpMin, itens: itensM };
+          const teorM = (() => { try { return (buildIdeal() || []).map(String); } catch { return []; } })();
+          divergenciaMedido = itensM.filter((id) => teorM.indexOf(id) < 0);
+        }
+      }
+    } catch { /* sem medicao */ }
     const alvos = readEquip().filter((e) => {
       const it = (META.itens || []).find((x) => String(x.id) === e.base);
       // TETO DE REFINO — mecanica MEDIDA no texto do próprio Ornn:

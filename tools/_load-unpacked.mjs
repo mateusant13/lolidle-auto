@@ -1,0 +1,14 @@
+const v = await (await fetch('http://127.0.0.1:9224/json/version')).json();
+console.log('browser: ' + v.Browser + ' | ws: ' + (v.webSocketDebuggerUrl ? 'ok' : 'AUSENTE'));
+if (!v.webSocketDebuggerUrl) process.exit(0);
+const ws = new WebSocket(v.webSocketDebuggerUrl);
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method: m, params: p || {} })); setTimeout(() => r({ __t: true }), 15000); });
+const r = await send('Extensions.loadUnpacked', { path: 'I:\\!lolidle.com\\extension' });
+console.log('loadUnpacked: ' + (r.__t ? 'sem resposta' : JSON.stringify(r.result || r.error).slice(0, 250)));
+await new Promise(r2 => setTimeout(r2, 3000));
+const list = await (await fetch('http://127.0.0.1:9224/json/list')).json();
+console.log('alvos de extensao agora: ' + list.filter(t => /chrome-extension/.test(t.url)).length);
+ws.close(); process.exit(0);
