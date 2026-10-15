@@ -91,3 +91,26 @@ apontar para o teste (e não para o `automation.js`), o problema é do harness, 
 
 **Lição de método (3 tentativas perdidas):** editar por string exacta falha quando o ficheiro tem a
 versão com guarda; **procurar a linha por regex, imprimir, e só depois editar**.
+
+
+## ADENDA 08:15 — GUARDA NO STUB: o pendura virou erro (e a stack acusa o STUB)
+Instrumentei o `setTimeout` do stub (`dom-stub.mjs:386-394`) com contador + `throw` acima de 3000:
+```js
+let __TO_N = 0;
+const setTimeoutStub = (fn, ms) => { if (++__TO_N > 3000) throw new Error('STUB GUARD: >3000 setTimeout; stack=' + ...); … }
+```
+Resultado: **o banco TERMINA** (não pendura) e a stack do disparo é:
+```
+at setTimeoutStub (dom-stub.mjs:387)
+at <anonymous> (dom-stub.mjs:394)
+```
+**A stack acusa o PRÓPRIO STUB** (linha 394 = o `fn()` dentro do `setTimeoutStub`), não uma linha do
+`automation.js`. Ou seja: a cadeia que estoura é interna ao harness — o stub chama os callbacks
+**sincronamente**, e o callback volta a agendar, tudo dentro da mesma pilha. **Isto aponta para o
+harness, não para a extensão.**
+
+**Ganho imediato:** com a guarda, um pendura (inútil para CI) passa a ser uma **falha com stack**
+(acionável). Fica no repo.
+
+**Próximo passo:** aumentar as frames da stack (`slice(1, 20)`) e imprimir o `String(fn)` completo no
+erro — isso dá o nome da função do `automation.js` que está a reagendar, sem cortar código nenhum.

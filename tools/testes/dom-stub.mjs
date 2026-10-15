@@ -383,7 +383,8 @@ export function criarMundo(opts) {
   /* ---- timers: setTimeout resolve em microtask; setInterval NAO dispara ---- */
   let seq = 0;
   const pendentes = new Map();
-  const setTimeoutStub = (fn, ms) => {
+let __TO_N = 0;
+  const setTimeoutStub = (fn, ms) => { if (++__TO_N > 3000) { throw new Error('STUB GUARD: >3000 setTimeout; stack=' + String(new Error().stack).split('\n').slice(1, 5).join(' | ')); }
     const id = ++seq;
     if (typeof fn !== 'function') return id;
     pendentes.set(id, true);
