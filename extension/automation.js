@@ -679,7 +679,8 @@
     const perWave = mediaWaveDe(META.grupoSpawn) || (aw && aw.perWave) || 3;
     // A taxa aceita a MEDIDA (agregar/perMin) além da janela do #log: sem isto, um mundo com kills
     // medidos mas poucos abates no log devolvia null e o ritmo desaparecia.
-    const km = (aw && aw.killsMin) || killsMinAoVivo();
+    // NAO usar `killsMinAoVivo()` aqui: ele chama o `ritmoMobs` de volta (recursao). Ler a MEDIDA directa.
+    const km = (aw && aw.killsMin) || (() => { try { for (const a of (agregar() || [])) if (a.killsMin) return a.killsMin; } catch { /* ignore */ } return null; })();
     if (!(km > 0)) return null;
     const gapS = (aw && aw.medGapMs) ? aw.medGapMs / 1000 : (perWave / km) * 60;
     if (!gapS) return null;
