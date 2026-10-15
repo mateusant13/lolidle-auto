@@ -308,3 +308,15 @@ quebrou** e o `git checkout` reverteu TUDO (incluindo a `fatorDanoMonstroMotor` 
 **Pendente:** `MIGRACOES_CFG` continua em falta (a suite `w10` rebenta com `ReferenceError`). O extractor
 por chavetas não chega para este caso — **ler o bloco no ramo (`tools/_w10config.js`) e transplantar à
 mão**, ou extrair com o mesmo método que funcionou para o `farmarItem*` (que era uma função inteira).
+
+
+## ADENDA 10:45 — `w10` C2: ligar o `migrarCfg` ao carregamento PIORA (20→21)
+Tentei as duas formas de ligar a migração ao LOAD (`const ler = (s) =>`, linha 7909):
+1. `const _mg = migrarCfg(s); cfg = {...DEFAULT, ...(_mg.cfg||{})}` → **sintaxe quebrou** (revertido).
+2. Inline: `...((migrarCfg(s) || {}).cfg || {})` → sintaxe OK mas **banco 20 → 21**.
+
+**Conclusão:** a migração no carregamento **não é só ligar** — o teste C2 (4 asserções) e outras suites
+dependem de detalhes (a ordem `DEFAULT → guardada`, o `cfgVer` gravado, o `enabled` à parte). É trabalho
+de desenho do `ler`, com o teste à frente (ler 320-350 do `w10.test.mjs`).
+
+**Estado mantido:** 20 falhas (o melhor medido), extensão válida.
