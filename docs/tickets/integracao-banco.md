@@ -118,3 +118,17 @@ E `farmarItemEstado`/`farmarItemParar`/`farmarItemTenho` **não existem** no mas
 ### Próximos alvos
 `hud` (10 — conta de kills-min H12a/H12c) · `w10` (11 — transplantar os 3 `farmarItem*` em falta) ·
 `fuga` (7) · `barrafase`/`chefe` (3 cada) · `integracao` (1).
+
+
+## ADENDA 08:40 — `w10` não é falta de funções
+Transplantei de `tools/_w10config.js` as 3 funções que faltavam (`farmarItemEstado`, `farmarItemParar`,
+`farmarItemTenho`) e exportei-as: **sintaxe OK, banco INALTERADO (46→46)**. Logo as 11 falhas do `w10`
+**não são "is not a function"** — são comportamento (a lógica do `farmarItem`/`escolherConjunto`/
+duplicata saturada). Revertido (não guardo alterações sem efeito medido).
+
+**Lição:** antes de transplantar, correr o banco e **ler a mensagem exacta** da falha — se não for
+"is not a function", o transplante não resolve nada.
+
+### Progresso total: 65 → 46 falhas (6 correcções reais)
+`proximoGiro` (pendura) · `parseNum` k/M · `readStats` cdr/crit · `nivelChefeDe` null · `estimarLuta`
+fator de nível · `scoreSet` crítico dos autos.
