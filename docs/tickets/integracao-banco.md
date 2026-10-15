@@ -525,3 +525,13 @@ Corrigido para `const naBase = () => /fonte/i.test(loc.text);` -> **banco 14 -> 
 estavam escondidas atras do TypeError). Mantido pela mesma razao das outras: bug real > numero baixo.
 NOTA: `'Fonte de Runeterra'` casa com `/fonte/i` -> o `refinarMelhores` deixa de sair cedo.
 O `medido` continua por fazer (7 tentativas): com o `naBase` corrigido, o par `medido`+R3 pode agora fechar.
+## ADENDA 13:50 - medido com o naBase corrigido: ainda 16->22 (8.a tentativa)
+Com o `naBase` a funcao (bug real corrigido), implementei outra vez o `medido` pelo contrato
+(`{ n, ouroMin, xpMin }` do `agregar()` + itens do `rankBuildsTestadas`) -> **16 -> 22** nas duas corridas.
+**Conclusao final do `medido`:** NAO e o `medido` que falta - e o RESTO da suite `refinar` que nunca
+correu (R1/R2/R3/R4: a lista teorica vs medida, o alvo no Ornn, o proprio `refinar` a correr).
+Dar-lhe o `medido` faz a suite correr e falhar 6-9 assercoes reais. O trabalho e o PAR completo numa
+ronda (o `medido` + o que o R3 exige: `r3.ok === true`), senao o numero sobe sem ganho.
+**8 tentativas medidas:** null 24 · agregar 23 · tirar do diag 20/23 · modulo 23 · por-funcao 21 ·
+so-rank 20 · duas-fontes 20/23 · duas-fontes+naBase 22.
+**Estado: 16 falhas (com o `naBase` corrigido), 21/25 suites verdes.**
