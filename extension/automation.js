@@ -1557,6 +1557,25 @@
     return out;
   }
 
+  /** AD BASE do campeao actual pelo kit do motor (motor.js:508 `ad = k.adBase + k.adNivel * g`,
+   *  com `g = crescimento(nivel)`; motor.js:496-500 `PONTOS_POR_NIVEL`/MODELOS e o painel).
+   *  O AD do painel ja vem com os itens e os %, por isso o BONUS e total - base. TK-02-149. */
+  function adBaseCampeao(nivel) {
+    const c = META.champAtual || META.champ || {};
+    const adBase = Number(c.adBase);
+    const adNivel = Number(c.adNivel);
+    if (!Number.isFinite(adBase)) return null;
+    if (!Number.isFinite(adNivel)) return adBase;
+    const n = Math.max(1, Number(nivel) || 1);
+    return adBase + adNivel * n;
+  }
+  function bonusAdDe(danoTotal, nivel) {
+    const base = adBaseCampeao(nivel);
+    if (base == null) return null;
+    const tot = Number(danoTotal);
+    if (!Number.isFinite(tot)) return null;
+    return Math.max(0, tot - base);
+  }
   /** Personagem actual no formato usado por avaliar().
    *  A vida agora vem do HUD com `fmt` k/M e o ESCUDO somado a vida efectiva; o `rv`, o critico e
    *  o CDR — que o painel do jogo escreve e eram deitados fora — passam a fazer parte do estado. */
@@ -1565,6 +1584,7 @@
     const nivel = parseInt(document.querySelector('#hud-nivel')?.textContent || document.querySelector('#st-nivel')?.textContent || '0', 10) || 0;
     const hp = lerVidaHud();
     const sid = lerStatsId();
+    const dano = s['Dano'] || 0;   // AD TOTAL do painel (motor.js:508 + itens); ver bonusAd
     // `va` = velocidade de ataque do HUD — usada como PISO de DPS quando nao ha historico medido
     // (dano × vel. ataque = DPS de auto-ataque). Antes so existia `dano`, e usar o DANO POR GOLPE
     // como se fosse DPS inflacionava qualquer valor de buff (ex.: a Respiracao do Vento).
@@ -1583,6 +1603,11 @@
       critDano: sid.critDano != null ? sid.critDano : 1.75,          // motor.js:499 (base)
       // CDR TOTAL do painel (motor.js:537: foco + itens, tecto 0,4) — a soma dos itens so nao chega.
       cdr: sid.cdr != null ? sid.cdr / 100 : null,
+      // BONUS AD (motor.js:540 `bonusAd: ad - baseAd`): o AD que vem DOS ITENS e dos %. E o que
+      // a HEMORRAGIA do Darius usa (motor.js:1652 `danoSangue = (13 + 0.3*adEfetivo.bonusAd + 4*nivel)/5`).
+      // O painel da o AD TOTAL (motor.js:508 `ad = k.adBase + k.adNivel * g` + itens), por isso o
+      // bonus e TOTAL menos o que o kit diz que e base. TK-02-149.
+      bonusAd: bonusAdDe(dano, nivel),
       fonte: { vida: hp.max != null ? 'jogo:hud' : 'fallback', rv: s['Roubo de vida'] != null ? 'jogo:st' : 'ausente' },
     };
   }
@@ -1731,6 +1756,51 @@
     return r;
   }
 
+
+  // ============ HEMORRAGIA DO DARIUS (TK-02-149) ============
+  // O Darius e o UNICO campeao com `hemorragia: true` (motor.js:883). A passiva aplica
+  // ACUMULOS no alvo e eles queimam vida por segundo:
+  //   motor.js:1291-1299 `aplicarHemorragia`: 5 acumulos, `tSangue = 5` s; ao chegar a 5
+  //     liga `c.darius.poder = 5` (o Poder de Noxus).
+  //   motor.js:1652 `const danoSangue = (13 + 0.3 * adEfetivo.bonusAd + 4 * estado.nivel) / 5;`
+  //   motor.js:1667 `const dano = mitigar(danoSangue * i.acumulos * dt, i.armadura * (1 - a.penArmadura));`
+  //   motor.js:1345-1351 `efetivo`: com `d.poder` ligado o AD leva
+  //     `bonusPoder(nivel) = 30 + 200*(min(n,18)-1)/17 + 4*max(0,n-18)` a mais.
+  // A extensao nao tinha UMA referencia a nada disto: zero.
+  /** Poder de Noxus (motor.js:1351): o AD que o Darius ganha enquanto o poder esta ligado. */
+  function bonusPoderDe(nivel) {
+    const n = Math.max(1, Number(nivel) || 1);
+    return 30 + (200 * (Math.min(n, 18) - 1)) / 17 + 4 * Math.max(0, n - 18);
+  }
+  /** Dano POR ACUMULO POR SEGUNDO da hemorragia, antes de mitigar (motor.js:1652).
+   *  `bonusAd` = AD de bonus do personagem (itens + %, motor.js:540 `bonusAd: ad - baseAd`).
+   *  Com o Poder de Noxus ligado o motor usa o `adEfetivo` (motor.js:1348), onde o
+   *  `bonusPoder` entra no `ad` e nao no `bonusAd`: o DOT nao cresce com
+   *  o bonusPoder, mas o RESTO do dano cresce (ver `hemorragiaDe`). */
+  function danoSangueDe(nivel, bonusAd) {
+    const b = Math.max(0, Number(bonusAd) || 0);
+    return (13 + 0.3 * b + 4 * (Number(nivel) || 1)) / 5;
+  }
+  /** HEMORRAGIA completa do campeao actual (ou null se nao for o Darius).
+   *  Devolve: porAcumulo (dano/s por acumulo, sem mitigar), acumulos (5),
+   *  duracao (5 s, motor.js:1294), bruto (porAcumulo x acumulos) e
+   *  dps (o bruto mitigado pela armadura do alvo, com a pen de armadura). */
+  function hemorragiaDe(nivel, bonusAd, alvo) {
+    const kit = (META.kits && META.champAtual && META.kits[META.champAtual.id]) || null;
+    const ehDarius = kit ? !!kit.hemorragia : !!(META.champAtual && META.champAtual.id === 'darius');
+    if (!ehDarius) return null;
+    const porAcumulo = danoSangueDe(nivel, bonusAd);
+    const acumulos = 5;                      // motor.js:1293
+    const duracao = 5;                       // motor.js:1294
+    const bruto = porAcumulo * acumulos;
+    let dps = bruto;
+    if (alvo && Number.isFinite(alvo.armadura)) {
+      const pen = (alvo.penArmadura != null ? alvo.penArmadura : null);
+      const arm = pen != null ? alvo.armadura * (1 - pen) : alvo.armadura;
+      dps = bruto * (100 / (100 + Math.max(0, arm)));
+    }
+    return { porAcumulo: +porAcumulo.toFixed(2), acumulos, duracao, bruto: +bruto.toFixed(2), dps: +dps.toFixed(2) };
+  }
   /** Campeão atual, detectado pelo caminho do ícone da skill (#hud-habs). */
   function detectarCampeao() {
     // FONTE PRIMARIA: o retrato do HUD traz "<champ>:<skin>" (ex.: 'yasuo:0').
@@ -1771,7 +1841,7 @@
   /** Constrói o KAT a partir do kit do MOTOR (do campeão atual) — arrays por rank. */
   function aplicarKit() {
     const id = detectarCampeao();
-    const fonte = (META.kits && META.kits[id]) || (META.kit ? { kit: META.kit, adBase: META.champ && META.champ.adBase, adNivel: META.champ && META.champ.adNivel, magia: META.champ && META.champ.magia, semMana: META.champ && META.champ.semMana, adagas: META.champ && META.champ.adagas, distancia: META.champ && META.champ.distancia, papel: META.champ && META.champ.papel, giroSrc: null } : null);
+    const fonte = (META.kits && META.kits[id]) || (META.kit ? { kit: META.kit, adBase: META.champ && META.champ.adBase, adNivel: META.champ && META.champ.adNivel, magia: META.champ && META.champ.magia, semMana: META.champ && META.champ.semMana, adagas: META.champ && META.champ.adagas, distancia: META.champ && META.champ.distancia, papel: META.champ && META.champ.papel, giroSrc: null, hemorragia: META.champ && META.champ.hemorragia } : null);
     if (!fonte || !fonte.kit) { KAT = KAT_FB; return; }
     const serie = (a) => (Array.isArray(a) ? ((r) => a[Math.max(0, Math.min(a.length - 1, (r || 1) - 1))]) : null);
     const out = {};
@@ -1797,7 +1867,7 @@
         acumMax: h.acumMax, duracaoSinistra: h.duracaoSinistra };
     }
     KAT = out;
-    META.champAtual = { id, adBase: fonte.adBase, adNivel: fonte.adNivel, magia: !!fonte.magia, semMana: !!fonte.semMana, adagas: !!fonte.adagas, distancia: !!fonte.distancia, papel: fonte.papel || null };
+    META.champAtual = { id, adBase: fonte.adBase, adNivel: fonte.adNivel, magia: !!fonte.magia, semMana: !!fonte.semMana, adagas: !!fonte.adagas, distancia: !!fonte.distancia, papel: fonte.papel || null, hemorragia: !!fonte.hemorragia };
     // coeficientes da Voracidade, lidos do fonte da função do motor (P.giro)
     const src = fonte.giroSrc || '';
     const num = (re, d) => { const m = src.match(re); return m ? parseFloat(m[1]) : d; };
@@ -3987,7 +4057,15 @@
       const cap = 3 * (cv[0] + cv[1] * (alvo.nivel || 1) + cv[2] * (alvo.nivel || 1) ** 2);
       burn = Math.min(alvo.hp, cap) * 0.015; dps += burn;
     }
-    return { dps: Math.round(dps), ap: Math.round(ap), cdr: +cdr.toFixed(2), pen: +pen.toFixed(2), burn: Math.round(burn), habs: habs.sort((a, b) => b.dps - a.dps).slice(0, 5), det };
+    // HEMORRAGIA DO DARIUS (motor.js:1652 + 1667): DOT de 5 acumulos x 5 s, mitigado pela
+    // armadura do alvo com a pen de armadura (que ja inclui a do KIT, TK-02-114).
+    // Só entra quando o alvo tem armadura conhecida — sem alvo nao ha mitigacao a aplicar.
+    let hem = null;
+    if (alvo && Number.isFinite(alvo.armadura)) {
+      const h = hemorragiaDe(p.nivel, p.bonusAd, { armadura: alvo.armadura, penArmadura: S.penArmadura });
+      if (h) { hem = h; dps += h.dps; }
+    }
+    return { dps: Math.round(dps), ap: Math.round(ap), cdr: +cdr.toFixed(2), pen: +pen.toFixed(2), burn: Math.round(burn), hemorragia: hem, habs: habs.sort((a, b) => b.dps - a.dps).slice(0, 5), det };
   }
 
   /** Multiplicador médio de ATRIBUTO dos itens EQUIPADOS (refino +12%/nv, qualidade): (1+0.12·ref)·multQual. */
@@ -7366,6 +7444,8 @@
     penKitDe, penKitCampeao, rankKitDe, statsSet, aplicarKit,
     // ---- CURA DO GIRO (TK-02-130): a cura propria da Katarina, por rank da D ---
     curaGiroDe, curaGiroS, cdVorazMotor, larvasInvoca: () => larvasInvoca.slice(),
+    // ---- HEMORRAGIA DO DARIUS (TK-02-149) ----
+    bonusPoderDe, danoSangueDe, hemorragiaDe, bonusAdDe, adBaseCampeao,
     // ---- BUILD POR FASE (mob × chefe) e AS QUATRO FONTES ----
     buildParaMob, buildParaChefe, buildDaFase, buildIdealParaFase, faseBuild, planoBuildFase,
     alvoQuatroFontes, fontesDeItens, minhasOfertas, cofreConhecido, pecasDaFaseNoCofre,

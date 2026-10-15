@@ -62,7 +62,7 @@ const M = {
   LUDEN_AP:        extrair('motor.js', MOTOR_SRC, /golpear\(estado, c, adEfetivo, i, ([\d]+) \+ ([\d.]+) \* \(a\.ap \|\| 0\)/, 'Luden AP%', 2),
   LUDEN_CD:        extrair('motor.js', MOTOR_SRC, /if \(a\.tem\('6655'\) && \(d\.timers\.luden \|\| 0\) <= 0\) \{\s*d\.timers\.luden = ([\d.]+);/, 'Luden recarga'),
   LUDEN_ALVOS:     extrair('motor.js', MOTOR_SRC, /d\.timers\.luden = [\d.]+;\s*const alvos = \(vivos \|\| \[\]\)\.filter\(\(i\) => i\.hp > 0\)\.slice\(0, ([\d]+)\)/, 'Luden alvos'),
-  LIANDRY_PCT:     extrair('motor.js', MOTOR_SRC, /if \(a\.tem\?\.\('6653'\)\) alvo\.queima = \{ dps: vidaRefItem\(alvo\) \* ([\d.]+)/, 'Liandry %/s'),
+  LIANDRY_PCT:     extrair('motor.js', MOTOR_SRC, /if \(a\.tem\?\.\('6653'\)\) alvo\.queima = donoQueima\(\{ dps: vidaRefItem\(alvo\) \* ([\d.]+), t: (\d+)/, 'Liandry %/s'),
   CHAMA_4645:      extrair('motor.js', MOTOR_SRC, /if \(a\.tem\?\.\('4645'\) && f < 0\.4\) bruto \*= ([\d.]+);/, 'Chama Sombria +20%'),
   MORELO_3165:     extrair('motor.js', MOTOR_SRC, /if \(a\.tem\?\.\('3165'\) && f < 0\.5\) bruto \*= ([\d.]+);/, 'Morellonomicon +12%'),
   SHUNPO_PEGA:     extrair('motor.js', MOTOR_SRC, /if \(HP\.shunpo && d\.recargas\?\.E > 0\) d\.recargas\.E \*= ([\d.]+) - HP\.shunpo;/, 'Shunpo 1-x'),

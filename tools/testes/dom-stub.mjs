@@ -565,11 +565,11 @@ export function definirCampeao(mundo, id, over) {
   const base = CHAMPS[id] || { magia: false, distancia: false, papel: { dano: 1, recebido: 1 } };
   const fonte = {
     kit: over.kit || KIT_MINIMO,
-    adBase: 60, adNivel: 3,
+    adBase: over.adBase != null ? over.adBase : 60, adNivel: over.adNivel != null ? over.adNivel : 3,
     magia: over.magia != null ? !!over.magia : !!base.magia,
     distancia: over.distancia != null ? !!over.distancia : !!base.distancia,
     papel: over.papel || base.papel,
-    semMana: false, adagas: false,
+    semMana: false, adagas: false, hemorragia: !!over.hemorragia,
   };
   mundo.montar(IMG_HAB_SEL, [mundo.el({ tag: 'img', label: 'hud-hab-img', attrs: { src: '/img/habilidades/' + id + '/q.png' } })]);
   const kits = {};

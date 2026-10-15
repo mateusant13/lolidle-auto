@@ -509,14 +509,43 @@ export function dpsComRanks(campeao, nivel, st, boss, ranks) {
   const auto = mit(st.ad * esperanca, armFis) * papel * fj * st.velAtaque * (1 + vaExtra);
   const barra = escolherBarra(campeao, nivel, ranks, st, boss);
   const skills = barra.reduce((s, t) => s + dpsDaHabilidade(campeao, t, ranks[t], st, boss, nivel).dps, 0);
-  return { auto, skills, penSuspiro, vaExtra, barra, penTotal };
+  // ---- VORACIDADE (giro da adaga) — motor.js:737 + motor.js:2161-2171 (TK-02-130) ----
+  // O giro e uma parcela REAL do DPS da Katarina (cada skill de adaga que ela pega dispara-o) e
+  // era calculado SO no `dpsTeorico`. Sem ele aqui, o `ranksNoNivel` (que gasta os pontos pelo
+  // ganho de `auto + skills`) nao via valor NENHUM em subir a Q/A/T (as que deixam adaga) nem a D
+  // (que da a cura e a velocidade de ataque por adaga) — a passiva ficava a 0 em todas as lutas.
+  let giro = 0, curaGiro = 0;
+  if (campeao === 'katarina') {
+    const armMag = armEfetiva(st, boss, true, true);
+    const dagasPorS = barra.filter((t) => H[t].adaga).reduce((s2, t) => {
+      const d = dpsDaHabilidade(campeao, t, ranks[t], st, boss, nivel); return s2 + (d.cd ? 1 / d.cd : 0);
+    }, 0);
+    const girosPorS = Math.min(dagasPorS, 1 / H.P.pegaCada);                                  // motor.js:2181
+    const brutoGiro = H.P.giro(nivel, st);
+    const danoGiro = mit(brutoGiro, armMag) * papel * fj * (1 + st.danoHab);                  // motor.js:1201, 1218, 2165
+    giro = danoGiro * girosPorS;
+    curaGiro = (H.P.curaBase + (ranks.D > 0 ? H.D.curaGiro[ranks.D - 1] : 0)) * giro;          // motor.js:2169-2170
+  }
+  return { auto, skills, giro, curaGiro, penSuspiro, vaExtra, barra, penTotal };
 }
 /** Gasta TODOS os pontos (motor.js:1048) pelo maior ganho de DPS, JÁ com os buffs. */
 export function ranksNoNivel(campeao, nivel, st, boss) {
   const H = HAB_SIM[campeao];
-  const teclas = Object.keys(H).filter((t) => !H[t].passiva && t !== 'D' && t !== 'P');
+  // A PASSIVA D CONTA COMO SKILL (TK-02-130): na Katarina a D e a Lamina Sinistra — cada adaga
+  // pega da velocidade de ataque por 3 s (motor.js:768 vaAdaga, acumula 3x) E parte do dano do
+  // giro volta como vida (curaGiro, motor.js:2188-2193). Excluir a D do criterio de valor deixava
+  // a Katarina SEM a cura propria em TODAS as lutas do simulador (a curaGiro ficava no curaBase).
+  // A D tem nivel 18 (motor.js:768), portanto so e elegivel a partir dai — a propria
+  // rankMaximoNoNivel ja devolve 0 antes do nivel da habilidade.
+  const teclas = Object.keys(H).filter((t) => !H[t].passiva && t !== 'P' && H[t].nivel != null);
   const ranks = {}; for (const t of teclas) ranks[t] = 0;
-  const valor = (r) => { const x = dpsComRanks(campeao, nivel, st, boss, r); return x.auto + x.skills; };
+  // o valor passa a incluir a CURA (motor.js:2169-2170): a tupla do dono e (sobrevive?, segundos,
+  // pocoes) e nao so DPS — a cura da D compra sobrevivencia e pocoes.
+  // O CRITERIO E A TUPLA DO DONO, NAO SO O DPS: (sobrevive?, mata em quantos segundos?, quantas
+  // pocoes?). A cura do giro da D compra SOBREVIVENCIA e POCOES — sem ela no valor, subir a D
+  // tinha ganho 0 e a passiva nunca subia (TK-02-130). Peso da cura: 1 ponto de cura/s vale o
+  // mesmo que 1 ponto de dano/s AQUI (ambos medidos na mesma unidade: vida por segundo).
+  const valor = (r) => { const x = dpsComRanks(campeao, nivel, st, boss, r); return x.auto + x.skills + (x.giro || 0) + (x.curaGiro || 0); };
   for (let i = 0; i < nivel; i++) {
     let melhor = null; const antes = valor(ranks);
     for (const t of teclas) {
@@ -1111,7 +1140,10 @@ export function linhaTupla(a) {
   const seg = a.mata ? a.seg + ' s' : (a.motivo === 'morreu' ? 'MORRE aos ' + a.t + ' s' : 'nao mata (' + a.motivo + ')');
   return (a.mata ? 'MATA ' : 'NAO  ') + String(seg).padEnd(22) + '| pocoes ' + String(a.pocoes).padStart(3)
     + ' = ' + String(a.custoPocoes).padStart(6) + ' g | ouro total ' + String(a.ouroTotal).padStart(7) + ' g'
-    + ' | rv ' + (100 * a.rouboVida).toFixed(0) + '% cura ' + Math.round(a.curaRV) + '/s';
+    + ' | rv ' + (100 * a.rouboVida).toFixed(0) + '% cura ' + Math.round(a.curaRV) + '/s'
+    // CURA DO KIT (motor.js:2169-2170, giro da Katarina): NAO e roubo de vida e nao podia faltar
+    // do relatorio — e a cura propria do campeao (TK-02-130).
+    + (a.curaKit > 0 ? ' | kit(giro) ' + Math.round(a.curaKit) + '/s' : '');
 }
 /** Primeiro nível em que a build SOBREVIVE e MATA (varre nivel de..50). */
 export function primeiroNivelQueMata(campeao, itens, opts) {
@@ -1365,7 +1397,9 @@ export function relatorioPorLuta(opts) {
     L('      atributos MEDIDOS ' + JSON.stringify(atMed) + ' (o painel do dono e 81/3/0/0/0 na Katarina; a regra do painel no nv' + nivel + ' da ' + JSON.stringify(atribDono(nivel)) + ')');
     L('      modelo: hp ' + Math.round(st.vida) + ' ad ' + Math.round(st.ad) + ' ap ' + Math.round(st.ap) + ' arm ' + Math.round(st.armadura) + ' rm ' + Math.round(st.rm) + ' va ' + st.velAtaque.toFixed(2) + ' cdr ' + (100 * st.reducaoRecarga).toFixed(2) + '%'
       + (med.vida ? ' | MEDIDO: hp ' + med.vida + ' ad ' + med.dano + ' arm ' + med.armadura + ' rm ' + med.rm + ' -> erro hp ' + (st.vida - med.vida).toFixed(0) + ' ad ' + (st.ad - med.dano).toFixed(1) + ' arm ' + (st.armadura - med.armadura).toFixed(0) + ' rm ' + (st.rm - med.rm).toFixed(0) + ' (erro do modelo, NAO VERIFICADO)' : ''));
-    L('      vs Barao nv' + x.bossNivel + ': ' + linhaTupla(x) + '  (rv ' + (100 * x.rouboVida).toFixed(0) + '% -> cura ' + Math.round(x.curaRV) + '/s)');
+    L('      vs Barao nv' + x.bossNivel + ': ' + linhaTupla(x)
+      + '  (rv ' + (100 * x.rouboVida).toFixed(0) + '% -> cura ' + Math.round(x.curaRV) + '/s'
+      + (x.curaKit > 0 ? ' | KIT/giro ' + Math.round(x.curaKit) + '/s, motor.js:2169-2170' : '') + ')');
     L('      com a regra do painel: ' + linhaTupla(xd));
     L('      sem pocao: ' + (x.semPocao.mata ? 'ainda mata' : 'morre aos ' + x.semPocao.t + ' s'));
   }
