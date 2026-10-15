@@ -5475,6 +5475,32 @@
   /** Estado do farm de itens (usado em 4 sitios, nunca declarado — ReferenceError no banco). */
   let _farmItem = { ids: [], regiao: null, desde: 0, parou: null, destino: null };
 
+  function farmarItemEstado() {
+    const ids = _farmItem.ids.length ? _farmItem.ids : farmarItemIds(cfg.farmarItem);
+    return { ativo: ids.length > 0, ids, regiao: _farmItem.regiao, desde: _farmItem.desde,
+      parou: _farmItem.parou, destino: _farmItem.destino,
+      tenho: ids.map((b) => ({ base: b, tenho: farmarItemTenho(b) })) };
+  }
+
+  function farmarItemParar(motivo) {
+    const ids = _farmItem.ids.slice();
+    _farmItem = { ids: [], regiao: null, desde: null, parou: { at: Date.now(), motivo: motivo || 'manual' }, destino: null };
+    try { setConfig({ farmarItem: [], regionDefault: null }); } catch { /* ignore */ }
+    try { logEvent('farm-item', { parou: ids, motivo: motivo || 'manual' }); } catch { /* ignore */ }
+    return { ok: true, ids, motivo: motivo || 'manual' };
+  }
+
+  function farmarItemTenho(base) {
+    const b = String(base == null ? '' : base).replace(/[+~].*$/, '');
+    if (!b) return null;
+    try { if (readEquip().some((e) => String(e.base) === b)) return true; } catch { /* sem DOM */ }
+    try {
+      const bag = scanBag();
+      if (!bag) return null;
+      return (bag.items || []).some((i) => i.kind === 'item' && String(i.base) === b);
+    } catch { return null; }
+  }
+
   function farmarItem(ids) {
     const alvo = farmarItemIds(ids);
     if (!alvo.length) return { ok: false, motivo: 'sem itens (use farmarItem(["3089"]))' };
