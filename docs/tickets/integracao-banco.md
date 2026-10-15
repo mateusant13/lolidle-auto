@@ -343,3 +343,13 @@ if (/Enquanto voce estava fora/i.test(entry.body)) { logEvent('caca-offline', {.
 else { const g = …; const x = …; if (g || x) { … } }
 ```
 O `handleLog` tem **várias secções independentes** (abate, chefe, etc.) — um `return` corta as seguintes.
+
+
+## ADENDA 11:10 — B3: o `return { fJ,` que encontrei NÃO é do `estimarLuta`
+Tentei expor `meuDpsBoss` no `estimarLuta` procurando o 1.º `return {` depois de `function estimarLuta(`
+— **banco 19 → 22**: esse `return` pertence a **outra função** (o `fJ` do `estimarLuta` é devolvido noutro
+sítio, provavelmente construído por composição). Revertido.
+
+**Método certo:** procurar o `return` **dentro do corpo** do `estimarLuta` (por contagem de chavetas a
+partir da abertura da função), não por `indexOf` global — a mesma armadilha que já me apanhou antes
+(`numEcra`, `farmarItemEstado`).
