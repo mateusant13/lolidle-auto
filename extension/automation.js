@@ -5447,6 +5447,21 @@
     return melhor;
   }
 
+  /** Normaliza a lista de itens a farmar: aceita id OU nome, resolve pelo CATÁLOGO e tira
+   *  repetidos. Era CHAMADA (linhas 5451/5470) e nunca definida — a suite `w10` rebentava. */
+  function farmarItemIds(lista) {
+    const arr = Array.isArray(lista) ? lista : (lista == null ? [] : [lista]);
+    const out = [];
+    for (const x of arr) {
+      const t = String(x == null ? '' : x).trim();
+      if (!t) continue;
+      const it = (META.itens || []).find((y) => String(y.id) === t || String(y.nome || '').toLowerCase() === t.toLowerCase());
+      const id = it ? it.id : t;
+      if (!out.includes(id)) out.push(id);
+    }
+    return out;
+  }
+
   function farmarItem(ids) {
     const alvo = farmarItemIds(ids);
     if (!alvo.length) return { ok: false, motivo: 'sem itens (use farmarItem(["3089"]))' };
