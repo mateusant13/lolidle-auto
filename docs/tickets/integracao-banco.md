@@ -159,3 +159,17 @@ foge  = fatalVivo || morre || (perde && !cobrem)
 ```
 **Próximo passo:** instrumentar (`logEvent('dbg:fuga', { morre, perde, cobrem, idReg, temR: !!r, temEst: !!est })`
 antes do `if (!foge) return;`) e ler no banco QUAL dos três é falso. É 1 linha e mata a dúvida.
+
+
+## ADENDA 09:10 — `hud` H12a: a API não é o problema, são os VALORES
+`fracAuto` (6538) e `fracHabs` (6551) existem mas **não estavam exportadas**; exportei-as →
+**banco inalterado (34)**. Logo o H12a falha porque a **razão** `comCrit/semCrit` não bate com
+`1 + fracAuto()*(1,2625-1)`, não por falta de API. O teste monta `#st-crit = 35%` e `#st-critx = 1,75`
+(espera 0,35 x 0,75 = 0,2625). O meu `fCrit` (6606-6607) usa exactamente isso — **verificar se o
+`scoreSet` aplica o `fCrit` numa parcela que depois é sobrescrita**, ou se o `fracAuto()` (função, 6551)
+devolve um valor diferente do `1 - fracHabs` local (6594) usado no `fCrit`.
+
+**Método para a próxima:** comparar os dois valores com um teste rápido
+(`Math.abs(auto.fracAuto() - (1 - <fracHabs do scoreSet>))`) antes de mexer na fórmula.
+
+### Total: 65 → 34 falhas (12 correcções reais)
