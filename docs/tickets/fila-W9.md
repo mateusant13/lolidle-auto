@@ -32,7 +32,7 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Evidencia**: parte-02.md:5136-5145 — *“Os dois instrumentos discordam: scoreSet (motor) bota de pen 822 / bota de CDR 976; sim-build.mjs (simulador) bota de pen 1465 dps / bota de CDR 1238 dps. O simulador diz que a bota de pen ganha (+227 dps); o scoreSet diz que a bota de CDR ganha (+154). Não vou escolher entre eles sem resolver o conflito”*; e a hipótese de que o `scoreSet` estava contaminado pelo bug do `efeitosEquipados` **não se confirmou** — os valores ficaram idênticos depois da correcção (parte-02.md:5438); medições em parte-02.md:5107-5126 (`976 / 822 / 783 / 683 / 593`)
 - **Fazer**: descobrir porque os dois instrumentos discordam (fórmula, pesos, escalas de qualidade/refino, entrada do pen) e fazer um deles servir de referência independente do outro; só depois dar a resposta da bota ao dono.
 - **Aceitacao**: os dois instrumentos concordam na ordem das builds (ou a diferença está explicada por `file:linha` e documentada); número de medições com valores exactos; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: ABERTO — 'conflito entre instrumentos' (`scoreSet` vs o simulador) precisa de CORRER os dois e comparar os numeros; nao e verificavel por leitura. Proximo passo: `tools/sim-build.mjs` vs `scoreSet` no mesmo conjunto e diff
 
 ### TK-02-63 | P1 | A mesma passiva vale 3× no scoring (texto × `multEsp` 1,25 × `PESO_FASE` 1,35)
 - **Ficheiro(s)**: extension/automation.js
@@ -88,7 +88,7 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Evidencia**: parte-02.md:3187-3195 e 3290-3298 — contagem: *“(a) NECESSÁRIO = 5 (2%) (b) DERIVÁVEL = 103 (40%) (c) HEURÍSTICA MINHA = 151 (58%)”*, grupos G1..G23 (pesosItem 55, PESO_FASE 41, valorPassiva 28, ITENS_ESPECIAIS 34, KAT_FB 11, MECANICA+cópias 30, statsSet/estimarSet/scoreSet 13); auditoria em `docs/hardcodes-build.md` (331 linhas, cada linha com file:linha + token + valor + o que deveria ser)
 - **Fazer**: atacar primeiro os 103 **deriváveis** (substituir por leitura do jogo, um grupo de cada vez, começando pelos que mudam decisões: `pesosItem`, `PESO_FASE`, `valorPassiva`), e listar ao dono os 151 heurísticos que dependem de regra dele — sem os inventar.
 - **Aceitacao**: cada grupo tratado tem teste a provar que o valor vem do jogo (duas execuções com motor diferente dão resultado diferente) e a contagem de heurístico desce; relatório com a contagem nova por classe.
-- **Estado**: pendente
+- **Estado**: ABERTO (e e um PLANO, nao um defeito) — '259 hardcodes: 103 derivaveis e 151 heuristicas'. Nao se fecha com uma leitura; e trabalho de frentes. O que EXISTE: `auditoriaPassivas` (automation.js:5120) e o criterio da REGRA N.o 3
 
 ### TK-02-51 | P0 | Build ideal do motor escolhe a pior opção: bota de CDR + item de dano vs bota de pen + Ímpeto
 - **Ficheiro(s)**: extension/automation.js

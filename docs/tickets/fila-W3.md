@@ -35,7 +35,7 @@ Só podes mexer em: barraIdeal, rotacao/skillsPorFase, escolha de skill no comba
 - **Fazer**: para cada uma das 13, ler a mecânica em docs/game-src/motor.js (REGRA Nº 1: bloco inteiro, valor + lista de campos) e implementar regra própria activada pelo contexto de combate (mob/chefe/fase). Se alguma exigir peso que não existe no jogo, **não inventar**: deixar lista nomeada no relatório para o dono.
 - **Aceitacao**: cada passiva com `file:linha` do motor no comentário do código; `bun tools/testes/run.mjs` rc=0; nenhuma constante "inventada" sem origem no motor.
 - **Evidencia extra (RESUMO DE COMPACTAÇÃO #3, parte-02.md:3396)**: passivas já modeladas 37 de 50 (74%); as **13 restantes** são exactamente as de estado/combate: `3057 3116 3085 6655 3742 3102 3083 6610 3026 3157 6333 3078 3072`.
-- **Estado**: pendente
+- **Estado**: PARCIALMENTE ARRUMADO — o mecanismo existe (`PASSIVA_POR_ALVO` em automation.js:4901 + `valorPassiva`/`sinergiaDe`), mas **a cobertura das 13 passivas NAO foi verificada**: eu nao enumerei as 13 contra o motor. Fica ABERTO com o proximo passo explicito: listar as passivas de estado no motor (`k.hab.*.armPassiva`, `passivaLux`, ...) e confrontar uma a uma com o `PASSIVA_POR_ALVO`
 
 ### TK-01-37 | P2 | pontos de atributo: Vitalidade/Resistencia nao dao dano (Forca +2,64%, Agilidade +1,96%)
 - **Ficheiro(s)**: extension/automation.js

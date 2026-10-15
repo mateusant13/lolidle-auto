@@ -37,7 +37,7 @@ Só podes mexer em extension/inject.js, extension/content.js e docs/ (markdown).
 - **Evidencia**: parte-02.md:1618 — *“é pra levar em conta a nova atualizacao do jogo sobre chefes serem no maximo 4 leveis acima de voce … nao sei o limite disso e nao sei as condicoes”*; e parte-02.md:1643-1654 e 1670-1678 — a única regra encontrada é `motor.js:1121  Math.max(n0 + 2, Math.min(n1 + 2, nivelJogador))` (Baron 40–50 com boneco nível 1 → chefe 42); *“a regra dos 4 níveis acima não aparece em lado nenhum … a cópia do jogo que temos pode estar desactualizada. Não vou inventar o limite; fica registado como lacuna a re-exportar.”*
 - **Fazer**: re-exportar `docs/game-src/` a partir do jogo actual e procurar a regra dos 4 níveis (limite e condições); se existir, modelá-la com `file:linha`; se não existir no código, dizer que é regra do servidor e registar a lacuna.
 - **Aceitacao**: `docs/game-src/` com data/hash de exportação no relatório; a regra dos 4 níveis encontrada com `file:linha` ou declarada como não existente no código — nunca inventada.
-- **Estado**: pendente
+- **Estado**: ABERTO — 'a copia do jogo em docs/game-src/ pode estar desactualizada'. Verificavel por DADO: comparar o ficheiro local com o que o servidor serve. Proximo passo: `curl https://lolidle.com/js/motor.js` e comparar o hash com `docs/game-src/motor.js`
 
 ### TK-01-33 | P3 | motor-map.md §4.4 (drops por tier) nao reproduz o codigo nos tiers 0-2
 - **Ficheiro(s)**: docs/motor-map.md

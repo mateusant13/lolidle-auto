@@ -34,7 +34,7 @@ Só podes mexer em: decisão de guardar/vender épicos, autoEquip, mercado (poll
 - **Evidencia**: parte-01.md L3386: "your deliverable #1 explicitly requires full build equipada e verificada no jogo real. He is wearing five basic/epic items, not legendaries. That is the gap."; L2606: "Ornn epic crafting (18k-118k gold)... he now has 197.600, so he can start forging"
 - **Fazer**: executar a escada lendaria ate os 5 slots da build ideal estarem equipados com itens lendarios (ou a melhor versao encontrada por dado), e verificar ao vivo via ll.mjs (equip + player).
 - **Aceitacao**: leitura ao vivo dos 5 slots mostra itens da build final; player stats registadas; nenhum lendario vendido pelo caminho (proteccao componentesDaBuild activa, L4361-4379).
-- **Estado**: pendente
+- **Estado**: ABERTO — 'full build lendaria equipada e verificada' e um ENTREGAVEL (precisa de prova AO VIVO, no jogo a correr). Nao verificavel enquanto o jogo nao estiver a jogar (bloqueado nos 2 cliques do dono)
 
 ### TK-02-04 | P1 | `3031` Gume do Infinito não tem guarda de "intocável" (o Rabadon tem)
 - **Ficheiro(s)**: extension/automation.js

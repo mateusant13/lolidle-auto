@@ -55,7 +55,7 @@ Só podes mexer em: aplicação do KIT do campeão (jogarKit/aplicarKit e compan
 - **Evidencia**: parte-02.md:9861 e 9896 — *“JÁ ERRADAS HOJE (classe c): 6 itens do catálogo remendado (inject.js:161 manda I.ITENS_DADOS cru; o motor remenda 2022/1006/3057/3108/3802/4629 em motor.js:16-26 — a extensão recebe cdr/regen/efeito AUSENTES) + o tierDe (qIdx×10+refino diz que 1 qualidade = 10 refinos; motor.js:252 diz 1 degrau B→A ≈ 1,25 refinos — está 10× maior).”*
 - **Fazer**: passar a usar o catálogo já remendado pelo motor (em vez de `I.ITENS_DADOS` cru) e corrigir o `tierDe` para a fórmula do motor (`motor.js:252`).
 - **Aceitacao**: os 6 itens vêm com cdr/regen/efeito do motor, e o `tierDe` dá 1 qualidade ≈ 1,25 refinos; testes a cobrir os dois.
-- **Estado**: pendente
+- **Estado**: PARCIALMENTE ARRUMADO — a parte do `tierDe` esta PROVADA corrigida (ver TK-02-64: a formula bate com motor.js:261). Os '6 itens do catalogo remendado' NAO foram verificados um a um: fica ABERTO com o proximo passo (comparar os 6 precos/atributos com o catalogo do jogo)
 
 ### TK-02-102 | P0 | Premissa falsa no simulador: `Foco = 57,5` deduzido dos 23% de CDR — o Foco é 0 e os 23% são 100% do Ímpeto
 - **Ficheiro(s)**: tools/sim-build.mjs (recalcular) + extension/automation.js se depender do mesmo dado
