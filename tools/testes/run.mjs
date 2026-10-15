@@ -25,7 +25,7 @@ import { suite as suiteAtor } from './ator.test.mjs';
 import { suite as suiteBarra } from './barra.test.mjs';
 import { suite as suiteObjetivo } from './objetivo.test.mjs';
 import { suite as suiteEquip } from './equip.test.mjs';
-import { suite as suiteRegiao } from './regiao.test.mjs';
+import { suite as suiteRegiao, suiteW1 } from './regiao.test.mjs';
 import { suite as suitePontos } from './pontos.test.mjs';
 import { suite as suiteInterruptores } from './interruptores.test.mjs';
 import { suite as suiteCofre } from './cofre.test.mjs';
@@ -45,7 +45,7 @@ let filtro = null;
 const iF = argv.indexOf('--filter');
 if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 
-const SUITES = [suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre];
+const SUITES = [suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suiteW1, suitePontos, suiteInterruptores, suiteCofre];
 const checks = [];
 const notas = [];
 let populacaoExecutada = 0;

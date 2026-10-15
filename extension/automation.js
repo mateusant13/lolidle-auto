@@ -198,7 +198,27 @@
   };
   let cfg = structuredClone(DEFAULT);
 
-  const parseNum = (s) => { const d = String(s ?? '').replace(/[^\d]/g, ''); return d ? Number(d) : NaN; };
+  /** NUMERO DO ECRA DO JOGO — o `fmt` do jogo (cena.js:225) escreve sufixos:
+   *    n >= 1e6 -> (n/1e6).toFixed(1)+'M' · n >= 1e4 -> (n/1e3).toFixed(1)+'k' · senao Math.round(n)
+   *  DEFEITO MEDIDO (regra do Lead, 2026-10-14): o `parseNum` antigo apagava TUDO o que nao
+   *  era digito — `"12.3k"` virava 123. Corrompia EM SILENCIO, acima de 10.000, o
+   *  `readGold`(`#st-ouro`), o `readPotions`(`#hud-pocoes`), os precos do mercado e o
+   *  `parseDica`. Regra (a MESMA ja provada no content.js):
+   *    - sufixo {k:1e3, m:1e6} entra nos GRUPOS da regex (nao e lixo a deitar fora);
+   *    - grupo de 3 casas ("4.188") = MILHAR; grupo COM sufixo ("12.3k") = DECIMAL;
+   *    - com inteiros o comportamento e identico ao de antes (sem regressao). */
+  const parseNum = (s) => {
+    const m = String(s ?? '').trim().match(/^([\d.,]+)\s*([kKmM]?)$/);
+    if (!m) { const d = String(s ?? '').replace(/[^\d]/g, ''); return d ? Number(d) : NaN; }
+    let t = m[1];
+    if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');     // '1.234' / '4.188' = milhar
+    else t = t.replace(',', '.');                                       // '12,3' ou '12.3' = decimal
+    let v = parseFloat(t);
+    if (!Number.isFinite(v)) return NaN;
+    if (/k/i.test(m[2])) v *= 1e3;
+    if (/M/i.test(m[2])) v *= 1e6;
+    return Math.round(v);
+  };
   const numOr = (v, d) => Number.isFinite(v) ? v : d;
 
   // ------------------------------------------------------------- keybinds
@@ -354,7 +374,17 @@
    *  deduplicado, nem anunciado. Vale para QUALQUER raridade, não só lendário. */
   const acimaDeA = (it) => it.kind === 'item' && QUAL.includes(it.qual) && qIdx(it.qual) >= qIdx('A');
   /** TIER de um item = qualidade × refino (ordena 'qual o maior tier possível'). */
-  const tierDe = (i) => qIdx(i.qual) * 10 + (i.refino || 0);
+  /** TIER de uma peça na ESCALA DO MOTOR — nao 'qualidade = 10 refinos'.
+   *  motor.js:252  `m = (1 + BONUS_REFINO * ref) * (QUALIDADES[qual]?.mult || 1)`
+   *  motor.js:55   `BONUS_REFINO = 0,12` (+12% por nivel de refino)
+   *  motor.js:174-178 `QUALIDADES`: C 0,9 · B 1 · A 1,15 · S 1,35 · SS 1,7
+   *  BUG MEDIDO: 'qIdx × 10 + refino' punha 1 qualidade (A) = 10 refinos, e 1 refino valia o
+   *  mesmo que 1/10 de qualidade. Na escala do motor 1 qualidade (A = 1,15) vale ~1,25 refinos
+   *  (1,15/1,12 = 1,25) e QUALIDADE ALTA vence REFINO ALTO: 'A+0' (1,15) > 'C+2' (1,24)? 1,24 >
+   *  1,15 — refino 2 ainda ganha, mas 'A+0' (1,15) ja bate 'B+1' (1,12), que o tierDe antigo
+   *  perdia (0 contra 1). O desempate entre instancias do MESMO base passa a usar o m do motor.
+   *  Uso: ordenação (quanto maior, melhor). QUALIDADE DESCONHECIDA ('?') = 1 (sem multiplicador). */
+  const tierDe = (i) => (1 + BONUS_REFINO * (i.refino || 0)) * (QUAL_MULT[String(i.qual || 'B').toUpperCase()] || 1);
 
   /** BÁSICOS necessários p/ montar a build ideal (expande `de` recursivamente até a folha). */
   function basicosDaBuild(champ) {
@@ -637,11 +667,31 @@
     return { n: t.length, waves, perWave: +(t.length / waves).toFixed(2), killsMin: span > 0 ? +((t.length - 1) / (span / 60000)).toFixed(1) : null, intraMs: intra.length ? Math.round(mean(intra)) : null, interMs: inter.length ? Math.round(mean(inter)) : null, medGapMs: med, thrMs: Math.round(thr), spanS: Math.round(span / 1000) };
   }
 
+  /** MEDIA DA WAVE — valor esperado da distribuicao do motor (motor.js:1137):
+   *    `const qtd = 2 + Math.floor(r() * 3)`  ->  {2, 3, 4} equiprovavel
+   *  E[qtd] = (2+3+4)/3 = 3. Com os parametros que o inject mede (`grupoSpawn = {base, rand}`),
+   *  a media e base + (rand - 1) / 2 — UMA conta, usada pelo ritmoMobs E pelo estimarRegiao,
+   *  para os dois nunca mais divergirem (era o defeito: um usava `base`, o outro a media). */
+  const mediaWaveDe = (g) => {
+    if (!g || g.base == null) return 3;                      // motor.js:1137 (valor esperado)
+    if (g.rand == null || !(g.rand > 1)) return g.base;      // sem variacao: a base e a media
+    return g.base + (g.rand - 1) / 2;
+  };
+
   /** Ritmo dos mobs: tempo por wave e tempo de 3 waves (base p/ decidir a ultimate). */
   function ritmoMobs() {
     const aw = analisarWaves();
     if (!aw || aw.n < 3) return null;
-    const perWave = (META.grupoSpawn && META.grupoSpawn.base) || aw.perWave || 3;      // mobs/wave vem do MOTOR (média 3)
+    // TAMANHO DA WAVE = VALOR ESPERADO da distribuicao do motor, nao a base.
+    // motor.js:1137  `const qtd = 2 + Math.floor(r() * 3)`  -> {2, 3, 4} equiprovavel
+    //   E[qtd] = 3.  O codigo antigo usava `grupoSpawn.base` = 2 -- o MINIMO da distribuicao,
+    //   nao a media: `segPorWave` (e portanto `seg3` e o `valeUlt`) ficavam 33% baixos.
+    // O motor da os dois parametros da distribuicao (`grupoSpawn = { base, rand }`, medido em
+    // inject.js a partir de motor.js:1137); a media sai deles: base + (rand - 1) / 2.
+    // SEM o motor, cai no valor esperado da formula (3) e so depois no MEDIDO (`aw.perWave`)
+    // -- a teoria do motor manda sobre a medicao de uma janela curta (Regra N.o 3).
+    const gsWave = (META.grupoSpawn && META.grupoSpawn.base != null) ? META.grupoSpawn : null;
+    const perWave = gsWave ? mediaWaveDe(gsWave) : (aw.perWave || 3);      // media da wave (motor.js:1137)
     const gapS = aw.medGapMs ? aw.medGapMs / 1000 : (aw.killsMin ? (perWave / aw.killsMin) * 60 : null);
     if (!gapS) return null;
     const segPorWave = +(perWave * gapS).toFixed(1);
@@ -706,7 +756,19 @@
     const sk = readSkills();
     return { at: Date.now(), bar: sk.bar, arsenal: sk.arsenal, equip: readEquip(), stats: readStats(), player: player(), potions: readPotions(), gold: readGold() };
   }
-  function novoCiclo(region, now) { return { region, startedAt: now, fase: 'mobs', mobFase: novaFase(now), bossFase: null, gold: 0, xp: 0, boss: null, setup: snapshotSetup() }; }
+    // ---------- JANELA (run id): a unidade em que os numeros SAO comparaveis (TK-01-42) ----------
+  // MEDIDO (parte-01.md L2528-2551): a MESMA build na MESMA regiao, n=8, deu 834 ouro/min numa
+  // janela e 1581 na seguinte. Nao era nivel, nao era modo noturno. Registo do proprio agente:
+  // "absolute numbers are not comparable across rounds. Only comparisons within the same
+  // measurement window are valid." Sem um id de janela em cada amostra, o banco nao tem como
+  // saber que dois numeros vieram de janelas diferentes -- e volta a enganar. Uma janela muda
+  // quando a pagina/religa (o `farm` vem do storage, mas uma sessao nova e outra janela).
+  let _janela = null;
+  function janelaAtual() {
+    if (_janela == null) _janela = 'j' + Date.now().toString(36);
+    return _janela;
+  }
+  function novoCiclo(region, now) { return { region, startedAt: now, fase: 'mobs', mobFase: novaFase(now), bossFase: null, gold: 0, xp: 0, boss: null, setup: snapshotSetup(), janela: janelaAtual() }; }
 
   /** Lê os marcadores do mapa (abre/fecha o mapa se preciso). */
   function readMap() {
@@ -754,16 +816,36 @@
       farm.current = naBase ? null : novoCiclo(loc.text, Date.now());
       publishFarm();
     }
-    const g = entry.body.match(/(?:Loot|recebeu)[^:]*:\s*(\d[\d.]*)\s*de ouro/i);
-    const x = entry.body.match(/\+\s*(\d[\d.]*)\s*de experi/i);
+    // ---------- PARSER DO #log (TK-01-07) ----------
+    // FORMATO DO JOGO, lido na fonte: cena.js:1570
+    //   `Loot de {nome}: {ouro} de ouro{itens}. +{xp} de experiência.`
+    // e o {ouro}/{xp} passam pelo `fmt` (cena.js:225): acima de 10.000 vem 'k' e acima de
+    // 1.000.000 vem 'M'. A regex antiga era `(\d[\d.]*)\s*de ouro`, que exige ESPACO a seguir
+    // ao numero: '12.3k de ouro' tem 'k' nessa posicao e NAO casava — o abate e o ouro eram
+    // perdidos EM SILENCIO (e o kill so era contado dentro do `if (g)`).
+    // CAÇA OFFLINE (jogo.js:6767): `Enquanto você estava fora ({tempo}), {nome} caçou:
+    //   +{xp} de experiência e +{ouro} de ouro.` — o servidor JA somou isto ao save; nao ha
+    //   abate correspondente. Contar aqui injetava XP (e ouro) sem kill e envenenava o
+    //   `calibrar()`/`agregar()`, que usam ouro/min e xp/min para escolher regiao.
+    const CACADA_OFFLINE = /enquanto voc(ê|e) estava fora/i;
+    const semAbate = CACADA_OFFLINE.test(entry.body);   // XP/ouro que o jogo deu sem abate nenhum
+    // numero no formato do ecra: '12.3k' -> 12300, '4.188' -> 4188, '1.2M' -> 1200000
+    const NUM = '(\\d[\\d.,]*\\s*[kKmM]?)';
+    const g = semAbate ? null : entry.body.match(new RegExp('(?:Loot|recebeu)[^:]*:\\s*' + NUM + '\\s*de ouro', 'i'));
+    const x = entry.body.match(new RegExp('\\+\\s*' + NUM + '\\s*de experi', 'i'));
     const nomeLoot = (entry.body.match(/Loot de\s+(.+?):/i) || [])[1] || null;
     if (g || x) {
       if (window.__lolidleRlog) window.__lolidleRlog({ t: 'kill', nome: nomeLoot, gold: g ? parseNum(g[1]) : null, xp: x ? parseNum(x[1]) : null });
       if (!farm.current && !naBase) farm.current = novoCiclo(loc.text, Date.now());
       if (farm.current) {
         const fase = farm.current.fase === 'boss' ? farm.current.bossFase : farm.current.mobFase;
-        if (g) { const v = parseNum(g[1]); farm.current.gold += v; fase.gold += v; fase.kills += 1; lootTimes.push(Date.now()); if (lootTimes.length > 30) lootTimes.shift(); killTimes.push(Date.now()); if (killTimes.length > 200) killTimes.shift(); }
-        if (x) { const v = parseNum(x[1]); farm.current.xp += v; fase.xp += v; }
+        if (g) { const v = parseNum(g[1]); farm.current.gold += v; fase.gold += v; lootTimes.push(Date.now()); if (lootTimes.length > 30) lootTimes.shift(); }
+        // KILLS CONTADOS PELO ABATE, nao pelo grupo do ouro (TK-01-07): a linha de loot e a UNICA
+        // prova de abate no #log e ela so traz ouro quando o jogo o escreve. Se o formato mudar,
+        // matar o contador aqui deixa o `ritmoMobs` e o `killsMinAoVivo` (Voracidade) cegos.
+        // Conta-se o abate pela linha de XP de monstro -- e NUNCA pela de caça offline.
+        if (x && !semAbate) { const v = parseNum(x[1]); farm.current.xp += v; fase.xp += v; fase.kills += 1; killTimes.push(Date.now()); if (killTimes.length > 200) killTimes.shift(); }
+        if (semAbate && x) logEvent('caca-offline', { xp: parseNum(x[1]), ouro: g ? parseNum(g[1]) : null });   // nao conta como abate
       }
     }
     const apChefe = entry.body.match(/Um chefe apareceu:\s*(.+?)[!.]?$/i);
@@ -912,13 +994,6 @@
   const HEALVAL = { get vida() { return pocaoInfo('vida').cura; }, get vidaF() { return pocaoInfo('vidaF').cura; }, get vidaS() { return pocaoInfo('vidaS').cura; } };
 
   function readSkills() {
-    const bar = [...document.querySelectorAll('#hud-habs .hud-hab')].map((b) => {
-      const em = b.querySelector('em');
-      const seg = em && em.textContent ? Number(em.textContent) : null;
-      const recarga = b.classList.contains('recarga');
-      const nome = (b.getAttribute('data-dica') || '').split('—')[0].trim() || (b.title || '').split('—')[0].trim() || b.dataset.t;
-      return { t: b.dataset.t, nome, cd: recarga ? seg : 0, ready: !recarga };
-    });
     const arsenal = [...document.querySelectorAll('#hab-ativas .hab[data-t]')].map((h) => {
       const r = (h.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
       const dica = h.getAttribute('data-dica') || '';
@@ -937,6 +1012,31 @@
         escolhida: h.classList.contains('escolhida'),
       };
     });
+    const rankDe = {};
+    for (const h of arsenal) if (h.t) rankDe[h.t] = h.rank;
+    // CDR para converter a fraccao em segundos: o do painel (`#st-cdr`, jogo.js:6465) quando
+    // existir; senao a soma dos itens. Uma vez so — nao por skill.
+    const cdrLido = player().cdr;
+    const cdrUsado = cdrLido != null ? cdrLido : ((efeitosEquipados() || {}).cdr || 0);
+    // RECARGA EXACTA — o defeito que a observabilidade mediu (P0-3): o `<em>` do HUD fica VAZIO
+    // abaixo de 1 s (jogo.js:6227) e o `cdDe()` convertia esse vazio em 0 = PRONTA. A fraccao
+    // EXACTA esta em `--cd` (jogo.js:6228) e nao some. `cd` passa a ser o segundo real.
+    const bar = [...document.querySelectorAll('#hud-habs .hud-hab')].map((b) => {
+      const t = b.dataset.t;
+      const em = b.querySelector('em');
+      const seg = em && em.textContent ? Number(em.textContent) : null;
+      const recarga = b.classList.contains('recarga');
+      const nome = (b.getAttribute('data-dica') || '').split('—')[0].trim() || (b.title || '').split('—')[0].trim() || t;
+      const frac = varCd(b);
+      const exato = cdExatoHud(frac, t, rankDe[t] || null, cdrUsado);
+      const cd = exato != null ? exato : (recarga ? (seg != null ? seg : 0) : 0);
+      return { t, nome, cd, cdFrac: frac, cdEm: seg, rank: rankDe[t] || null,
+        // `sem-mana` (jogo.js:6232) e `aprimorada` (jogo.js:6237, Yasuo: o proximo Q e o tornado):
+        // classes que o jogo escreve e que a extensao nunca leu.
+        semMana: b.classList.contains('sem-mana'), aprimorada: b.classList.contains('aprimorada'),
+        custo: txtEl(b.querySelector('b')).trim() || null,
+        ready: !recarga && !(frac > 0) };
+    });
     // PONTOS LIVRES — e o HUD diz DE QUE TIPO SÃO. BUG MEDIDO: o código pegava só o primeiro
     // número e chamava-lhe `pontos` de HABILIDADE. Com o HUD a dizer "+ Pontos para usar 15 de
     // atributo", o `subirHabilidades` achava que havia 15 pontos de skill, tentava subir, o jogo
@@ -948,7 +1048,7 @@
     const ehAtrib = /atributo/i.test(hudTexto);
     const pontos = (hudTexto && !ehAtrib) ? (nHud || 1) : 0;   // pontos de SKILL
     const pontosAtrib = (hudTexto && ehAtrib) ? nHud : 0;       // pontos de ATRIBUTO
-    return { bar, arsenal, pontos, pontosAtrib, hudTexto };
+    return { bar, arsenal, pontos, pontosAtrib, hudTexto, cdr: cdrUsado };
   }
 
   function readEquip() {
@@ -1010,6 +1110,44 @@
     const poly = (co, n) => co.reduce((s, k, i) => s + k * Math.pow(n, i), 0);
     return { hp: poly(c.hp, nivel) * a.vida, ad: poly(c.ad, nivel) * a.dano, armadura: poly(c.armadura, nivel), xp: poly(c.xp, nivel) * a.xp, ouro: poly(c.ouro, nivel) * a.ouro };
   }
+  // ============== NIVEL DO ALVO — UMA calculadora para todo o ficheiro (TK-01-06) =============
+  // Havia CINCO convencoes de nivel no mesmo automation.js (768 ok, 1168 errado, 1226 errado,
+  // 2104/2118/2960 errados nm[1], 3135 ok). Umas mediam o risco do chefe contra um alvo 4-6
+  // niveis acima do real, outras mediam o DPS contra o mob mais dificil da zona em vez do mob
+  // que o jogo realmente poe a frente do boneco. Cada uma com o seu numero, nenhuma explicada.
+  //  Ficam DUAS, uma por papel, ambas tiradas do motor e com o file:linha:
+  //
+  //   CHEFE (motor.js:1134, em `gerarGrupo`):
+  //     `nivelJogador == null ? n1 + 2 : Math.max(n0 + 2, Math.min(n1 + 2, nivelJogador + 4))`
+  //     O chefe nasce no nivel do jogador + 4, nunca acima do topo da faixa + 2.
+  //
+  //   MOB (motor.js:1131-1132):
+  //     `nivelJogador == null ? n0 + floor(r()*(n1-n0+1))`  (uniforme na faixa)
+  //       : Math.max(n0, Math.min(n1, nivelJogador - 2 + floor(r()*4)))`
+  //     Com jogador lido: o mob nasce de 2 abaixo a 1 acima do jogador -> media = nivel - 0,5.
+  //     Sem jogador: uniforme em [n0, n1] -> media = (n0 + n1) / 2.
+  //   `nivelJogador` ausente cai no ramo `== null` do motor, que e o que ele faz sem nivel.
+  //
+  //  Um so sitio para corrigrir se o jogo mudar a formula -- e um so sitio a testar.
+  function nivelAlvo(local, papel, nivelJogador) {
+    if (!local) return null;
+    const nm = local.nm || local.faixa || null;
+    if (!nm) return null;
+    const n0 = +nm[0] || 1, n1 = nm[1] != null ? +nm[1] : n0;
+    // `nivelJogador === null` (explicito) = o ramo `nivelJogador == null` do MOTOR: sem jogador
+    // lido, o chefe nasce no topo da faixa + 2 e o mob sai uniforme na faixa. `undefined`
+    // (argumento ausente) continua a usar o jogador lido do HUD, como a extensao sempre fez.
+    const p = (nivelJogador === undefined) ? (player() || {}).nivel : nivelJogador;
+    const semJog = (p == null || !(p > 0));
+    if (papel === 'chefe') return semJog ? n1 + 2 : Math.max(n0 + 2, Math.min(n1 + 2, p + 4));
+    // MOB: clamp(P-2+rand(0..3), n0, n1) -> media P-0,5 (motor.js:1132)
+    return semJog ? (n0 + n1) / 2 : Math.max(n0, Math.min(n1, p - 0.5));
+  }
+  const nivelChefeDe = (local, nivelJogador) => nivelAlvo(local, 'chefe', nivelJogador);
+  /** Nivel medio dos MOBS de um local (motor.js:1131-1132). Usado por tudo que mede DPS de
+   *  mob: o alvo que o jogo realmente poe a frente, nao o mob mais duro da faixa (`nm[1]`). */
+  const nivelMobDe = (local, nivelJogador) => nivelAlvo(local, 'mob', nivelJogador);
+
   /** Stats de um monstro/chefe num nível (do motor). */
   function statsMonstro(nome, nivel) {
     const m = META.monstros?.[nome];
@@ -1017,6 +1155,21 @@
     const c = curva(nivel);
     return { nome, nivel, hp: c.hp * m.hp, ad: c.ad * m.ad, as: m.as, armadura: c.armadura * m.armadura, xp: c.xp * m.xp, ouro: c.ouro * m.ouro * 0.75, chefe: !!m.chefe, magico: !!m.magico };
   }
+
+  // ============ TECTOS DO MOTOR — UM sitio só, cada um com o file:linha ============
+  // Os limites do jogo estavam espalhados por 6 `Math.min(...)` soltos no ficheiro, copiados.
+  // Ficam aqui nomeados. NENHUM destes é exportado pelo motor (sao inline), pelo que a fonte e o
+  // file:linha indicado — se o jogo os mudar, ha UM sitio a corrigrir (e o teste de caps apanha).
+  const CAP_CDR = 0.4;             // motor.js:537  `reducaoRecarga: Math.min(0.4, ...)`
+  const CAP_PEN_MAG = 0.6;         // motor.js:529  `penMagica: Math.min(0.6, ...)`
+  const CAP_ESQUIVA = 0.25;        // motor.js:536  `esquiva: Math.min(0.25, ...)`
+  const CAP_CRITICO = 1;           // motor.js:541  `critico: Math.min(1, ...)`
+  const VEL_ATAQUE_MAX = 3;        // motor.js:344  `export const VEL_ATAQUE_MAX = 3`
+  /** Pen de ARMADURA maxima (motor.js:539): `1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`.
+   *  A extensao usava `Math.min(0.7, ...)` como tecto da SOMA — um numero que o motor nunca
+   *  aplica e que nao mordia nunca. Com o pen do kit (max 0,45, motor.js:560) e a 3036 o valor
+   *  real do motor e 1-(1-0,45)x0,7 = 0,835. */
+  const penArmaduraDe = (penE = 0, tem3036 = false) => 1 - (1 - Math.max(0, penE)) * (tem3036 ? 0.7 : 1);
 
   // ===================== MITIGAÇÃO — RM_MONSTRO (correcção do Lead, 2026-10-14) =====================
   // O motor NÃO usa a armadura do monstro contra o dano MÁGICO: usa 60% dela.
@@ -1124,10 +1277,18 @@
       goldK += w * s.ouro * fs * bonus;
       hpAvg += w * s.hp; wsum += w;
     }
-    if (!wsum) return null;
+    if (!wsum) {
+      // Sem stats de monstro nao ha taxa teoica -- e tambem NAO ha prova de sobrevivencia.
+      // Fail-closed: a regiao fica marcada como nao segura em vez de devolver null (que o
+      // filtro trataria como "nao sei" e, antes desta correccao, deixava passar).
+      return { id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: null, mobHp: null,
+        killsMin: null, xpMin: null, goldMin: null, runasH: null, morte: true,
+        riscoMob: null, riscoDps: null, riscoTMorrer: null, semDados: true };
+    }
     xpK /= wsum; goldK /= wsum; hpAvg /= wsum;
-    const gs = META.grupoSpawn || { base: 2, rand: 3 };
-    const mobsPerWave = opts.mobsPerWave || (gs.base + Math.floor((gs.rand - 1) / 2));   // média de 2 + floor(rand*3) (motor)
+    const gs = META.grupoSpawn || { base: 2, rand: 3 };   // motor.js:1137 (medido pelo inject)
+    // media de 2 + floor(rand*3) (motor.js:1137) — a MESMA funcao do ritmoMobs (TK-01-08)
+    const mobsPerWave = opts.mobsPerWave != null ? opts.mobsPerWave : mediaWaveDe(gs);
     const mm = multMedio(mobsPerWave);
     xpK *= mm.xp; goldK *= mm.ouro;
     const rsp = META.respawn || { clear: 1.5, local: 1.2 };
@@ -1177,13 +1338,44 @@
         if (Number.isFinite(a.tMorrer)) riscoTMorrer = Math.min(riscoTMorrer == null ? Infinity : riscoTMorrer, +a.tMorrer.toFixed(1));
       }
       if (riscoTMorrer === Infinity) riscoTMorrer = null;
+      // (iii-b) O CHEFE DA REGIAO — a avaliação de luta que faltava (TK-02-41): a região tem
+      // um chefe com os stats do META e o `avaliar()` já sabe dizer se ele MATA. Sem olhar para
+      // o chefe, uma zona com mobs fáceis e chefe letal (Fosso do Dragão a nv 27) passava como
+      // segura -- era esse o buraco: avaliavam-se os mobs da lista e nunca o chefe.
+      // nível pelo motor (motor.js:1134): max(n0+2, min(n1+2, nível+4)).
+      try {
+        if (loc.chefe && loc.chefe[0]) {
+          const nc = nivelChefeDe(loc);
+          const avc = avaliar(loc.chefe[0], nc, p, curaMob);
+          if (avc) {
+            avaliados++;
+            if (avc.mortal) { morte = true; riscoMob = loc.chefe[0]; }
+            if (Number.isFinite(avc.dpsTomado)) riscoDps = Math.max(riscoDps || 0, Math.round(avc.dpsTomado));
+            if (Number.isFinite(avc.tMorrer)) riscoTMorrer = Math.min(riscoTMorrer == null ? Infinity : riscoTMorrer, +avc.tMorrer.toFixed(1));
+            // o chefe aguenta muito mais que um mob: morrer ANTES de o matar é o critério.
+            //  (a) insta-kill: o pior golpe do rodízio passa da vida (`mortal`);
+            //  (b) com DPS conhecido: morre em menos de 1,5x o tempo que leva a matá-lo;
+            //  (c) SEM DPS conhecido: se o chefe bate mais do que a cura estimada cobre
+            //      (`liquido > 0`), não há prova de que a luta se ganha — fail-closed.
+            const usaTempoC = (myDps || 0) > 0 && avc.hp && Number.isFinite(avc.tMorrer);
+            const segMatarC = usaTempoC ? avc.hp / Math.max(1, (myDps || 0) * (avc.fJ || 1)) : null;
+            if (avc.mortal || (usaTempoC && avc.tMorrer < segMatarC * 1.5) || (!usaTempoC && avc.liquido > 0)) {
+              morte = true; if (!riscoMob) riscoMob = loc.chefe[0];
+            }
+          }
+        }
+      } catch { /* ignore */ }
       // (iv) O HISTÓRICO MEDIDO manda: se aquela região já o matou, não é segura.
       try {
         const rr = (agregar() || []).find((x) => x.region && String(x.region).startsWith(String(loc.nome)));
         if (rr && rr.risco && rr.risco.morre) morte = true;
       } catch { /* ignore */ }
-      // "NÃO SE SABE" continua a ser null (fail-closed no filtro): só se declara segura com prova.
-      if (morte === null) morte = avaliados > 0 ? false : null;
+      // FAIL-CLOSED (regra do dono: "NAO E PRA MORRER, NUNCA, COM ESSE SCRIPT"): sem prova de
+      // que sobrevive, a regiao NAO e segura. `avaliados === 0` significa que nao conseguimos
+      // olhar para nenhum monstro da regiao (sem stats, sem META) — isso e exatamente o caso em
+      // que um `!undefined === true` mandava o boneco para a morte. Agora `morte: true`.
+      // O filtro `x.e.morte === false` (regiaoIdeal/rankRegioes) so passa quem PROVOU.
+      if (morte === null) morte = avaliados > 0 ? false : true;
     } catch { /* ignore */ }
     return { id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: +L.toFixed(1), fatorXp: fx, noite: mm.noite, multXp: +mm.xp.toFixed(3), multOuro: +mm.ouro.toFixed(3), mobHp: Math.round(hpAvg), mobsPerWave, minhaDps: myDps || null, modo, kXp: kx, kOuro: ko, xpKill: +(xpK * kx).toFixed(2), goldKill: +(goldK * ko).toFixed(2), killsMin: +killsMin.toFixed(1), xpMin: Math.round(xpK * kx * killsMin), goldMin: Math.round(goldK * ko * killsMin), runasKill: +runasKill.toFixed(5), runasMin: +(runasKill * killsMin).toFixed(2), runasChefe: +runasChefe.toFixed(2), runasH: Math.round(runasKill * killsMin * 60), morte, riscoMob, riscoDps, riscoTMorrer };
   }
@@ -1215,6 +1407,182 @@
     return { kXp: cfg.kXp, kOuro: cfg.kOuro, kReg, n: ks.length, regioes: ks };
   }
 
+  // =====================================================================================
+  // O HUD DO JOGO E A FONTE — leitores dos numeros que O PROPRIO JOGO escreve no DOM
+  // -------------------------------------------------------------------------------------
+  // AGENTS.md REGRA N.o 3: "todo o numero que existe no jogo tem de ser LIDO, nunca copiado".
+  // Ate aqui o motor da extensao re-estimava o que o jogo MEDE (kXp/kOuro no `calibrar`,
+  // `player().vida` por regex de digitos, recargas so pelo `<em>` que some abaixo de 1 s).
+  // Estes leitores pegam os numeros onde o jogo os poem — cada um com o file:linha que o escreve.
+  // =====================================================================================
+
+  /** Numero no formato DO ECRA do jogo. `fmt` (cena.js:225):
+   *    n >= 1e6 -> (n/1e6).toFixed(1)+'M' · n >= 1e4 -> (n/1e3).toFixed(1)+'k' · senao Math.round(n)
+   *  BUG MEDIDO: `#hud-vida-txt` (jogo.js:6203) usa este `fmt`, logo acima de 10.000 a string vem
+   *  '12.3k / 20.4k' — e a regex antiga `(\d+)\s*\/\s*(\d+)` nao casava com o 'k', pelo que a
+   *  vida do boneco caia no LITERAL 4188. Este parser e a mesma conta do `fmt`, invertida, com
+   *  sufixo k/M e com `,` decimal (pt) ou `.` (en). */
+  const numEcra = (txt) => {
+    const m = String(txt == null ? '' : txt).trim().match(/^([\d.,]+)\s*([kKmM]?)$/);
+    if (!m) return null;
+    let s = m[1];
+    if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');      // '1.234' = milhar
+    else s = s.replace(',', '.');                                     // '1,5'  = decimal
+    let v = parseFloat(s);
+    if (!Number.isFinite(v)) return null;
+    if (/k/i.test(m[2])) v *= 1e3;
+    if (/M/i.test(m[2])) v *= 1e6;
+    return Math.round(v);
+  };
+  /** Valor de uma variavel CSS inline (`--cd`) que O JOGO escreve no elemento.
+   *  jogo.js:6228 (recarga das habilidades) · jogo.js:6172 (buffs) · jogo.js:6190 (recarga de item).
+   *  Le-se o valor INLINE (`el.style.getPropertyValue`), nao `getComputedStyle`: e exactamente
+   *  o que a pagina acabou de escrever, sem depender da cascata. */
+  const varCd = (el) => {
+    try {
+      const v = el && el.style && typeof el.style.getPropertyValue === 'function' ? el.style.getPropertyValue('--cd') : null;
+      const n = v == null || v === '' ? null : parseFloat(String(v).trim());
+      return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : null;
+    } catch { return null; }
+  };
+  /** Texto de um elemento (sem rebentar se nao existir). */
+  const txtEl = (el) => (el && el.textContent != null ? String(el.textContent) : '');
+
+  /** VIDA do jogador tal como o HUD a escreve (jogo.js:6203):
+   *    `${fmt(vida)} / ${fmt(vidaMax)}${escudo > 0 ? ` (+${fmt(escudo)})` : ''}`
+   *  O `(+N)` e o ESCUDO ACTIVO (`d.escudo`, motor.js:2718, 1229, 2726) — era descartado.
+   *  `vidaEff` = vida maxima + escudo: e a piscina que a sobrevivencia tem de usar. */
+  function lerVidaHud() {
+    const el = document.querySelector('#hud-vida-txt');
+    const t = txtEl(el);
+    const m = t.match(/([\d.,]+\s*[kKmM]?)\s*\/\s*([\d.,]+\s*[kKmM]?)/);
+    const e = t.match(/\(\s*\+\s*([\d.,]+\s*[kKmM]?)\s*\)/);
+    const max = m ? numEcra(m[2]) : null;
+    const escudo = e ? (numEcra(e[1]) || 0) : 0;
+    return { cur: m ? numEcra(m[1]) : null, max, escudo, vidaEff: (max == null ? null : max + escudo), txt: t };
+  }
+
+  /** Stats que o painel escreve por ID (nao ha rotulo por onde os pescar por texto):
+   *    `#st-cdr`   −N%     jogo.js:6465 (`reducaoRecarga`, motor.js:537 — foco + itens, tecto 0,4)
+   *    `#st-crit`  N%      jogo.js:6463 (`critico`, motor.js:541 — chance)
+   *    `#st-critx` ×1,75   jogo.js:6464 (`danoCritico`, motor.js:499 base, +0,4 com 3031)
+   *  A regex do `readStats` nao tinha rotulo de CDR e o critico era deitado fora. */
+  function lerStatsId() {
+    const um = (sel, re) => { const m = txtEl(document.querySelector(sel)).match(re); return m ? parseFloat(String(m[1]).replace(',', '.')) : null; };
+    return {
+      cdr: um('#st-cdr', /([\d.,]+)/),
+      critico: um('#st-crit', /([\d.,]+)/),
+      critDano: um('#st-critx', /([\d.,]+)/),
+    };
+  }
+
+  /** RECARGA EXACTA de uma skill da barra. O `<em>` do HUD fica VAZIO abaixo de 1 s
+   *  (jogo.js:6227: `seg = f > 0 && d.recargas[hk] >= 1 ? ... : ''`), e era esse `<em>` que o
+   *  `cdDe()` convertia em 0 = PRONTA. A fraccao EXACTA esta em `--cd` (jogo.js:6228), no formato
+   *  `falta / (recarga_base × (1 − CDR))` (jogo.js:6582 `fracRecarga`). Com o CDR do painel
+   *  (`#st-cdr`, jogo.js:6465) recupera-se o segundo exacto: `frac × base × (1 − cdr)`. */
+  function cdExatoHud(f, t, rank, cdr) {
+    if (f == null || f <= 0) return 0;
+    const k = KAT[t];
+    const base = k && k.rec && rank ? k.rec(rank) : null;
+    const c = cdr == null ? (efeitosEquipados() || {}).cdr || 0 : cdr;
+    if (base == null) return null;                       // sem base nao ha segundo: fica a fraccao
+    return +(f * base * (1 - c)).toFixed(2);
+  }
+
+  /** EFEITOS ACTIVOS (`#hud-buffs`, jogo.js:6164-6177): um `<span class="hud-buff" data-t="K">`
+   *  por efeito, com `<em>` = segundos que faltam (so acima de 1 s), `<b>` = acumulos (so acima
+   *  de 1) e `--cd` = fraccao `1 − resta/duracao`. E o que diz se o PROXIMO golpe vai procar
+   *  (Sede de Sangue, Sombra Pronta, Lich, Fluxo do Yasuo, Lamina Sinistra...). */
+  function lerBuffs() {
+    const out = [];
+    for (const el of document.querySelectorAll('#hud-buffs .hud-buff')) {
+      const t = el && el.dataset ? el.dataset.t : null;
+      if (!t) continue;
+      const em = txtEl(el.querySelector('em')).trim();
+      const b = txtEl(el.querySelector('b')).trim();
+      const seg = /^[\d.,]+$/.test(em) ? parseFloat(em.replace(',', '.')) : null;
+      const acum = /^[\d.,]+$/.test(b) ? parseFloat(b.replace(',', '.')) : null;
+      out.push({ t, seg, acum, frac: varCd(el) });
+    }
+    return out;
+  }
+
+  /** RECARGA DE ITEM (`#hud-equip > i`, jogo.js:6181-6193). O jogo desenha 7 itens com relogio:
+   *  `--cd` = falta/duracao e `<em>` = segundos (ou 'Nm'). O `.hud-cd` so existe quando falta
+   *  >= 0,05 s (jogo.js:6188). A ordem de `#hud-equip > i` e a de `equipNaOrdem()`
+   *  (jogo.js:6092, 6184) — a MESMA do `#equip` que o `readEquip()` ja le (jogo.js:6621), logo o
+   *  indice k dos dois e o mesmo item. A duracao fica documentada como fallback (jogo.js:6181). */
+  const RECARGA_ITEM_FB = { 3157: 120, 3053: 90, 3026: 300, 3102: 40, 6655: 6, 3742: 4, 6631: 5 };   // jogo.js:6181
+  function lerRecargaItens() {
+    const els = [...document.querySelectorAll('#hud-equip > i')];
+    if (!els.length) return [];
+    let eq = [];
+    try { eq = readEquip() || []; } catch { eq = []; }
+    return els.map((el, k) => {
+      const cd = el && el.querySelector ? el.querySelector(':scope > .hud-cd') : null;
+      if (!cd) return null;
+      const frac = varCd(cd);
+      const em = txtEl(el.querySelector(':scope > em')).trim();
+      const min = /^([\d.,]+)\s*m$/i.exec(em);
+      let seg = null;
+      if (min) seg = parseFloat(min[1].replace(',', '.')) * 60;          // 'Nm' (jogo.js:6191)
+      else if (/^[\d.,]+$/.test(em)) seg = parseFloat(em.replace(',', '.'));
+      const base = k < eq.length ? eq[k].base : null;
+      const dur = (base && RECARGA_ITEM_FB[base]) || null;
+      return { k, base, seg, frac, duracao: dur };
+    }).filter(Boolean);
+  }
+
+  // ---------- O MEDIDOR DO JOGO (`analise`) — a AUTORIDADE em xp/h, ouro/h, abates/h e DPS ----
+  // O jogo ja mede tudo isto desde que se abre: `novaAnalise` (jogo.js:523), `contarAnalise`
+  // (jogo.js:525-537), `contasAnalise` (jogo.js:538-542), desenhado em `#janela-analise`
+  // (jogo.js:544-560) e na linha SEMPRE VISIVEL `#rastreio-analise` (jogo.js:6250-6255).
+  // A extensao re-estimava o mesmo por `kXp`/`kOuro` (`calibrar`) — estes numeros passam a ser a
+  // AUTORIDADE e a estimativa fica so como fallback (quando o jogo ainda nao mediu).
+  const _semAcentoHud = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  /** Le o que o jogo esta a desenhar AGORA. Nada e aberto nem clicado por esta funcao.
+   *  `#rastreio-analise` esta sempre no DOM (fica `hidden` sem abates, jogo.js:6251) e da XP/h e
+   *  ouro/h; `#janela-analise #analise-corpo` so e preenchido enquanto a janela esta aberta
+   *  (jogo.js:565) e da tambem abates/h, DPS do ultimo minuto, maior golpe e loot por raridade. */
+  function lerAnaliseJogo() {
+    const vazio = { tem: false, xpH: null, ouroH: null, abatesH: null, dps: null, maior: null, chefes: null,
+      itens: { basico: null, epico: null, lendario: null }, espolios: null, runas: null, mortes: null,
+      fonte: {}, rast: null, janela: false, txtTempo: null };
+    const ras = document.querySelector('#rastreio-analise');
+    const tRas = txtEl(ras);
+    const mxp = tRas.match(/([\d.,]+\s*[kKmM]?)\s*XP\s*\/\s*h/i);
+    const mou = tRas.match(/([\d.,]+\s*[kKmM]?)\s*ouro\s*\/\s*h/i);
+    const out = { ...vazio, itens: { ...vazio.itens }, fonte: {} };
+    if (mxp) { out.xpH = numEcra(mxp[1]); out.fonte.xpH = 'jogo'; }
+    if (mou) { out.ouroH = numEcra(mou[1]); out.fonte.ouroH = 'jogo'; }
+    out.rast = ras ? { txt: tRas.trim(), visivel: !!(ras && ras.hidden === false) } : null;
+    const jan = document.querySelector('#janela-analise');
+    const corpo = document.querySelector('#analise-corpo');
+    out.janela = !!(jan && jan.hidden === false && corpo);
+    if (out.janela && corpo) {
+      const cartao = (rot) => [...corpo.querySelectorAll('.an-cartao')].find((c) => _semAcentoHud(txtEl(c.querySelector('small'))) === rot) || null;
+      const val = (rot) => { const c = cartao(rot); return c ? numEcra(txtEl(c.querySelector('b'))) : null; };
+      const emTexto = (rot) => { const c = cartao(rot); return c ? txtEl(c.querySelector('em')) : ''; };
+      const poe = (campo, rot) => { const v = val(rot); if (v != null) { out[campo] = v; out.fonte[campo] = 'jogo'; } };
+      poe('xpH', 'xp por hora'); poe('ouroH', 'ouro por hora'); poe('abatesH', 'abates por hora'); poe('dps', 'dano por segundo');
+      const maior = emTexto('dano por segundo').match(/maior golpe\s+([\d.,]+\s*[kKmM]?)/i);
+      if (maior) { out.maior = numEcra(maior[1]); out.fonte.maior = 'jogo'; }
+      const chefes = emTexto('abates por hora').match(/([\d.,]+)\s*chefes/i);
+      if (chefes) { out.chefes = parseFloat(chefes[1].replace(',', '.')); out.fonte.chefes = 'jogo'; }
+      for (const l of corpo.querySelectorAll('.an-linha')) {
+        const rot = _semAcentoHud(txtEl(l.querySelector('span')));
+        const v = numEcra(txtEl(l.querySelector('b')));
+        if (v == null) continue;
+        const mapa = { basicos: 'basico', epicos: 'epico', lendarios: 'lendario', espolios: 'espolios', runas: 'runas', mortes: 'mortes' };
+        const campo = mapa[rot];
+        if (campo) { if (campo in out.itens) out.itens[campo] = v; else out[campo] = v; out.fonte[campo] = 'jogo'; }
+      }
+      out.txtTempo = txtEl(corpo.querySelector('.an-tempo')).trim() || null;
+    }
+    out.tem = !!(out.xpH != null || out.ouroH != null || out.abatesH != null || out.dps != null);
+    return out;
+  }
   /** Lê os stats do personagem do painel (ficha). */
   function readStats() {
     const out = {};
@@ -1225,18 +1593,42 @@
       const m = t.match(/^(Dano|Armadura|Vel\. ataque|Res\. mágica|Poder|Mana|Crítico|Esquiva|Roubo de vida)(.*)$/);
       if (m) { const v = (m[2].match(/[\d.,]+/) || [''])[0]; out[m[1]] = v ? parseFloat(v.replace(',', '.')) : 0; }
     }
+    // Stats que o painel escreve por ID (sem rotulo pescavel por texto) — ver `lerStatsId`.
+    const sid = lerStatsId();
+    if (sid.cdr != null) out.cdr = sid.cdr / 100;
+    if (sid.critico != null) out.critChance = sid.critico / 100;
+    if (sid.critDano != null) out.critMult = sid.critDano;
     return out;
   }
 
-  /** Personagem atual no formato usado por avaliar(). */
+  /** Personagem actual no formato usado por avaliar().
+   *  A vida agora vem do HUD com `fmt` k/M e o ESCUDO somado a vida efectiva; o `rv`, o critico e
+   *  o CDR — que o painel do jogo escreve e eram deitados fora — passam a fazer parte do estado. */
   function player() {
     const s = readStats();
     const nivel = parseInt(document.querySelector('#hud-nivel')?.textContent || document.querySelector('#st-nivel')?.textContent || '0', 10) || 0;
-    const hp = (document.querySelector('#hud-vida-txt')?.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
-    // `va` = velocidade de ataque do HUD — usada como PISO de DPS quando não há histórico medido
-    // (dano × vel. ataque = DPS de auto-ataque). Antes só existia `dano`, e usar o DANO POR GOLPE
-    // como se fosse DPS inflacionava qualquer valor de buff (ex.: a Respiração do Vento).
-    return { nivel, vida: hp ? +hp[2] : 4188, armadura: s['Armadura'] || 0, rm: s['Res. mágica'] || 0, dano: s['Dano'] || 0, poder: s['Poder'] || 0, va: s['Vel. ataque'] || 0 };
+    const hp = lerVidaHud();
+    const sid = lerStatsId();
+    // `va` = velocidade de ataque do HUD — usada como PISO de DPS quando nao ha historico medido
+    // (dano × vel. ataque = DPS de auto-ataque). Antes so existia `dano`, e usar o DANO POR GOLPE
+    // como se fosse DPS inflacionava qualquer valor de buff (ex.: a Respiracao do Vento).
+    return {
+      nivel,
+      vida: hp.max, vidaCur: hp.cur, escudo: hp.escudo, vidaEff: (hp.vidaEff != null ? hp.vidaEff : hp.max),
+      armadura: s['Armadura'] || 0, rm: s['Res. mágica'] || 0, dano: s['Dano'] || 0, poder: s['Poder'] || 0, va: s['Vel. ataque'] || 0,
+      // ROUBO DE VIDA (motor.js:538 `rouboVida`, aplicado em motor.js:1226-1228 `cura = dano × rv`):
+      // era LIDO pelo `readStats` e DEITADO FORA pelo `player()`. Vale ~269 de cura/s numa base AD
+      // (AGENTS.md, prova n.o 5) e decide a troca dano→sustento (docs/auditoria-do-jogo.md C8).
+      rv: s['Roubo de vida'] || 0,
+      // CRITICO (motor.js:541 chance; motor.js:499 base + 515 do 3031 = multiplicador): a build
+      // AD/critico e 2,5–2,8x a de AP contra o chefe e nao entrava em conta nenhuma
+      // (docs/auditoria-do-jogo.md item 7).
+      critico: sid.critico != null ? sid.critico / 100 : (s['Crítico'] || 0) / 100,
+      critDano: sid.critDano != null ? sid.critDano : 1.75,          // motor.js:499 (base)
+      // CDR TOTAL do painel (motor.js:537: foco + itens, tecto 0,4) — a soma dos itens so nao chega.
+      cdr: sid.cdr != null ? sid.cdr / 100 : null,
+      fonte: { vida: hp.max != null ? 'jogo:hud' : 'fallback', rv: s['Roubo de vida'] != null ? 'jogo:st' : 'ausente' },
+    };
   }
 
   // Habilidades da Katarina (FALLBACK; o normal é vir do motor via META.kit).
@@ -1255,6 +1647,64 @@
   };
   let KAT = KAT_FB;
   let _giro = { base: 30, nivel: 19, ap: 1, ad: 0.4 };   // coeficientes da Voracidade (motor)
+
+  // ============ VORACIDADE POR ABATE (Katarina) — a mecânica que faltava ============
+  //  motor.js:736   `P: { voracidade: 1.5, voracidadeChefe: 5, curaBase: 0.05, ... }`
+  //  motor.js:1789  `if (HPk?.voracidade) for (const t of ['Q','W','E'])
+  //                    d.recargas[t] = Math.max(0, d.recargas[t] - (i.chefe ? HPk.voracidadeChefe : HPk.voracidade));`
+  //  motor.js:2169  `cura = (HP.curaBase || 0) + (HD?.curaGiro && rD ? HD.curaGiro[rD-1] : 0)` + 2170 cura
+  //
+  //  MEDIDO (docs/auditoria-do-jogo.md C3): num farm a 25 abates/min a recarga efectiva da Q, W e E
+  //  fica x1,63 mais rapida que a recarga crua — e a extensao calculava `dps = total / cd` com o
+  //  cd CRU (automation.js:1415, versao anterior). Falta tambem a CURA do giro.
+  //
+  //  LACUNA DECLARADA do inject.js: o `serialKit` (inject.js:113-115) reencaminha 22 campos da
+  //  habilidade e `voracidade`/`voracidadeChefe`/`curaBase` NAO estao na lista, logo o motor nao
+  //  os manda. O `curaGiro` (motor.js:755-756) ESTA na lista e e lido do kit. Os tres primeiro
+  //  ficam aqui com o file:linha enquanto o inject nao os reencaminhar (REGRA N.o 3 do AGENTS.md).
+  const VORACIDADE_FB = {
+    katarina: { voracidade: 1.5, voracidadeChefe: 5, curaBase: 0.05, hab: ['Q', 'W', 'E'] },   // motor.js:736 + 1789
+  };
+  /** A Voracidade do campeão actual (ou null se não tiver). */
+  function voracidadeDe() {
+    const id = (META.champAtual && META.champAtual.id) || (META.champ && META.champ.id) || null;
+    const v = (id && VORACIDADE_FB[id]) || null;
+    if (!v) return null;
+    return { valor: v.voracidade, chefe: v.voracidadeChefe, hab: v.hab || ['Q', 'W', 'E'], curaBase: v.curaBase };
+  }
+  /** Cura do GIRO das adagas (motor.js:2169-2170): `curaBase + curaGiro[rank-1]` do dano do giro.
+   *  O `curaBase` (motor.js:736) nao vem do inject; o `curaGiro` vem do kit (motor.js:755-756). */
+  function curaGiroDe() {
+    const P_ = KAT.P || {}, D_ = KAT.D || {};
+    const cg = typeof D_.curaGiro === 'function' ? D_.curaGiro(1) : null;     // fallback rank 1 (max 10)
+    const base = P_.curaBase != null ? P_.curaBase : 0;
+    if (!base && !cg) return { cura: 0, tem: false };
+    return { cura: base + (cg || 0), tem: true };
+  }
+  /** Abates por minuto MEDIDOS ao vivo — a extensao ja os conta (`killTimes` enchido pelo
+   *  `handleLog`, automation.js:733-800) e o `analisarWaves` (automation.js:620-638) deriva o
+   *  `killsMin` disso. E a cadencia de abates que a Voracidade precisa. Ordem: a wave viva,
+   *  depois o historico agregado. Sem medida, null (e a Voracidade nao entra — nao se inventa). */
+  function killsMinAoVivo() {
+    try { const w = analisarWaves(); if (w && w.killsMin) return w.killsMin; } catch { /* ignore */ }
+    try { const r = ritmoMobs(); if (r && r.killsMin) return r.killsMin; } catch { /* ignore */ }
+    try { for (const a of (agregar() || [])) if (a.killsMin) return a.killsMin; } catch { /* ignore */ }
+    return null;
+  }
+  /** RECARGA EFECTIVA com a Voracidade: `C' = C / (1 + v/T)`, com T = segundos por abate.
+   *  Derivacao de motor.js:1789 (cada abate tira `v` da recarga): num ciclo de recarga C com
+   *  abates a cada T segundos, a recarga encolhe v x (C'/T) -> C'(1 + v/T) = C.
+   *  Tabela de docs/auditoria-do-jogo.md C3: 10/min -> x1,25 · 15 -> x1,38 · 20 -> x1,50 ·
+   *  25 -> x1,63 · 30 -> x1,75. So Q, W e E (motor.js:1789). */
+  function cdVoraz(cd, t, km) {
+    if (!(cd > 0)) return cd;
+    const v = voracidadeDe();
+    if (!v || v.hab.indexOf(t) < 0) return cd;
+    const k = km != null ? km : killsMinAoVivo();
+    if (!(k > 0)) return cd;
+    return cd / (1 + v.valor / (60 / k));
+  }
+
   /** Campeão atual, detectado pelo caminho do ícone da skill (#hud-habs). */
   function detectarCampeao() {
     // FONTE PRIMARIA: o retrato do HUD traz "<champ>:<skin>" (ex.: 'yasuo:0').
@@ -1369,16 +1819,26 @@
           lich: S.lich, ap: S.ap, ad: S.ad, efeito: ((META.itens || []).find((x) => String(x.id) === base) || {}).efeito || null };
       });
       const soma = (k) => itens.reduce((t, x) => t + (x[k] || 0), 0);
-      return { cdr: Math.min(0.4, soma('cdr')), penMag: Math.min(0.6, soma('penMag')), penArmadura: Math.min(0.7, soma('penArmadura')), apPct: soma('apPct'),
+      return { cdr: Math.min(CAP_CDR, soma('cdr')), penMag: Math.min(CAP_PEN_MAG, soma('penMag')), penArmadura: penArmaduraDe(soma('penArmadura')), apPct: soma('apPct'),
         lich: itens.reduce((m, x) => Math.max(m, x.lich || 0), 0), apItens: soma('ap'), itens };
     }
-    let cdr = 0, penMag = 0, apPct = 0, lich = 0, apItens = 0; const itens = [];
+    let cdr = 0, penMag = 0, penArm = 0, apPct = 0, lich = 0, apItens = 0; const itens = [];
     for (const e of readEquip()) {
       const s = e.stats || parseDica(e.dica);
       cdr += s.cdr || 0; penMag += s.penMag || 0; apPct += s.apPct || 0; lich = Math.max(lich, s.lich || 0); apItens += s.ap || 0;
+      // PEN DE ARMADURA do 3036 (motor.js:539): o `parseDica` le o TEXTO da passiva e nao tem
+      // campo de pen de armadura, pelo que a 3036 valia 0 neste caminho — o ramo com `ids`
+      // (statsSet) sempre a viu. Medido: 30% de pen a faltar NUM item que a build AD poe.
+      if (String(e.base) === '3036') penArm = Math.max(penArm, 0.3);
       itens.push({ base: e.base, nome: e.nome, refino: e.refino, qual: e.qual, ...s });
     }
-    return { cdr: Math.min(0.4, cdr), penMag: Math.min(0.6, penMag), apPct, lich, apItens, itens };
+    // CDR do PAINEL manda (motor.js:537): o painel escreve `reducaoRecarga` = foco + itens, com o
+    // tecto de 0,4. A soma dos itens NAO inclui o foco (0,4% por ponto de Foco, motor.js:537),
+    // pelo que um boneco com 10 de foco tem 4% de CDR que esta soma nao via.Quando o painel nao
+    // esta la (banco de testes), fica a soma dos itens.
+    const cdrPainel = (player() || {}).cdr;
+    if (cdrPainel != null) cdr = cdrPainel;
+    return { cdr: Math.min(CAP_CDR, cdr), penMag: Math.min(CAP_PEN_MAG, penMag), penArmadura: penArmaduraDe(penArm), apPct, lich, apItens, itens };
   }
   const cdrEquipado = () => efeitosEquipados().cdr;
 
@@ -1412,7 +1872,9 @@
       const procLich = lich ? lich * ap : 0;                         // Lich: proc 1× por skill (não multiplica pelo nº de alvos)
       const total = direto * mult + (temAdaga ? giro * mult : 0) + procLich;
       const cdBase = k.rec ? k.rec(rr || 1) : null;
-      const cd = cdBase != null ? cdBase * (1 - cdr) : null;
+      // VORACIDADE POR ABATE (motor.js:1789): cada abate tira 1,5 s (5 s em chefe) de Q/W/E.
+      // Sem isto o DPS da Katarina saia ate x1,63 abaixo do real a 25 abates/min (C3).
+      const cd = cdBase != null ? cdVoraz(cdBase * (1 - cdr), h.t) : null;
       const dps = cd ? total / cd : 0, dpsDireto = cd ? (direto * mult) / cd : 0, dpsAdaga = cd && temAdaga ? (giro * mult) / cd : 0, dpsLich = cd ? procLich / cd : 0;
       out.push({ t: h.t, nome: h.name, rank: h.rank, rankUsado: rr, max: h.maxRank, naBarra: h.onBar, util: !direto && !temAdaga, adaga: temAdaga, auto: !!k.auto, dot: !!k.dot, alvo: k.alvo || null, dano: Math.round(dano), direto: Math.round(direto), giro: temAdaga ? giro : 0, total: Math.round(total), cdBase: cdBase != null ? +cdBase.toFixed(1) : null, cd: cd != null ? +cd.toFixed(1) : null, dps: Math.round(dps), dpsDireto: Math.round(dpsDireto), dpsAdaga: Math.round(dpsAdaga), dpsLich: Math.round(dpsLich), lichProc: Math.round(procLich) });
       if (temAdaga && cd) { giroDps += giro / cd; adagas.push(h.t); }
@@ -1435,7 +1897,8 @@
     const adBase = (META.champAtual && META.champAtual.adBase) || (META.champ && META.champ.adBase) || 58;
     const g = _giro;
     const giro = Math.round(g.base + g.nivel * p.nivel + g.ap * ap + g.ad * Math.max(0, ad - adBase));   // Voracidade (passiva, motor)
-    return { p, ap, ad, cdr: ef.cdr, lich: ef.lich, giro, magia: !!(META.champAtual && META.champAtual.magia) };
+    // `km` = abates/min medidos ao vivo: a Voracidade precisa da cadencia (motor.js:1789).
+    return { p, ap, ad, cdr: ef.cdr, lich: ef.lich, giro, km: killsMinAoVivo(), magia: !!(META.champAtual && META.champAtual.magia) };
   }
   /** DPS de `t` NUM RANK `r` — MESMA fórmula de `dpsPorHabilidade` (base + ratio×escala +
    *  adaga×giro + proc do Lich, tudo sobre a recarga), parametrizada pelo rank.
@@ -1451,7 +1914,8 @@
     const total = direto * mult + (temAdaga ? ctx.giro * mult : 0) + procLich;
     const cdBase = k.rec ? k.rec(r) : null;
     if (cdBase == null) return 0;
-    const cd = cdBase * (1 - ctx.cdr);
+    // VORACIDADE POR ABATE (motor.js:1789) — mesma conta do `dpsPorHabilidade`.
+    const cd = cdVoraz(cdBase * (1 - ctx.cdr), t, ctx.km);
     return cd > 0 ? total / cd : 0;
   }
   /** Números de BUFF lidos do TEXTO da habilidade (`data-dica`, que o jogo escreve a partir de
@@ -1535,24 +1999,38 @@
   // cache do golpe teórico da wiki (evita ler o DOM a cada poll)
   let _golpeWiki = { at: 0, key: '', v: 0 };
 
-  // Mecânicas carregadas de TODOS os chefes. `carrega`/`espera` vêm do motor
-  // (HAB_CHEFE); o multiplicador de dano é inline no mecanicaChefe (não exportado) —
-  // fica aqui como fallback. O inject.js avisa qual mecânica está carregando.
+  // Mecânicas carregadas de TODOS os chefes. NOME, aviso (`carrega`) e espera vêm do MOTOR pelo
+  // inject: `META.habChefe` = HAB_CHEFE (motor.js:3069-3079) e `META.rodizio` = RODIZIO_CHEFE
+  // (motor.js:3080). O MULTIPLICADOR de dano está INLINE no `mecanicaChefe` (motor.js:3102-3109)
+  // e NÃO é exportado — fica como fallback documentado, com o file:linha de cada golpe.
   //  investida/pancada/tentaculos = físico (armadura); olho/sopro/chuva/acido = mágico (RM)
-  const MECANICA = {
-    investida:  { mult: 3.5, magico: false, nome: 'Investida' },
-    pancada:    { mult: 2.2, magico: false, nome: 'Pancada Sísmica' },
-    olho:       { mult: 2.6, magico: true,  nome: 'Olho do Arauto' },
-    sopro:      { mult: 2.2, magico: true,  nome: 'Sopro de Fogo' },
-    chuva:      { mult: 1.8, magico: true,  nome: 'Chuva de Fogo' },
-    rugido:     { mult: 0,   magico: true,  nome: 'Rugido' },
-    invocar:    { mult: 0,   magico: true,  nome: 'Invocar Larvas' },
-    acido:      { mult: 1.2, magico: true,  nome: 'Ácido Corrosivo' },
-    tentaculos: { mult: 2.6, magico: false, nome: 'Tentáculos do Vazio' },
+  const MECANICA_FB = {
+    investida:  { mult: 3.5, magico: false },   // motor.js:3102 `fis(3.5)`
+    pancada:    { mult: 2.2, magico: false },   // motor.js:3103 `fis(2.2)`
+    olho:       { mult: 2.6, magico: true  },   // motor.js:3104 `mag(2.6)`
+    sopro:      { mult: 2.2, magico: true  },   // motor.js:3105 `mag(2.2)`
+    chuva:      { mult: 1.8, magico: true  },   // motor.js:3106 `mag(1.8)`
+    rugido:     { mult: 0,   magico: true  },   // motor.js:3107 — NAO e golpe: `as ×1,5` por 5 s
+    acido:      { mult: 1.2, magico: true  },   // motor.js:3108 `mag(1.2)`
+    tentaculos: { mult: 2.6, magico: false },   // motor.js:3109 `fis(2.6)`
+    invocar:    { mult: 0,   magico: true  },   // motor.js:3117-3120 — NAO e golpe: invoca 2 larvas
   };
+  /** A mecânica `mec` do motor: multiplicador de dano, se é mágica, o NOME (do HAB_CHEFE, que o
+   *  motor manda) e os tempos. Sem o motor, cai nos valores acima — cada um com o seu file:linha. */
+  function mecanicaDe(mec) {
+    const fb = MECANICA_FB[mec] || null;
+    const hc = META.habChefe && META.habChefe[mec];
+    return {
+      mult: fb ? fb.mult : 0,
+      magico: fb ? fb.magico : ['olho', 'sopro', 'chuva', 'rugido', 'acido'].indexOf(mec) >= 0,
+      nome: (hc && hc.nome) || mec,
+      carrega: hc ? hc.carrega : null,      // motor.js:3069-3079 (aviso antes do golpe)
+      espera: hc ? hc.espera : null,        // motor.js:3069-3079 (tempo entre mecanicas)
+    };
+  }
   /** Dano PREVISTO de uma mecânica carregada do chefe (o alvo é o `#hud-alvo`). */
   function danoMecanica(target, mec) {
-    const m = MECANICA[mec];
+    const m = mecanicaDe(mec);
     if (!m || !m.mult || !target || !target.name || !target.level) return 0;
     const p = player();
     const s = statsMonstro(target.name, target.level);
@@ -1609,9 +2087,10 @@
     // golpe FORTE previsto: mecânica carregada do chefe (o aviso chega ~1 s antes)
     let golpeCarga = 0, mecNome = null, fatal = false;
     const carga = live.carga;
-    if (carga && MECANICA[carga.mec] && MECANICA[carga.mec].mult > 0) {
+    const mcCarga = mecanicaDe(carga && carga.mec);
+    if (carga && mcCarga && mcCarga.mult > 0) {
       golpeCarga = danoMecanica(live.target, carga.mec);
-      mecNome = MECANICA[carga.mec].nome;
+      mecNome = mcCarga.nome;
       fatal = golpeCarga >= max;
     }
     const iminente = Math.max(ultGolpe, golpeWiki, golpeCarga * margem);   // margem só na PREVISÃO da carga
@@ -1663,22 +2142,40 @@
     const s = statsMonstro(monstro, nivel);
     if (!s || !player) return null;
     const dif = Math.max(0, nivel - (player.nivel || 1) - (META.nivelDif?.livre ?? 4));
-    const ND = META.nivelDif || { danoMonstro: 0.15, maxDanoMonstro: 3, danoJogador: 0.07, minDanoJogador: 0.25 };
+    // FALLBACK do NIVEL_DIF do motor -- ACTUALIZADO ao motor vivo (motor.js:1199):
+        //   { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5, danoJogador: 0.12, minDanoJogador: 0.25 }
+        // O valor antigo era 0,15 / 3 / 0,07 (comentario do proprio motor: 'ate 13/10/2026') e ja
+        // nao existe no jogo: com ele o fJ do Dragao (dif 9) dava 0,37 em vez de 0,25 e o tempo de
+        // matar o chefe saia 1,5x optimista. Em producao manda META.nivelDif (o inject le o
+        // NIVEL_DIF exportado pelo motor); isto e so o que vale quando o motor ainda nao falou.
+        const ND = META.nivelDif || { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5, danoJogador: 0.12, minDanoJogador: 0.25 };
     const fM = dif ? Math.min(ND.maxDanoMonstro || 3, 1 + ND.danoMonstro * dif) : 1;
     const fJ = dif ? Math.max(ND.minDanoJogador ?? 0.25, 1 - ND.danoJogador * dif) : 1;
     const def = s.magico ? (player.rm || 0) : (player.armadura || 0);
     const mit = 100 / (100 + def);
+    // PAPEL DO CAMPEAO (motor.js:2720): `dano *= (LOCAL[...]?.arena && pp?.recebidoArena != null
+    // ? pp.recebidoArena : pp?.recebido) ?? 1` -- multiplica TODO o dano recebido de monstros.
+    // Katarina = 0,75 (motor.js:898), Darius = 0,55 (motor.js:870). Ignorava-se aqui: o
+    // `dpsTomado`/`danoGolpe`/`piorMec` ficavam 33%Inflados para a Katarina (e 45% para o Darius),
+    // o que fazia fugir de luta ganhavel. `META.champAtual.papel` vem do motor pelo inject.
+    // Runeterra (arena) usa `recebidoArena` quando existe -- a MESMA escolha do motor.
+    const papel = (META.champAtual && META.champAtual.papel) || null;
+    const arena = !!(player.local && /runeterra/i.test(String(player.local)));
+    const recebido = (arena && papel && papel.recebidoArena != null) ? papel.recebidoArena : (papel ? papel.recebido : null);
+    const fPapel = (recebido != null && Number.isFinite(recebido) && recebido > 0) ? recebido : 1;
     const as = s.as || 1;
     const intervalo = 1 / as;                      // janela entre golpes
     const nPocoes = Math.max(1, Math.floor(intervalo / EXAUSTAO())); // cooldown do jogo (motor)
-    const dpsTomado = s.ad * fM * as * mit;
-    const danoGolpe = s.ad * fM * mit;             // dano iminente por golpe
+    const dpsTomado = s.ad * fM * as * mit * fPapel;
+    const danoGolpe = s.ad * fM * mit * fPapel;    // dano iminente por golpe
     // pior MECÂNICA carregada do chefe (rodízio do motor): pode ser insta-kill
     let piorMec = 0, mecFatalNome = null;
     const rod = META.rodizio && META.rodizio[monstro];
     if (rod) for (const mc of rod) {
-      const mm = MECANICA[mc]; if (!mm || !mm.mult) continue;
-      const d = s.ad * mm.mult * fM * (100 / (100 + (mm.magico ? (player.rm || 0) : (player.armadura || 0))));
+      const mm = mecanicaDe(mc); if (!mm || !mm.mult) continue;
+      // `fM` (motor.js:1201) e o papel (motor.js:2720) multiplicam o golpe do monstro; a
+      // mecanica do chefe passa pelo MESMO `receberDano` -- logo leva os dois.
+      const d = s.ad * mm.mult * fM * fPapel * (100 / (100 + (mm.magico ? (player.rm || 0) : (player.armadura || 0))));
       if (d > piorMec) { piorMec = d; mecFatalNome = mm.nome; }
     }
     const mortal = piorMec > 0 && piorMec >= (player.vida || 0);
@@ -1689,7 +2186,7 @@
     const alvoGolpe = Math.max(0, danoGolpe - curaSkill * intervalo); // o que a poção precisa cobrir por janela
     const mix = melhorMix(nPocoes, alvoGolpe);
     const tMorrer = liquido > 0 ? (player.vida || 1) / liquido : Infinity;
-    return { monstro, nivel, dif, fM, fJ, hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
+    return { monstro, nivel, dif, fM, fJ, fPapel, recebido: fPapel, hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
   }
 
   /** Agrega os ciclos observados por região (médias por minuto + mortes). */
@@ -1710,6 +2207,9 @@
         r.chp += (bf.healPotion || 0) / (bf.durMs / 60000) / 60; r.chpn++;
         if ((bf.potions || 0) > 0) { r.bpoc += bf.potions; r.bpc++; }
       }
+            // JANELA (run id) do ciclo (TK-01-42): guardada por regiao para o ranking poder
+      // recusar comparar taxas de janelas diferentes.
+      if (c.janela) { r.janelas = r.janelas || new Set(); r.janelas.add(c.janela); }
       r.deaths += c.deaths || 0;
       if (c.boss) r.boss = c.boss;
       if (c.bossDurMs) { r.bossMs += c.bossDurMs; r.bossN++; }
@@ -1719,14 +2219,24 @@
     const arr = Object.values(por).map((r) => {
       const d = r.m || 1;
       const rm = (r.region || '').match(/(\d+)\s*[–-]\s*(\d+)/);
-      const nivelChefe = rm ? +rm[1] + 2 : null;
+      // NIVEL DO CHEFE pela regra do motor (motor.js:1121): o texto da regiao da a faixa (n0, n1)
+      // e o jogador e o actual. Antes era `rm[1] + 2` (o topo da faixa) — media o risco do chefe
+      // contra um chefe 4-6 niveis acima do real.
+      const nivelChefe = rm ? nivelChefeDe({ nm: [+rm[1], +rm[2]] }, (player() || {}).nivel) : null;
       const curaSkill = (r.hs / d) / 60; // cura/s das skills nos mobs (medido)
       const curaSkillChefe = r.chn ? r.chs / r.chn : curaSkill; // cura/s das skills NO CHEFE
       let curaPocao = (r.hp / d) / 60;    // cura/s EFETIVA das poções (mobs)
       const curaPocaoChefe = r.chpn ? r.chp / r.chpn : curaPocao;
       if (!curaPocaoChefe) curaPocao = cp * 0.6; // região nova: estimativa conservadora
       const risco = r.boss && nivelChefe ? avaliar(r.boss, nivelChefe, pl, { skill: curaSkillChefe, pocao: curaPocaoChefe || cp * 0.6 }) : null;
-      return { region: r.region, n: r.n, deaths: r.deaths, boss: r.boss, goldMin: r.g / d, xpMin: r.x / d, killsMin: r.k / d, mobHpMinRel: r.hpm, potMin: r.p / d, goldPotionMin: r.gp / d, healSkillS: curaSkill, healSkillChefeS: curaSkillChefe, healPotionS: curaPocao, bossMs: r.bossN ? r.bossMs / r.bossN : null, potChefe: r.bpc ? r.bpoc / r.bpc : null, risco: risco ? { nivel: nivelChefe, hp: risco.hp, dps: risco.dpsTomado, danoGolpe: risco.danoGolpe, intervalo: risco.intervalo, nPocoes: risco.nPocoes, curaSkill: risco.curaSkill, curaPocao: risco.curaPocao, curaTotal: risco.curaTotal, liquido: risco.liquido, mixTxt: risco.mixTxt, custoPocaoS: risco.custoPocaoS, tMorrer: risco.tMorrer, fM: risco.fM, piorMec: risco.piorMec, mecFatalNome: risco.mecFatalNome, mortal: risco.mortal, morre: risco.morre } : null };
+      // JANELAS medidas nesta regiao (TK-01-42): a MESMA build na MESMA regiao deu 834 ouro/min
+      // numa janela e 1581 noutra (parte-01.md L2528-2551). Sem o id da janela em cada amostra,
+      // o banco nao tem como saber que dois numeros nao sao comparaveis -- e volta a enganar.
+      const janelas = [...new Set((por[r.region]?.janelas) || [])].sort();
+      return { region: r.region, n: r.n, deaths: r.deaths, boss: r.boss, goldMin: r.g / d, xpMin: r.x / d, killsMin: r.k / d, mobHpMinRel: r.hpm, potMin: r.p / d, goldPotionMin: r.gp / d, healSkillS: curaSkill, healSkillChefeS: curaSkillChefe, healPotionS: curaPocao, bossMs: r.bossN ? r.bossMs / r.bossN : null, potChefe: r.bpc ? r.bpoc / r.bpc : null,
+        janelas, janela: janelas.length === 1 ? janelas[0] : null,
+        avisoJanela: janelas.length > 1 ? 'taxas desta regiao vieram de ' + janelas.length + ' janelas diferentes: NAO comparaveis entre si' : null,
+        risco: risco ? { nivel: nivelChefe, hp: risco.hp, dps: risco.dpsTomado, danoGolpe: risco.danoGolpe, intervalo: risco.intervalo, nPocoes: risco.nPocoes, curaSkill: risco.curaSkill, curaPocao: risco.curaPocao, curaTotal: risco.curaTotal, liquido: risco.liquido, mixTxt: risco.mixTxt, custoPocaoS: risco.custoPocaoS, tMorrer: risco.tMorrer, fM: risco.fM, piorMec: risco.piorMec, mecFatalNome: risco.mecFatalNome, mortal: risco.mortal, morre: risco.morre } : null };
     });
     arr.sort((a, b) => b.goldMin - a.goldMin);
     return arr;
@@ -1751,7 +2261,7 @@
     // O `rankItens` pontua AP × penetração MÁGICA contra o ALVO -> a armadura efectiva leva o
     // RM_MONSTRO do motor (motor.js:1202). Sem ele o ganho de DPS mágico saía subestimado.
     const mit = (pen) => 100 / (100 + armMagicaEfetiva(armAlvo, pen));
-    const cdrAtual = Math.min(0.4, (efeitosEquipados().cdr || 0));
+    const cdrAtual = Math.min(CAP_CDR, (efeitosEquipados().cdr || 0));
     // CDR SÓ NAS HABILIDADES (a MESMA correcção do `scoreSet`): o dano de auto-ataque não escala
     // com a recarga. A fracção vem do `dpsPorHabilidade` (repartição já existente no ficheiro).
     let fracHabs = 0;
@@ -1768,7 +2278,7 @@
       let apPct = it.apPct || 0; if (!apPct && it.efeito) { const m = it.efeito.match(/Poder de Habilidade total em (\d+)%/i) || it.efeito.match(/\+(\d+)% do Poder/i); if (m) apPct = +m[1] / 100; }
       let cdr = it.cdr || 0; if (!cdr && it.efeito) { const m = it.efeito.match(/[\u2212-]\s*(\d+)\s*%\s*(?:na\s*)?recarga/i); if (m) cdr = +m[1] / 100; }   // inclui a passiva
       const poderNovo = (poder + ap) * (1 + apPct);
-      const cdrNovo = Math.min(0.4, cdrAtual + cdr);
+      const cdrNovo = Math.min(CAP_CDR, cdrAtual + cdr);
       const dpsNovo = poderNovo * mit(pen) * fatorCdr(cdrNovo);
       const ganho = dpsAtual > 0 ? dpsNovo / dpsAtual - 1 : 0;
       return { id: it.id, nome: it.nome, raridade: it.raridade, espaco: it.espaco, ap, penMag: pen, apPct, cdr, efeito: it.efeito || null, ganho };
@@ -1789,12 +2299,16 @@
         const z = o[zid]; const zona = z.zona || {};
         const mobs = (zona.monstros || []).map((m) => m[0]);
         const bossNome = zona.chefe ? zona.chefe[0] : null;
-        const nivel = zona.nm ? Math.round((zona.nm[0] + zona.nm[1]) / 2) : (zona.faixa ? Math.round((zona.faixa[0] + zona.faixa[1]) / 2) : null);
+        // Uma so convencao de nivel (TK-01-06): o MOB na media do motor (motor.js:1131-1132),
+        // nao no meio da faixa nem no topo. Com o nivel do jogador o motor poe o mob de 2 abaixo
+        // a 1 acima dele; sem o nivel, uniforme na faixa (media = meio da faixa).
+        const nivel = nivelMobDe(zona, p.nivel);
         const reg = agg.find((r) => zona.nome && r.region.startsWith(zona.nome));
         const curaMob = reg ? { skill: reg.healSkillS || 0, pocao: reg.healPotionS || cp * 0.6 } : { skill: 0, pocao: cp * 0.6 };
         const curaChefe = reg ? { skill: reg.healSkillChefeS || 0, pocao: reg.healPotionS || cp * 0.6 } : curaMob;
         const avMob = mobs[0] ? avaliar(mobs[0], nivel, p, curaMob) : null;
-        const avChefe = bossNome ? avaliar(bossNome, nivel + 2, p, curaChefe) : null;
+        // O CHEFE pela regra do motor (motor.js:1134), nao `nivel + 2`.
+        const avChefe = bossNome ? avaliar(bossNome, nivelChefeDe(zona, p.nivel), p, curaChefe) : null;
         // A TABELA DE DROP DEPENDE DA CLASSE (motor.js:383 DROPS vs 397 DROPS_AP; 407 carrega as duas).
         // MEDIDO: o Barao tem o 3031 Gume do Infinito em DROPS e o 3089 Rabadon em DROPS_AP. Antes isto
         // preferia SEMPRE `.ap`, logo respondia a tabela errada a um campeao AD.
@@ -3270,7 +3784,7 @@
       if (id === '4645') { chama = true; det.push('Chama +20% (<40%)'); }
       if (id === '6653') { liandry = true; det.push('Liandry queima 1,5%/s'); }
     }
-    cdr = Math.min(0.4, cdr); pen = Math.min(0.6, pen); penArmadura = Math.min(0.7, penArmadura);
+    cdr = Math.min(CAP_CDR, cdr); pen = Math.min(CAP_PEN_MAG, pen); penArmadura = penArmaduraDe(penArmadura);
     // `pen` = pen MAGICA (motor.js:529) e `penArmadura` = pen de ARMADURA (motor.js:539, so no ramo fisico).
     return { ap: apItem * (1 + apPct), ad: adItem, cdr, pen, penArmadura, lich, chama, liandry, det };
   }
@@ -3301,7 +3815,8 @@
       const direto = (k.base ? k.base(h.rank) : 0) + (typeof k.ratio === 'function' ? k.ratio(h.rank) : (k.ratio || 0)) * escala + (k.adRatio || 0) * adTotal;
       const total = direto * (k.mult || 1) + lich * ap;
       const cdBase = k.rec ? k.rec(h.rank) : null;
-      const cd = cdBase != null ? cdBase * (1 - cdr) : null;
+      // VORACIDADE POR ABATE (motor.js:1789): Q/W/E andam 1,5 s mais rapidas por abate.
+      const cd = cdBase != null ? cdVoraz(cdBase * (1 - cdr), h.t) : null;
       const d = cd ? total / cd : 0;
       dps += d; habs.push({ t: h.t, nome: h.name, dps: Math.round(d) });
     }
@@ -3387,19 +3902,71 @@
     return { assinatura: h.assinatura, mobilidade: null, mob, chefe, teorico: { mob: t.mob, chefe: t.chefe }, confianca: h.n };
   }
   /** Ranking empírico das builds testadas (ordena por ouro/min real no mob e por outDps real no chefe). */
+  /** Ranking empirico das builds testadas.
+   *
+   *  TK-01-41 / TK-01-42 — dois defeitos medidos no mesmo ponto:
+   *   1) `rankBuildsTestadas(null)` JUNTAVA celulas de regioes diferentes. O agente leu 1264
+   *      ouro/min para uma build e o teste controlado deu 754 na MESMA regiao: o 1264 era outra
+   *      regiao (parte-01.md L2304 / L2425). Duas vezes o agente foi enganado por isto.
+   *   2) os numeros absolutos nao sao comparaveis ENTRE janelas: a mesma build na mesma regiao
+   *      deu 834 numa janela e 1581 noutra (parte-01.md L2528-2551). Nao era nivel nem modo
+   *      noturno. Conclusao do proprio registo: so comparacoes DENTRO da mesma janela valem.
+   *
+   *  Regras novas:
+   *   - cada amostra guarda `regiao` e `janela` (o run em que foi medida);
+   *   - sem `regiaoId`, o ranking NAO e uma tabela unica: as celulas ficam separadas por regiao
+   *     e `crossRegiao: true` impede declarar vencedor entre regioes;
+   *   - toda a taxa absoluta leva `avisoJanela` (nao comparavel entre janelas).
+   */
   function rankBuildsTestadas(regiaoId) {
-    const seen = new Map();
-    for (const x of ((farm && farm.cycles) || [])) { if (!x || !x.mobFase || !x.mobFase.perMin || !x.setup || !x.setup.equip) continue; const k = sigSet(x.setup.equip.map((e) => e.base)); if (!seen.has(k)) seen.set(k, { assinatura: k, itens: (x.setup.equip.map((e) => e.base)), regiao: x.region }); }
+    const visto = new Map();      // assinatura -> { assinatura, itens, regioes:Map(regiao->n), janelas:Set }
+    const add = (k, itens, regiao, janela) => {
+      const v = visto.get(k) || { assinatura: k, itens: itens, regioes: new Map(), janelas: new Set(), n: 0 };
+      const reg = regiao || '(sem regiao)';
+      v.regioes.set(reg, (v.regioes.get(reg) || 0) + 1);
+      if (janela != null) v.janelas.add(janela);
+      v.n++;
+      visto.set(k, v);
+      return v;
+    };
+    for (const x of ((farm && farm.cycles) || [])) {
+      if (!x || !x.mobFase || !x.mobFase.perMin || !x.setup || !x.setup.equip) continue;
+      const k = sigSet(x.setup.equip.map((e) => e.base));
+      add(k, x.setup.equip.map((e) => e.base), x.region, x.janela);
+    }
     // TAMBÉM as rodadas de TESTE salvas (antes só os ciclos → metade das builds ficava de fora)
     for (const rod of (testesSalvos || [])) {
       if (!rod) continue;
       for (const res of (rod.resultados || [])) {
         if (!res || !res.itens || !res.itens.length) continue;
         const k = sigSet(res.itens);
-        if (!seen.has(k)) seen.set(k, { assinatura: k, itens: res.itens.map(String), regiao: rod.regiao || null });
+        add(k, res.itens.map(String), rod.regiao || null, rod.janela || rod.inicio);
       }
     }
-    return [...seen.values()].map((s) => { const p = preverBuild(s.itens, regiaoId); return { ...s, ...p }; });
+    const avisoJanela = 'taxa absoluta: NAO comparavel entre janelas (run ids diferentes) — so dentro da mesma janela';
+    const lista = [...visto.values()].map((s) => {
+      // com `regiaoId` explicito, mede SO essa regiao; sem ele, nao ha regiao para medir
+      const p = preverBuild(s.itens, regiaoId);
+      const regioes = [...s.regioes.keys()].sort();
+      return {
+        assinatura: s.assinatura, itens: s.itens,
+        regiao: regiaoId || (regioes.length === 1 ? regioes[0] : null),
+        regioes, amostrasPorRegiao: Object.fromEntries(s.regioes), n: s.n,
+        janelas: [...s.janelas].sort(),
+        crossRegiao: regioes.length > 1,
+        avisoJanela: s.janelas.size > 1 ? avisoJanela : null,
+        ...p,
+      };
+    });
+    // ORDENACAO: dentro da mesma regiao, por ouro/min. Com celulas de varias regioes nao ha
+    // ordem honesta — mantem-se a ordem de chegada e marca-se o conjunto.
+    const variasRegioes = new Set();
+    for (const b of lista) for (const r of b.regioes) variasRegioes.add(r);
+    if (variasRegioes.size > 1 && !regiaoId) {
+      for (const b of lista) b.ordem = 'sem-ordem (celulas de ' + variasRegioes.size + ' regioes diferentes: nao ha vencedor cross-regiao)';
+      return lista;
+    }
+    return lista.sort((a, b) => (b.mob ? b.mob.goldMin : 0) - (a.mob ? a.mob.goldMin : 0));
   }
 
   /** Ranking NORMALIZADO: TODAS as builds medidas no MESMO patamar (tier A, refino 0) — comparação justa.
@@ -3424,8 +3991,9 @@
     const L = (META.locais || []).find((x) => x.id === regiaoId);
     const alvos = {};
     try {
-      if (L?.monstros?.[0]) { const s = statsMonstro(L.monstros[0][0], L.nm ? L.nm[1] : 1); if (s) alvos.mob = { armadura: s.armadura, hp: s.hp, nivel: L.nm ? L.nm[1] : 1, chefe: false }; }
-      if (L?.chefe) { const s = statsMonstro(L.chefe[0], (L.nm ? L.nm[1] : 1) + 2); if (s) alvos.chefe = { armadura: s.armadura, hp: s.hp, nivel: (L.nm ? L.nm[1] : 1) + 2, chefe: true }; }
+      if (L?.monstros?.[0]) { const nmOb = nivelMobDe(L); const s = statsMonstro(L.monstros[0][0], nmOb); if (s) alvos.mob = { armadura: s.armadura, hp: s.hp, nivel: nmOb, chefe: false }; }
+      // NIVEL DO CHEFE pela regra do motor (motor.js:1121), nao `nm[1] + 2`.
+      if (L?.chefe) { const nc = nivelChefeDe(L); const s = statsMonstro(L.chefe[0], nc); if (s) alvos.chefe = { armadura: s.armadura, hp: s.hp, nivel: nc, chefe: true }; }
     } catch { /* ignore */ }
     const est = (a) => { if (!a) return null; const e = estimarSet(ids, a, opt); return { dps: e.dps, score: Math.round(scoreSet(ids, { armadura: a.armadura })), ap: e.ap, cdr: e.cdr, pen: e.pen, burn: e.burn }; };
     return { mob: est(alvos.mob), chefe: est(alvos.chefe), regiao: regiaoId, itens: ids.slice() };
@@ -3438,8 +4006,9 @@
     const L = (META.locais || []).find((x) => x.id === regiaoId);
     const alvos = {};
     try {
-      if (L?.monstros?.[0]) { const s = statsMonstro(L.monstros[0][0], L.nm ? L.nm[1] : 1); if (s) alvos.mob = { armadura: s.armadura, hp: s.hp, nivel: L.nm ? L.nm[1] : 1, chefe: false }; }
-      if (L?.chefe) { const s = statsMonstro(L.chefe[0], (L.nm ? L.nm[1] : 1) + 2); if (s) alvos.chefe = { armadura: s.armadura, hp: s.hp, nivel: (L.nm ? L.nm[1] : 1) + 2, chefe: true }; }
+      if (L?.monstros?.[0]) { const nmOb = nivelMobDe(L); const s = statsMonstro(L.monstros[0][0], nmOb); if (s) alvos.mob = { armadura: s.armadura, hp: s.hp, nivel: nmOb, chefe: false }; }
+      // NIVEL DO CHEFE pela regra do motor (motor.js:1121), nao `nm[1] + 2`.
+      if (L?.chefe) { const nc = nivelChefeDe(L); const s = statsMonstro(L.chefe[0], nc); if (s) alvos.chefe = { armadura: s.armadura, hp: s.hp, nivel: nc, chefe: true }; }
     } catch { /* ignore */ }
     const nome = (id) => { const it = (META.itens || []).find((x) => String(x.id) === String(id)); return it ? (it.nome || String(id)) : String(id); };
     const calc = (a) => {
@@ -3794,7 +4363,10 @@
     return { ok: true, reajustados: ok, exec };
   }
 
-  const Q_MULT = { C: 0.9, B: 1, A: 1.15, S: 1.35, SS: 1.7 };
+  /** QUALIDADES do motor (motor.js:174-178, `mult`). ERA UMA SEGUNDA COPIA deste mapa no mesmo
+   *  ficheiro (havia tambem `QUAL_MULT` mais acima) — duas copias divergentes a espera de acontecer.
+   *  Fica um so nome, apontando para a primeira (motor.js:174-178). */
+  const Q_MULT = QUAL_MULT;
 
   /** PERFIL a partir de um campeão do motor (`magia` + `papel.dano/recebido` + `distancia`). */
   function perfilDe(c) {
@@ -3959,8 +4531,9 @@
       if (!l) return null;
       const nome = chefe ? (l.chefe && l.chefe[0]) : ((l.monstros || []).slice().sort((a, b) => b[1] - a[1])[0] || [])[0];
       if (!nome) return null;
-      const base = l.nm || l.faixa || [1, 1];
-      const nivel = (chefe ? base[1] : base[0]) + (chefe ? 2 : 0);
+      // motor.js:1134 (chefe) / 1131-1132 (mob): a UNICA convencao de nivel, sem `base[0]` nem
+      // `base[1]` copiados a mao. O MOB de referencia e o que o jogo poe a frente do boneco.
+      const nivel = nivelAlvo(l, chefe ? 'chefe' : 'mob');
       const s = statsMonstro(nome, nivel);
       return s ? { nome, nivel, hp: s.hp } : null;
     };
@@ -5454,7 +6027,12 @@
       const da = lista.filter((h) => h.auto || h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
       if (dh + da > 0) fracHabs = dh / (dh + da);
     } catch { /* sem arsenal */ }
-    const fatorCdr = fracHabs / (1 - S.cdr) + (1 - fracHabs);   // só a parcela das habilidades acelera
+    // VORACIDADE POR ABATE (motor.js:1789) entra no MESMO factor: o lancamento da Q/W/E fica
+    // 1/(1 + 1,5/T) mais rapido, multiplicativo com o CDR. Só a parcela das habilidades acelera.
+    const _vor = voracidadeDe();
+    const _km = killsMinAoVivo();
+    const ganhoVor = (_vor && _km > 0) ? _vor.valor / (60 / _km) : 0;
+    const fatorCdr = fracHabs / ((1 - S.cdr) * (1 + ganhoVor)) + (1 - fracHabs);
     let d = (base * mit) * fatorCdr * (1 + (magia ? S.lich * 0.15 : 0));   // Lich: +75%AP/skill ≈ +15% no dano total
     if (S.chama) d *= 1 + (alvo?.chefe ? 0.066 : 0.033);        // finisher <40% HP
     if (S.liandry && alvo?.hp) {                                 // queima da Liandry
@@ -5470,8 +6048,8 @@
     const id = localId(loc.text);
     const L = (META.locais || []).find((x) => x.id === id);
     let monstro = null, nivel = null;
-    if (contexto === 'chefe' && L?.chefe) { monstro = L.chefe[0]; nivel = (L.nm ? L.nm[1] : L.faixa[1]) + 2; }
-    else if (L?.monstros?.length) { monstro = L.monstros[0]; nivel = L.nm ? L.nm[1] : (L.faixa ? L.faixa[1] : 0); }
+    if (contexto === 'chefe' && L?.chefe) { monstro = L.chefe[0]; nivel = nivelChefeDe(L); }
+    else if (L?.monstros?.length) { monstro = L.monstros[0]; nivel = nivelMobDe(L); }
     let alvo = null;
     try { if (monstro && nivel) { const s = statsMonstro(monstro, nivel); if (s) alvo = { armadura: s.armadura, hp: s.hp, nivel, chefe: contexto === 'chefe' }; } } catch { /* ignore */ }
     // BUG CORRIGIDO: o Rabadon era FORÇADO como primeiro item de TODOS os conjuntos
@@ -5795,7 +6373,7 @@
     const loc = (META.locais || []).find((l) => l.id === id);
     if (!loc || !loc.chefe) return null;
     const boss = loc.chefe[0];
-    const nivel = (loc.nm ? loc.nm[1] : loc.faixa[1]) + 2;
+    const nivel = nivelChefeDe(loc);
     const p = player();
     const s = statsMonstro(boss, nivel);
     if (!s) return null;
@@ -5809,7 +6387,14 @@
     const meDps = meuDps() || 0;
     // `armEf` JÁ levava a penetração mágica dos itens (tooltip c/ refino) mas FALTAVA o RM_MONSTRO: o dano medido do campeão contra o chefe é MÁGICO (a penetração usada é a mágica) -> motor.js:1202.
     const mitBoss = 100 / (100 + armMagicaEfetiva(s.armadura, efEq.penMag));
-    const meuDpsBoss = meDps * mitBoss;
+    // FATOR DE DANO DO JOGADOR (motor.js:1236, em `golpear`): TODO o dano que o jogador causa
+    // num monstro mais de 4 niveis acima e multiplicado por `fJ = max(0,25; 1 - 0,12 x dif)`
+    // (motor.js:1199-1202). Era CALCULADO pelo `avaliar()` e NUNCA consumido: o `tKill` saia
+    // quantas vezes optimista? No Dragao (dif 9) fJ = 0,25 -> o tempo real de matar e 4x o
+    // estimado, e o `ganha` (tKill <= tMorrer) dizia TRUE com a luta perdida. TK-01-04.
+    // O fator aplica-se ao DPS do jogador, que e o que o `tKill` usa.
+    const fJBoss = av && av.fJ ? av.fJ : 1;
+    const meuDpsBoss = meDps * mitBoss * fJBoss;
     const tKill = meuDpsBoss > 0 ? s.hp / meuDpsBoss : Infinity;
     const net = av.dpsTomado - curaSkill;                                   // perda líquida/s sem poção
     const curaPocaoS = Math.max(1, curaPocaoMax()) / EXAUSTAO();            // melhor poção disponível ÷ cooldown do motor
@@ -5823,7 +6408,7 @@
     return {
       regiao: loc.nome.replace(/ nível.*/, ''), boss, nivel, hpBoss: Math.round(s.hp), armadura: Math.round(s.armadura),
       dpsChefe: Math.round(av.dpsTomado), curaSkill: Math.round(curaSkill), danoGolpe: Math.round(av.danoGolpe), intervalo: +av.intervalo.toFixed(1),
-      meuDpsBoss: Math.round(meuDpsBoss), tKillS: realMs ? +(realMs / 1000).toFixed(1) : +tKill.toFixed(1), tMorrerS: tMorrer === Infinity ? null : +tMorrer.toFixed(1),
+      meuDpsBoss: Math.round(meuDpsBoss), fJ: fJBoss, tKillS: realMs ? +(realMs / 1000).toFixed(1) : +tKill.toFixed(1), tMorrerS: tMorrer === Infinity ? null : +tMorrer.toFixed(1),
       ganha, potS: +potS.toFixed(2),
       tKillRealS: realMs ? +(realMs / 1000).toFixed(1) : null, potReal,
       potTotal: potReal != null ? potReal : (ganha ? Math.ceil(potS * tKill) : null),
@@ -6584,7 +7169,7 @@
     return cfg;
   }
 
-  window.__lolidleAuto = { press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
+  window.__lolidleAuto = { press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, nivelAlvo, nivelMobDe, nivelChefeDe, mediaWaveDe, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
     podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- BUILD POR FASE (mob × chefe) e AS QUATRO FONTES ----
     buildParaMob, buildParaChefe, buildDaFase, buildIdealParaFase, faseBuild, planoBuildFase,
