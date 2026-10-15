@@ -1331,7 +1331,7 @@ Build: 3175~A, 3089+2~B, 3100+3~A, 3135~A, 4629+3~A — procs LIGADOS:
 - Nada disto foi medido a jogar: sem browser, sem CDP, sem partida — só o motor lido como texto e os snapshots já gravados.
 
 
-## O ABATE e A ULTIMATE — o que o motor faz de facto
+## 5) O ABATE e A ULTIMATE — o que o motor faz de facto
 
 motor.js:1789 — em TODOS os campeões, cada abate corta a recarga de **Q, W e E**:
 
@@ -1350,8 +1350,26 @@ Na luta simulada isto aparece em cada ABATE: o giro da adaga volta mais vezes (Q
 | duração | mediana 28.5 s (4.5-35.6) | 34.35 s |
 | poções | mediana 1 (0-6) | 6 |
 | vida mínima do jogador | 2784 a 3888 | 3114 |
-| mecânicas vistas | sopro, chuva, rugido | sopro, rugido |
+| mecânicas que ATERRARAM | sopro, chuva e rugido (a chuva falta em parte das lutas: interrompida) | sopro x2, rugido x1 — 1 cargas interrompidas pelo atordoamento da Adaga Certeira (motor.js:3089) |
 | cura das habilidades por segundo | mediana 0/s | 27.7/s |
 
 A duração, o número de poções, a vida mínima e a cura por segundo caem DENTRO do intervalo medido. O que não bate é o DPS do jogador, porque a base do campeão não existe no repositório (ver [1]).
+
+## 7) O RANK DESCONHECIDO DA PASSIVA D — e a prova de que é 4
+
+- motor.js:2798-2801 — no nv29 o motor dá 28 pontos de habilidade (1 por nível, a partir do 1).
+- docs/snapshots/skills.json — o arsenal MEDIDO tem 24 ranks (Q10+W1+E3+R3+G1+A5+F1) e `pontos: 0`. **Faltam 4 pontos.**
+- motor.js:755-756 — a passiva **D (Lâmina Sinistra)** dá velocidade de ataque por adaga e `curaGiro: serie(0.08, 0.01)`: no rank 4 vale 0,11.
+- motor.js:2169 — com D, o giro cura `(curaBase 0,05 + curaGiro)` do dano dele. Com D = 4: **0,16** do dano do giro.
+- docs/snapshots/katarina.json — na luta contra o Dragão há um `{t: heal, v: 279}`. O giro medido nessa mesma luta anda em 1640-1760 de dano:
+  0,16 x 1760 = **282** contra os 279 medidos (-1%). Com D = 0 seria 0,05 x 1760 = 88, que não bate com nada.
+
+**Conclusão:** os 4 pontos que faltam estão na D (rank 4) — é o que o medido diz. A simulação fica em **D = 0** por omissão (conservamos o que está escrito) e
+`--rankD 4` mostra o efeito real.
+
+| chefe | poções (D = 0) | poções (D = 4) | vida mínima (D=0) | vida mínima (D=4) |
+|---|---:|---:|---:|---:|
+| Arauto do Vale | 5 | 2 | 2787 | 3277 |
+| Dragão Infernal | 6 | 5 | 3114 | 2918 |
+| Barão Nashor | 146 | 125 | 955 | 1383 |
 

@@ -45,13 +45,20 @@ Todas do mesmo tipo. Todas apanhadas pelo dono, não pelo agente.
 |---|---|---|
 | 1 | "O Ímpeto dá 15% de CDR" | `0,15 × 1,15 × 1,36 = 23,46%` — qualidade e refino **escalam** |
 | 2 | "O pen da bota A é 17,25%" | `motor.js:254-255` **não escala** o `penMag` — é 15% |
-| 3 | "CDR vale mais contra o chefe (1 abate)" | `motor.js:3117-3120` — o Barão **invoca 2 larvas a cada 14s** |
+| 3 | "CDR vale mais contra o chefe (1 abate)" | `motor.js:3080` — o Barão invoca 2 larvas **a cada 34,3 s**, não 14 (ver adenda abaixo) |
 | 4 | "O Rei Destruído dá 4.600 por auto no Barão" | `motor.js:1190-1191` — **tecto de 3×CURVA.hp** → 863 |
 | 5 | "O roubo de vida vale 0,02%, é quase nada" | `motor.js:1226-1228` — cura `dano × rv`; vale **269 cura/s** numa base AD |
 | 6 | "O `multClasse = 0.12` bloqueia a build AD" | Não bloqueia. O bloqueio é `pesosItem('mago').ad = 0` |
 | 7 | "A Katarina não tem cura própria" | O kit dela tem **`curaGiro`** (`motor.js:755-756`) — **cura no giro** |
 
 **Nenhum era erro de matemática. Todos eram o motor a não ler o jogo que tem à frente.**
+
+> **Adenda (2026-10-14, 21:15) — a prova #3 corrigida pelo próprio erro que ela denuncia.** A tabela
+> dizia "2 larvas a cada 14s". O 14 é o campo `espera` do invocar (`motor.js:3076`) e o invocar é
+> **1 de 3** mecânicas do rodízio (`motor.js:3080`): `(0+14)+(1,3+9)+(1+9) = 34,3 s`. Simulado passo
+> a passo (1/60 s): invocações em t = 6,82 / 41,12 / 75,42 / 109,72 s. A conclusão da build não mudou
+> (CDR continua a ganhar, +15,52%), mas o número estava errado. **Lia-se um campo em vez da lista —
+> Regra Nº 1, outra vez.** Fonte: `tools/sim-troca.mjs` + `docs/troca-em-combate.md`.
 
 ---
 
@@ -178,3 +185,44 @@ A extensão **re-estima tudo** (`kXp`/`kOuro`, `automation.js:1195-1204`) e **n�
 
 **O defeito foi encontrado, escrito num relatório de 565 linhas — e deixado de pé.** Isto é o que a
 regra proíbe: era arrumável, e não foi arrumado.
+
+---
+
+## REGRA Nº 8 — O PIPELINE: LEITOR → TICKET → WORKER (e o trabalho acaba quando o objectivo está cumprido)
+
+**Reportar não é arrumar.** Uma frente só fecha quando o defeito está corrigido e provado — não quando
+o relatório sobre ele está escrito. Diagnóstico com o defeito de pé = trabalho não feito (Regra Nº 7).
+
+### A maneira de trabalhar deste repo (desde 2026-10-14 21:15, ordem do dono)
+
+```
+docs/historico/  →  LEITORES  →  docs/tickets/  →  WORKERS em WORKTREE  →  merge + prova ao vivo
+prompts do dono     leem TUDO     uma tarefa        um ficheiro,          ramo a ramo,
++ respostas        em etapas     concreta,          um escritor,          marcador
+do agente          + gravam      com evidência      git worktree          discriminante
+                   incremental   file:linha
+```
+
+**1. LEITORES.** Um subagent por pedaço do histórico. Lê o que lhe é atribuído **em etapas**
+(`offset`/`limit` a avançar, nunca a recomeçar), grava tickets **incrementalmente** — a compactação do
+contexto não pode levar o que ainda não está em disco. Leitor **não arranja nada**: a função dele é
+transformar contexto em ticket. Se algo não é ticket (é decisão do dono), vai para a secção
+"DECISÕES DO DONO", e o Lead pergunta **uma vez, em lote**.
+
+**2. TICKETS.** Só entra ticket que venha do contexto dos leitores. Cada ticket traz: ficheiro(s)
+(= write scope), evidência com `file:linha`, acção concreta, critério de aceitação e prioridade
+(P0 está quebrado agora / P1 número ou política falsa / P2 feature ou observabilidade em falta /
+P3 documento). **Sem evidência não há ticket.**
+
+**3. WORKERS.** Um worker por frente, em **worktree** próprio (`git worktree add`), um ficheiro um
+escritor, e no fim **commitam**. O Lead mergeia ramo a ramo e corre a prova ao vivo. O worker **não
+recebe o contexto do leitor a olho** — recebe tickets e lê a fonte (Regra Nº 1).
+
+**4. CACHE — a razão de ser deste pipeline.** Cada worker lê os **mesmos** ficheiros de contexto na
+**mesma** ordem antes do seu ticket: o prefixo do pedido fica idêntico, o cache do harness acerta, e
+só o ticket difere. Reler o contexto de forma diferente em cada worker é queimar dinheiro do dono.
+No `dsh`, a costura existe: o backend `fork` semeia o filho com **todas as rondas completas do pai**
+(`dsh-subagent-fork-in-process`) — o pipeline acima preserva esse prefixo em vez de o partir.
+
+**5. O objectivo manda.** Sobrou ticket P0/P1 sem dono? A frente não está fechada. O dono deu um
+objectivo e uma hora: hoje, antes da meia-noite, esta extensão fica **SOLVED** — não "quase".

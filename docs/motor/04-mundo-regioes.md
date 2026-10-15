@@ -906,4 +906,405 @@ sortearGemas(local, chefe, mult = 1):                            motor.js:127-13
 `k = 1 + 0,1 × tier`: 1,0 na Rota Inferior até 1,7 no Barão. A chance do chefe é **fixa** (não depende do
 tier).
 
-<!-- PARTE-D -->
+---
+
+## 13. OS CHEFES DO RIFT E AS SUAS MECÂNICAS (motor.js:3065-3125)
+
+### 13.1 As constantes (motor.js:3066-3080) **VARIA**
+
+``
+MECANICAS      = { 'Arauto do Vale': 'investida', 'Dragão Infernal': 'sopro', 'Barão Nashor': 'invocar' }   motor.js:3066
+BARAO          = { duracao: 180, dano: 0,25, regen: 0,5, recall: 2 }                                        motor.js:3067
+
+HAB_CHEFE (carrega = segundos de aviso; espera = segundos ate a proxima vez que ele arma):                  motor.js:3069-3079
+   investida : carrega 1,5 · espera 8
+   pancada   : carrega 1,2 · espera 7
+   olho      : carrega 1,3 · espera 8
+   sopro     : carrega 1,0 · espera 9
+   chuva     : carrega 1,1 · espera 9
+   rugido    : carrega 0,8 · espera 7
+   invocar   : carrega 0,0 · espera 14
+   acido     : carrega 1,0 · espera 9
+   tentaculos: carrega 1,3 · espera 9
+
+RODIZIO_CHEFE = { 'Arauto do Vale':  ['investida', 'pancada', 'olho'],                                        motor.js:3080
+                  'Dragão Infernal': ['sopro', 'chuva', 'rugido'],
+                  'Barão Nashor':    ['invocar', 'tentaculos', 'acido'] }
+``
+
+### 13.2 O funcionamento (`mecanicaChefe`, motor.js:3081-3125)
+
+``
+ao nascer: i.tMec = 5 ; i.mecK = 0                       // a primeira mecanica sai 5 s depois de o chefe chegar
+
+se i.furiaT > 0:  i.furiaT -= dt ; quando acabar: i.as /= 1,5      // desfaz o Rugido
+
+se i.carregando > 0:                                          // esta a preparar um golpe
+    se i.atordoado > 0 e o golpe nao for 'rugido':
+        i.carregando = 0 ; i.tMec = 6 ; emite 'chefeInterrompido'   // atordoar corta a preparacao
+    i.carregando -= dt
+    quando chegar a 0:
+        se o golpe for de longe (sopro, olho, acido) e a Parede de Vento segurar -> nao faz nada
+        senao: aplica o golpe (tabela abaixo)
+        i.tMec = HAB_CHEFE[tipo].espera
+
+se i.tMec <= 0:
+    tipo = rodizio[i.mecK++ % rodizio.length]
+    se tipo == 'invocar':
+        cria 2 x 'Larva do Vazio' no nivel max(1, i.nivel - 6), com { chegada: 1 + k*0,3, invocado: true }
+        i.tMec = 14
+    senao:
+        i.carregando = HAB_CHEFE[tipo].carrega ; emite 'chefeCarrega'    // o aviso na tela
+``
+
+O dano de cada golpe (motor.js:3100-3109), com `fn = fatorDanoMonestro(estado, i)` — ou seja, com
+`NIVEL_DIF` (`9) já aplicado:
+
+| Golpe | Física ou mágica | Multiplicador do `ad` do chefe | Efeito extra |
+|---|---|---|---|
+| `investida` | física | 3,5× | — |
+| `pancada` | física | 2,2× | põe o `chegada` dos outros a `max(chegada, 0)` — **não muda nada** (`Math.max(x, 0) = x`) |
+| `olho` | mágica (usa a RM do campeão) | 2,6× | — |
+| `sopro` | mágica | 2,2× | queima 4 s a 3 % da vida máxima por segundo |
+| `chuva` | mágica | 1,8× | queima 3 s a 2,5 %/s |
+| `rugido` | — | — | o chefe ataca 1,5× mais rápido durante 5 s |
+| `acido` | mágica | 1,2× | queima 5 s a 2,8 %/s |
+| `tentaculos` | física | 2,6× | — |
+| `invocar` | — | — | 2 larvas (ver acima) |
+
+``
+fis(k) = receberDano( mitigar(i.ad * k, a.armadura) * fn, false )            // fisico
+mag(k) = receberDano( mitigar(i.ad * k, a.rm)        * fn, false, true )     // magico
+mitigar(dano, arm) = dano * 100 / (100 + max(0, arm))                        motor.js:1167
+``
+
+A queima corre dentro do passo: `receberDano(estado, c, a, d.queimaDano * dt, true)` (motor.js:1358-1361)
+— com `doSangramento = true`, portanto **sem** `fatorDanoMonstro` e **sem** o multiplicador do papel do
+campeão (motor.js:2696-2697).
+
+Os golpes de longe (`GOLPES_DE_LONGE = { sopro, olho, acido }`, motor.js:2053) podem ser travados pela
+Parede de Vento do Yasuo (motor.js:3093-3097).
+
+### 13.3 O bônus do Barão (motor.js:1784, 3067)
+
+Quando o Barão Nashor morre, o jogador ganha `estado.buffBarao = 180` s. Durante esses 180 s:
+
+- dano causado +25 % (motor.js:1211: `estado.buffBarao > 0 ? BARAO.dano : 0`);
+- regeneração de vida e mana × 1,5 (motor.js:1355-1357);
+- o recall dura 2 s em vez de 4 s (motor.js:3062, `BARAO.recall = 2` contra `RECALL = 4`, motor.js:40).
+
+O bónus é perdido ao morrer (motor.js:2780).
+
+---
+
+## 14. RUNETERRA (local `arena`) E A ARENA (local `aram`)
+
+### 14.1 `ARENA` (motor.js:412) **VARIA**
+
+``
+ARENA = { bonus: 1,3, ocioso: 30 }        // +30 % de XP e de chance de drop; 30 s parado e o campeao para
+``
+
+``
+localDaArena(nivel) = o ultimo local com 'faixa' em que nivel >= faixa[0]
+                      (se nenhum, o primeiro com 'faixa', que e a Rota Inferior)          motor.js:414
+``
+
+Esta é a região que fornece o saque e o bónus de XP/drop quando o monstro não tem zona própria
+(arena.js:1650). Exemplos: nível 1-9 → rota-inf · 10-14 → rota-sup · 15-19 → lobos · 20-24 → azul ·
+25-29 → vermelho · 30-34 → rio · 35-39 → dragao · 40+ → barao.
+
+### 14.2 O spawn no mundo aberto (`nascerNoPonto`, arena.js:231-258)
+
+Cada ponto de nascimento guarda um monstro (arena.js:230). Quando um ponto fica activo
+(`MUNDO`, arena.js:26: `ativo: 15` tiles em volta do campeão, e a mais de 3,5 tiles de distância — os
+guardiões podem nascer a 1,2), o monstro nasce assim:
+
+``
+// arena.js:231-242
+se p.guardiao:  nome = p.guardiao
+                nivel = clamp(max(nivelJogador + 3, nm[1]), nm[0], nm[1] + 4)     // sempre no topo da zona
+senao se l.chefe e rand() < l.chefe[1] / 3:                                       // 1,5 % / 3 = 0,5 % por ponto
+                nome = l.chefe[0] ; nivel = clamp(nivelJogador + 2, nm[0], nm[1] + 2)
+senao:         nome = sorteado pelos pesos de l.monstros
+                nivel = clamp(nivelJogador - 1 + floor(rand()*4), nm[0], nm[1])
+``
+
+Depois (arena.js:243-256):
+
+- `criarMonstro(nome, nivel, { chegada: 0, x: p.x, y: p.y })` — em Runeterra o monstro já está no chão,
+  não caminha até ti.
+- **Tecto de XP/ouro:** se o nível do monstro for maior que `nivelJogador + 2`, o XP e o ouro são
+  limitados aos de um monstro de `nivelJogador + 2` (arena.js:244-245).
+- `distancia = MONSTROS[nome].distancia + 0,5` (arena.js:246).
+- 35 % de noturno, se não for chefe (arena.js:247).
+- **Guardião de fortaleza** (arena.js:252-254): se o monstro não for chefe, elite — `hp × 15, ad × 1,7,
+  armadura × 1,6`; se for chefe (Arauto, Dragão, Barão) — `hp × 3, ad × 1,1, armadura × 1,3`.
+- Não existe furioso em Runeterra.
+
+**Os guardiões** (runeterra.js:124-125): rota-inf → Tropa Corpo a Corpo, rota-sup → Tropa de Cerco,
+lobos → Lobo Gigante, azul → Sentinela Azul, vermelho → Brambleback Vermelho, rio → Arauto do Vale,
+dragao → Dragão Infernal, barao → Barão Nashor. Os 3 últimos são chefes de verdade (3× a vida); os outros
+são a versão elite do monstro mais forte da zona (15× a vida). O nível é sempre o topo da zona
+(`max(nivelJogador + 3; nm[1])`, preso em `nm[1] + 4`).
+
+**Respawn em Runeterra** (arena.js:259-287): `MUNDO.respawn = [20, 35]` s para o ponto voltar a encher;
+monstro comum, assim que o campeão se afasta, o ponto é libertado (arena.js:273); monstros a mais de
+`MUNDO.some = 20` tiles desaparecem (arena.js:276); o guardião morto só volta quando o baú encher de novo
+(arena.js:268-272, 281). O monstro persegue dentro de `MUNDO.leash = 12` tiles de casa (arena.js:26).
+
+**As zonas de caça de Runeterra** (runeterra.js:40) são exactamente as 8 regiões do Rift:
+`ZONAS = ['rota-inf', 'rota-sup', 'lobos', 'azul', 'vermelho', 'rio', 'dragao', 'barao']` — mesmos
+monstros, mesmo saque, mesma faixa de nível (runeterra.js:39-40).
+
+### 14.3 O multiplicador do saque em Runeterra (arena.js:1650)
+
+``
+processarAbates(estado, c, a,
+   local = A.mundo ? (i) => LOCAL[i.zona] ou base : base,     // base = localDaArena(nivel)
+   bonus  = ARENA.bonus = 1,3,
+   bonusXp = min(1 + 0,15 * (4 - 1), A.bonusGrupo ou 1) * (A.zonaPk ? 1 + 0,4 : 1))
+// GRUPO = { max: 4, raio: 15, porMembro: 0,15 }                                   motor.js:143
+// PK_BONUS = 0,4                                                                   runeterra.js:21
+``
+
+Ou seja, em Runeterra, para um monstro do teu nível (`fatorSaque = 1`):
+
+- chance de item: × 1,3 (o bónus de região);
+- XP do abate: × 1,3 × 1 (grupo) = 1,3, e no máximo × 1,45 com grupo cheio (3 outros membros a até
+  15 tiles) e × 1,4 por estar numa Zona de Guerra — os dois podem acumular (1,3 × 1,45 × 1,4 = **2,64**).
+- Com VIP, mais × 1,2 em cada.
+
+### 14.4 As cidades (runeterra.js:11-16)
+
+``
+CIDADES = { demacia: [1; 15] · piltover: [15; 30] · noxus: [30; 50] }
+``
+
+Nas cidades não entra monstro e não vale PvP (arena.js:8, 78; runeterra.js:11). Lá dentro a vida e a mana
+voltam a 5 % por segundo (`MUNDO.regenCidade = 0,05`, arena.js:26) e há Soraka, Lojista, Burrinho de
+Carga e Mercador (runeterra.js:198-208). `naCidade`/`atendeAqui` (motor.js:2921-2924) é o que deixa curar,
+vender, comprar poções e usar o cofre fora da Fonte.
+
+### 14.5 As Zonas de Guerra (runeterra.rs:21-34)
+
+12 zonas onde o PvP fica **sempre ligado** e a experiência vale +40 % (`PK_BONUS = 0,4`, runeterra.js:21).
+Entrar liga o PvP à força (arena.js:1451-1453).
+
+### 14.6 A Arena 1v1 (local `aram`, motor.js:377-378)
+
+- `aram: true` marca o local da ponte; a descrição é *"a ponte da Arena, onde os jogadores se enfrentam
+  1 contra 1. Morrer aqui não custa XP nem itens."* (motor.js:377-378).
+- **Morte é de graça:** `perda = 0` (motor.js:2782) e `d.morto = 1e9` — o campeão fica caído até à próxima
+  rodada (motor.js:2779, e o passo sai sem fazer nada, motor.js:1343).
+- A rodada é marcada pelo servidor (`renascerArena`, motor.js:2788-2793): vida, mana e recargas cheias.
+- Configuração da partida (arena-pvp.js:7-11): melhor de 3 (2 vitórias), até 5 rodadas, 120 s por rodada,
+  3 s de contagem antes de cada rodada e 4 s entre rodadas.
+- Em Runeterra e na Arena o motor **não** cria grupos de monstros: quem manda é o motor de arena
+  (motor.js:1415-1416, `motorArena?.()`). Na ponte da Arena não há monstros.
+
+---
+
+## 15. O PvP (motor.js:41-43, 1284, 2737-2770, 3049-3062, 3722-3786)
+
+### 15.1 As constantes **VARIA**
+
+| Nome | Valor | Onde |
+|---|---|---|
+| `POCAO_PVP.cura` | 0,3 | a poção cura 30 % em luta contra jogador | motor.js:43 |
+| `POCAO_PVP.exaustao` | 6 s | intervalo mínimo entre poções em PvP | motor.js:43 |
+| `CURA_PVP` | 0,65 | todas as outras curas (habilidades, roubo de vida, Sede) valem 65 % em PvP | motor.js:1284 |
+| `EXAUSTAO` | 1 s | o intervalo normal entre poções | motor.js:41 |
+| `EM_COMBATE_MUNDO` | 6 s | tempo "em combate" depois de levar dano no mundo | motor.js:3051 |
+| `CHANCE_PERDER_ITEM` | 0,1 | por item equipado, ao morrer em Runeterra | motor.js:2739 |
+| `CHANCE_PERDER_PVP` | 0,3 | um item sorteado, ao morrer **para um jogador** | motor.js:2742 |
+| `CAVEIRA_VERMELHA.limites` | 3 mortes (frags) em 14 h → 14 h de Caveira | 504e5 ms = 14 h | motor.js:2746 |
+| `CAVEIRA_VERMELHA.perde` | 0,5 | com Caveira, cai metade de tudo (equipado + mochila) | motor.js:2746, 2757-2761 |
+
+O combate PvP dura 6 s e é renovado a cada golpe (arena.js:186-188; motor.js:3733), e serve para a poção
+fraca. `emCombate` (motor.js:3056) é o que **impede fugir**: com `combatePvp > 0`, com `apanhou > 0` ou com
+um monstro agressivo em cima, não dá para voltar à base nem viajar (motor.js:3061).
+
+### 15.2 Como o dano do PvP chega (motor.js:3722-3740)
+
+O servidor calcula o dano e manda; o motor só desconta:
+
+``
+danoPvp(estado, c, valor, por):
+   exige LOCAL[estado.local].arena
+   se o Fluxo do Yasuo estiver cheio -> vira escudo (o servidor conta o mesmo)
+   se houver escudo -> absorve primeiro
+   vida -= valor
+   apanhouNoMundo(c) ; combatePvp = max(combatePvp, 6) ; agressores[por] = tempo + 60   // legitima defesa
+   se a vida zerar:
+       Zac -> Divisao Celular (o servidor decide)
+       Anjo Guardiao -> o servidor manda { t: 'anjo' }
+       senao -> morrerPvp(estado, c, por) -> morrer(estado, c, por)
+``
+
+Quem se pode atacar (arena.js:183): com o teu PvP ligado, quem tem Caveira Vermelha, ou quem te bateu nos
+últimos 60 s (legítima defesa, `agressores`, motor.js:3733).
+
+### 15.3 O papel do campeão no PvP (motor.js:865-894)
+
+Cada campeão tem `papel.pvp` (dano contra jogadores) e `papel.pvpRecebido` (dano que leva de jogadores),
+que são a **metade** do papel contra monstros:
+
+| Campeão | dano (monstro) | recebido (monstro) | arena (Runeterra) | pvp | pvpRecebido |
+|---|---|---|---|---|---|
+| darius | 1,10 | 0,55 | 1,075 | 0,95 | 0,85 |
+| ezreal | 1,12 | 1,05 | 1,10 | 1,08 | 1,03 |
+| lux | 1,59 | 1,05 | 1,00 | 1,20 | 1,05 |
+| yasuo | 1,15 | 0,85 | 1,50 | 1,00 | 0,92 |
+| katarina | 1,20 | 0,75 | 1,75 | 1,15 | 1,00 |
+| taric | 0,90 | 0,75 | 0,78 | 0,88 | 0,85 |
+| zac | 1,425 | 0,66 | 0,70 | 0,50 | 0,69 |
+
+Notas: `recebidoArena` (katarina 1,00, zac 0,70) substitui `recebido` só em Runeterra (motor.js:2697).
+`NIVEL_DIF` **não** se aplica no PvP (`9.4).
+
+### 15.4 Morrer fora da Arena (motor.js:2763-2768, 2737-2762)
+
+- A morte custa **10 % do XP do nível** (`perdaPorMorte = round(xpParaNivel(nivel) * 0,1)`,
+  motor.js:430), aplicado em `penalidadeMorte` (motor.js:2763-2768).
+- Em Runeterra cada item equipado tem 10 % de chance de cair (motor.js:2739-2740); a morrer para um
+  jogador, 30 % de chance de cair **um** item sorteado (motor.js:2742-2743). Com Caveira Vermelha cai
+  metade de tudo, equipado e mochila (motor.js:2746, 2757-2761).
+- No Summoner's Rift não cai nada (motor.js:2737-2738).
+- Renascer: vida a 10 % do máximo, mana 0, de volta à Fonte (motor.js:1342-1350), 3 s caído
+  (motor.js:2779).
+
+---
+
+## 16. EXEMPLOS DE RECÁLCULO
+
+### 16.1 Os números médios de cada região (monstro comum, nível do meio da faixa `nm`)
+
+Calculados com a `CURVA` de `3 e os coeficientes de `4 (XP e ouro por abate **sem** multiplicadores):
+
+| Região | `nm` médio | hp médio | ad médio | armadura média | XP/abate | ouro/abate | XP/h | ouro/h | abates/min |
+|---|---|---|---|---|---|---|---|---|---|
+| rota-inf | 3,5 | 325 | 19 | 5 | 52,3 | 21,1 | 1 413 | 571 | 27 |
+| rota-sup | 9 | 970 | 54 | 11 | 99,2 | 42,4 | 1 934 | 826 | 19,5 |
+| lobos | 14 | 1 709 | 98 | 21 | 140,8 | 51,3 | 2 323 | 846 | 16,5 |
+| azul | 19 | 4 095 | 126 | 47 | 239,1 | 90,0 | 2 331 | 877 | 9,75 |
+| vermelho | 24 | 5 002 | 226 | 48 | 283,8 | 101,2 | 2 980 | 1 063 | 10,5 |
+| rio | 29 | 5 058 | 238 | 63 | 268,0 | 86,2 | 3 014 | 970 | 11,25 |
+| dragao | 34 | 6 745 | 392 | 63 | 366,3 | 120,7 | 3 846 | 1 267 | 10,5 |
+| barao | 44 | 9 080 | 613 | 76 | 484,5 | 162,0 | 5 450 | 1 823 | 11,25 |
+
+O ouro por abate já usa a **média** do sorteio (0,75). O ritmo (`abates/min`) é
+`ABATES_MIN_ZONA × RITMO_REAL = ABATES_MIN_ZONA × 1,5` (motor.js:3266 e motor.js:3253), que é o ritmo
+medido dos bots × 1,5 (motor.js:3252-3253).
+
+Os chefes, no nível do topo da zona + 2 (`6.4):
+
+| Chefe | Região | Nível | hp | ad | armadura | as | XP | ouro |
+|---|---|---|---|---|---|---|---|---|
+| Arauto do Vale | rio | 35 | 48 750 | 841 | 86 | 0,60 | 3 300 | 1 566 |
+| Dragão Infernal | dragao | 40 | 69 000 | 1 227 | 104 | 0,55 | 4 340 | 2 072 |
+| Barão Nashor | barao | 50 | 122 400 | 1 837 | 144 | 0,50 | 7 600 | 3 660 |
+
+A larva que o Barão invoca (`13.2), com o Barão a 50, nasce a 44: hp 7 135, ad 496.
+
+### 16.2 O exemplo do dono: nível 23 no Covil do Barão
+
+1. O jogador entra no `barao` (`nm = [40; 48]`, `tier 7`) — pode, `viajar` não olha para o nível
+   (motor.js:3043-3048).
+2. Os monstros nascem presos em `[40; 48]`: `clamp(23 - 2 + {0,1,2,3}, 40, 48) = 40` sempre.
+3. `difNivel = max(0, 40 - 23 - 4) = 13`.
+4. O monstro bate `min(3, 1 + 0,15 × 13) = 2,95×` e o jogador dá `max(0,25, 1 - 0,07 × 13) = 0,25×`
+   — ou seja, **quatro vezes menos dano** do que na tua própria zona.
+5. Se o chefe aparecer: `max(40+2; min(48+2; 23+4)) = 42` → `difNivel = 42 - 23 - 4 = 15` →
+   `min(3, 3,25) = 3×` e `0,25×`. É exactamente o cenário que motivou a regra (motor.js:1180).
+
+### 16.3 Quanto tempo até um lendário, por região
+
+`1 / chance do lendário`, monstro comum, sem VIP, no teu nível: Rota Inferior ~9 615 abates ·
+Rota Superior ~9 322 · Lobos ~7 511 · Azul ~4 260 · Vermelho ~4 043 · Rio ~3 715 · Dragão ~3 048 ·
+Barão ~2 717. Em horas: divide pelo ritmo da tabela de `16.1 (por exemplo, no Barão,
+2 717 / 11,25 = **~242 h** de caça; no Rio, 3 715 / 11,25 = **~330 h**).
+
+---
+
+## 17. O QUE NÃO CONSEGUI VERIFICAR (NAO VERIFICADO)
+
+1. **A contagem de espólios do comentário.** O comentário de motor.js:302-302 diz *"na média, os
+   espólios rendem uns 30 % a mais de ouro por abate"*. A tabela de `11 dá, na média, 0,6 × ouro-base ×
+   chance por espólio ≈ 18 % do ouro-base por abate. **O número do comentário não fecha com a tabela** —
+   NAO VERIFICADO de onde vem o 30 %. O que o motor aplica é a tabela.
+2. **Os 16 minutos do ciclo dia/noite** (motor.js:1078-1080) contradizem o código (24 h reais).
+   NAO VERIFICADO se é resquício de uma versão antiga ou engano do comentário. **Usei o código.**
+3. **A chance de chefe em Runeterra.** O cálculo `l.chefe[1] / 3` está em arena.js:236 mas o
+   `CHEFE_RUNETERRA = 1/3` de wiki-dados.js:11 é uma **reconstrução** (não é constante do motor). O
+   divisor 3 aparece literalmente no código — confirmei o valor, não a intenção.
+4. **Arena (aram):** o motor não cria monstros lá (motor.js:1415-1416) e a partida é do servidor. O que
+   se passa dentro da rodada (dano, itens, poções) está em código que não li — `arena-pvp.js` tem só a
+   configuração (82 linhas) e o resto é do servidor. **NAO VERIFICADO.**
+5. **A média exata de itens por grupo com furioso/noturno:** derivei-a de `aMais` (motor.js:1113) e das
+   constantes; a simulação com sorteios pode divergir por variação estatística. A fórmula é a de `7.3.
+
+---
+
+## 18. PRECISA DE REGRA DO DONO (política, não dado do jogo)
+
+1. **Sair da Fonte e onde caçar** — o jogo deixa ir a qualquer região em qualquer nível (`2). Qual o
+   "limite de segurança" que a função de decisão deve usar (nível mínimo por região) é escolha vossa.
+2. **Quanto vale a vida** — quantas poções e quanto ouro uma morte autoriza (`15.4). O jogo dá o custo;
+   a política de risco é vossa.
+3. **Prioridade entre XP e ouro** quando duas zonas dão ritmos diferentes (`16.1) — o jogo dá os dois
+   números; a função objectivo é vossa.
+
+---
+
+## 19. ARMADILHAS DE LEITURA (resumo para quem vai ler o motor)
+
+1. **O ciclo de 16 min** (motor.js:1078-1080) é comentário velho: o dia/noite é o relógio real (`1).
+2. **As percentagens de drop do comentário** (motor.js:1134-1136) são os coeficientes **antes** da
+   planilha e do `LENDARIO_TIER` (`10.2). O que o jogo aplica é a tabela recalculada.
+3. **`statsMonstro` não existe no motor** (`5.1): a especificação é `criarMonstro` (motor.js:1066-1075).
+4. **`grupoSpawn` não existe no motor**: os números 2 e 3 estão inline em motor.js:1124 (`6.2). A cópia
+   manual vive em `inject.js:138` — **tema de arquitectura, não meu bloco** (não escrevi lá).
+5. **A armadura do monstro** não é `CURVA.armadura` directamente: é `CURVA.armadura(n) × m.armadura`
+   (motor.js:1070), e contra dano com Poder de Habilidade ainda leva × 0,6 (`5).
+6. **O ouro do monstro tem sorteio** 0,5 a 1 (motor.js:1071): a média é 0,75, não 1.
+7. **O chefe não é "grupo + chefe"**: quando o chefe sai, o grupo tem 1 monstro só (`6.4).
+8. **Noturno e furioso nunca no mesmo monstro** (`6.3), e nenhum dos dois em chefes.
+9. **`NIVEL_DIF` só pune para cima**; caçar abaixo pune por `fatorSaque`, que é outra fórmula (`9.5).
+10. **A `faixa` é informativa**: não impede entrar na região (`2). Quem prende o nível dos monstros é
+    `nm`.
+
+---
+
+## 20. ÍNDICE RÁPIDO (motor.js)
+
+| Assunto | Linhas |
+|---|---|
+| `GRUPO` (grupo de Runeterra) | 143 |
+| `LOCAIS` / `LOCAL` | 354-380 |
+| `DROPS` / `DROPS_AP` | 383-406 |
+| `ARENA` / `localDaArena` | 411-414 |
+| `fatorXp` / `fatorSaque` | 420-424 |
+| `CURVA` / `ajuste` | 272-279 |
+| `MONSTROS` | 280-298 |
+| Espólios | 300-350 |
+| Gemas | 107-133 |
+| `criarMonstro` | 1065-1075 |
+| relógio / `luzDoDia` / `ehNoite` | 1077-1095 |
+| `NOTURNO` / `tornarNoturno` | 1096-1101 |
+| `FURIOSO` / `tornarFurioso` / `aMais` | 1102-1113 |
+| `gerarGrupo` (nível, grupo, chefe) | 1116-1130 |
+| `NIVEL_DO_TIER` / `LENDARIO_TIER` / `BRUTO` | 1138-1143 |
+| `DROP_CHEFE` / `chancesDrop` / `sortearLoot` | 1144-1165 |
+| `mitigar` / `RM_MONSTRO` | 1167, 1179 |
+| `NIVEL_DIF` / `difNivel` / factores | 1184-1187 |
+| `TETO_VIDA_ITEM` / `vidaRefItem` | 1188-1191 |
+| `golpear` (dano do jogador) | 1192-1234 |
+| abates e saque (`processarAbates`) | 1749-1794 |
+| spawn e respawn no passo | 1418-1425, 1625 |
+| `viajar` | 3042-3048 |
+| chefes: `MECANICAS`/`HAB_CHEFE`/`RODIZIO_CHEFE` | 3065-3080 |
+| `mecanicaChefe` | 3081-3125 |
+| `morrer` / `penalidadeMorte` / perda de itens | 2737-2786 |
+| `emCombate` / `voltarBase` | 3049-3063 |
+| PvP (`danoPvp` e companhia) | 3722-3786 |
