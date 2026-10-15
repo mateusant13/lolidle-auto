@@ -670,3 +670,17 @@ de ler por onde as janelas passam (agregar -> ranking). Duas assercoes, ambas de
 **Proximo passo exacto:** ler o `lerVidaHud()` e o `vidaEff` (1697-1712) para saber de onde vem o 4476;
   so depois escrever o `sobrevivenciaSet` (contrato F1-F7 em chefe.test.mjs:205-222).
 **Estado mantido: 5 falhas, 21/25 verdes.**
+## ADENDA 17:00 - sobrevivenciaSet IMPLEMENTADO mas REVERTIDO (5->11): a `vida` sai errada
+Implementei com as pecas que existem: `player().vida` (o max do HUD) + soma de `detalhe(id).vida`
+(o catalogo TRAZ `vida` - 6366), e o `tMorrer` com a MESMA formula do `estimarLuta` (7186:
+`vida / dps de entrada`), mais o `rankItensSobrevivencia`.
+Resultado: **5 -> 11 falhas** (2 corridas iguais). A suite `chefe` corre e o **F2 falha** - logo a minha
+`vida` NAO e o 4476 que o contrato pede.
+**DECISAO (importante):** reverter. Um criterio que devolve o numero ERRADO e PIOR que nao existir -
+e o criterio que decide a build (*"sobrevive? em quantos segundos?"*). Dar uma resposta errada aqui
+seria mentir ao dono. Fica documentado com tudo o que a implementacao precisa:
+  - F2: `vida === 4476` com 4 itens SEM vida -> ha um TERMO a mais no 4476 (nao e o 4188 do HUD);
+    ler o `mundoChefe`/`alimentarMeta` do teste para ver que HUD ele monta (pode ser o 4476 mesmo,
+    e entao a `vida` = painel esta certa e o erro e outro);
+  - F3: `morre === true` contra o Barao ao 29;  F4: com o 3168 -> `vida` E `tMorrer` maiores.
+**Estado mantido: 5 falhas, 21/25 verdes.**
