@@ -245,3 +245,19 @@ o banco piorou (16 → 17). Revertido.
   não roubar o motivo dela (o banco fixa essa string).
 - Erros que o banco reporta neste estado: `bag is not defined` (a minha), `medido is not defined` e
   `_farmItem is not defined` (pré-existentes, a atacar).
+
+
+## ADENDA 10:00 — `medido`: o problema é de ESCOPO, e mexer nele muda comportamento
+Estado exacto (levantado agora):
+- **declarado** dentro de `precisaRefino()` (linha 3215-3217);
+- **usado** em `{ essenciais, fonteEssenciais, medido, divergenciaMedido }` (5647) e em
+  `(medido && medido.xpMin != null)` (7265-7266) — **duas outras funções**.
+
+Movi a declaração para o nível do módulo (e tirei a local): **o ReferenceError desapareceu, mas o banco
+PIORROU (16 → 23)** — as três funções passam a **partilhar** o estado e as asserções mudam de resultado.
+Revertido.
+
+**Conclusão para quem pegar nisto:** não é só mover a declaração — é decidir **que estado cada função
+deve ver** (provavelmente cada uma precisa do SEU `medido`, ou o módulo precisa de o repor entre
+chamadas). É trabalho de desenho, não de uma linha. O banco actual (16 falhas) **não reporta este
+ReferenceError** porque a suite que o exercita falha antes — está latente.
