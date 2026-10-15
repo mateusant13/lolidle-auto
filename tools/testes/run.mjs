@@ -45,6 +45,7 @@ import { suite as suitew10 } from './w10.test.mjs';
 // W3 (w3-barra) — passivas de estado com contexto de combate (TK-02-05).
 // W3 (w3-barra) — recomendação de pontos de atributo (TK-01-37).
 import { suite as suiteAtributos } from './atributos.test.mjs';
+import { suite as suiteRegiao, suiteW1 } from './regiao.test.mjs';
 const argv = process.argv.slice(2);
 if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -60,9 +61,9 @@ let filtro = null;
 const iF = argv.indexOf('--filter');
 if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 
-const SUITES = [suiteregras, suiteator, suitebarra, suitebarrafase, suiteobjetivo, suiteequip, suiteregiao, suitepontos, suiteinterruptores, suitecofre, suitehud, suiteintegracao, suitenumeros, suitew5Itens, suitescore, suiteplanejar, suitepassivas, suiterefinar, suitew10, suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre];
+const SUITES = [suiteregras, suiteator, suitebarra, suitebarrafase, suiteobjetivo, suiteequip, suiteregiao, suitepontos, suiteinterruptores, suitecofre, suitehud, suiteintegracao, suitenumeros, suitew5Itens, suitescore, suiteplanejar, suitepassivas, suiterefinar, suitew10, suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteW1];
   suiteIntegracao, suiteNumeros, suiteBarraFase, suitePassivas, suiteAtributos];const checks = [];
-const notas = [];
+const checks = [];const notas = [];
 let populacaoExecutada = 0;
 
 function criarT(nome) {
