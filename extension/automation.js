@@ -6747,6 +6747,8 @@
         logEvent('giro-desistiu', { motivo: 'nao voltou a Fonte em 5 tentativas', voltas: _giroVoltas });
         _giroVoltas = 0; giro = null; salvarGiro(); return;
       }
+      // W7: a espera era MUDA (o dono via o boneco parado sem saber porquê) — registar.
+      logEvent('giro-espera', { voltas: _giroVoltas + 1, onde: (readLocation().text || '?') });
       _giroVoltas++;
       press('b');
       return setTimeout(proximoGiro, 9000);
