@@ -3648,6 +3648,61 @@
     if (c && c.magia) return 'conjurador';
     return 'dano';                    // dano e atirador
   }
+  /** RECOMENDAÇÃO DE PONTOS DE ATRIBUTO pelo DANO MEDIDO por ponto (TK-01-37).
+   *  O dono mediu (parte-01.md:1076, D2): 10 pontos em Vitalidade/Resistência = +0,00% de dano;
+   *  Força = +2,64%; Agilidade = +1,96% — "ACREDITO NA MATEMATICA". Aqui isso é RECALCULADO
+   *  a cada ponto com as fórmulas do motor, em vez de copiado:
+   *    forca      -> campeão de MAGIA: +2 de Poder de Habilidade (motor.js:467 FORCA_MAGO,
+   *                  aplicado motor.js:516 `ap += 2*at.forca`); senão +1,2 de dano de ataque
+   *                  (motor.js:455, aplicado motor.js:516 `ad += 1.2*at.forca`);
+   *    agilidade  -> +0,8% de velocidade de ataque (motor.js:461, aplicado motor.js:516
+   *                  `va += 0.008*at.agilidade` e motor.js:547 `velAtaque = base*(1+va)`) —
+   *                  só o componente de AUTO-ATAQUE ganha com isso;
+   *    foco       -> −0,4% de recarga (motor.js:463, aplicado motor.js:550
+   *                  `min(0,3, 0,004*foco)`; na Katarina/Zac vale +0,2% de dano de habilidade
+   *                  por ponto, motor.js:470-474 + motor.js:544 `danoHab`);
+   *    vitalidade -> +20 vida e +0,1 regen/s (motor.js:457/516): ZERO dano — é sobrevivência;
+   *    resistencia-> +1,5 armadura e +1 RM (motor.js:459/516): ZERO dano — é sobrevivência.
+   *  A recomendação é do CENÁRIO DE DANO. A ressalva de sobrevivência é do dono e já existe no
+   *  motor: os MODELOS (motor.js:497-502, aplicados por `distribuirAtributos`) punham
+   *  vitalidade/resistencia dentro da build de pontos — quem quiser trocar dano por defesa
+   *  mexe em `cfg.modeloAtrib`, não nesta conta. */
+  function recomendarAtributos(c) {
+    const cc = c || META.champAtual || {};
+    const magia = !!cc.magia;
+    let ctx = null;
+    try { ctx = ctxDano(); } catch { ctx = null; }
+    // dps das habilidades com um contexto alterado (mede, não teoriza)
+    const dpsHabs = (patch) => {
+      if (!ctx) return 0;
+      const c2 = Object.assign({}, ctx, patch || {});
+      let s = 0;
+      try { for (const h of ((readSkills().arsenal) || [])) s += dpsRank(c2, h.t, h.rank); } catch { /* ignore */ }
+      return s;
+    };
+    const base0 = dpsHabs({});
+    const p = player();
+    const autoDps = (p.dano || 0) * (p.va || 0);        // componente de auto-ataque (motor.js:1675)
+    const ganho = {};
+    // Força: na magia o ponto vira Poder (só as habilidades escalam com ele, motor.js:516);
+    // no AD o ponto é dano de ataque — entra nas habilidades QUE escalam com dano E no auto
+    // (motor.js:516 `ad += 1.2*at.forca`; o auto bate com `ad`, motor.js:1698).
+    ganho.forca = magia ? (dpsHabs({ ap: (ctx && ctx.ap || 0) + 2 }) - base0)
+      : (dpsHabs({ ad: (ctx && ctx.ad || 0) + 1.2 }) - base0) + 1.2 * (p.va || 0);
+    ganho.agilidade = 0.008 * autoDps;                   // motor.js:461 -> 516 -> 547
+    ganho.foco = base0 * (1 / Math.max(0.7, 1 - 0.004) - 1);   // motor.js:463/550 (tecto 30%)
+    if (cc.semMana) ganho.foco += 0.002 * base0;          // motor.js:470-474 (Katarina/Zac)
+    ganho.vitalidade = 0;                                // motor.js:457/516: não entra no dano
+    ganho.resistencia = 0;                               // motor.js:459/516: não entra no dano
+    const ordem = ['forca', 'agilidade', 'foco', 'vitalidade', 'resistencia'];
+    return ordem.map((k) => ({ atrib: k, danoPorPonto: ganho[k], fonte:
+      k === 'forca' ? (magia ? 'motor.js:467 (+2 Poder) + motor.js:516' : 'motor.js:455 (+1,2 dano) + motor.js:516')
+        : k === 'agilidade' ? 'motor.js:461 (+0,8% vel. ataque) + motor.js:547'
+          : k === 'foco' ? 'motor.js:463 (−0,4% recarga) + motor.js:550'
+            : k === 'vitalidade' ? 'motor.js:457 (+20 vida) — sem dano'
+              : 'motor.js:459 (+1,5 armadura/+1 RM) — sem dano' }))
+      .sort((a, b) => b.danoPorPonto - a.danoPorPonto);
+  }
   /** Distribui TODOS os pontos de atributo livres seguindo o MODELO do motor (pesos).
    *  Mesma fórmula do jogo: cada ponto vai ao atributo mais "atrasado" vs. o peso
    *  (motor.js:2853-2865 `distribuirAtributos`, incluindo o `+1` na soma — motor.js:2859).
@@ -8014,8 +8069,13 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     // PORQUE é que o auto-play se ligou sozinho; o banco pode forçar a avaliação sem esperar 3 min.
     primeiraVez: primeiraVezEstado, primeiraVezPasso,
     estadoVivo, eventosVivos, eventosContadores, consumirEvento,
+<<<<<<< HEAD
     auditoriaPassivas, tierDe, statsSet, statsDePeca, pecaConhecida, PASSIVAS_ESTADO, valorPassivaEstado, ctxEstadoComba,    PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
     auditoriaPassivas,
+=======
+    auditoriaPassivas, PASSIVAS_ESTADO, valorPassivaEstado, ctxEstadoComba, recomendarAtributos,
+    PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
+>>>>>>> w3-barra
     getMeta: () => META, getFarm: () => farm, getConfig: () => cfg };
 
   // AUTO-LIMPEZA: se o script JÁ rodou (reinjeção), cancela os timers antigos.
