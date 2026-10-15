@@ -794,8 +794,8 @@
       farm.current = naBase ? null : novoCiclo(loc.text, Date.now());
       publishFarm();
     }
-    const g = entry.body.match(/(?:Loot|recebeu)[^:]*:\s*(\d[\d.]*)\s*de ouro/i);
-    const x = entry.body.match(/\+\s*(\d[\d.]*)\s*de experi/i);
+    const g = entry.body.match(/(?:Loot|recebeu)[^:]*:\s*(\d[\d.,]*\s*[kKmM]?)\s*de ouro/i);
+    const x = entry.body.match(/\+\s*(\d[\d.,]*\s*[kKmM]?)\s*de experi/i);
     const nomeLoot = (entry.body.match(/Loot de\s+(.+?):/i) || [])[1] || null;
     if (g || x) {
       // B2: o abate conta por OURO **ou** XP (o killTimes so era alimentado no ramo do ouro —
