@@ -503,3 +503,17 @@ do teste - provavelmente o `rank` esta vazio nesse mundo e o fixture do R1 monta
 (storage `lolidleAutoPotion:testes`?). Proximo passo: ler o `refinar.test.mjs` a volta das linhas 40-75
 para ver COMO o R1 alimenta a medicao (e a que funcao a vai buscar).
 **Estado mantido: 14 falhas (piso), 21/25 suites verdes.** 6 tentativas medidas e registadas.
+## ADENDA 13:30 - medido: CONCLUSAO (7 tentativas) — o refinar NUNCA corria
+O fixture (`semearMedido`, refinar.test.mjs:31-38) importa 4 ciclos com `perMin.gold=9999` e
+`setup.equip` -> o contrato e `medido = { n: 4, ouroMin: 9999 }` + `divergenciaMedido` com '3089'.
+Implementei com as DUAS fontes (`agregar()` para n/ouroMin/xpMin; `rankBuildsTestadas` para os itens)
+-> **20-23 falhas** (era 14) nas duas corridas.
+
+**A LEITURA QUE FECHA ISTO:** sem `medido` a suite `refinar` rebenta no ReferenceError (1 falha) e as
+assercoes SEGUINTES NAO CORREM. Ao dar-lhe o `medido`, a suite CORRE e falha **6-9 assercoes reais**.
+Ou seja: o `medido` nao e 'o bug' - e a PORTA. O trabalho seguinte e corrigir o que esta atras dela
+(R1/R2/R3/R4: a lista teorica vs medida, o alvo do refino no NPC do Ornn).
+**Decisao:** manter o estado com o numero menor (14) enquanto a suite nao puder ficar verde; quando se
+pegar nisto, fazer o PAR (medido + as 6-9 assercoes) numa so ronda - como se fez com o H12c.
+7 tentativas medidas: null 24 · agregar 23 · tirar do diag 20/23 · modulo 23 · por-funcao 21 ·
+contrato so-rank 20 · contrato duas-fontes 20/23.
