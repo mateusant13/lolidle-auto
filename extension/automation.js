@@ -2455,7 +2455,7 @@
     const _papel = (_cid && META.kits && META.kits[_cid] && META.kits[_cid].papel) || (META.champAtual && META.champAtual.papel) || META.papel || {};
     const _recebido = Number.isFinite(_papel.recebido) ? _papel.recebido : 1;
     const dpsTomado = s.ad * fM * as * mit * _recebido;
-    const danoGolpe = s.ad * fM * mit;             // dano iminente por golpe
+    const danoGolpe = s.ad * fM * mit * _recebido;   // A6: o papel entra TAMBEM no golpe iminente             // dano iminente por golpe
     // pior MECÂNICA carregada do chefe (rodízio do motor): pode ser insta-kill
     let piorMec = 0, mecFatalNome = null;
     const rod = META.rodizio && META.rodizio[monstro];
