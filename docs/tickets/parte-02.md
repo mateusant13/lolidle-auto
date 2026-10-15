@@ -229,6 +229,7 @@
 - **Evidencia**: parte-02.md:1307-1308 e 1369 — *“NAO VERIFICADO: dados-yasuo.js ausente (hp/armadura/RM/AS por nível); texto visível do checkbox e painel onde vive; se o servidor persiste `ignorarBasicos`; preços do mercado de jogadores”*; *“o motor do jogo não é importável aqui (faltam `docs/game-src/dados-ezreal.js` & cia, `motor.js:3-8`, e `i18n/en.js`)”*
 - **Fazer**: trazer para `docs/game-src/` os ficheiros de dados que faltam (dados-<campeao>.js, i18n) a partir do fonte do jogo, para que o motor seja importável e as marcas NAO VERIFICADO possam ser verificadas; as que ficarem impossíveis no repo ficam explicitamente marcadas.
 - **Aceitacao**: `docs/game-src/` passa a conter os ficheiros referenciados por `motor.js:3-8`; cada marca NAO VERIFICADO passa a verificada com `file:linha` ou fica marcada como impossível no repo.
+- **Evidencia extra (parte-02.md:4583 e 4696)**: `dados-yasuo.js`/`dados-katarina.js` não existem (`motor.js:4,6`) → hp/hpperlevel/armor/AS foram **CALIBRADOS** contra os snapshots (Yasuo fecha 6 setups com erro ≤1,2; Katarina erra ≤4,8% AD / ≤4,0% AP) e marcados NAO VERIFICADO.
 - **Estado**: pendente
 
 ---
@@ -274,6 +275,7 @@
 - **Ficheiro(s)**: docs/game-src/ (re-exportar) — sem escrever em extension/
 - **Evidencia**: parte-02.md:1618 — *“é pra levar em conta a nova atualizacao do jogo sobre chefes serem no maximo 4 leveis acima de voce … nao sei o limite disso e nao sei as condicoes”*; e parte-02.md:1643-1654 e 1670-1678 — a única regra encontrada é `motor.js:1121  Math.max(n0 + 2, Math.min(n1 + 2, nivelJogador))` (Baron 40–50 com boneco nível 1 → chefe 42); *“a regra dos 4 níveis acima não aparece em lado nenhum … a cópia do jogo que temos pode estar desactualizada. Não vou inventar o limite; fica registado como lacuna a re-exportar.”*
 - **Fazer**: re-exportar `docs/game-src/` a partir do jogo actual e procurar a regra dos 4 níveis (limite e condições); se existir, modelá-la com `file:linha`; se não existir no código, dizer que é regra do servidor e registar a lacuna.
+- **RESOLVIDO no histórico (parte-02.md:4587 e 4644-4651, 4695)**: a regra existe e é `motor.js:1121  nivelChefe = max(n0+2, min(n1+2, pj+4))` com `nm=[40,48]` (`motor.js:371`) → Barão em `max(42, min(50, pj+4))`. O `4` de `NIVEL_DIF` (`motor.js:1184`) é outra coisa: é a faixa de tolerância (`motor.js:1185-1187`). A modelação da tolerância ficou em **TK-02-83**. Resta confirmar a idade da cópia de `docs/game-src/` (hash/data de exportação).
 - **Aceitacao**: `docs/game-src/` com data/hash de exportação no relatório; a regra dos 4 níveis encontrada com `file:linha` ou declarada como não existente no código — nunca inventada.
 - **Estado**: pendente
 
@@ -286,7 +288,7 @@
 
 ### TK-02-38 | P2 | Verificar ao vivo a distribuição de atributos e o refino dos essenciais tier A (item 5 do objectivo)
 - **Ficheiro(s)**: extension/automation.js (se a distribuição/refino estiverem errados) — leitura da mecânica em docs/game-src/motor.js
-- **Evidencia**: parte-02.md:230 (objectivo, ponto 5) — *“Verificar ao vivo a distribuicao de atributos e o refino dos essenciais tier A”*; ainda por verificar em parte-02.md:1525 (*“5 | atributos e refino ao vivo | por verificar”*)
+- **Evidencia**: parte-02.md:230 (objectivo, ponto 5) — *“Verificar ao vivo a distribuicao de atributos e o refino dos essenciais tier A”*; ainda por verificar em parte-02.md:1525 (*“5 | atributos e refino ao vivo | por verificar”*); retomado em parte-02.md:4004 (*“Vou usar a ronda no item #5 do objectivo, que ainda não verifiquei: atributos e refino”*) e ainda por verificar em parte-02.md:3889 (*“5 | atributos/refino ao vivo | por verificar”*)
 - **Fazer**: medir ao vivo quantos pontos de atributo e de skill são gastos por nível e comparar com o que o motor do jogo permite; verificar o refino dos essenciais tier A (quando refinar, com que materiais, em que condições) e corrigir a extensão se divergir. Nada de palpite: número com `file:linha`.
 - **Aceitacao**: medição ao vivo com marcador discriminante mostra 0 pontos por gastar e o refino a acontecer nas condições certas; ou o desvio está nomeado com `file:linha` e corrigido. `bun tools/testes/run.mjs` rc=0.
 - **Estado**: pendente
@@ -553,4 +555,128 @@
 - **Evidencia**: parte-02.md:3810 — *“Varredura final por instancia/payload/handler/callback/closure/namespace/schema/token/flag/boolean/array/string/null/undefined/NaN/object DENTRO de strings visiveis: 0 ocorrencias. O painel de problemas (Historico) tambem deixou de imprimir JSON cru: agora e ‘campo: valor · campo: valor’”*; e as fugas apanhadas à mão em parte-02.md:3527 (regex acentuadas), 3808-3809 (frases partidas: “Não você está na Fonte”, “Muda para Fixa para usando”) e 3865-3879
 - **Fazer**: transformar essa varredura em verificação automática do smoke: nenhuma palavra técnica em texto visível, nenhum pt-PT, nenhum JSON cru, nenhuma frase visível que não case com as mensagens do motor (ver TK-02-60), e falhar o smoke se aparecer.
 - **Aceitacao**: `smoke` falha quando se introduz uma string visível com jargão, com pt-PT ou com JSON cru; relatório com a lista de termos varridos.
+- **Estado**: pendente
+
+---
+
+## Lote 11 — âncora `parte-02-lote-11` (leitura até parte-02.md:4300)
+
+### TK-02-73 | P1 | `inject.js` não expõe `meta.rmMonstro` — o valor do motor fica com fallback escrito à mão
+- **Ficheiro(s)**: extension/inject.js
+- **Evidencia**: parte-02.md:4270 — *“RM_MONSTRO NO META: NAO esta exposto (grep em extension/ -> so aparece agora no automation.js). Como o meu ficheiro de escrita e so automation.js, leio META.rmMonstro com fallback 0.6 citando motor.js:1179. PEDIDO: acrescenta em inject.js (junto aos outros, ~linha 130) meta.rmMonstro = M.RM_MONSTRO; — fica a acompanhar o jogo automaticamente.”*
+- **Fazer**: acrescentar `meta.rmMonstro = M.RM_MONSTRO` no `inject.js` (junto aos outros metas, ~linha 130), para que o valor venha do jogo e não do fallback; manter o fallback só quando a leitura falhar, com motivo no log.
+- **Aceitacao**: ao vivo, `META.rmMonstro` igual ao do motor (`motor.js:1179`) e a mudar se o jogo mudar; `bun tools/testes/run.mjs` rc=0; sem 0,6 escrito à mão no código novo.
+- **Estado**: pendente
+
+### TK-02-74 | P1 | Testar Liandry vs Ímpeto no 5.º espaço **com sobrevivência** (350 de vida = 7,8%)
+- **Ficheiro(s)**: extension/automation.js (critério) e/ou tools/sim-build.mjs (medição)
+- **Evidencia**: parte-02.md:4103-4105 — *“Com o Ímpeto Cósmico (15% CDR) no lugar do Liandry, o total iria a 38% — ainda dentro do tecto dos 40%. E o simulador não testou essa troca: o ranking do 5.º espaço foi Lich > Liandry > Chama > Criafendas… com o Ímpeto já assumido como parceiro da bota. Quando o motor tirou o Ímpeto, ninguém voltou a comparar. É uma pergunta em aberto, não uma resposta.”*; encaminhado em `b0c34013` (parte-02.md:4134); e parte-02.md:4231 (*“esse teste também tem de incluir a sobrevivência, senão repete o mesmo erro numa escala maior — compara DPS e ignora os 350 de vida”*)
+- **Fazer**: comparar as duas builds completas (com Liandry e com Ímpeto) com (a) DPS, (b) CDR total dos dois lados contra o tecto de 40%, e (c) sobrevivência — vida efectiva, hp mínimo e `morte` contra o alvo. Dizer qual item sai e qual é a build completa se ganhar o Ímpeto.
+- **Aceitacao**: saída com os dois cenários lado a lado e um vencedor justificado por número (não só DPS); se a decisão depender de peso inventado, fica lista para o dono em vez de ser decidida.
+- **Estado**: pendente
+
+### TK-02-75 | P1 | O ranking de itens é só DPS — precisa de um critério de sobrevivência (o mesmo do cálculo de `morte`)
+- **Ficheiro(s)**: extension/automation.js, tools/sim-build.mjs
+- **Evidencia**: parte-02.md:4215-4227 — *“Mas o ranking do 5.º espaço é só DPS … É uma comparação de DPS puro — e a vida não entra nela. Correcto para o que ela mede, mas não responde à pergunta que interessa: qual item te mantém vivo … O Ímpeto dá 350 de vida = 7,8% dos teus 4.476. E tu morres no Barão. Num sítio onde o que decide é sobreviver, 350 de vida pode valer mais que 200 de DPS — e o ranking, por construção, nunca o verá … Se o cálculo de sobrevivência tiver a vida como entrada, então a escolha de item devia usar o mesmo critério — não um ranking de DPS à parte.”*
+- **Fazer**: fazer a escolha de item/build usar o mesmo critério de sobrevivência que o filtro de `morte` (vida efectiva, dano recebido por segundo, tempo que aguenta), e não apenas DPS; o critério do dono é *(sobrevive?, mata em quantos segundos?, quantas poções e quanto custam?)* — AGENTS.md.
+- **Aceitacao**: para um alvo que mata o boneco, a build escolhida é a que sobrevive (mesmo com menos DPS), provado por número; `bun tools/testes/run.mjs` rc=0 com caso novo.
+- **Estado**: pendente
+
+### TK-02-76 | P2 | Confirmar se a GUI mostra Chama Sombria onde a build ideal tem Liandry (defeito de apresentação)
+- **Ficheiro(s)**: extension/gui.js
+- **Evidencia**: parte-02.md:4050-4052 — *“Não tem Chama Sombria nem Ímpeto. Se estás a ver Chama Sombria no ecrã, é outra coisa — provavelmente a build equipada (a que tens) e não a ideal, ou o bloco da GUI a mostrar outro conjunto. Diz-me onde estás a ver isso (aba, cartão) e eu verifico o que o motor está a mandar para lá — porque se a GUI mostra Chama Sombria onde a ideal tem Liandry, é um defeito de apresentação que quero apanhar.”*
+- **Fazer**: localizar ao vivo (aba + cartão) onde a Chama Sombria aparece e provar se é a build **equipada** ou a **ideal**; se for a ideal a mostrar o item errado, corrigir a renderização; se for a equipada, rotular explicitamente (“a tua build” vs “a build ideal”) para o dono não confundir.
+- **Aceitacao**: cada bloco de build diz de que build fala (equipada/ideal/por fase) e os itens batem com o motor; marcador discriminante; verificação com a aba certa activa (REGRA Nº 4).
+- **Estado**: pendente
+
+### TK-02-77 | P2 | Inventariar todos os campos dos itens usados nas análises (o Ímpeto tem 350 de vida e nunca foi mencionado)
+- **Ficheiro(s)**: docs/ (inventário) + tools/sim-build.mjs se faltar campo
+- **Evidencia**: parte-02.md:4186-4190 — *“O Ímpeto dá 350 de VIDA. Em todas as análises de hoje — na Q1 do simulador, no ranking do 5.º espaço — eu falei do Ímpeto como ‘70 AP + 15% CDR’ e nunca mencionei os 350 de vida. Para uma personagem com 4.476 de vida, isso é 7,8% … Se o simulador também ignorou os 350 de vida, o ranking está errado”*; verificado em parte-02.md:4206-4213 (o simulador conta a vida: `sim-build.mjs:101` e `:229`)
+- **Fazer**: inventariar, por item relevante, **todos** os campos do catálogo (`docs/game-src/itens.js`) e garantir que cada análise/simulador os usa; documentar o inventário para que nenhuma análise volte a omitir um stat.
+- **Aceitacao**: inventário com cada campo por item e confirmação de que o simulador os inclui (prova: correr com e sem um campo e ver o resultado mudar).
+- **Estado**: pendente
+
+---
+
+## Lote 12 — âncora `parte-02-lote-12` (leitura até parte-02.md:4700)
+
+### TK-02-78 | P0 | Preço: o motor usa só o preço base e o jogo escala qualidade/refino (Ímpeto vale 4.692, motor trata-o como 3.000)
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:4405-4421 e 4453-4482 — tela do dono `5.625` vs motor `preco: 3000`; *“O preço também escala com a qualidade e o refino … E o motor guarda só o preço base do catálogo”*; as três funções do jogo: `motor.js:248  p += (i.preco||0) * (1 + BONUS_REFINO*refinoDe(x)) * (QUALIDADES[qualidadeDe(x)]?.mult || 1)`, `motor.js:2898 valorEquip = preco × (1 + 0,12×refino) × multQualidade`, `motor.js:257 valorVenda = piso(preco × 0,5 × (1 + 0,5×refino) × vendaQualidade)`; conta conferida: `3000 × 1,36 × 1,15 = 4.692` e o ecrã mostra 5.625 (`5625/4692 = 1,199 ≈ 1,2` = margem do Lojista, **terceira função ainda não encontrada — não inventar**); consequências em parte-02.md:4418-4421 (`venderBase`, `anunciar`, `refinarMelhores`, `isProtected`)
+- **Fazer**: implementar `valorEquip` e `valorVenda` com as fórmulas do motor (`file:linha` em comentário), usá-las onde o valor decide (`venderBase`, `anunciar*`, `refinarMelhores`) e procurar a terceira função (a margem do Lojista); se não aparecer no `motor.js`, usar `valorEquip` com a dúvida registada em comentário.
+- **Aceitacao**: o código devolve **4.692** para o Ímpeto do dono (não 3.000); uma peça que antes ia para o Lojista passa a ser guardada (ou o contrário) por causa do valor real, provado no banco; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-79 | P1 | `infoItem` devolve `stats: null` — o motor não sabe os atributos de itens que não estão equipados
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:4566-4573 — *“O infoItem do motor devolve stats: null — quem o consultar para saber os atributos de um item recebe nada. Os stats só existem no caminho do efeitosEquipados, que os calcula para os itens equipados. Para um item na mochila ou no mercado, o motor não sabe os atributos dele. Isso é maior que o preço: significa que ao decidir entre a tua peça equipada e uma na mochila, o motor só tem os stats de uma delas.”*
+- **Fazer**: calcular os stats de **qualquer** item (equipado, mochila, mercado) pela mesma fórmula que o `efeitosEquipados` usa (`motor.js:251-255`, com `QUALIDADES` `motor.js:173` e `BONUS_REFINO` `motor.js:55`), e exponde-os no `infoItem`.
+- **Aceitacao**: `infoItem(4629)` devolve `ap 109,5 / vida 547 / cdr 0,23` (os valores reais da peça do dono, escalados), e a comparação equipado-vs-mochila usa stats dos dois lados; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-80 | P1 | Nome do item perde a qualidade (motor escreve “+3”, o jogo mostra “+3 [A]”)
+- **Ficheiro(s)**: extension/automation.js (e extension/gui.js onde o nome é mostrado)
+- **Evidencia**: parte-02.md:4406 e 4543 — `nome: "Ímpeto Cósmico +3"` — **sem o `[A]`**, contra o ecrã do dono `"Ímpeto Cósmico +3 [A]"`; *“Para ler o ecrã e casar com o que tens equipado, falta a qualidade no nome”*; pedido em parte-02.md:4521
+- **Fazer**: acrescentar a qualidade ao nome onde ele é construído (`[A]`, `[S]`…), para o nome do motor casar com o do jogo.
+- **Aceitacao**: `nomeItem`/`infoItem` devolvem “+3 [A]” para a peça do dono; casamento com o texto do jogo testado no banco.
+- **Estado**: pendente
+
+### TK-02-81 | P0 | A build do bot contra o Barão é 2,8–3,4× pior que a ideal e não tem a `3153` Rei Destruído
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:4605 e 4625-4634 — *“ACHADO QUE MUDA DECISÕES: (1) a 3153 Espada do Rei Destruído é a peça que decide a luta (5% da vida ATUAL do alvo por auto, teto 3×CURVA.hp, motor.js:1702+1191) e NENHUMA build do bot a tem”*; medições: `Yasuo IDEAL 7025 DPS · bot 2041 DPS → 3,4×`, `Katarina IDEAL 2757 DPS · bot 993 DPS → 2,8×`; e o nível mínimo que mata o Barão: Yasuo IDEAL nv29 (52,6 s, 41 poções, hpMin 108), Katarina IDEAL nv30 (68,4 s, 56 poções) contra nv32 da build do bot; detalhe em `docs/sim-baron.md`
+- **Fazer**: fazer a build de chefe incluir a peça que decide a luta (Rei Destruído) quando o alvo tem muita vida, e passar a escolher pelo DPS/sobrevivência medidos contra o chefe (não só pela build de mobs com troca de 2 peças).
+- **Aceitacao**: `buildIdealPara`/build de chefe para o Yasuo e a Katarina contém a `3153` contra chefes de vida alta, e o DPS contra o Barão deixa de ser 2,8–3,4× menor que o ideal; valores conferidos contra `tools/sim-chefes.mjs`; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-82 | P1 | A extensão restringe itens por classe nas builds; o jogo não restringe no equipamento
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:4636-4640 — *“Na Katarina, a build AP do bot NÃO é a melhor contra o Barão. Uma build AD/crítico faz 2,8× o DPS — porque o motor não restringe itens por classe. A divisão AP/AD existe nas tabelas de drop (o Barão AP não dropa o Gume do Infinito), mas não no equipamento … a tua Katarina está equipada com a build que a teoria de mago diz, e existe uma build física que a mata o Barão três vezes mais depressa.”*
+- **Fazer**: separar as duas coisas: a **tabela de drop** continua a ser escolhida pela classe (regra do jogo), mas a **build/equipamento** deixa de ser restringida pela classe e passa a ser escolhida pelo DPS/sobrevivência medidos contra o alvo; a build de chefe pode ser de outra classe que a de mobs.
+- **Aceitacao**: para a Katarina, o motor é capaz de propor a build AD/crítico contra o Barão com o DPS medido (2,8×) e mantém a build de mobs coerente; `bun tools/testes/run.mjs` rc=0 com o controle de que as tabelas de drop continuam por classe.
+- **Estado**: pendente
+
+### TK-02-83 | P1 | Implementar a tolerância de nível (monstro até +4 não penaliza; acima: +15%/nível até ×3 e −7%/nível com piso ×0,25)
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:4587 e 4644-4651 — *“O 4 de NIVEL_DIF (motor.js:1184) é OUTRA coisa: é a faixa de tolerância (monstro até +4 níveis não sofre nada; acima disso +15% dano monstro até ×3 e −7% dano jogador piso ×0,25 — motor.js:1185-1187, aplicados em 2696/3099 e 1221). Abaixo do nv38 o Barão fica preso no 42 e o jogador apanha ×2,2-2,35.”*; e parte-02.md:4651 (*“não é o Barão que sobe, é a tolerância que se esgota”*)
+- **Fazer**: implementar a tolerância de nível na avaliação de luta (dano do monstro e dano do jogador) com `file:linha` do motor, e usá-la no critério de `morte`/fuga — é ela que explica porque o nível 29 é o limite no Barão.
+- **Aceitacao**: teste a mostrar que um monstro +3 níveis não penaliza, +5 penaliza conforme `motor.js:1185-1187`; e o `morte` do Barão ao nível 29 continuar `true`; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-84 | P2 | Smart de poção: a luta ganha-se a beber 1/s e a margem de erro é 0–2 poções
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:4598 e 4656-4661 — *“dano/s médio levado 976-1257/s (básico do Barão + tentáculos 2,6× ~1400 + queimadura 3%/s) contra cura/s das poções 911-1239/s → margem −9 a −65/s … A luta ganha-se a beber 1 poção/s (cooldown motor.js:41), não a aguentar golpes. Sem poção morre em 7-10 s. Margem de erro de poções ≈ 0-2 (a smart já bebe no limite) → o seguro é mínimo+2.”*
+- **Fazer**: ajustar a smart de poção para beber no limite (1/s) com reserva de **mínimo + 2** e reportar o custo em ouro por luta (é um dos três critérios do dono: quantas poções e quanto custam).
+- **Aceitacao**: medição ao vivo de uma luta de chefe com poções usadas e ouro gasto dentro da margem (mínimo+2) e hpMin > 0; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+---
+
+## Lote 13 — âncora `parte-02-lote-13` (leitura até parte-02.md:5450)
+
+### TK-02-85 | P0 | Lojista ainda decide venda por ouro (`valorDaVenda >= custo.ouro * 2`) — o dono diz que o Lojista é lixo
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:4965-4995 — `automation.js:2496  n.vender = podeFazer(vender).pode && atosVenda.length > 0 && (mochilaQuaseCheia || valorDaVenda >= custo.ouro * 2);` com a nota *“Se o Lojista não paga, essa condição é ficção — e o mochilaQuaseCheia é a única razão real”*; encaminhado em `27861ac9` e `5f7aa937` com a troca exacta (`mochilaQuaseCheia || <início de jogo>`) e o pedido de manter o `valorDaVenda` só como **valor informativo, NÃO é receita** (parte-02.md:4991); confirmado ainda pendente em parte-02.md:5266 e 5408; regra do dono em parte-02.md:4866 e 5011 (*“o lojista … é a mesma coisa que jogar item no lixo … ele so e pra ser vendido quando itens sao considerados lixo”*)
+- **Fazer**: substituir a condição de venda por `mochilaQuaseCheia` (+ critério medido de início de jogo, se houver) e marcar `valorDaVenda` como informativo; nenhuma decisão de venda pode depender do ouro do Lojista.
+- **Aceitacao**: prova exigida em parte-02.md:4995 — com a mochila **não** cheia e valor alto, `n.vender` fica **falso**; com a mochila cheia, continua verdadeiro; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-86 | P0 | Confirmar que nenhum caminho manda um LENDÁRIO ao Lojista (regra nova do dono)
+- **Ficheiro(s)**: extension/automation.js, tools/testes/
+- **Evidencia**: parte-02.md:5011 — *“lendarios sao desejados pelos jogadores, entao nunca se vende lendario pelo lojista, só pelo mercado”*; e parte-02.md:5054-5065 — pedido para percorrer **todos** os caminhos que mandam itens ao Lojista e provar as quatro linhas: `lendário duplicado → MERCADO (nunca Lojista) | épico inútil → VENDER_LOJISTA | básico → VENDER_LOJISTA | 3031/3089 duplicado → PROTEGIDO (controlo)`; verificado ao vivo em parte-02.md:5244-5261 (`nenhum lendário vai ao Lojista`) e com 6 asserções actualizadas (parte-02.md:5376-5390)
+- **Fazer**: varrer todos os caminhos de descarte (`planBag`, `venderBase`, `anunciar*`, `atosVenda`) e garantir que **nenhum** aceita lendário, mantendo o contraste épico/básico → Lojista e protegidos acima da regra; manter as asserções nas duas direcções.
+- **Aceitacao**: banco a provar, para cada caminho, que um lendário duplicado nunca sai para o Lojista (com o mercado vazio **e** saturado) e que épico/básico continuam a sair; verificação ao vivo com marcador discriminante.
+- **Estado**: pendente
+
+### TK-02-87 | P1 | Conflito entre instrumentos: `scoreSet` diz bota de CDR (+154), o simulador diz bota de pen (+227)
+- **Ficheiro(s)**: extension/automation.js, tools/sim-build.mjs
+- **Evidencia**: parte-02.md:5136-5145 — *“Os dois instrumentos discordam: scoreSet (motor) bota de pen 822 / bota de CDR 976; sim-build.mjs (simulador) bota de pen 1465 dps / bota de CDR 1238 dps. O simulador diz que a bota de pen ganha (+227 dps); o scoreSet diz que a bota de CDR ganha (+154). Não vou escolher entre eles sem resolver o conflito”*; e a hipótese de que o `scoreSet` estava contaminado pelo bug do `efeitosEquipados` **não se confirmou** — os valores ficaram idênticos depois da correcção (parte-02.md:5438); medições em parte-02.md:5107-5126 (`976 / 822 / 783 / 683 / 593`)
+- **Fazer**: descobrir porque os dois instrumentos discordam (fórmula, pesos, escalas de qualidade/refino, entrada do pen) e fazer um deles servir de referência independente do outro; só depois dar a resposta da bota ao dono.
+- **Aceitacao**: os dois instrumentos concordam na ordem das builds (ou a diferença está explicada por `file:linha` e documentada); número de medições com valores exactos; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-88 | P2 | Roubo de vida na build do Yasuo — investigação delegada (`9ec1b9fa`) sem resultado no histórico
+- **Ficheiro(s)**: docs/ (relatório) + extension/automation.js se o scoring não pontuar o `rv`
+- **Evidencia**: parte-02.md:4785 — *“a build do yasuo ta levando em conta itens com roubo de vida?”*; delegado em parte-02.md:4843 (*“quais itens têm rv, se algum dos 5 da build dele tem, se o scoring da extensão pontua o rv, e se o motor do jogo o usa na cura. Com file:linha em tudo e proibido de escrever na extensão”*); ainda pendente em parte-02.md:5267 e 5407
+- **Fazer**: concluir a investigação: itens com `rv`, se a build do Yasuo tem algum, se o `scoreSet`/`pesosItem` pontua `rv` (o audit diz que `rv→nenhum`, parte-02.md:3038) e como o motor do jogo o aplica na cura (`motor.js:1226-1228` — cura `dano × rv`).
+- **Aceitacao**: relatório com `file:linha` e resposta sim/não para cada uma das três perguntas; se o scoring não pontua `rv` e o jogo cura com ele, ticket de correcção aberto com número.
 - **Estado**: pendente

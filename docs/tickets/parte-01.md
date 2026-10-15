@@ -4,7 +4,7 @@
 > dentro do próprio histórico NÃO geram ticket. Decisões do dono ficam na secção final.
 > Marcador deste lote: <!-- lote-1: linhas 1-1350 -->
 
-### TK-01-01 | P0 | filtro `.morte` inexistente deixa regiaoIgal mandar nv 27 ao Dragao
+### TK-01-01 | P0 | filtro `.morte` inexistente deixa regiaoIdeal mandar nv 27 ao Dragao
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-01.md L366-367 (auditor-friccao F-3): "F-3 automation.js:3264/3274 — .filter(x => !x.e.morte) e rankRegioes().morte: 'morte' nao existe em estimarRegiao. Sem esse filtro, regiaoIdeal manda o nv 27 para o Dragao (nm[0]=30 <= nv+6) → chefe nv 40 → as mortes do TODOS.md:135-139"
 - **Fazer**: implementar o campo `morte` em estimarRegiao() (probabilidade de morte na regiao) e mante-lo no filtro de rankRegioes(), OU remover o filtro morto; escolher por dado e documentar. Garantir que nv<=27 nunca ranqueia regiao com nm[0] > nv+6 enquanto o risco de chefe fatal nao for zero.
@@ -384,11 +384,11 @@
 - **Aceitacao**: teste ao vivo: kill switch -> nada mexe em 60 s (zero eventos de accao no log); pausar -> medicao continua, accoes param; desligar/religar -> estado limpo. Persistencia provada com reload.
 - **Estado**: pendente
 
-### TK-01-54 | P0 | Katarina corre versao ANTIGA da extensao (nunca recarregada) -> desequipa itens bons
-- **Ficheiro(s)**: extension/ (recarregar); relay 9224
-- **Evidencia**: parte-01.md L8050-8065: "a Katarina esta a correr uma versao ANTIGA da extensao... valorDe sem termo de raridade, planBag antigo, sem a excepcao dos componentes. E exactamente isso que faz um basico ganhar de um epico e desequipar coisas boas"; L8023 (dono): "por que a katarina ta desequipando itens e botando itens NOJENTOS DE RUINS?"
-- **Fazer**: recarregar a extensao na aba da Katarina (relay 9224, conta Scriptingkata) com a revisao actual e verificar por marcador discriminante; so depois avaliar se o comportamento de itens muda. Manter enabled=false na jornada dela.
-- **Aceitacao**: marcador discriminante do codigo novo visivel na pagina dela; itens dela deixam de ser trocados por basicos (ou teste isola a causa como sendo o VIP do jogo - ver TK-01-65).
+### TK-01-54 | P0 | Katarina: itens dela sao desequipados/revertidos por versao antiga OU pelo VIP do jogo — isolar e fechar
+- **Ficheiro(s)**: extension/; relay 9224
+- **Evidencia**: parte-01.md L8023 (dono): "por que a katarina ta desequipando itens e botando itens NOJENTOS DE RUINS?"; L8050-8065: o agente afirmou "a Katarina esta a correr uma versao ANTIGA da extensao" e DEPOIS RETRACTOU — L8497: "A extensao NAO esta carregada na pagina da Katarina. Nao e uma versao velha — nao ha versao nenhuma"; L8501: os itens equipados REVERTEM sozinhos; L8505: suspeito restante e o VIP do jogo; versao corrigida deste problema = TK-01-69 + TK-01-65 + TK-01-70
+- **Fazer**: este ticket fica SUPERADO por TK-01-69 (extensao nao carregada) + TK-01-65 (VIP do jogo vs extensao) + TK-01-70 (VIP persistente). Fechar os tres fecha este; so reabrir se depois de carregar a extensao nova os itens continuarem a reverter.
+- **Aceitacao**: com extensao nova carregada e VIP off persistente, itens da Katarina estaveis por >=30 min (nenhuma reversao no log/DOM).
 - **Estado**: pendente
 
 ### TK-01-55 | P1 | GUI reescrita (2228 linhas) nunca foi vista a correr no jogo real
@@ -566,3 +566,6 @@
 - **D-04 — Katarina: VIP do jogo.** O dono mandou desativar (L8210) mas o jogo re-afirma o estado. Escolher a via: cacar a chave persistente, ou re-afirmar a cada tick pela extensao.
 - **D-05 — autoEquip: a regra14 antiga (off) vs a regra nova do goal (Equipar SEMPRE o melhor item disponivel em cada slot, inviolavel).** O motor passou o default a true. Confirmar que a nova manda (e que o auto-play pode trocar itens sozinho).
 - **D-06 — Runeterra: continua deliberadamente manual?** Decisao anterior do dono (L5670): a extensao salta-o. Confirmar se mantem.
+
+
+TOTAL: 77 tickets (P0=8 P1=30 P2=36 P3=3)

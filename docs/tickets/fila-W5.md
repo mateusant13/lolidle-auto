@@ -70,3 +70,19 @@ Só podes mexer em: decisão de guardar/vender épicos, autoEquip, mercado (poll
 - **Fazer**: ranking de receitas por (serve a build) x (custo esperado = ouro/tentativa x tentativasMedias) x (tem componentes), com teto de ouro da reserva; escolher a mais barata que sirva a build.
 - **Aceitacao**: teste: com 3 receitas serve-build e custos diferentes, a escolhida e a de menor custo esperado com componentes; log mostra o porque.
 - **Estado**: pendente
+
+
+## TICKETS NOVOS (P0, acrescentados pelo Lead às 21:50)
+### TK-01-51 | P0 | venderBase/planBag vendem BASICOS que sao componentes de receita (zero Adagas -> nenhuma receita Ornn arranca)
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-01.md L7728-7735: "componentesDaBuild() = [3006, 1001, 1042, 3086, 1018, 3077, 1036, 3044, 1028, 3144, 1038, 1037]... a excepcao componentesDaBuild() so a pus para EPICOS, nao para basicos. Logo ele esta a vender os componentes que a build precisa"; L7828: "a minha regra de venda nao poupa os basicos que sao componente de receita (1042 Adaga...) — e por isso que ele tem zero Adagas"; gargalo confirmado em L6576/L6882/L6938
+- **Fazer**: estender a excepcao de venda (componentesDaBuild) aos BASICOS tambem; nenhum item que seja componente de receita da build pode ser vendido. Atencao a nao recriar o ciclo de viagem: o planner tem de concordar com o actor (regra do comentario l.275-282).
+- **Aceitacao**: teste no banco: basico 1042 (Adaga) com componentesDaBuild() a contê-lo -> planBag NAO marca VENDER_LOJISTA e venderBase protege; lixo nunca fica preso por isso; mochila do Yasuo passa a acumular Adagas ao vivo.
+- **Estado**: pendente
+
+### TK-01-68 | P0 | n.equip/n.comprar presos em true para sempre (4.a necessidade que nunca fecha)
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-01.md L8433-8460: "n.equip e o n.comprar comparam contra o buildIdeal() — a build de fim de jogo [3172,3046,6631,3085,3031]... Ele nao tem NENHUM dos cinco, e nao pode compra-los (sao lendarios de milhoes). Logo comprar = true para sempre / equip = true para sempre... E a terceira vez nesta sessao que aparece a mesma classe de bug"; confirmado pendente em L8990 e L9008
+- **Fazer**: n.equip so true se houver na MOCHILA ou no COFRE item melhor que o equipado no slot; n.comprar so true se o item estiver ao alcance do ouro actual E o custo da viagem se pagar. Ambos passam pelo backoff como as outras necessidades.
+- **Aceitacao**: teste: sem item melhor disponivel e sem ouro para a build ideal -> n.equip=false e n.comprar=false; com item melhor na mochila -> true; faltandoNaBase() fica [].
+- **Estado**: pendente

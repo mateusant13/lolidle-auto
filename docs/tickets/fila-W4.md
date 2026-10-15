@@ -72,3 +72,12 @@ Só podes mexer em: fuga/fugir, _regiaoAntesDaBase, supervisarBase, viajarPara, 
 - **Fazer**: comparacao por localId normalizado (nao string exata) + limite de iteracoes com log de saida.
 - **Aceitacao**: teste: local 'Fonte (nucleo)'/'fonte com acento' nao entra em loop; ha contador de seguranca.
 - **Estado**: pendente
+
+
+## TICKETS NOVOS (P0, acrescentados pelo Lead às 21:50)
+### TK-01-52 | P0 | ciclo de viagem: verificar AO VIVO que morreu (ouro a subir, sem recalls) + rotina de base completa
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-01.md L7544-7577 (subagent: P0 do ciclo RESOLVIDO — minimoPocoesAgora, reporPocoes reporta, backoff 45min, tecto de 3 recalls + farm forcado, n.vender so com mochila quase cheia); L8008-8020: "Vou verificar ao vivo - o ciclo tem de ter morto e o ouro tem de subir" (verificacao NAO feita no historico); L7135-7172 sintoma (viaja -> mata 1 mob -> volta, ouro congelado)
+- **Fazer**: recarregar a extensao no browser do Yasuo e verificar por estado: log com {ir:base:vender, venda:{itens,valor}, custoIda:{ouro,seg}, falta:[]}, zero recalls em 10 min, ouro a subir; se o ciclo voltar, registar o motivo exacto.
+- **Aceitacao**: janela de 10 min ao vivo sem recall (ou maximo 1 com fecho de necessidade) + delta de ouro positivo + log com falta:[] em cada ida a base.
+- **Estado**: pendente
