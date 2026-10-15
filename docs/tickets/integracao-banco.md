@@ -466,3 +466,15 @@ fotografia do `motor.js:1199`. Implementada assim (nao um alias do `difNivelMoto
 provavelmente sensiveis a TEMPO (o `killTimes` usa `Date.now()`; ha um MutationObserver no `#log`).
 O 3-run de ha pouco deu 15/15/15, logo a oscilacao e intermitente - e o piso e 15.
 **Metodo:** medir 3x e usar o MENOR numero (o piso), nao a media; e comparar as LISTAS.
+## ADENDA 12:40 - medido: DECISAO DE DESENHO (4 tentativas, todas medidas)
+Lido o codigo lado a lado (o que faltava):
+  - `precisaRefino` (3262-3273): **declara** `let medido = null, divergenciaMedido = []` e **NUNCA os usa**
+    (sai num `return readEquip().some(...)`);
+  - `refinarMelhores` (5725): **USA-os** no `diag` (5762) sem os declarar -> ReferenceError.
+Declarar `let medido = null` no `refinarMelhores` -> **24 falhas nas DUAS corridas** (piso era 15).
+**Conclusao: o `medido` NAO pode ser null.** O `diag` quer os DADOS MEDIDOS da regiao (xpMin/goldMin/killsMin)
+- e o `rank` (5740-5744) ja os tem! O ramo w2 devia CALCULAR o `medido` ali:
+  `const medido = rank.length ? { xpMin: ..., goldMin: ..., killsMin: ..., n } : null;`
+**Proximo passo exacto:** ler o `scoreRegiao(e, obj, medido)` (7378) para ver QUE CAMPOS ele le de `medido`
+(xpMin/goldMin ja vistos) e montar o objecto a partir do `rank[0]`/`agregar()` da regiao actual.
+As 4 tentativas: modulo (16->23) · por-funcao (18->21) · refinarMelhores (18->27 / agora 15->24) · esta analise.
