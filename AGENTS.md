@@ -78,16 +78,24 @@ A linha é esta:
 **Todo o número que existe no jogo tem de ser LIDO, nunca copiado para o código.**
 
 Se o jogo buffar ou nerfar amanhã — ou daqui a 10 anos — o script tem de acompanhar **sem ninguém tocar
-no código**. Onde isso está quebrado hoje:
+no código**.
 
+### ESTADO CORRIGIDO (2026-10-15) — os três casos desta regra JÁ ESTÃO ARRANJADOS
+A versão anterior deste documento acusava:
 ```js
 inject.js:133  meta.curva = { hp: [150,100,1], ... }   // ← cópia à mão, congelada
 inject.js:138  meta.grupoSpawn = { base: 2, rand: 3 }
 inject.js:139  meta.respawn = { clear: 1.5, local: 1.2 }
 ```
+**Isso já não é verdade.** O `inject.js` corre no mundo MAIN, **chama as FUNÇÕES da `CURVA` do jogo**
+(`CURVA` em 10 sítios do código), **avalia-a por nível** (`meta.curvaPorNivel`) e manda os números por
+`postMessage` — `grupoSpawn`, `respawn` e `rmMonstro` também saem do motor. O único literal que resta é
+um **FALLBACK declarado** (`inject.js:170 CURVA_FALLBACK`), usado **só quando a leitura do motor falha** —
+que é o oposto de uma cópia congelada.
 
-A `CURVA` do jogo são **funções** e não passam por `postMessage` — mas o `inject.js` corre no mundo MAIN e
-**consegue chamá-las**. O que falta é avaliar a curva por nível e mandar os números.
+**Lição (e é a razão de esta nota existir):** um documento que acusa código já corrigido é um defeito —
+manda o próximo agente "arranjar" o que está certo. **Quando arrumares algo que este ficheiro acusa,
+actualiza o ficheiro.**
 
 **Prova de que isto importa**: a região do Barão foi buffada, o script não soube, e o dono morreu. Foi
 assim que se descobriu. **Um buff na CURVA passa em claro; um buff no coeficiente do mob é apanhado.**

@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+const base = process.env.LOCALAPPDATA + '\\Google\\Chrome\\User Data';
+const p = JSON.parse(fs.readFileSync(base + '\\Default\\Preferences', 'utf8'));
+const ui = (p.extensions && p.extensions.ui) || {};
+console.log('extensions.ui = ' + JSON.stringify(ui).slice(0, 300));
+const s = (p.extensions && p.extensions.settings) || {};
+const id = 'pbdlekcgmpippamdkgbaphcppjafobjo';
+console.log('entrada no Preferences: ' + JSON.stringify(s[id] || null).slice(0, 200));
+console.log('total de extensoes no Preferences: ' + Object.keys(s).length);
+const sec = JSON.parse(fs.readFileSync(base + '\\Default\\Secure Preferences', 'utf8'));
+const su = (sec.extensions && sec.extensions.ui) || {};
+console.log('Secure.extensions.ui = ' + JSON.stringify(su).slice(0, 300));
