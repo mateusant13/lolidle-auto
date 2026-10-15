@@ -1,0 +1,699 @@
+<!-- jogar.html — LIDO DO JOGO VIVO em 2026-10-14 via https://lolidle.com/jogar (HTTP, sem browser).
+     66991 bytes · sha256 4b5e757d8c21d929b3fda0f4bf2e9dbc62fd23898c829db8734d7fce27849815 — Regra N.o 3: texto LIDO, nunca copiado.
+     É a página do jogo inteira (UI incluída): donde vivem #ignorar-basicos, #atributos, #pocoes, #mochila etc. -->
+<!doctype html>
+<html lang="pt-BR" translate="no">
+<head>
+  <meta charset="utf-8">
+  <!-- o jogo tem tradução própria (botão PT/EN): o tradutor do navegador trocava os textos que o jogo atualiza a cada quadro e eles ficavam piscando -->
+  <meta name="google" content="notranslate">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jogar LoL Idle grátis no navegador</title>
+  <meta name="description" content="Crie seu personagem, escolha Darius, Ezreal, Lux, Yasuo, Katarina, Taric ou Zac e comece a caçar em segundos. MMORPG idle grátis, sem baixar nada; dá para jogar sem conta.">
+  <link rel="canonical" href="https://lolidle.com/jogar">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="LoL Idle">
+  <meta property="og:title" content="Jogar LoL Idle grátis no navegador">
+  <meta property="og:description" content="Crie seu personagem, escolha Darius, Ezreal, Lux, Yasuo, Katarina, Taric ou Zac e comece a caçar em segundos. MMORPG idle grátis, sem baixar nada; dá para jogar sem conta.">
+  <meta property="og:url" content="https://lolidle.com/jogar">
+  <meta property="og:image" content="https://lolidle.com/assets/img/site/og.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="assets/img/logo.png">
+  <link rel="apple-touch-icon" href="assets/img/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jersey+15&display=swap">
+  <link rel="stylesheet" href="css/estilo.css">
+  <link rel="stylesheet" href="css/tema.css">
+</head>
+<body>
+  <!-- aparelho deitado: a coluna vira uma gaveta (alça na borda direita) -->
+  <button type="button" id="bt-gaveta" aria-expanded="false" title="Abrir o painel: cartão, Local, abas e chat"><span class="bg-ico">☰</span></button>
+  <div id="gaveta-fundo"></div>
+  <div id="cliente">
+    
+
+    <!-- a tela do jogo ocupa a altura toda -->
+    <main>
+      <div id="moldura">
+        <canvas id="tela"></canvas>
+        <div id="hud"><span id="hud-local"></span><span id="hud-hora" title="Horário de Brasília&#10;Dia das 6h às 18h; noite das 18h às 6h.&#10;À noite aparecem monstros noturnos (☾): mais fortes, mas dão mais XP, ouro e itens."></span><span id="hud-dir"><span id="hud-redes"><a id="hud-tiktok" href="https://www.tiktok.com/@lolidle.com" target="_blank" rel="noopener" title="TikTok do LoL Idle: @lolidle.com"><svg viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(-0.7 -0.5)" fill="#25f4ee"><path d="M16.6 5.8a4.3 4.3 0 0 1-1-2.8h-3.1v12.4a2.6 2.6 0 1 1-2.6-2.6c.3 0 .5 0 .8.1V9.7a5.7 5.7 0 1 0 4.9 5.7V9.1a7.3 7.3 0 0 0 4.3 1.4V7.4a4.3 4.3 0 0 1-3.3-1.6z"/></g><g transform="translate(0.7 0.5)" fill="#fe2c55"><path d="M16.6 5.8a4.3 4.3 0 0 1-1-2.8h-3.1v12.4a2.6 2.6 0 1 1-2.6-2.6c.3 0 .5 0 .8.1V9.7a5.7 5.7 0 1 0 4.9 5.7V9.1a7.3 7.3 0 0 0 4.3 1.4V7.4a4.3 4.3 0 0 1-3.3-1.6z"/></g><path fill="#fff" d="M16.6 5.8a4.3 4.3 0 0 1-1-2.8h-3.1v12.4a2.6 2.6 0 1 1-2.6-2.6c.3 0 .5 0 .8.1V9.7a5.7 5.7 0 1 0 4.9 5.7V9.1a7.3 7.3 0 0 0 4.3 1.4V7.4a4.3 4.3 0 0 1-3.3-1.6z"/></svg></a><a id="hud-instagram" href="https://www.instagram.com/teamlolidle/" target="_blank" rel="noopener" title="Instagram do LoL Idle: @teamlolidle"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4.6" fill="none" stroke="#fff" stroke-width="2"/><circle cx="12" cy="12" r="3.7" fill="none" stroke="#fff" stroke-width="2"/><circle cx="16.6" cy="7.4" r="1.2" fill="#fff"/></svg></a></span><span id="hud-faixa"></span></span></div>
+        <div id="aviso-morte" hidden title="Ao morrer você perde 10% da experiência do nível atual (o nível não cai). No Summoner's Rift nenhum item cai.">☠ Morrer: −10% do XP do nível</div>
+        <!-- evento de XP (o servidor liga e desliga): faixa com o tempo que falta -->
+        <div id="evento-xp" hidden></div>
+        <div id="aviso-reinicio" hidden role="status"></div>
+        <!-- grupo (party) de Runeterra: membros, vida e bônus de XP; convite recebido -->
+        <div id="grupo-hud" hidden></div>
+        <div id="grupo-convite" hidden></div>
+        <!-- Arena: o placar da partida, a contagem e "procurando partida" -->
+        <div id="arena-hud" hidden></div>
+        <div id="arena-aviso" hidden></div>
+        <div id="arena-status" hidden title="Abrir a Arena"></div>
+        <div id="dungeon-status" hidden title="Abrir a Dungeon"></div>
+        <section id="grupo-painel" class="painel" hidden>
+          <header>Grupo <small>até 4 · +15% de XP por membro perto</small></header>
+          <div class="corpo"><div id="grupo-conteudo"></div></div>
+        </section>
+        <div id="mini-zoom" hidden><button type="button" data-mini="+" title="Aproximar o minimapa (ou a roda do mouse em cima dele)">+</button><button type="button" data-mini="-" title="Afastar o minimapa">−</button></div>
+        <div id="opcoes-mundo">
+          <button type="button" id="bt-pk" hidden aria-pressed="false" title="PK desligado: você não ataca outros jogadores (tecla P)"><svg viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><path d="M3 1h6v1h1v1h1v4h-1v1h-1v2h-1v1H4v-1H3V8H2V7H1V3h1V2h1z"/><path fill="#000" d="M3 4h2v2H3zM7 4h2v2H7zM5 7h2v1H5zM4 9h1v1H4zM6 9h1v1H6z"/></svg><span>PK</span></button>
+          <button type="button" id="bt-alcance" hidden aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><path d="M4 0h4v1h2v1h1v2h1v4h-1v2h-1v1H8v1H4v-1H2v-1H1V8H0V4h1V2h1V1h2zM4 2v1H3v1H2v4h1v1h1v1h4V9h1V8h1V4H9V3H8V2z"/><path d="M5 5h2v2H5z"/></svg><span>Alcance</span></button>
+          <button type="button" id="bt-campeoes" hidden aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><path d="M5 0h2v2h2v1h1v2h2v2h-2v2H9v1H7v2H5v-2H3V9H2V7H0V5h2V3h1V2h2zM5 4v1H4v2h1v1h2V7h1V5H7V4z"/></svg><span>Só campeões</span></button>
+          <button type="button" id="bt-grupo" hidden aria-expanded="false" title="Grupo: cace junto e ganhe mais experiência"><svg viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><path d="M2 2h3v3H2zM7 2h3v3H7zM1 6h5v4H1zM6 6h5v4H6z"/></svg><span>Grupo</span></button>
+          <button type="button" id="bt-montaria" hidden aria-pressed="false" title="Montaria (tecla Z)"><svg viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><path d="M2 0h1v2h1V0h1v3h1v1h3v1h2v3h-1v4H9V9H5v3H4V8H3V6H1V5H0V3h2z"/></svg><span class="mt-txt">Montar</span><b class="tecla">Z</b><i class="mt-brilho" aria-hidden="true"></i><i class="mt-barra"><b></b></i><span class="mt-novo" aria-hidden="true">NOVO</span></button>
+          <div id="rank-vm" hidden></div>
+          <div id="aviso-morte-mundo" hidden title="Morrer em Runeterra custa 10% da experiência do nível, e os itens podem cair num saco no chão. Morto por outro jogador: 30% de chance de cair 1 item equipado (sorteado). Morto por monstro: 10% de chance para cada item equipado. Com a Caveira Vermelha: cai metade de tudo que você carrega (equipados e mochila). O saco fica 30 minutos e qualquer um pode pegar. A Bênção Protetora, na Loja, segura os itens (menos com a Caveira Vermelha).">☠ Morrer: −10% XP e itens podem cair</div>
+        </div>
+        <!-- quadro de missões no canto: próximo passo (jogo.js), tarefa do Capitão e chaves das fortalezas -->
+        <div id="rastreador">
+          <div id="rastreio-abas" hidden>
+            <button type="button" id="rastreio-topo" class="rt-aba" hidden title="Missões: clique para abrir; aberta, clique para recolher"><span class="rt-ico">📜</span><span class="rt-nome">Missões</span> <small id="rastreio-n"></small> <i id="rastreio-seta">▾</i></button>
+            <button type="button" id="rastreio-ev" class="rt-aba" hidden title="Eventos: a Vilemaw e os sorteios das lives. Clique para abrir; aberta, clique para recolher"><span class="rt-ico">🎉</span><span class="rt-nome">Eventos</span> <small id="rastreio-ev-n"></small> <i id="rastreio-ev-seta">▸</i></button>
+            <button type="button" id="rastreio-fr" class="rt-aba" hidden title="Frags: a Caveira, a Caveira Vermelha e os frags das últimas horas. Clique para abrir; aberta, clique para recolher"><span class="rt-ico">☠</span><span class="rt-nome">Frags</span> <small id="rastreio-fr-n"></small> <i id="rastreio-fr-seta">▸</i></button>
+          </div>
+          <button type="button" id="rastreio-login" class="rastreio" hidden></button>
+          <button type="button" id="rastreio-analise" class="rastreio" hidden title="Medidor da caçada: XP, ouro, dano e saque por hora"></button>
+          <button type="button" id="rastreio-tarefa" class="rastreio" hidden></button>
+          <button type="button" id="rastreio-diaria-rift" class="rastreio" hidden></button>
+          <button type="button" id="rastreio-diaria" class="rastreio" hidden></button>
+          <div id="rastreio-caveira" class="rastreio" hidden></div>
+          <div id="rastreio-chaves" class="rastreio" hidden></div>
+          <button type="button" id="rastreio-vilemaw" class="rastreio" hidden></button>
+          <button type="button" id="rastreio-sorteio" class="rastreio" hidden></button>
+        </div>
+        <!-- quadro do alvo: o monstro que você está atacando (nome, nível, mágico/noturno e vida) -->
+        <div id="hud-alvo" hidden></div>
+        <!-- avisos de saque: itens e gemas que caíram -->
+        <div id="avisos-saque" aria-live="polite"></div>
+        <!-- barra de baixo, no estilo do LoL: retrato com o nível, vida, mana, habilidades e poções -->
+        <div id="hud-baixo">
+          <button type="button" id="hud-pontos" hidden title="Você tem pontos para usar: clique para abrir as abas Habilidades e Atributos"><b>+</b> <span>Pontos para usar</span> <small id="hud-pontos-txt"></small></button>
+          <div id="hud-buffs" aria-label="Efeitos ativos"></div>
+          <div class="hud-retrato" id="hud-retrato"><div class="hud-rosto"><canvas id="hud-cabeca" width="48" height="48"></canvas></div><b id="hud-nivel"></b></div>
+          <div class="hud-barras">
+            <div class="hud-barra vida" title="Vida"><i id="hud-vida"></i><span id="hud-vida-txt"></span></div>
+            <div class="hud-barra mana" title="Mana"><i id="hud-mana"></i><span id="hud-mana-txt"></span></div>
+            <div class="hud-barra xp" id="hud-xpb" title="Experiência"><i id="hud-xpb-barra"></i><span id="hud-xpb-txt"></span></div>
+          </div>
+          <div class="hud-habs" id="hud-habs" role="group" aria-label="Barra de combate"></div>
+          <div class="hud-pocoes" id="hud-pocoes" role="group" aria-label="Poções"></div>
+          <!-- itens equipados e os atalhos da mochila, do mapa e do Voltar (pedido de jogador) -->
+          <div class="hud-itens" id="hud-itens">
+            <button type="button" id="hud-equip" class="hud-equip" title="Itens equipados: clique para ver a mochila e comparar"></button>
+            <div class="hud-atalhos">
+              <button type="button" id="hud-bolsa" class="hud-atalho" title="Mochila e equipamento (I)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5a2 2 0 0 1 4 0V4h2.2l1.3 9.6a1 1 0 0 1-1 1.1h-9a1 1 0 0 1-1-1.1L3.8 4H6zm1 1.5h2V2.5a1 1 0 0 0-2 0z"/></svg><span>I</span><b id="hud-bolsa-n"></b></button>
+              <button type="button" id="hud-mapa" class="hud-atalho" title="Mapa (M)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 3.2 5.3 1.6l5.4 1.8L15 1.8v11L10.7 14.4 5.3 12.6 1 14.2zM5.8 2.9v8.6l4.4 1.5V4.4z"/></svg><span>M</span><b>Mapa</b></button>
+              <button type="button" id="hud-voltar" class="hud-atalho" title="Voltar para a Fonte (B)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.2 14.5 7H12.6v7.3H9.4V9.8H6.6v4.5H3.4V7H1.5z"/></svg><span>B</span><b>Fonte</b></button>
+              <button type="button" id="hud-painel" class="hud-atalho" title="Painel: cartão, Local, abas e chat"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v2H2zM2 7h12v2H2zM2 11h12v2H2z"/></svg><b>Painel</b></button>
+            </div>
+          </div>
+        </div>
+        <div id="hud-xp" hidden><i id="hud-xp-barra"></i><span id="hud-xp-txt"></span></div>
+      </div>
+    </main>
+
+    <!-- coluna lateral: jogador, local, abas (build e itens) e chat -->
+    <aside id="lateral">
+      <section class="painel" id="painel-status">
+        <header><span id="st-nome">Status</span> <span id="st-online" title="Jogadores com o jogo aberto agora" hidden><i></i><b></b> <small>online</small></span> <button id="abrir-novidades" class="botao-novidades bt-cartao" title="Novidades: o que mudou nas últimas atualizações" aria-label="Novidades"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0l1.6 5.2L15 7l-5.4 1.8L8 14l-1.6-5.2L1 7l5.4-1.8z"/><path d="M13.5 10.5l.6 1.9 1.9.6-1.9.6-.6 1.9-.6-1.9-1.9-.6 1.9-.6z" opacity=".75"/></svg><i></i></button> <button id="abrir-ganhos" class="botao-ganhos bt-cartao" title="Ganhar dinheiro: indique amigos" aria-label="Ganhar dinheiro"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" class="m-fora"/><circle cx="8" cy="8" r="4.6" class="m-dentro"/><path d="M8.6 4.6v.9c.9.1 1.6.6 1.8 1.4l-1.1.3c-.1-.4-.5-.7-1.2-.7-.6 0-1 .3-1 .7 0 .3.2.5 1.1.7 1.4.3 2.1.8 2.1 1.8 0 .9-.7 1.5-1.7 1.6v.9H7.5v-.9c-1-.1-1.7-.7-1.9-1.6l1.1-.3c.1.6.6.9 1.4.9.7 0 1-.3 1-.7 0-.3-.2-.5-1.2-.7-1.3-.3-2-.8-2-1.7 0-.9.7-1.4 1.6-1.6v-.9z" class="m-s"/></svg></button> <button id="abrir-vip" class="botao-vip" title="VIP: apoie o jogo">★ VIP</button> <button id="abrir-personagens" class="botao-personagens bt-cartao" title="Personagens: até 3 por conta, cada um com o próprio campeão" aria-label="Personagens">👥</button> <button id="sair" class="botao-sair bt-cartao" title="Sair da conta e voltar para a tela de entrada"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v6" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M4.6 3.8a5.5 5.5 0 1 0 6.8 0" stroke-width="2" stroke-linecap="round" fill="none"/></svg><span>Sair</span></button></header>
+        <div class="corpo">
+          <!-- idioma, música, efeitos e o tutorial (?) -->
+          <!-- Discord, Twitch e Kick lado a lado, dividindo a largura -->
+          <div id="cartao-redes">
+            <button type="button" id="abrir-discord" class="bt-discord" title="Discord do LoL Idle: entre e ganhe 1 dia de VIP"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.3 4.4A19.6 19.6 0 0 0 15.4 3l-.6 1.3a18.2 18.2 0 0 0-5.5 0L8.6 3a19.5 19.5 0 0 0-4.9 1.5C.6 9.1-.2 13.6.2 18.1a19.7 19.7 0 0 0 6 3l1.3-2a12.8 12.8 0 0 1-2-1l.5-.4a14 14 0 0 0 12 0l.5.4c-.6.4-1.3.7-2 1l1.3 2a19.6 19.6 0 0 0 6-3c.5-5.2-.8-9.7-3.5-13.7zM8 15.3c-1.2 0-2.2-1.1-2.2-2.4S6.8 10.5 8 10.5s2.2 1.1 2.2 2.4-1 2.4-2.2 2.4zm8 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4z"/></svg><span>Discord</span><em>+1 dia VIP</em></button>
+            <button type="button" id="abrir-twitch" class="bt-twitch" title="Twitch: assista a uma live oficial e ganhe XP extra" aria-label="Bônus da Twitch" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.3 2 2.5 6.6V20h4.6v2.5h2.6l2.5-2.5h3.8l5-5V2H4.3zm15 12.1-2.9 2.9h-4.6l-2.5 2.5V17H5.5V3.8h13.8v10.3zM15.6 7h1.8v5.2h-1.8zm-4.8 0h1.8v5.2h-1.8z"/></svg><span>Twitch</span><em>+10% XP</em></button>
+            <button type="button" id="abrir-kick" class="bt-kick" title="Kick: troque os pontos do canal das lives oficiais por XP extra" aria-label="Bônus da Kick" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 2h6v6h3V5h3V2h6v6h-3v3h-3v2h3v3h3v6h-6v-3h-3v-3H9v6H3z"/></svg><span>Kick</span><em>+10% XP</em></button>
+          </div>
+          <div id="controle-som">
+            <button type="button" id="bt-musica" aria-pressed="true" title="Música (liga/desliga)">♪</button>
+            <button type="button" id="bt-efeitos" aria-pressed="true" title="Efeitos sonoros (liga/desliga)">🔊</button>
+            <button type="button" id="bt-config" title="Configurações: volume do som e a coluna da direita">⚙</button>
+          </div>
+          <button type="button" id="st-guilda" hidden></button>
+          <div class="st-repetido" hidden>
+          <div class="nivel-bloco">
+            <div class="nivel-emblema" title="Seu nível"><small>nível</small><b id="st-nivel"></b></div>
+            <div class="nivel-xp">
+              <div class="nivel-xp-topo"><span>Experiência</span><b id="st-xp-pct"></b></div>
+              <div class="barra xp"><i id="st-xp"></i><span id="st-xp-txt"></span></div>
+            </div>
+          </div>
+          <div class="barra vida"><i id="st-vida"></i><span id="st-vida-txt"></span></div>
+          <div class="barra mana"><i id="st-mana"></i><span id="st-mana-txt"></span></div>
+          </div>
+          <div id="buff-barao" hidden>Mão do Barão <b id="buff-barao-t"></b></div>
+          <button type="button" id="buff-twitch" hidden title="Bônus de XP por assistir a uma live oficial na Twitch">Bônus da Twitch <b id="buff-twitch-t"></b></button>
+          <button type="button" id="buff-kick" hidden title="Bônus de XP resgatado com os pontos do canal na Kick">Bônus da Kick <b id="buff-kick-t"></b></button>
+          <button type="button" id="buff-guilda" hidden title="+1% de XP por membro da guilda online (até 4%)">Bônus da guilda <b id="buff-guilda-t"></b></button>
+          <div id="buff-disciplina" hidden title="Acúmulos da passiva: +1% de dano e de armadura por abate.&#10;Zera ao voltar para a Fonte ou morrer."><span id="buff-disciplina-n"></span> <b id="buff-disciplina-t"></b></div>
+          <div class="ficha">
+            <div class="ficha-moedas">
+              <div class="ficha-ouro" title="Ouro"><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="3" y="1" width="6" height="1"/><rect x="2" y="2" width="8" height="8"/><rect x="1" y="3" width="1" height="6"/><rect x="10" y="3" width="1" height="6"/><rect x="3" y="10" width="6" height="1"/></svg><b id="st-ouro" class="ouro"></b><span>de ouro</span></div>
+              <button id="abrir-loja-dia" class="ficha-dia" title="Diamantes: para a Loja (VIP, skins e resets). Clique para abrir a Loja." aria-label="Diamantes"><i aria-hidden="true">💎</i><span class="fg-txt"><b id="dia-saldo">0</b><small>Diamantes</small></span></button>
+              <button id="abrir-orbs" class="ficha-gemas" title="Gemas: venda itens para outros jogadores e saque em USDT (dinheiro de verdade)" aria-label="Gemas (RMT)"><i aria-hidden="true">💠</i><span class="fg-txt"><b id="orbs-saldo">0</b><small>Gemas</small></span><em>RMT</em></button>
+            </div>
+            <div class="ficha-poder" title="Poder: o nível e os itens equipados (refino e qualidade contam)"><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><path d="M9 1h2v2h-1v1H9v1H8v1H7v1H6v1H5v1H3v-2h1V6h1V5h1V4h1V3h1V2h1z"/><path d="M1 8h2v1h1v1h1v1H3v-1H2V9H1z"/></svg><span>Poder</span><b id="st-poder"></b></div>
+
+          </div>
+        </div>
+      </section>
+      <section class="painel" id="painel-local">
+        <header>Local</header>
+        <div class="corpo">
+          <div id="local-nome"></div>
+          <div id="local-desc" class="fraco"></div>
+          <div id="tarefa" hidden>
+            <div class="linha"><span id="tarefa-txt"></span><b id="tarefa-num"></b></div>
+            <div class="barra tarefa"><i id="tarefa-barra"></i></div>
+          </div>
+          <div class="local-grandes">
+            <button id="abrir-mapa" class="botao botao-mapa botao-hex" title="Escolha onde caçar"><span class="bt-medalhao"><svg class="bt-ico-g" viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="14" height="14" fill="#1f4a26"/><path d="M1 3 3 1 15 13 13 15Z" fill="#3a8ad8"/><path d="M2.5 13V2.5H13M3 13.5h10.5V3M3 13 13 3" stroke="#c8a870" stroke-width="1.6" fill="none"/><circle cx="3.2" cy="12.8" r="2.4" fill="#4ab0ff" stroke="#0a1420" stroke-width=".6"/><circle cx="12.8" cy="3.2" r="2.4" fill="#ff5a48" stroke="#200a0a" stroke-width=".6"/><rect x="1" y="1" width="14" height="14" fill="none" stroke="#f0d48a" stroke-width="1"/></svg></span><span class="rot">Mapa (M)</span></button>
+            <button id="ir-runeterra" class="botao botao-runeterra botao-hex"><span class="bt-medalhao"><svg class="bt-ico-g" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="#1e5a7e" stroke="#f0d48a" stroke-width="1.2"/><path d="M4 6.5c1-1.5 2.5-1 3 0s-.5 2 .5 3-1 2-2 1.5S3 8 4 6.5ZM9.5 4.5c1.2-.4 2.5.4 2.8 1.6s-.6 1.2-1.4 1-.8 1-1.8.4-.6-2.6.4-3Z" fill="#5aa04a"/><ellipse cx="8" cy="8" rx="2.6" ry="6.4" fill="none" stroke="#9ad0f0" stroke-width=".5" opacity=".7"/><path d="M8 .6 9.3 8 8 15.4 6.7 8Z" fill="#ffd36a" stroke="#5e4520" stroke-width=".5"/><circle cx="8" cy="8" r="1.1" fill="#fff4c8"/></svg></span><span class="rot">Ir para Runeterra</span></button>
+            <button id="abrir-arena" class="botao botao-arena botao-hex" title="PvP 1 contra 1: fila ranqueada (vale PDL) ou desafio a um jogador"><span class="bt-medalhao"><svg class="bt-ico-g" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2 3.5 2 11 9.5 9.5 11Z" fill="#e8eef4" stroke="#3a1a10" stroke-width=".6"/><path d="M14 2 12.5 2 5 9.5 6.5 11Z" fill="#e8eef4" stroke="#3a1a10" stroke-width=".6"/><path d="M9 10.5 11 12.5M7 10.5 5 12.5" stroke="#f0c040" stroke-width="1.6"/><path d="M10.5 12 13.5 15M5.5 12 2.5 15" stroke="#8a5a2a" stroke-width="1.6"/><circle cx="13.7" cy="14.6" r="1" fill="#f0c040"/><circle cx="2.3" cy="14.6" r="1" fill="#f0c040"/></svg></span><span class="rot">Arena</span></button>
+            <button id="abrir-dungeon" class="botao botao-dungeon botao-hex" title="Dungeon do Braum em Freljord: até 5 jogadores, automática"><span class="bt-medalhao"><svg class="bt-ico-g" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 14 6 5l2.5 4L10.5 6 15 14Z" fill="#cfe8f7" stroke="#0e2a3a" stroke-width=".7"/><path d="M6 5 7.4 7.3 6.2 7.9 5.2 6.5ZM10.5 6l1.2 2-1 .5-.9-1.3Z" fill="#fff"/><path d="M3 14l2-3 1.5 1.5L9 10l2 2 1.5-1L15 14Z" fill="#6aa8d8" opacity=".6"/></svg></span><span class="rot">Dungeon</span></button>
+          </div>
+          <div class="botoes botoes-menores">
+            <button id="voltar-base" class="botao" title="Voltar para a Fonte"><svg class="bt-ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.3" fill="#0e2a3a" stroke="#6ad0ff" stroke-width="1.3"/><circle cx="8" cy="8" r="3.4" fill="none" stroke="#bff0ff" stroke-width="1" stroke-dasharray="2 1.4"/><circle cx="8" cy="8" r="1.4" fill="#e8fbff"/><path d="M8 .4v2.2M8 13.4v2.2M.4 8h2.2M13.4 8h2.2" stroke="#6ad0ff" stroke-width="1.2"/></svg>Voltar <b class="tecla">B</b></button>
+            <button id="abrir-ranking" class="botao"><svg class="bt-ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2h8v3.5a4 4 0 0 1-8 0Z" fill="#f2c03a" stroke="#6a4a10" stroke-width=".7"/><path d="M4 3H1.8v1.2A2.4 2.4 0 0 0 4.4 6.6M12 3h2.2v1.2a2.4 2.4 0 0 1-2.6 2.4" fill="none" stroke="#f2c03a" stroke-width="1.1"/><rect x="7" y="9" width="2" height="2.5" fill="#c8901a"/><rect x="4.5" y="11.5" width="7" height="2.6" rx=".4" fill="#f2c03a" stroke="#6a4a10" stroke-width=".7"/><path d="M6 3.2h1.2v3H6Z" fill="#fff3c0"/></svg>Ranking (K)</button>
+            <button id="abrir-guilda" class="botao" title="Guilda (G)"><svg class="bt-ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 14 3v4.2c0 3.8-2.8 6.3-6 7.8-3.2-1.5-6-4-6-7.8V3Z" fill="#5a44a8" stroke="#d8c8ff" stroke-width="1"/><path d="M8 1v14" stroke="#3a2a78" stroke-width="1"/><path d="M4.6 6 8 8.6 11.4 6V8L8 10.6 4.6 8Z" fill="#f0d48a"/></svg>Guilda (G)</button>
+            <button id="abrir-mercado" class="botao"><svg class="bt-ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.2h4L9.3 4.4H6.7Z" fill="#a8743a" stroke="#4a2e10" stroke-width=".6"/><path d="M5.8 4.6h4.4c2.6 1.8 3.6 4.6 3 7-.5 2-2.6 2.8-5.2 2.8S3.3 13.6 2.8 11.6c-.6-2.4.4-5.2 3-7Z" fill="#c89a4a" stroke="#4a2e10" stroke-width=".8"/><circle cx="8" cy="10" r="2.3" fill="#ffe08a" stroke="#8a6010" stroke-width=".7"/><path d="M8 8.6v2.8" stroke="#8a6010" stroke-width=".8"/></svg>Mercado (J)</button>
+          </div>
+          <div id="npcs" class="botoes">
+            <button class="botao npc" data-npc="Soraka">Soraka</button>
+            <button class="botao npc" data-npc="Lojista">Lojista</button>
+            <button class="botao npc" data-npc="Mestre da Legião">Mestre</button>
+            <button class="botao npc" data-npc="Capitão da Legião">Capitão</button>
+            <button class="botao npc" data-npc="Ornn">Ornn</button>
+          </div>
+        </div>
+      </section>
+        <div id="direita">
+        <nav class="abas">
+          <button data-aba="habilidades" class="ativa">Habilidades<i id="badge-hab"></i></button>
+          <button data-aba="atributos">Atributos<i id="badge-atrib"></i></button>
+          <button data-aba="itens">Itens<i id="badge-itens"></i></button>
+          <button data-aba="skins">Coleção<i id="badge-skins"></i></button>
+          <button data-aba="auto" class="aba-auto" title="Poções automáticas">⚙ Auto</button>
+        <button data-aba="mercado" class="aba-mercado">Mercado</button>
+        </nav>
+
+        <section class="painel aba-conteudo" data-painel="habilidades">
+          <header>Habilidades <small id="hab-pontos"></small></header>
+          <div class="corpo">
+            <div class="rotulo">Barra de combate</div>
+            <div id="barra"></div>
+            <div id="habilidades">
+              <div class="rotulo">Ativas</div>
+              <div class="grade-hab" id="hab-ativas"></div>
+              <div class="rotulo">Passivas</div>
+              <div class="grade-hab" id="hab-passivas"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="painel aba-conteudo" data-painel="atributos" hidden>
+          <header>Atributos <small id="atrib-pontos"></small></header>
+          <div class="corpo">
+            <div class="ficha ficha-atrib">
+                <div class="ficha-grade">
+                  <div class="st ataque" title="Dano de ataque&#10;A base do dano dos ataques e das habilidades."><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="9" y="1" width="2" height="1"/><rect x="10" y="2" width="1" height="1"/><rect x="8" y="2" width="1" height="1"/><rect x="7" y="3" width="1" height="1"/><rect x="6" y="4" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="3" y="7" width="1" height="1"/><rect x="3" y="8" width="2" height="1"/><rect x="1" y="9" width="2" height="1"/><rect x="1" y="10" width="1" height="1"/><rect x="8" y="2" width="2" height="1"/></svg><span>Dano</span><b id="st-ad"></b></div>
+                  <div class="st defesa" title="Armadura&#10;Reduz o dano físico recebido."><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="1" y="1" width="10" height="1"/><rect x="1" y="2" width="10" height="4"/><rect x="2" y="6" width="8" height="2"/><rect x="3" y="8" width="6" height="1"/><rect x="4" y="9" width="4" height="1"/><rect x="5" y="10" width="2" height="1"/></svg><span>Armadura</span><b id="st-arm"></b></div>
+                  <div class="st ataque" title="Velocidade de ataque&#10;Ataques por segundo."><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="6" y="0" width="2" height="1"/><rect x="5" y="1" width="2" height="1"/><rect x="4" y="2" width="2" height="1"/><rect x="3" y="3" width="2" height="1"/><rect x="2" y="4" width="6" height="1"/><rect x="5" y="5" width="2" height="1"/><rect x="4" y="6" width="2" height="1"/><rect x="3" y="7" width="2" height="1"/><rect x="2" y="8" width="2" height="1"/><rect x="1" y="9" width="2" height="1"/><rect x="1" y="10" width="1" height="1"/></svg><span>Vel. ataque</span><b id="st-va"></b></div>
+                  <div class="st defesa" title="Resistência mágica&#10;Reduz o dano mágico recebido."><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="1" y="1" width="10" height="1"/><rect x="1" y="2" width="3" height="4"/><rect x="8" y="2" width="3" height="4"/><rect x="2" y="6" width="2" height="2"/><rect x="8" y="6" width="2" height="2"/><rect x="3" y="8" width="2" height="1"/><rect x="7" y="8" width="2" height="1"/><rect x="4" y="9" width="4" height="1"/><rect x="5" y="10" width="2" height="1"/><rect x="5" y="3" width="2" height="4"/><rect x="4" y="4" width="4" height="2"/></svg><span>Res. mágica</span><b id="st-rm"></b></div>
+                  <div class="st poder st-poder" title="Poder de Habilidade&#10;Aumenta o dano das magias: as habilidades da Lux e os efeitos dos itens de mago." hidden><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="5" y="0" width="2" height="12"/><rect x="0" y="5" width="12" height="2"/><rect x="3" y="3" width="6" height="6"/><rect x="2" y="2" width="1" height="1"/><rect x="9" y="2" width="1" height="1"/><rect x="2" y="9" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/></svg><span>Poder</span><b id="st-ap"></b></div>
+                  <div class="st poder st-poder" title="Mana máxima&#10;Gasta ao usar habilidades. Alguns itens de mago dão mana." hidden><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="5" y="0" width="2" height="2"/><rect x="4" y="2" width="4" height="2"/><rect x="3" y="4" width="6" height="2"/><rect x="2" y="6" width="8" height="3"/><rect x="3" y="9" width="6" height="2"/><rect x="4" y="11" width="4" height="1"/></svg><span>Mana</span><b id="st-manamax"></b></div>
+                  <div class="st ataque" title="Acerto crítico&#10;Chance de um ataque causar dano extra, e quanto ele multiplica.&#10;Vem dos itens com crítico."><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="5" y="0" width="2" height="3"/><rect x="5" y="9" width="2" height="3"/><rect x="0" y="5" width="3" height="2"/><rect x="9" y="5" width="3" height="2"/><rect x="4" y="4" width="4" height="4"/><rect x="2" y="2" width="1" height="1"/><rect x="9" y="2" width="1" height="1"/><rect x="2" y="9" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="8" y="3" width="1" height="1"/><rect x="3" y="8" width="1" height="1"/><rect x="8" y="8" width="1" height="1"/></svg><span>Crítico</span><b id="st-crit"></b><small id="st-critx"></small></div>
+                  <div class="st defesa" title="Esquiva&#10;Chance de desviar de um golpe."><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="1" y="2" width="7" height="1"/><rect x="8" y="1" width="2" height="1"/><rect x="10" y="2" width="1" height="1"/><rect x="3" y="5" width="8" height="1"/><rect x="0" y="8" width="6" height="1"/><rect x="6" y="7" width="2" height="1"/><rect x="8" y="8" width="1" height="1"/></svg><span>Esquiva</span><b id="st-esq"></b></div>
+                </div>
+                <div class="ficha-rodape">
+                  <span title="Redução de recarga das habilidades"><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="2" y="0" width="8" height="1"/><rect x="2" y="11" width="8" height="1"/><rect x="3" y="1" width="6" height="2"/><rect x="4" y="3" width="4" height="1"/><rect x="5" y="4" width="2" height="2"/><rect x="4" y="6" width="4" height="1"/><rect x="3" y="7" width="1" height="1"/><rect x="8" y="7" width="1" height="1"/><rect x="3" y="8" width="6" height="3"/></svg>Recarga <b id="st-cdr"></b></span>
+                  <span title="Monstros abatidos"><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="3" y="1" width="6" height="1"/><rect x="2" y="2" width="8" height="5"/><rect x="3" y="7" width="6" height="1"/><rect x="4" y="8" width="4" height="2"/><rect x="3" y="3" width="2" height="2"/><rect x="7" y="3" width="2" height="2"/><rect x="4" y="10" width="1" height="1"/><rect x="7" y="10" width="1" height="1"/></svg>Abates <b id="st-abates"></b></span>
+                  <span title="Mortes"><svg class="ic" viewBox="0 0 12 12" aria-hidden="true" shape-rendering="crispEdges"><rect x="5" y="0" width="2" height="12"/><rect x="2" y="3" width="8" height="2"/></svg>Mortes <b id="st-mortes"></b></span>
+                </div>
+            </div>
+            <div id="atributos"></div>
+
+          </div>
+        </section>
+
+        <section class="painel aba-conteudo" data-painel="skins" hidden>
+          <header>Conquistas <small id="conq-qtd"></small></header>
+          <div class="corpo">
+            <label class="auto-linha">Título: <select id="titulo"><option value="">(nenhum)</option></select></label>
+            <div id="conquistas"></div>
+          </div>
+          <header>Mascote</header>
+          <div class="corpo" id="mascotes"></div>
+          <header>Montaria</header>
+          <div class="corpo" id="montaria"></div>
+          <header>Skins <small id="skins-qtd"></small></header>
+          <div class="corpo" id="skins"></div>
+        </section>
+
+        <section class="painel aba-conteudo" data-painel="mercado" hidden>
+          <header>Mercado <b id="diamantes" class="dia" title="Seus diamantes"></b></header>
+          <div class="corpo">
+            <div class="secoes-mercado" role="tablist">
+              <button type="button" class="aba ativa" data-secao="loja" role="tab" aria-selected="true">Loja 💎</button>
+              <button type="button" class="aba aba-jogadores" data-secao="jogadores" title="Abre o mercado dos jogadores (tecla J)">Mercado dos jogadores ↗</button>
+            </div>
+            <div id="mercado-loja"></div>
+            <p id="mercado-erro" class="erro" role="alert"></p>
+          </div>
+        </section>
+        <section class="painel aba-conteudo" data-painel="auto" hidden>
+          <header>Poções automáticas <small id="auto-estado"></small></header>
+          <div class="corpo">
+            <div id="pocoes" hidden></div>
+            <div id="rotina">
+              <div class="auto-linha rotina-titulo"><b>Automático</b> <button type="button" id="rotina-vip" class="selo-vip" title="Exclusivo para VIP: clique para saber mais">★ VIP</button></div>
+              <div class="rotina-campos">
+                <label class="auto-linha"><input type="checkbox" id="auto-vida"> Vida &lt; <input type="range" id="lim-vida" min="10" max="90" step="5"> <b id="lim-vida-txt"></b></label>
+                <label class="auto-linha"><input type="checkbox" id="auto-mana"> Mana &lt; <input type="range" id="lim-mana" min="10" max="90" step="5"> <b id="lim-mana-txt"></b></label>
+                <label class="auto-linha auto-escolha" title="Automática: usa a poção que não desperdiça cura. Se a escolhida acabar, usa as outras.">Poção de vida <select id="auto-qual-vida"><option value="">Automática</option><option value="vida">Poção de Vida</option><option value="vidaF">Poção de Vida Forte</option><option value="vidaS">Poção de Vida Suprema</option></select></label>
+                <label class="auto-linha auto-escolha" title="Automática: usa a poção que não desperdiça cura. Se a escolhida acabar, usa as outras.">Poção de mana <select id="auto-qual-mana"><option value="">Automática</option><option value="mana">Poção de Mana</option><option value="manaF">Poção de Mana Forte</option></select></label>
+                <label class="auto-linha"><input type="checkbox" id="rot-pocoes"> Voltar à Fonte quando acabarem as poções de vida</label>
+                <label class="auto-linha"><input type="checkbox" id="rot-mochila"> Voltar à Fonte quando a mochila encher</label>
+              </div>
+            </div>
+              <div class="rotulo auto-titulo">Suas poções</div>
+              <div id="auto-pocoes"></div>
+              <p class="auto-nota">O automático bebe a poção quando a vida ou a mana fica abaixo do limite. Compre mais com o Lojista, na Fonte ou nas cidades.</p>
+          </div>
+        </section>
+
+        <section class="painel aba-conteudo" data-painel="itens" hidden>
+          <header>Equipamento <small>(clique para guardar)</small></header>
+          <div class="corpo equip-moldura"><div id="equip"></div>
+            <div class="equip-poder" title="Poder: o nível e os itens equipados (refino e qualidade contam)"><span>⚔ Poder <small id="equip-poder-d"></small></span><b id="equip-poder-n"></b></div></div>
+          <header class="mochila-topo"><span title="Clique num item para equipar">Mochila <small id="mochila-qtd"></small></span><span class="mochila-opcoes"><label class="mochila-filtro" title="Os itens básicos que caírem ficam no chão. Épicos, lendários, espólios e runas continuam vindo."><input type="checkbox" id="ignorar-basicos"> Sem básicos</label><label class="mochila-filtro" id="alerta-lendario-rot" title="Quando cair um item lendário, toca um alerta (mesmo com os efeitos sonoros desligados) e, com o jogo em outra aba, o título da aba pisca e o computador mostra uma notificação."><input type="checkbox" id="alerta-lendario"> 🔔 Lendário</label></span></header>
+          <div class="corpo" id="mochila"></div>
+          <header>Runas <small>(use no Ornn ou venda no mercado)</small></header>
+          <div class="corpo" id="gemas"></div>
+          <header>Chaves <small>(abrem o baú da fortaleza em Runeterra)</small></header>
+          <div class="corpo" id="chaves"></div>
+        
+          </section>
+        </div>
+      <section class="painel" id="console">
+        <header id="abas-console" role="tablist" aria-label="Mensagens">
+          <button type="button" class="aba ativa" role="tab" aria-selected="true" data-canal="servidor">Servidor</button>
+          <button type="button" class="aba" role="tab" aria-selected="false" data-canal="global">Global <span class="nao-lidas" hidden></span></button>
+          <button type="button" class="aba aba-ajuda" role="tab" aria-selected="false" data-canal="ajuda" title="Dúvidas de quem está começando: os tutores respondem aqui">Ajuda <span class="nao-lidas" hidden></span></button>
+          <button type="button" class="aba" role="tab" aria-selected="false" data-canal="fonte" title="Chat local: quem está perto de você lê, e a mensagem aparece em cima da sua cabeça">Local <span class="nao-lidas" hidden></span></button>
+          <button type="button" class="aba aba-guilda" role="tab" aria-selected="false" data-canal="guilda" hidden>Guilda <span class="nao-lidas" hidden></span></button>
+          <button type="button" class="aba aba-privado" role="tab" aria-selected="false" data-canal="privado" title="Mensagens privadas: /w nome mensagem, ou clique no nome de alguém">Privado <span class="nao-lidas" hidden></span></button>
+          <button type="button" id="abrir-amigos" title="Amigos (O)">🤝<span class="nao-lidas" hidden></span></button>
+        </header>
+        <div id="log" class="canal" role="tabpanel" aria-live="off"></div>
+        <div id="chat-global" class="canal" role="tabpanel" hidden></div>
+        <div id="chat-ajuda" class="canal" role="tabpanel" hidden></div>
+        <div id="chat-fonte" class="canal" role="tabpanel" hidden></div>
+        <div id="chat-guilda" class="canal" role="tabpanel" hidden></div>
+        <div id="chat-privado" class="canal" role="tabpanel" hidden></div>
+        <form id="chat-form" data-sem-envio hidden>
+          <input id="chat-texto" maxlength="140" autocomplete="off" spellcheck="false" aria-label="Mensagem">
+          <button type="submit" class="botao">Enviar</button>
+        </form>
+      </section>
+    </aside>
+  </div>
+
+  <!-- mapa: Summoner's Rift (automático) e Runeterra (mundo aberto) -->
+  <div class="janela" id="janela-mapa" hidden>
+    <section class="painel">
+      <header>Mapa <span class="mapa-bts"><button type="button" class="mapa-bt" id="mapa-bt-info" title="Esconder os detalhes" aria-pressed="false">◨</button><button type="button" class="mapa-bt" id="mapa-bt-cheia" title="Tela cheia" aria-pressed="false">⤢</button></span> <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo mapa-corpo">
+        <div class="mapa-coluna">
+          <div class="mapa-abas" role="tablist">
+            <button type="button" class="aba-mapa" role="tab" data-aba="rift">Summoner's Rift <small>caça automática</small></button>
+            <button type="button" class="aba-mapa" role="tab" data-aba="mundo">Runeterra <small>mundo aberto · no controle</small></button>
+          </div>
+          <div class="mapa-palco">
+          <div id="mapa-area"><canvas id="mapa-lol"></canvas><canvas id="mapa-lol-anim"></canvas><div id="marcadores"></div><div id="mapa-dica" hidden><b>👆</b> Clique num lugar do mapa para ver os monstros e viajar</div></div>
+          <div id="mundo-area" hidden><canvas id="mapa-mundo" width="1024" height="768"></canvas><div id="mundo-dica" hidden><b>👆</b> Clique numa cidade para viajar ou numa zona para ver os monstros</div></div>
+          </div>
+          <div class="legenda" id="legenda-mundo" hidden>
+            <span title="Do seu nível"><i style="--c:#3cd23c"></i>ideal</span>
+            <span title="Um pouco acima do seu nível"><i style="--c:#e8c840"></i>difícil</span>
+            <span title="Bem acima do seu nível"><i style="--c:#e04040"></i>perigoso</span>
+            <span title="Abaixo do seu nível: rende menos"><i style="--c:#8a847a"></i>fácil demais</span>
+            <span title="Zona de Guerra: PK sempre ligado, sem limite de nível, matar não dá Caveira"><i style="--c:#e61e1e"></i>guerra sem limite</span>
+            <span title="Zona de Guerra: PK sempre ligado, só até 7 níveis de diferença, matar não dá Caveira"><i style="--c:#ff9114"></i>guerra ±7 níveis</span>
+            <span id="mundo-zoom" title="roda do mouse: zoom · arraste para mover">zoom <button type="button" data-zoom="-" title="Afastar">−</button><button type="button" data-zoom="+" title="Aproximar (ou a roda do mouse)">+</button><button type="button" data-zoom="eu" title="Centralizar em você" hidden>⌖</button><button type="button" data-zoom="0" title="Tirar o zoom">⤢</button></span>
+          </div>
+          <div class="legenda" id="legenda-rift">
+            <span title="Do seu nível"><i style="--c:#3cd23c"></i>ideal</span>
+            <span title="Um pouco acima do seu nível"><i style="--c:#e8c840"></i>difícil</span>
+            <span title="Bem acima do seu nível"><i style="--c:#e04040"></i>perigoso</span>
+            <span title="Abaixo do seu nível: rende menos"><i style="--c:#8a847a"></i>fácil demais</span>
+          </div>
+        </div>
+        <div id="mapa-info"><p class="fraco">Passe o mouse ou toque em um lugar para ver os detalhes.</p></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- conversa com NPC -->
+  <div class="janela" id="janela-npc" hidden>
+    <section class="painel">
+      <header><span id="npc-nome"></span> <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo">
+        <div class="npc-topo"><img id="npc-retrato" alt=""><div><b id="npc-titulo"></b><small id="npc-papel"></small></div></div>
+        <div id="npc-conversa"></div>
+        <div id="npc-palavras"></div>
+        <div id="npc-troca"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- venda no Lojista: a mochila em ícones à esquerda, a cesta com o total à direita -->
+  <div class="janela" id="janela-venda" hidden>
+    <section class="painel">
+      <header><span>💰 Vender ao Lojista</span> <span class="venda-ouro" id="venda-ouro"></span> <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="venda-corpo"></div>
+    </section>
+  </div>
+
+  <!-- entrada: entrar ou criar personagem -->
+  <div class="janela" id="tela-entrada">
+    <section class="painel">
+      <header><img src="assets/img/logo.png" alt="" class="logo-mini"> LoL Idle <a href="/" class="voltar-site">Conhecer o jogo</a></header>
+      <div class="entrada-capa" aria-hidden="true"><img src="assets/img/logo.png" alt=""><p>Bem-vindo de volta, invocador</p></div>
+      <div class="corpo entrada-corpo">
+        <p id="entrada-conectando" class="fraco">Conectando…</p>
+        <form id="entrada-form" autocomplete="on" data-sem-envio hidden>
+          <div id="entrada-abas" class="abas"><button type="button" data-modo="entrar">Entrar</button><button type="button" data-modo="criar">Criar personagem</button></div>
+          <ol id="entrada-passos" class="entrada-passos" hidden><li data-passo="dados"><span>1</span> Seus dados</li><li data-passo="campeao"><span>2</span> Campeão</li><li data-passo="codigo"><span>3</span> Confirmar email</li></ol>
+          <label id="entrada-nome-campo">Nome do personagem <input id="entrada-nome" name="nickname" maxlength="16" autocomplete="nickname"></label>
+          <label id="entrada-email-campo">Email <input id="entrada-email" name="email" type="email" maxlength="254" autocomplete="email" placeholder="nome@exemplo.com" required><small class="fraco" id="entrada-email-dica"></small></label>
+          <label id="entrada-senha-campo">Senha <input id="entrada-senha" name="password" type="password" maxlength="72" autocomplete="current-password" required></label>
+          <p class="entrada-esqueci"><button type="button" class="link" id="esqueci-abrir">Esqueci a senha</button></p>
+          <label id="entrada-confirmar" hidden>Repita a senha <input id="entrada-senha2" type="password" maxlength="72" autocomplete="new-password"></label>
+          <section id="entrada-codigo" hidden aria-live="polite">
+            <h3>Confirme seu email</h3>
+            <p>Mandamos um código de 6 números para <b id="entrada-codigo-email"></b>. Ele vale por <b id="entrada-codigo-min">30</b> minutos.</p>
+            <p class="entrada-codigo-campeao"><span id="entrada-codigo-campeao"></span> <button type="button" class="link" id="entrada-trocar-campeao">Trocar campeão</button></p>
+            <input id="entrada-codigo-campo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" aria-label="Código de 6 números">
+            <p class="fraco entrada-codigo-acoes"><button type="button" class="link" id="entrada-reenviar">Mandar outro código</button> · <button type="button" class="link" id="entrada-corrigir">Corrigir os dados</button></p>
+            <p class="fraco">Não chegou? Olhe as pastas de spam, lixo eletrônico e promoções. No Hotmail e no Outlook pode demorar alguns minutos. Se pedir outro código, o anterior continua valendo.</p>
+          </section>
+          <!-- conta nova pelo Google: o email já veio confirmado, falta o nome do personagem (e depois o campeão) -->
+          <section id="entrada-google" hidden aria-live="polite">
+            <h3>Criar conta com o Google</h3>
+            <p class="google-conta">Conta Google: <b id="google-email"></b></p>
+            <label>Nome do personagem <input id="google-nome" maxlength="16" autocomplete="nickname"></label>
+            <p class="fraco">Nome de 3 a 16 letras ou números, único no servidor. Depois você escolhe o campeão.</p>
+          </section>
+          <!-- Esqueci a senha: depois de mandar o código para o email, pede o código e a senha nova -->
+          <section id="entrada-recuperar" hidden aria-live="polite">
+            <h3>Criar uma senha nova</h3>
+            <p id="recuperar-info"></p>
+            <label>Código do email <input id="recuperar-codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></label>
+            <label>Senha nova <input id="recuperar-senha" type="password" maxlength="72" autocomplete="new-password"></label>
+            <label>Repita a senha nova <input id="recuperar-senha2" type="password" maxlength="72" autocomplete="new-password"></label>
+            <p class="fraco entrada-codigo-acoes"><button type="button" class="link" id="recuperar-reenviar">Mandar outro código</button></p>
+            <p class="fraco">Não chegou? Olhe as pastas de spam, lixo eletrônico e promoções. No Hotmail e no Outlook pode demorar alguns minutos.</p>
+          </section>
+          <!-- apagar a conta (para começar com outro campeão): depois de conferir email e senha, mostra o que se perde e pede EXCLUIR -->
+          <section id="entrada-excluir" hidden aria-live="polite">
+            <h3>Apagar a conta</h3>
+            <div id="excluir-resumo"></div>
+            <label>Para confirmar, digite EXCLUIR <input id="excluir-confirmacao" autocomplete="off" maxlength="10" placeholder="EXCLUIR" spellcheck="false"></label>
+          </section>
+          <p id="entrada-aviso" class="aviso-entrada" hidden></p>
+          <p id="entrada-dica" class="fraco"></p>
+          <div id="entrada-captcha" hidden></div>
+          <p id="entrada-erro" class="alerta"></p>
+          <button id="entrada-enviar" class="botao" type="submit">Entrar</button>
+          <!-- Entrar com Google, embaixo do Entrar: só aparece com o Google ligado no servidor (GOOGLE_CLIENT_ID) -->
+          <div id="entrada-google-bloco" hidden>
+            <p class="entrada-ou"><span>ou</span></p>
+            <a id="entrada-google-botao" class="botao-google" href="#"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg><span>Entrar com Google</span></a>
+          </div>
+          <p class="entrada-excluir-link"><span id="excluir-link"><span>Quer apagar a conta?</span> <button type="button" class="link" id="excluir-abrir">Apagar minha conta</button></span><button type="button" class="link" id="excluir-cancelar" hidden>Cancelar e voltar</button></p>
+          <!-- jogar sem conta: só quando se chega pelo botão "Jogar sem cadastro" do site (jogar#convidado) -->
+          <div class="entrada-convidado" hidden>
+            <h3>Jogar sem cadastro</h3>
+            <p class="fraco">Você entra como convidado, sem email e sem senha, para conhecer o jogo. O progresso fica só neste navegador até você salvar com email e senha, dentro do jogo.</p>
+            <button id="entrada-convidado" class="botao botao-convidado" type="button">Jogar sem cadastro</button>
+            <p class="entrada-convidado-links"><button type="button" class="link" id="convidado-criar">Prefiro criar uma conta</button> · <button type="button" class="link" id="convidado-entrar">Já tenho conta</button></p>
+          </div>
+        </form>
+      </div>
+    </section>
+    <!-- 3º passo: a escolha do campeão, com a vitrine ao vivo (js/vitrine.js) mostrando cada habilidade -->
+    <section class="painel" id="escolha" hidden aria-labelledby="escolha-titulo">
+      <header><img src="assets/img/logo.png" alt="" class="logo-mini"> <span id="escolha-titulo">Escolha seu campeão</span></header>
+      <div class="corpo escolha-corpo">
+        <ol id="escolha-passos" class="entrada-passos"><li class="feito"><span>✓</span> Seus dados</li><li aria-current="step"><span>2</span> Campeão</li><li><span>3</span> Confirmar email</li></ol>
+        <div id="escolha-lista" role="radiogroup" aria-labelledby="escolha-titulo"></div>
+        <div class="escolha-palco">
+          <figure class="escolha-video">
+            <canvas id="escolha-canvas" aria-label="O campeão usando as habilidades em monstros"></canvas>
+            <figcaption id="escolha-legenda"></figcaption>
+          </figure>
+          <div class="escolha-info">
+            <h3 id="escolha-nome"></h3>
+            <p id="escolha-funcao"></p>
+            <p id="escolha-resumo"></p>
+            <div class="escolha-habs-topo"><b>Habilidades</b> <button type="button" class="link" id="escolha-auto" hidden>Ver todas em sequência</button></div>
+            <div id="escolha-habs" role="group" aria-label="Habilidades"></div>
+            <div id="escolha-hab" aria-live="polite"></div>
+          </div>
+        </div>
+        <p id="escolha-erro" class="alerta"></p>
+        <div class="escolha-rodape">
+          <small>Clique numa habilidade para ver de novo. O campeão do personagem não muda depois; para jogar com outro, crie mais um personagem no jogo (até 3 por conta).</small>
+          <button id="escolha-confirmar" class="botao" type="button">Jogar</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+
+  <!-- convidado: salvar o progresso (vira conta normal, com email e senha) -->
+  <!-- Gema: a moeda com lastro em USDT (js/orbs.js): depositar, sacar, extrato e o caixa público do projeto -->
+  <div class="janela" id="janela-orbs" hidden>
+    <section class="painel">
+      <header>💠 <span>Gemas</span> <span class="ob-rmt">RMT</span> <small class="ob-sub">itens por dinheiro de verdade</small> <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="orbs-corpo"><p class="fraco">Carregando…</p></div>
+    </section>
+  </div>
+  <!-- ganhar dinheiro: indicação, temporada do mês e saque por PIX (js/ganhos.js) -->
+  <!-- presente do nível 3: um épico da classe do campeão (POST /api/presente-nivel) -->
+  <!-- itens: equipados, mochila e a comparação (barra de baixo, tecla I) -->
+  <!-- mercado dos jogadores: o Mercador (Fonte e cidades), o botão Mercado do painel e a tecla J -->
+  <div class="janela" id="janela-mercado" hidden>
+    <section class="painel">
+      <header><span>⚖ Mercado dos jogadores</span> <span class="mj-saldo" id="mj-saldo"></span> <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo">
+        <p id="mercado-fora" class="fraco dica" hidden>Você pode olhar as ofertas daqui. Para comprar e vender, fale com o Mercador na Fonte ou na praça de uma cidade de Runeterra.</p>
+        <div id="mercado-caixa" hidden></div>
+        <div class="abas-mercado" role="tablist">
+          <button type="button" class="aba ativa" data-aba="comprar" role="tab" aria-selected="true">Comprar</button>
+          <button type="button" class="aba" data-aba="vender" role="tab" aria-selected="false">Vender</button>
+          <button type="button" class="aba" data-aba="minhas" role="tab" aria-selected="false">Minhas ofertas <b id="mj-n-minhas"></b></button>
+          <button type="button" class="aba" data-aba="historico" role="tab" aria-selected="false">Histórico</button>
+        </div>
+        <div class="mj-corpo" data-aba="comprar">
+          <aside class="mj-filtros" id="mercado-filtros">
+            <input id="mercado-busca" type="search" placeholder="Buscar item…" aria-label="Buscar item">
+            <div class="mj-cats" role="group" aria-label="Categoria">
+              <button type="button" class="ativa" data-cat="">Todos</button>
+              <button type="button" data-cat="lendario">Lendários</button>
+              <button type="button" data-cat="epico">Épicos</button>
+              <button type="button" data-cat="basico">Básicos</button>
+              <button type="button" data-cat="botas">Botas</button>
+              <button type="button" data-cat="runas">Runas</button>
+              <button type="button" data-cat="mascotes">Mascotes</button>
+            </div>
+            <label>Classe <select id="mercado-classe"><option value="">Todas</option><option value="ad">Ataque</option><option value="ap">Mago</option></select></label>
+            <label>Qualidade <select id="mercado-qual"><option value="">Todas</option><option value="SS">SS</option><option value="S">S</option><option value="A">A</option><option value="B">B</option><option value="C">C</option></select></label>
+            <label>Moeda <select id="mercado-moeda"><option value="">Ouro e Gemas</option><option value="ouro">Ouro</option><option value="orbs">💠 Gemas</option></select></label>
+            <label>Ordem <select id="mercado-ordem"><option value="barato">Mais baratos</option><option value="caro">Mais caros</option><option value="novo">Mais novos</option><option value="ofertas">Mais ofertas</option><option value="melhor">Melhor primeiro</option></select></label>
+          </aside>
+          <div class="mj-centro" id="mercado-lista" aria-live="polite"></div>
+          <div class="mj-detalhe" id="mj-detalhe"></div>
+        </div>
+        <p id="mj-erro" class="erro" role="alert"></p>
+      </div>
+    </section>
+  </div>
+  <!-- ficha de um jogador (clicar no nome no ranking) -->
+  <div class="janela" id="janela-enviar" hidden>
+    <section class="painel">
+      <header>💎 Enviar diamantes <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="enviar-corpo"></div>
+    </section>
+  </div>
+  <div class="janela" id="janela-dungeon" hidden>
+    <section class="painel">
+      <header>🧊 Dungeon do Braum <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo"><div id="dungeon"></div></div>
+    </section>
+  </div>
+  <div class="janela" id="janela-arena" hidden>
+    <section class="painel">
+      <header>⚔ Arena <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo"><div id="arena"></div></div>
+    </section>
+  </div>
+  <div class="janela" id="janela-arena-fim" hidden>
+    <section class="painel">
+      <header>Arena <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo"><div id="arena-fim-corpo"></div></div>
+    </section>
+  </div>
+  <div id="arena-achada" hidden></div>
+  <div id="arena-preparo" hidden></div>
+  <div id="arena-convite" hidden></div>
+  <div class="janela" id="janela-perfil" hidden>
+    <section class="painel">
+      <header><span id="perfil-titulo"></span> <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="perfil-corpo"></div>
+    </section>
+  </div>
+  <div class="janela" id="janela-bolsa" hidden>
+    <section class="painel">
+      <header>Itens <small id="bolsa-qtd"></small> <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo bolsa-corpo">
+        <div class="bolsa-esq">
+          <div class="bolsa-rotulo">Equipados <small>(clique para guardar)</small></div>
+          <div class="equip-moldura"><div id="bolsa-equip"></div></div>
+          <div class="bolsa-rotulo">Mochila <small>(clique para equipar ou trocar)</small></div>
+          <div id="bolsa-mochila"></div>
+        </div>
+        <div class="bolsa-dir" id="bolsa-detalhe" aria-live="polite"></div>
+      </div>
+    </section>
+  </div>
+  <!-- prêmio diário por entrar: os 7 dias do ciclo, a sequência e o botão de pegar -->
+  <div class="janela" id="janela-config" hidden>
+    <section class="painel">
+      <header><span>⚙ Configurações</span> <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="config-corpo"></div>
+    </section>
+  </div>
+  <div class="janela" id="janela-analise" hidden>
+    <section class="painel">
+      <header><span>📊 Caçada</span> <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="analise-corpo"></div>
+    </section>
+  </div>
+  <div class="janela" id="janela-login" hidden>
+    <section class="painel">
+      <header><span>🎁 Prêmio diário</span> <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="login-corpo"></div>
+    </section>
+  </div>
+  <div class="janela" id="janela-presente" hidden>
+    <section class="painel">
+      <header>🎁 Presente do nível 3 <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="presente-corpo"></div>
+    </section>
+  </div>
+  <!-- Twitch: bônus de XP assistindo a uma live oficial (servidor/twitch.js) -->
+  <div class="janela" id="janela-twitch" hidden>
+    <section class="painel">
+      <header><span class="tw-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.3 2 2.5 6.6V20h4.6v2.5h2.6l2.5-2.5h3.8l5-5V2H4.3zm15 12.1-2.9 2.9h-4.6l-2.5 2.5V17H5.5V3.8h13.8v10.3zM15.6 7h1.8v5.2h-1.8zm-4.8 0h1.8v5.2h-1.8z"/></svg></span> Bônus da Twitch <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="twitch-corpo"><p class="fraco">Carregando…</p></div>
+    </section>
+  </div>
+  <!-- Kick: os pontos do canal das lives oficiais viram horas de bônus de XP (servidor/kick.js) -->
+  <div class="janela" id="janela-kick" hidden>
+    <section class="painel">
+      <header><span class="kk-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 2h6v6h3V5h3V2h6v6h-3v3h-3v2h3v3h3v6h-6v-3h-3v-3H9v6H3z"/></svg></span> Bônus da Kick <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="kick-corpo"><p class="fraco">Carregando…</p></div>
+    </section>
+  </div>
+  <div class="janela" id="janela-discord" hidden>
+    <section class="painel">
+      <header><span class="dc-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.3 4.4A19.6 19.6 0 0 0 15.4 3l-.6 1.3a18.2 18.2 0 0 0-5.5 0L8.6 3a19.5 19.5 0 0 0-4.9 1.5C.6 9.1-.2 13.6.2 18.1a19.7 19.7 0 0 0 6 3l1.3-2a12.8 12.8 0 0 1-2-1l.5-.4a14 14 0 0 0 12 0l.5.4c-.6.4-1.3.7-2 1l1.3 2a19.6 19.6 0 0 0 6-3c.5-5.2-.8-9.7-3.5-13.7zM8 15.3c-1.2 0-2.2-1.1-2.2-2.4S6.8 10.5 8 10.5s2.2 1.1 2.2 2.4-1 2.4-2.2 2.4zm8 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4z"/></svg></span> Discord do LoL Idle <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="discord-corpo"><p class="fraco">Carregando…</p></div>
+    </section>
+  </div>
+
+  <div class="janela" id="janela-personagens" hidden>
+    <section class="painel">
+      <header>👥 Personagens <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="personagens-corpo"><p class="fraco">Carregando…</p></div>
+    </section>
+  </div>
+
+  <div class="janela" id="janela-ganhos" hidden>
+    <section class="painel">
+      <header>💰 Ganhar dinheiro <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo" id="ganhos-corpo"><p class="fraco">Carregando…</p></div>
+    </section>
+  </div>
+
+  <div class="janela" id="janela-salvar" hidden>
+    <section class="painel">
+      <header>Salvar meu progresso <button class="fechar" data-fechar>×</button></header>
+      <form class="corpo salvar-corpo" id="salvar-form" novalidate>
+        <p id="salvar-intro">Seu personagem, os níveis e os itens continuam com você. Escolha o nome que vai aparecer no jogo e o email e a senha para entrar.</p>
+        <p class="salvar-vip">🎁 De presente, quem salva a conta ganha mais 1 dia de VIP.</p>
+        <div id="salvar-dados">
+          <label>Nome do personagem <input id="salvar-nome" maxlength="16" autocomplete="nickname"></label>
+          <label>Email <input id="salvar-email" type="email" maxlength="254" autocomplete="email" placeholder="nome@exemplo.com"></label>
+          <label>Senha <input id="salvar-senha" type="password" maxlength="72" autocomplete="new-password"></label>
+          <label>Repita a senha <input id="salvar-senha2" type="password" maxlength="72" autocomplete="new-password"></label>
+          <small class="fraco">Nome de 3 a 16 letras ou números, único no servidor. Senha com pelo menos 6 caracteres.</small>
+        </div>
+        <div id="salvar-codigo" hidden>
+          <p>Mandamos um código de 6 números para <b id="salvar-codigo-email"></b>. Não chegou? Olhe as pastas de spam e promoções.</p>
+          <input id="salvar-codigo-campo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="Código de 6 números">
+          <button type="button" class="link" id="salvar-corrigir">Corrigir os dados</button>
+        </div>
+        <div id="salvar-captcha"></div>
+        <p id="salvar-erro" class="alerta"></p>
+        <button id="salvar-enviar" class="botao principal" type="submit">Mandar código para o email</button>
+      </form>
+    </section>
+  </div>
+
+  <!-- ranking por nível -->
+  <div class="janela" id="janela-ranking" hidden>
+    <section class="painel">
+      <header>Ranking <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo"><div id="ranking-filtros"></div><div id="ranking"></div></div>
+    </section>
+  </div>
+
+  <!-- Guilda: criar (nome + brasão, 100 mil de ouro), membros (até 5), convites -->
+  <div class="janela" id="janela-amigos" hidden>
+    <section class="painel">
+      <header>Amigos <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo"><div id="amigos"></div></div>
+    </section>
+  </div>
+  <div class="janela" id="janela-guilda" hidden>
+    <section class="painel">
+      <header>Guilda <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo"><div id="guilda"></div></div>
+    </section>
+  </div>
+
+  <!-- VIP: apoie o jogo -->
+  <div class="janela" id="janela-vip" hidden>
+    <section class="painel">
+      <header>★ VIP · apoie o LoL Idle <button class="fechar" data-fechar>×</button></header>
+      <div class="corpo">
+        <div id="vip-status"></div>
+        <h3>O que o VIP dá</h3>
+        <ul id="vip-beneficios"></ul>
+        <p class="fraco">Vantagem pequena de propósito: quem não é VIP joga igual, só um pouco mais devagar.</p>
+        <div class="vip-ativar"><button id="vip-ativar" class="botao"></button> <span id="vip-erro" class="erro" role="alert"></span></div>
+        <h3>Comprar diamantes 💎</h3>
+        <p>Os diamantes vêm de doações para o projeto, que pagam o servidor e o desenvolvimento.</p>
+        <div id="vip-pacotes"></div>
+        <div id="pagamento" hidden></div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="js/jogo.js"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"1c5649d8d7004c2791ee4f4f73d8f796","r":1,"spa":2}' crossorigin="anonymous"></script>
+</body>
+</html>

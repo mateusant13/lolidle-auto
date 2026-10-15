@@ -1,0 +1,34 @@
+LoL Idle - banco de regressao: automation.js REAL em vm com DOM stubado (sem browser/CDP)
+FONTE extension/automation.js  bytes=463678  sha256=9f90a52625a1686c3727509618213ccfc5f8caf858d7a3ab470eef0a6046de36
+POPULATION 260  (assercoes das suites=251 + 9 checagens de integridade do harness)
+
+SUITE regras - Regras do planejador (planBag/identidade/dedupe/memo/mercado)
+  checks=90 falhas=0  mundos=15  ms=91  UNSTUBBED=0  errosAsync=0  intervals=150
+
+SUITE ator - Regras do ator (venderBase real no Lojista, com controlos)
+  checks=44 falhas=0  mundos=8  ms=44  UNSTUBBED=0  errosAsync=0  intervals=80
+
+SUITE barra - Barra de habilidades (a ultimate nunca sai)
+  checks=14 falhas=0  mundos=1  ms=4  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE objetivo - Objetivo de item (cfg.objetivoItem fixa o alvo na build)
+  checks=11 falhas=0  mundos=1  ms=5  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE equip - Equipamento (epico vence basico; o melhor do slot; sem downgrade)
+  checks=9 falhas=0  mundos=1  ms=11  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE regiao - Regiao e objetivo (abaixo do nivel; score por ouro+xp)
+  checks=13 falhas=0  mundos=1  ms=2  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE pontos - Gastar pontos (skill e atributo) - nada a gastar = nada a fazer)
+  checks=11 falhas=0  mundos=1  ms=4  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE interruptores - Hierarquia de interruptores (mestre -> sub -> sub)
+  checks=42 falhas=0  mundos=1  ms=5  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE cofre - Cofre na Fonte (Tesoureira acima da praca: andar 2 tiles e so depois procurar o NPC)
+  checks=26 falhas=0  mundos=8  ms=25  UNSTUBBED=0  errosAsync=0  intervals=80
+
+UNSTUBBED 0  (nenhum buraco: todos os seletores procurados estao no vocabulario do stub)
+INTERVALS 370 registados e NAO disparados (limitacao declarada: o loop de fundo do jogo fica fora do banco)
+rc=0

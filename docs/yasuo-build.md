@@ -16,22 +16,26 @@
 
 ### 0.1 As incógnitas (e porque não estragam a conclusão)
 
-`motor.js:4` importa `./dados-yasuo.js`, mas **esse ficheiro não existe** em `docs/game-src/`
-(confirmado: o único `dados*.js` do repositório é `dados.js`, do Darius). Dele viriam
+`motor.js:11` importa `./dados-yasuo.js`, e desde 2026-10-14 **esse ficheiro existe** em
+`docs/game-src/dados-yasuo.js` (lido do jogo vivo, Data Dragon 16.19.1). Dele vêm
 `hp, hpperlevel, armor, armorperlevel, spellblock, attackspeed, attackspeedperlevel`
-(lidos em `motor.js:495-496` e `motor.js:534`).
+(aplicados em `motor.js:508`, `motor.js:509` e `motor.js:547`).
 
 O que **é** conhecido:
 
-- **AD base 60 e +3,9 por nível** — `motor.js:881` (`adBase: 60, adNivel: 3.9`), aplicados sobre a curva
-  de crescimento `g(n) = (n−1)(0,7025+0,0175(n−1)) + max(0, n−18)` (`motor.js:434-437`).
+- **AD base 60 e +3,9 por nível** — `motor.js:894` (`adBase: 60, adNivel: 3.9`), aplicados sobre a curva
+  de crescimento `g(n) = (n−1)(0,7025+0,0175(n−1)) + max(0, n−18)` (`motor.js:447-450`).
   → AD base: nv10 **90,2** · nv20 **134,1** · nv30 **173,1** · nv45 **231,6** · nv50 **251,1** (DERIVADO).
 - **AS base 0,697** — INFERIDO de `motor.js:2056`: `recargaQYasuo` divide a recarga por
   `max(1, velAtaque/0.697)`, ou seja, 0,697 é a velocidade de ataque de referência (100%).
-- **AS por nível: NAO VERIFICADO.** Testei o veredito com 1%, 2%, 3,5% e 5% por nível: **o conjunto
-  ótimo é o mesmo em todos os casos** (§4.3). Só o DPS absoluto muda.
-- Vida/armadura/RM: **NAO VERIFICADO** (não há como fechar a conta sem o ficheiro). Não entram em
-  nenhuma decisão de build — o que decide item é AD, crítico, AS e os efeitos de item.
+- **AS por nível: 3,5% — LIDO.** `dados-yasuo.js` (vivo, 16.19.1) traz `attackspeedperlevel: 3.5`
+  e o motor aplica-o: `motor.js:547` — `velAtaque = min(MAX, attackspeed × (1 + (attackspeedperlevel/100) × g + va))`.
+  Era exactamente o valor testado no sensitivity de §4.3 (1%/2%/3,5%/5%: o conjunto óptimo é o
+  mesmo em todos os casos; só o DPS absoluto muda).
+- Vida/armadura: **LIDO** — `hp 590 + 110/nível` e `armadura 32 + 4,6/nível` (`motor.js:508`).
+- RM: `spellblock 32` de base, mas **o motor usa 3,5 fixos por nível** (`motor.js:509`,
+  `rm = b.spellblock + 3.5 * g`) — o `spellblockperlevel: 2.05` do ficheiro **não é usado pelo jogo**.
+  Nenhum dos três entra em decisão de build — o que decide item é AD, crítico, AS e os efeitos de item.
 
 **Consequência prática:** os DPS absolutos das tabelas são "de papel" (ordem de grandeza, com AS/lvl 3,5%);
 as **comparações entre itens** (quem entra, quem fica de fora, em que ordem) são robustas porque
@@ -416,13 +420,16 @@ leitura do Runaan como coração da build é a mesma. Divergências de número:
 |---|---|---|---|
 | AS que satura o Q | 1,580 | **1,231 no rank 10** (1,859 no rank 1) | aquele valor corresponde ao rank 5 (`motor.js:698` + `2056`) |
 | DPS nv45 Barão | 4.188 (3 alvos) | 4.828 (3 alvos) | modelo diferente para a fração de autos armados pela Trindade |
-| AS/lvl usado | 3,5% (assumido) | 1%–5% (testado) | §4.3 mostra que o conjunto não muda |
+| AS/lvl usado | 3,5% (**LIDO**: `dados-yasuo.js` + `motor.js:547`) | 1%–5% (testado) | §4.3 mostra que o conjunto não muda |
 
 ## 9. O que ficou NAO VERIFICADO
 
-1. `hp, hpperlevel, armor, armorperlevel, spellblock, attackspeed, attackspeedperlevel` do Yasuo —
-   `dados-yasuo.js` não está no repositório (`motor.js:4`).
-2. O crescimento de AS por nível (usei 3,5%; ver §4.3).
+1. ~~`hp, hpperlevel, armor, armorperlevel, spellblock, attackspeed, attackspeedperlevel` do Yasuo~~ —
+   **RESOLVIDO 2026-10-14**: `docs/game-src/dados-yasuo.js` (vivo) + onde o motor os aplica
+   (`motor.js:508`, `:509`, `:547`). Nota: o RM por nível do jogo é 3,5 fixo (motor.js:509),
+   não o 2,05 do ficheiro.
+2. ~~O crescimento de AS por nível~~ — **RESOLVIDO**: 3,5%/nível, lido de `dados-yasuo.js`
+   (`attackspeedperlevel: 3.5`) e aplicado em `motor.js:547`.
 3. Os preços do **mercado de jogadores** — vêm do servidor (`jogo.js:2580-2587`), não do cliente.
 4. Se o servidor **aceita e persiste** o campo `ignorarBasicos` no save (ver `docs/filtro-basicos.md`).
 5. Nada foi medido em execução: todos os números são leitura estática + aritmética.

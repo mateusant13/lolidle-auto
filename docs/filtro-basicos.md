@@ -21,12 +21,12 @@ $('#ignorar-basicos').addEventListener('change', (e) => {                  jogo.
 |---|---|---|
 | **ID** | `ignorar-basicos` | `jogo.js:5882-5884` |
 | **Seletor** | `#ignorar-basicos` | `jogo.js:5882` (`$` = `document.querySelector`, `jogo.js:28`) |
-| **Tipo** | `<input type="checkbox">` | INFERIDO: usa `.checked` e o evento `change` com `e.target.checked` (`jogo.js:5882-5884`) |
-| **Campo de estado** | `estado.ignorarBasicos` (booleano) | `jogo.js:5884` (escreve) · `motor.js:1772` (lê) |
-| **Texto visível** | **NAO VERIFICADO** | o `index.html` do jogo **não está** em `docs/game-src/`; o único `.html` do repositório é `extension/popup.html`. O `jogo.js:5882` não pode correr sem o elemento existir (senão `document.querySelector` devolve `null` e `.checked` rebenta) → o elemento **existe** na página real, mas o rótulo não é verificável daqui |
+| **Tipo** | `<input type="checkbox">` | **LIDO**: `<input type="checkbox" id="ignorar-basicos">` em `docs/game-src/jogar.html:289` (página do jogo trazida do vivo); usa `.checked` e o evento `change` com `e.target.checked` (`jogo.js:5882-5884`) |
+| **Campo de estado** | `estado.ignorarBasicos` (booleano) | `jogo.js:5884` (escreve) · `motor.js:1794` (lê) |
+| **Texto visível** | **"Sem básicos"** | **LIDO** em `docs/game-src/jogar.html:289` (a página do jogo, trazida do vivo a 2026-10-14): `<label class="mochila-filtro" title="Os itens básicos que caírem ficam no chão. Épicos, lendários, espólios e runas continuam vindo."><input type="checkbox" id="ignorar-basicos"> Sem básicos</label>`. O tooltip do rótulo also está lá. O `jogo.js:5882` não correria sem o elemento existir — e ele existe |
 | **Texto do log (ao marcar)** | *"Itens básicos agora ficam no chão: só épicos, lendários, espólios e runas vão para a mochila."* | `jogo.js:5885` |
 | **Texto do log (ao desmarcar)** | *"Itens básicos voltam a ir para a mochila."* | `jogo.js:5885` |
-| **Estado inicial** | **desligado** | INFERIDO: `novoEstado` (`motor.js:998-1022`) e `migrar` (`motor.js:1025-1049`) não criam o campo; `motor.js:1772` testa-o como *truthy*, logo `undefined` = não filtra |
+| **Estado inicial** | **desligado** | **LIDO**: o `<input type="checkbox" id="ignorar-basicos">` vem **sem** o atributo `checked` em `docs/game-src/jogar.html:289`. Confirmado no código: `novoEstado` (`motor.js:1011-1037`) e `migrar` (`motor.js:1038-1065`) não criam o campo; `motor.js:1794` testa-o como *truthy*, logo `undefined` = não filtra |
 
 > **Contradição a registar:** `docs/motor-map.md:530` (C9) diz que *"nenhuma rota de UI fornecida
 > escreve esse campo"*. Está **desatualizado**: `jogo.js:5882-5884` escreve-o. O que falta no
@@ -34,27 +34,27 @@ $('#ignorar-basicos').addEventListener('change', (e) => {                  jogo.
 
 ## 2. O que ele faz ao drop — exatamente
 
-**CÓDIGO** — `motor.js:1770-1775`, dentro de `processarAbates` (a função que corre a cada abate,
-chamada em `motor.js:1624`, no Rift **e** em Runeterra):
+**CÓDIGO** — `motor.js:1792-1797`, dentro de `processarAbates` (a função que corre a cada abate,
+chamada em `motor.js:1645`, no Rift **e** em Runeterra):
 
 ```js
-const itens = i.invocado ? [] : [...sortearLoot(lugar, i.chefe, mult * petIt, cl), ...];   // 1770
+const itens = i.invocado ? [] : [...sortearLoot(lugar, i.chefe, mult * petIt, cl), ...];   // 1792
 for (const id of itens) {
-  if (estado.ignorarBasicos && raridade(infoItem(id)) === 'basico') continue;              // 1772  <-- O FILTRO
-  if (espacosLivres(estado) > 0) { estado.mochila.push(...); guardados.push(id); ... }     // 1773
-  else perdidos.push(id);                                                                   // 1774
+  if (estado.ignorarBasicos && raridade(infoItem(id)) === 'basico') continue;              // 1794  <-- O FILTRO
+  if (espacosLivres(estado) > 0) { estado.mochila.push(...); guardados.push(id); ... }     // 1795
+  else perdidos.push(id);                                                                   // 1796
 }
 ```
 
-**A ordem importa:** o sorteio (`sortearLoot`, `motor.js:1153-1165`) acontece **antes** do filtro. O
+**A ordem importa:** o sorteio (`sortearLoot`, `motor.js:1166-1178`) acontece **antes** do filtro. O
 filtro não é um "reroll": o item já saiu; ele é simplesmente **descartado** (`continue` → não entra em
 `guardados` nem em `perdidos`).
 
 O que ele **faz**:
 
-- item básico (raridade `basico` — `motor.js:47`) que saiu do sorteio **não entra na mochila**;
-- não conta para `estado.totais.drops` (`motor.js:1773`);
-- não aparece no evento `abate` (`motor.js:1785`) — nem como perdido.
+- item básico (raridade `basico` — `motor.js:54`) que saiu do sorteio **não entra na mochila**;
+- não conta para `estado.totais.drops` (`motor.js:1795`);
+- não aparece no evento `abate` (`motor.js:1807`) — nem como perdido.
 
 O que ele **NÃO faz** (e é o erro de leitura mais fácil de cometer):
 
@@ -209,13 +209,23 @@ couber é perdido (`motor.js:1773-1774`).
 - Para **verificar** se está ligado, lê-se `document.querySelector('#ignorar-basicos').checked` — o
   jogo sincroniza-o no arranque a partir do save (`jogo.js:5882`).
 - Não há tecla de atalho nem outra rota para este campo: `grep` por `ignorarBasicos`/
-  `ignorar-basicos` em todo o repositório dá **só** `motor.js:1772` e `jogo.js:5882-5884`.
+  `ignorar-basicos` em todo o repositório dá **só** `motor.js:1794` e `jogo.js:5882-5884`.
 
-## 6. NAO VERIFICADO (lista honesta)
+## 6. O que ficou NAO VERIFICADO (lista honesta, 2026-10-14)
 
-1. **O texto visível** do checkbox (o `index.html` não está em `docs/game-src/`).
-2. **Em que painel/aba** ele vive (o `jogo.js` só mostra que é inicializado junto de `#atributos`,
-   `#pocoes` e `#hud-pocoes`, `jogo.js:5870-5893`).
+> Itens 1 e 2 foram **fechados** com a página do jogo (`docs/game-src/jogar.html`, trazida do
+> vivo): texto "Sem básicos" e painel da Mochila, ambos na linha 289. Ficam 3 e 4 — as duas
+> precisam do **servidor**, que não está no repositório. Item 5 depende de observação ao vivo
+> (lane do Lead).
+
+1. **O texto visível** do checkbox — **RESPONDIDO**: "Sem básicos", com o tooltip *"Os itens básicos que
+   caírem ficam no chão. Épicos, lendários, espólios e runas continuam vindo."* —
+   `docs/game-src/jogar.html:289` (página do jogo trazida do vivo; o repo já não depende do
+   `index.html`).
+2. **Em que painel/aba** ele vive — **RESPONDIDO**: no cabeçalho do painel **Mochila**, dentro de
+   `#mochila`/`#janela-bolsa` (`docs/game-src/jogar.html:289`): `<header class="mochila-topo">…<span class="mochila-opcoes">`.
+   Ao lado dele vive o outro filtro da mochila, `#alerta-lendario` ("🔔 Lendário"). A ordem de
+   inicialização em `jogo.js:5870-5893` NÃO indica proximidade no DOM — eram painéis diferentes.
 3. Se o **servidor persiste** `estado.ignorarBasicos`: o save envia o objeto `estado` inteiro
    (`jogo.js:128`, `rede.salvarNoServidor(estado)`), mas o que o servidor guarda não está no
    repositório. Se não persistir, o checkbox volta a `false` a cada recarga de página.
