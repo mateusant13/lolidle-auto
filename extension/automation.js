@@ -538,7 +538,9 @@
       // e fica a liandry a. se eu tenho outra liandry a, (duas), anuncia uma delas no mercado."
       // -> LENDARIO duplicado vai ao MERCADO; basico/epico duplicado vai ao Lojista.
       else if (duplicado.has(it)) acts.push(it.raridade === 'lendario'
-        ? { action: 'ANUNCIAR_MERCADO', it, why: 'duplicata de lendário (fica a de maior tier) → mercado' }
+        ? (mercadoSaturado().sat
+          ? { action: 'PROTEGER', it, why: 'duplicata de lendário — mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista)' }
+          : { action: 'ANUNCIAR_MERCADO', it, why: 'duplicata de lendário (fica a de maior tier) → mercado' })
         : { action: 'VENDER_LOJISTA', it, why: 'duplicata (fica 1, o de maior tier)' });
       // LENDÁRIO < A: via antiga (mercado/saturado), DEPOIS da duplicata — é a ordem original
       // e o teste T3 depende dela (a duplicata tem de ser apanhada primeiro).
