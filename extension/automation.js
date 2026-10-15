@@ -746,7 +746,7 @@
     const sk = readSkills();
     return { at: Date.now(), bar: sk.bar, arsenal: sk.arsenal, equip: readEquip(), stats: readStats(), player: player(), potions: readPotions(), gold: readGold() };
   }
-  function novoCiclo(region, now) { return { region, startedAt: now, fase: 'mobs', mobFase: novaFase(now), bossFase: null, gold: 0, xp: 0, boss: null, setup: snapshotSetup() }; }
+  function novoCiclo(region, now) { return { region, startedAt: now, janela: (typeof window !== 'undefined' && (window.__lolidleJanela = window.__lolidleJanela || Date.now())) || 0, fase: 'mobs', mobFase: novaFase(now), bossFase: null, gold: 0, xp: 0, boss: null, setup: snapshotSetup() }; }
 
   /** Lê os marcadores do mapa (abre/fecha o mapa se preciso). */
   function readMap() {
