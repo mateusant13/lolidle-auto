@@ -1704,6 +1704,10 @@
   }
 
   // Habilidades da Katarina (FALLBACK; o normal é vir do motor via META.kit).
+  /** Fallback da tabela do motor (motor.js:1199) — usado só quando o META não a traz.
+   *  REGRA N.o 3: o valor VIVO vem do META (`nivelDif`); isto é a rede de segurança documentada. */
+  const NIVEL_DIF_FB = { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5, danoJogador: 0.12, minDanoJogador: 0.25 };
+
   const KAT_FB = {
     Q: { max: 10, rec: (r) => 10 - 0.35 * (r - 1), base: (r) => 80 + 35 * (r - 1), ratio: (r) => 0.45 + 0.03 * (r - 1), mult: 3, alvo: '3 alvos', adaga: true },
     E: { max: 10, rec: (r) => 10 - 0.4 * (r - 1), base: (r) => 40 + 20 * (r - 1), ratio: (r) => 0.3 + 0.02 * (r - 1), adRatio: 0.4, mult: 1 },
