@@ -1,0 +1,17 @@
+const ws = new WebSocket('ws://127.0.0.1:9224/cdp');
+let id = 0; const pend = new Map(); const urls = new Map(); const falhas = [];
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } else if (m.method === 'Network.requestWillBeSent') urls.set(m.params.requestId, m.params.request.url); else if (m.method === 'Network.loadingFailed') falhas.push(m.params); });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p, sid) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify(sid ? { id: i, method: m, params: p||{}, sessionId: sid } : { id: i, method: m, params: p||{} })); setTimeout(() => r({ __t: true }), 10000); });
+const nt = await send('Target.createTarget', { url: 'about:blank' });
+const s = (await send('Target.attachToTarget', { targetId: nt.result.targetId, flatten: true })).result.sessionId;
+await send('Network.enable', {}, s);
+await send('Page.enable', {}, s);
+await send('Page.navigate', { url: 'https://lolidle.com/jogar' }, s);
+await new Promise(r => setTimeout(r, 14000));
+console.log('URLs pedidos: ' + urls.size + ' | falhados: ' + falhas.length);
+for (const f of falhas) console.log('  BLOQUEADO: ' + (urls.get(f.requestId) || '(?)') + '  ->  ' + f.errorText + ' [' + (f.blockedReason||'') + ']');
+const lolidle = [...urls.values()].filter(u => /lolidle/.test(u));
+console.log('pedidos ao lolidle: ' + lolidle.length);
+for (const u of lolidle.slice(0, 12)) console.log('   ' + u.replace('https://lolidle.com', '').slice(0, 70));
+ws.close(); process.exit(0);

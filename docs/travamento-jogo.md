@@ -69,3 +69,24 @@ Copiaram-se 3 coisas do perfil para `C:\Temp\ll-ext-profile` (18 MB): `Local Sta
 `Default\Network\Cookies` e `Default\Local Storage`. **NAO** se copiou o `Preferences` - e por isso
 esse Chrome nao tem as extensoes do dono. Nao houve password nem login: a sessao vive nos cookies/
 localStorage. A pasta CONTEM a sessao do dono - apagar quando ele pedir.
+## ADENDA 13:00 - MEDICOES FINAIS do travamento (todas com CDP, no Chrome do dono)
+| Medicao | Resultado |
+|---|---|
+| Pedidos ao lolidle.com | **123, TODOS carregam** (/js/jogo.js, motor.js, cena.js, ...) |
+| Unico pedido bloqueado | `static.cloudflareinsights.com/beacon.min.js` -> ERR_BLOCKED_BY_CLIENT (analytics) |
+| Detector de longtask (instalado ANTES do load) | **nao responde** -> a thread esta bloqueada PERMANENTEMENTE |
+| CPU da maquina durante o travamento | 0% (thread presa, nao ciclo) |
+| Chrome limpo COM a nossa extensao | **corre** (complete, 4588/4588, Fonte, GUI, marcadores) |
+| Nossa extensao com os 4 content scripts em stub (2 bisectos) | travamento IDENTICO |
+
+**Conclusao final:** nao e pedido bloqueado nem codigo do jogo - e um **content script de extensao**
+a correr na pagina e a prender a thread principal. As 9 extensoes que injectam em TODAS as paginas do
+dono estao listadas acima (3 ad blockers + VeePN/proxy + Dark Reader + Privacy Badger + 3 sem nome).
+**Accao (do dono, porque o CDP nao desliga extensoes):** desligar a **VeePN** primeiro, recarregar;
+se nao resolver, desligar os 3 ad blockers e ficar com 1.
+
+**Ferramentas deixadas no repo** (todas usam o relay 9224):
+`tools/_diag-jogo.mjs` (estado da aba) · `tools/_abrir-jogo.mjs` (abre e observa o travamento) ·
+`tools/_quem-bloqueia.mjs` (pedidos falhados) · `tools/_bloqueado-url.mjs` (qual URL) ·
+`tools/_longtasks.mjs` (long tasks) · `tools/_quem-injecta.mjs` (extensoes que injectam) ·
+`tools/_exts2.mjs` + `tools/_nomes.mjs` (extensoes do perfil) · `tools/_verifica-limpo.mjs` (Chrome limpo)
