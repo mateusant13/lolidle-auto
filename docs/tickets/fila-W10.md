@@ -25,28 +25,28 @@ Só podes mexer em: config e defaults (guardada vs default do código), valorDaV
 - **Evidencia**: parte-02.md:3277-3316 — *“O subagent inverteu o default para true — mas a tua config em chrome.storage foi escrita quando o default era false, e continua false. O mesmo vale para qualquer default que se mude: só se aplica a instalações novas. Consequência prática: a rotação contínua da barra — o teu pedido — não vai ligar sozinha na tua conta. Precisa de ser escrita explicitamente na config existente. É a diferença entre ‘o código está certo’ e ‘o teu jogo faz o que pediste’.”*; prioridade declarada em parte-02.md:3316 (*“A prioridade nº 1 é escrever os defaults novos na config existente — sem isso, nada do que foi corrigido chega ao teu jogo”*)
 - **Fazer**: implementar uma migração one-shot dos defaults novos para a config já guardada (versionar a config e aplicar as chaves novas na primeira carga), e verificá-la ao vivo com marcador discriminante depois de `lolidle:reload` + reload (REGRA Nº 4).
 - **Aceitacao**: ao vivo, na conta do dono, `barraPorDisponibilidade: true` (e as outras chaves novas com o valor novo) **sem** apagar configurações do utilizador; marcador discriminante que só existe no código novo; `bun tools/testes/run.mjs` rc=0 com caso de migração.
-- **Estado**: resolvido 2026-10-15 — o `ler` migra e o `cfgVer` grava-se no ARRANQUE; provado pela suite `w10` C2/C3 verde
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:5634 (cfgVer gravado no arranque). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-02-78 | P0 | Preço: o motor usa só o preço base e o jogo escala qualidade/refino (Ímpeto vale 4.692, motor trata-o como 3.000)
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:4405-4421 e 4453-4482 — tela do dono `5.625` vs motor `preco: 3000`; *“O preço também escala com a qualidade e o refino … E o motor guarda só o preço base do catálogo”*; as três funções do jogo: `motor.js:248  p += (i.preco||0) * (1 + BONUS_REFINO*refinoDe(x)) * (QUALIDADES[qualidadeDe(x)]?.mult || 1)`, `motor.js:2898 valorEquip = preco × (1 + 0,12×refino) × multQualidade`, `motor.js:257 valorVenda = piso(preco × 0,5 × (1 + 0,5×refino) × vendaQualidade)`; conta conferida: `3000 × 1,36 × 1,15 = 4.692` e o ecrã mostra 5.625 (`5625/4692 = 1,199 ≈ 1,2` = margem do Lojista, **terceira função ainda não encontrada — não inventar**); consequências em parte-02.md:4418-4421 (`venderBase`, `anunciar`, `refinarMelhores`, `isProtected`)
 - **Fazer**: implementar `valorEquip` e `valorVenda` com as fórmulas do motor (`file:linha` em comentário), usá-las onde o valor decide (`venderBase`, `anunciar*`, `refinarMelhores`) e procurar a terceira função (a margem do Lojista); se não aparecer no `motor.js`, usar `valorEquip` com a dúvida registada em comentário.
 - **Aceitacao**: o código devolve **4.692** para o Ímpeto do dono (não 3.000); uma peça que antes ia para o Lojista passa a ser guardada (ou o contrário) por causa do valor real, provado no banco; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:1234 (preco escala qualidade/refino). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-02-85 | P0 | Lojista ainda decide venda por ouro (`valorDaVenda >= custo.ouro * 2`) — o dono diz que o Lojista é lixo
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:4965-4995 — `automation.js:2496  n.vender = podeFazer(vender).pode && atosVenda.length > 0 && (mochilaQuaseCheia || valorDaVenda >= custo.ouro * 2);` com a nota *“Se o Lojista não paga, essa condição é ficção — e o mochilaQuaseCheia é a única razão real”*; encaminhado em `27861ac9` e `5f7aa937` com a troca exacta (`mochilaQuaseCheia || <início de jogo>`) e o pedido de manter o `valorDaVenda` só como **valor informativo, NÃO é receita** (parte-02.md:4991); confirmado ainda pendente em parte-02.md:5266 e 5408; regra do dono em parte-02.md:4866 e 5011 (*“o lojista … é a mesma coisa que jogar item no lixo … ele so e pra ser vendido quando itens sao considerados lixo”*)
 - **Fazer**: substituir a condição de venda por `mochilaQuaseCheia` (+ critério medido de início de jogo, se houver) e marcar `valorDaVenda` como informativo; nenhuma decisão de venda pode depender do ouro do Lojista.
 - **Aceitacao**: prova exigida em parte-02.md:4995 — com a mochila **não** cheia e valor alto, `n.vender` fica **falso**; com a mochila cheia, continua verdadeiro; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: pendente de verificacao (nao encontrei evidencia directa no codigo nesta passada)
 
 ### TK-02-86 | P0 | Confirmar que nenhum caminho manda um LENDÁRIO ao Lojista (regra nova do dono)
 - **Ficheiro(s)**: extension/automation.js, tools/testes/
 - **Evidencia**: parte-02.md:5011 — *“lendarios sao desejados pelos jogadores, entao nunca se vende lendario pelo lojista, só pelo mercado”*; e parte-02.md:5054-5065 — pedido para percorrer **todos** os caminhos que mandam itens ao Lojista e provar as quatro linhas: `lendário duplicado → MERCADO (nunca Lojista) | épico inútil → VENDER_LOJISTA | básico → VENDER_LOJISTA | 3031/3089 duplicado → PROTEGIDO (controlo)`; verificado ao vivo em parte-02.md:5244-5261 (`nenhum lendário vai ao Lojista`) e com 6 asserções actualizadas (parte-02.md:5376-5390)
 - **Fazer**: varrer todos os caminhos de descarte (`planBag`, `venderBase`, `anunciar*`, `atosVenda`) e garantir que **nenhum** aceita lendário, mantendo o contraste épico/básico → Lojista e protegidos acima da regra; manter as asserções nas duas direcções.
 - **Aceitacao**: banco a provar, para cada caminho, que um lendário duplicado nunca sai para o Lojista (com o mercado vazio **e** saturado) e que épico/básico continuam a sair; verificação ao vivo com marcador discriminante.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:25 (lendario nunca ao Lojista). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-02-82 | P1 | A extensão restringe itens por classe nas builds; o jogo não restringe no equipamento
 - **Ficheiro(s)**: extension/automation.js

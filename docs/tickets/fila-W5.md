@@ -20,7 +20,7 @@ Só podes mexer em: decisão de guardar/vender épicos, autoEquip, mercado (poll
 - **Evidencia**: parte-02.md:17-18 e 42-45 — marcador ao vivo `3108~A [epico/A] → GUARDAR ✗ AINDA GUARDADO`; *"a linha 407/411 só mandava épicos ao Lojista se não fossem componentes … caíam no else final e saíam GUARDAR com motivo 'sem regra'"*
 - **Fazer**: no ramo de destino de item da manutenção, épicos vão ao Lojista **sem excepção de componente**; remover a condição que exclui componentes (linha ~407/411) para não haver "corrigi metade da regra".
 - **Aceitacao**: `node --check extension/automation.js` rc=0 e `bun tools/testes/run.mjs` rc=0 com suite nova/actualizada em tools/testes/regras.test.mjs a cobrir `epico + componente → Lojista`; ao vivo, marcador discriminante no log `3108~A → VENDER` (ou equivalente) em vez de `GUARDAR`, provado depois de `lolidle:reload` + reload da página (REGRA Nº 4).
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:96 (epico com regra (nao 'sem regra')). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-01-39 | P1 | montarItem (Ornn) funciona mas NAO esta ligado ao auto-play — build lendaria nao sai do sitio
 - **Ficheiro(s)**: extension/automation.js
@@ -78,11 +78,11 @@ Só podes mexer em: decisão de guardar/vender épicos, autoEquip, mercado (poll
 - **Evidencia**: parte-01.md L7728-7735: "componentesDaBuild() = [3006, 1001, 1042, 3086, 1018, 3077, 1036, 3044, 1028, 3144, 1038, 1037]... a excepcao componentesDaBuild() so a pus para EPICOS, nao para basicos. Logo ele esta a vender os componentes que a build precisa"; L7828: "a minha regra de venda nao poupa os basicos que sao componente de receita (1042 Adaga...) — e por isso que ele tem zero Adagas"; gargalo confirmado em L6576/L6882/L6938
 - **Fazer**: estender a excepcao de venda (componentesDaBuild) aos BASICOS tambem; nenhum item que seja componente de receita da build pode ser vendido. Atencao a nao recriar o ciclo de viagem: o planner tem de concordar com o actor (regra do comentario l.275-282).
 - **Aceitacao**: teste no banco: basico 1042 (Adaga) com componentesDaBuild() a contê-lo -> planBag NAO marca VENDER_LOJISTA e venderBase protege; lixo nunca fica preso por isso; mochila do Yasuo passa a acumular Adagas ao vivo.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:514 (componentesDaBuild usada na venda). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-01-68 | P0 | n.equip/n.comprar presos em true para sempre (4.a necessidade que nunca fecha)
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-01.md L8433-8460: "n.equip e o n.comprar comparam contra o buildIdeal() — a build de fim de jogo [3172,3046,6631,3085,3031]... Ele nao tem NENHUM dos cinco, e nao pode compra-los (sao lendarios de milhoes). Logo comprar = true para sempre / equip = true para sempre... E a terceira vez nesta sessao que aparece a mesma classe de bug"; confirmado pendente em L8990 e L9008
 - **Fazer**: n.equip so true se houver na MOCHILA ou no COFRE item melhor que o equipado no slot; n.comprar so true se o item estiver ao alcance do ouro actual E o custo da viagem se pagar. Ambos passam pelo backoff como as outras necessidades.
 - **Aceitacao**: teste: sem item melhor disponivel e sem ouro para a build ideal -> n.equip=false e n.comprar=false; com item melhor na mochila -> true; faltandoNaBase() fica [].
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:3513 (n.equip/n.comprar comparam com a build). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket

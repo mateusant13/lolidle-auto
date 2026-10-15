@@ -20,7 +20,7 @@ Só podes mexer em: barraIdeal, rotacao/skillsPorFase, escolha de skill no comba
 - **Evidencia**: parte-02.md:466-472 — `buildPorFase/skillsPorFase/rotacao: { pai: 'autoplay' }`; *"o autoplay tem excepção de campeão — logo na Katarina fica desligado, e podeFazer('rotacao').pode === false. A barra nunca troca"*; e o portão parte-02.md:479 `if (!cfg.enabled || cfg.rotacaoSkills === false || _rotBusy || pausado) return;`
 - **Fazer**: reparentar `rotacao` e `skillsPorFase` para `manutencao` (trocar a barra é recurso base) e trocar o portão directo do actor para `podeFazer('rotacao')`; o actor deixa de perguntar ao mestre errado.
 - **Aceitacao**: `bun tools/testes/run.mjs` rc=0 com tools/testes/interruptores.test.mjs actualizado à regra nova (I3 `rotacao.pai === 'manutencao'`, I5 conta da árvore) — e dizer no relatório que asserções mudaram (REGRA Nº 6). Ao vivo: barra converge para `[R,Q,A,W]` com a ultimate dentro, provado por marcador discriminante (texto que só existe na build nova).
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:7152 (rotacao pergunta a hierarquia (podeFazer)). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-02-18 | P1 | `barraIdeal` devolve o MESMO conjunto para mobs e chefe (preferência multi-alvo não discrimina)
 - **Ficheiro(s)**: extension/automation.js

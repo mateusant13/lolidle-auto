@@ -25,7 +25,7 @@ Só podes mexer em: decisão de enfrentar chefes (limiares, tolerância de níve
 - **Evidencia**: parte-02.md:4605 e 4625-4634 — *“ACHADO QUE MUDA DECISÕES: (1) a 3153 Espada do Rei Destruído é a peça que decide a luta (5% da vida ATUAL do alvo por auto, teto 3×CURVA.hp, motor.js:1702+1191) e NENHUMA build do bot a tem”*; medições: `Yasuo IDEAL 7025 DPS · bot 2041 DPS → 3,4×`, `Katarina IDEAL 2757 DPS · bot 993 DPS → 2,8×`; e o nível mínimo que mata o Barão: Yasuo IDEAL nv29 (52,6 s, 41 poções, hpMin 108), Katarina IDEAL nv30 (68,4 s, 56 poções) contra nv32 da build do bot; detalhe em `docs/sim-baron.md`
 - **Fazer**: fazer a build de chefe incluir a peça que decide a luta (Rei Destruído) quando o alvo tem muita vida, e passar a escolher pelo DPS/sobrevivência medidos contra o chefe (não só pela build de mobs com troca de 2 peças).
 - **Aceitacao**: `buildIdealPara`/build de chefe para o Yasuo e a Katarina contém a `3153` contra chefes de vida alta, e o DPS contra o Barão deixa de ser 2,8–3,4× menor que o ideal; valores conferidos contra `tools/sim-chefes.mjs`; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:6031 (build contra o Barao (4 fontes)). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-02-83 | P1 | Implementar a tolerância de nível (monstro até +4 não penaliza; acima: +15%/nível até ×3 e −7%/nível com piso ×0,25)
 - **Ficheiro(s)**: extension/automation.js

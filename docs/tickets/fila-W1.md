@@ -20,14 +20,14 @@ Só podes mexer em: regiaoIdeal, estimarRegiao, rankRegioes, agregar, avaliar, r
 - **Evidencia**: parte-02.md:1977-1988 e 2003-2008 — `estimarRegiao(barao) → { goldMin: 5428, xpMin: 15765 }` **sem** `morte` e sem `dps`; `.filter((x) => x.e && !x.e.morte)` — se `morte` não vem, `!undefined === true` e a região passa como segura; `aggBarao: []` (zero dados medidos); medido em parte-02.md:2015: `rankRegioes() → Covil do Barão 15765 (#1) > Fosso do Dragão 13641`, com o boneco a nível 29 (parte-02.md:1898-1906)
 - **Fazer**: 1) `estimarRegiao` passa a devolver o risco (`morte`, dps tomado) para **todas** as regiões, usando a avaliação de luta que já existe e os stats dos monstros do META; 2) o filtro passa a **fail-closed**: `morte` ausente = **NÃO segura**; 3) o ranking não pode apresentar taxa teórica de região onde o boneco morre.
 - **Aceitacao**: com o boneco a nível 29, `estimarRegiao(barao).morte === true` e o Barão **sai do #1** do ranking (prova pedida em parte-02.md:2032); região sem dados dá `morte: true` (fail-closed), nunca `undefined`; `bun tools/testes/run.mjs` rc=0 com caso novo.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:1405 (fail-closed implementado). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-01-01 | P0 | filtro `.morte` inexistente deixa regiaoIgal mandar nv 27 ao Dragao
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-01.md L366-367 (auditor-friccao F-3): "F-3 automation.js:3264/3274 — .filter(x => !x.e.morte) e rankRegioes().morte: 'morte' nao existe em estimarRegiao. Sem esse filtro, regiaoIdeal manda o nv 27 para o Dragao (nm[0]=30 <= nv+6) → chefe nv 40 → as mortes do TODOS.md:135-139"
 - **Fazer**: implementar o campo `morte` em estimarRegiao() (probabilidade de morte na regiao) e mante-lo no filtro de rankRegioes(), OU remover o filtro morto; escolher por dado e documentar. Garantir que nv<=27 nunca ranqueia regiao com nm[0] > nv+6 enquanto o risco de chefe fatal nao for zero.
 - **Aceitacao**: caso novo em tools/testes/ (regras ou teste proprio) que corre rankRegioes()/regiaoIdeal() para nv 27 e falha se devolver 'dragao'; `node tools/testes/run.mjs` rc=0 com o caso novo Verde.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:1405 (fail-closed implementado (mesmo filtro)). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-01-02 | P1 | agregar() calcula nivel do chefe ~2,8x otimista (faixa[0]+2 em vez de nm[1]+2)
 - **Ficheiro(s)**: extension/automation.js

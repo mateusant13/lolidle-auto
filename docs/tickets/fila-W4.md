@@ -20,7 +20,7 @@ Só podes mexer em: fuga/fugir, _regiaoAntesDaBase, supervisarBase, viajarPara, 
 - **Evidencia**: parte-02.md:1618 — *“1,5. e é pra fugir de qualquer coisa que mata, pra qualquer boneco, em qualquer situacao … ARRUMA ESSA PORRA de fugir de chefe que mata, por que NAO É PRA MORRER, NUNCA, COM ESSE SCRIPT”*; e parte-02.md:1660-1668 — *“A fuga passa para `manutencao` … interruptor próprio `fugir` (default ligado) … hoje a função sai cedo com `if (!c || !c.boss) return;`, logo morrer para um mob não conta. Isso sai … Mantém-se a tua regra: se as poções cobrem a luta, não foge — termina o chefe”*
 - **Fazer**: mover a fuga para o ramo `manutencao` (sobrevivência, não farmar), criar interruptor próprio `fugir` ligado por defeito, remover o `if (!c || !c.boss) return;` para fugir de **qualquer coisa que mata** (mob incluído), em qualquer campeão e qualquer situação, mantendo a excepção do dono (se as poções cobrem a luta, termina o chefe).
 - **Aceitacao**: ao vivo, na Katarina com o auto-play desligado, o motor foge de um mob/chefe que a mata (marcador discriminante no log); com `fugir` desligado, não foge; `bun tools/testes/run.mjs` rc=0 com casos novos (mob que mata foge; luta coberta por poções não foge).
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:7511 (fuga de quem mata (regiaoSegura fail-closed)). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-02-40 | P0 | “Voltar para onde estava” (`_regiaoAntesDaBase`) não valida segurança nem tem gate de `cfg.enabled` — manda-a de volta ao Barão
 - **Ficheiro(s)**: extension/automation.js
@@ -29,7 +29,7 @@ Só podes mexer em: fuga/fugir, _regiaoAntesDaBase, supervisarBase, viajarPara, 
 - **Aceitacao**: no banco, um caso com `_regiaoAntesDaBase` = região insegura **não** viaja (e diz porque); um caso com região segura viaja; auto-play desligado não dispara a viagem; `bun tools/testes/run.mjs` rc=0.
 - **Código da correcção (encaminhada em `eda6303f`, parte-02.md:2559-2565)**: `const mem = _regiaoAntesDaBase; const memOk = mem && (function(){ try { const e = estimarRegiao(mem); return !!(e && e.morte === false); } catch { return false; } })(); const reg = memOk ? mem : regiaoIdeal();` — fail-closed (`morte` ausente ou `true` → descarta a memória), **não gravar** regiões letais na memória e pôr o `viajarPara` da base sob a hierarquia.
 - **Prova exigida (parte-02.md:2567-2570)**: memória em `barao` com nível 29 → escolher `dragao`; **controlo**: memória em `dragao` (segura) → usar `dragao` (a regra "voltar para onde estava" tem de continuar a funcionar quando é segura).
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:7640 (memoria da base VALIDADA por regiaoSegura). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-01-12 | P2 | viajarPara() sem verificacao/retry; supervisarBase marca ativa ANTES de viajar
 - **Ficheiro(s)**: extension/automation.js
@@ -80,4 +80,4 @@ Só podes mexer em: fuga/fugir, _regiaoAntesDaBase, supervisarBase, viajarPara, 
 - **Evidencia**: parte-01.md L7544-7577 (subagent: P0 do ciclo RESOLVIDO — minimoPocoesAgora, reporPocoes reporta, backoff 45min, tecto de 3 recalls + farm forcado, n.vender so com mochila quase cheia); L8008-8020: "Vou verificar ao vivo - o ciclo tem de ter morto e o ouro tem de subir" (verificacao NAO feita no historico); L7135-7172 sintoma (viaja -> mata 1 mob -> volta, ouro congelado)
 - **Fazer**: recarregar a extensao no browser do Yasuo e verificar por estado: log com {ir:base:vender, venda:{itens,valor}, custoIda:{ouro,seg}, falta:[]}, zero recalls em 10 min, ouro a subir; se o ciclo voltar, registar o motivo exacto.
 - **Aceitacao**: janela de 10 min ao vivo sem recall (ou maximo 1 com fecho de necessidade) + delta de ouro positivo + log com falta:[] em cada ida a base.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:7581 (ciclo de viagem (backoff/teito)). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket

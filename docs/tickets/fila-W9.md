@@ -95,14 +95,14 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Evidencia**: parte-02.md:2436-2456 — simulador `tools/sim-build.mjs`: `A) CDR+Chama (3158, 4645): AP 859 · CDR 8% · pen 40%` contra `B) pen+Ímpeto (3175, 4629): AP 899 · CDR 15% · pen 55% ← DOMINA A em tudo`; *“B ganha em TODAS as armaduras, de 0 a 200+ … +184 a +228 de DPS. E ganha porque tem mais CDR (15% vs 8%), mais pen (55% vs 40%) e mais AP (899 vs 859) — não é uma troca, é uma dominância”*; e parte-02.md:2452-2456 / 2587 — *“A build actual é [3171, 3089, 3135, 3100, 4629] — bota de CDR (3171) + Ímpeto … A build que o motor escolhe é a pior das duas”*
 - **Fazer**: corrigir a escolha da build ideal no motor para que a comparação seja feita ao nível da **combinação completa** (bota + item), e não de itens isolados, de modo a escolher a opção dominante; a prova é o simulador já escrito (`tools/sim-build.mjs`), com as constantes lidas do motor (`motor.js:499/515/522/529/537/539/1688/1207/173`).
 - **Aceitacao**: no banco, a build ideal para um campeão AP passa a conter a bota de pen + Ímpeto (opção B) quando ela domina; o teste compara com os números do simulador; `bun tools/testes/run.mjs` rc=0. Ao vivo, marcador discriminante a mostrar a build nova.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:105 (build ideal do motor (sim-build)). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-02-31 | P0 | Contagem dupla: o CDR do campo é somado outra vez pela regex da passiva (`vp3171: 90`)
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:1404-1414 — *“Se o scoring soma `it.cdr` **e** o `valorPassiva` também lê "−15% na recarga", isso é contagem dupla — e a regex do CDR foi adicionada por mim hoje”*; medido em parte-02.md:1410-1412 e 1683-1684: `3171 cdr=0.15 → valorPassiva = 90` e `4629 cdr=0.15 → valorPassiva = 90` (ainda **não** corrigido na última verificação); campo/passiva em parte-02.md:1400-1401
 - **Fazer**: correcção sistemática, não remendo: `valorPassiva` só pode modelar o que **não está** em campo estruturado; auditar uma a uma todas as regex acrescentadas contra os campos dos itens; e uma **guarda** que percorre os 108 itens e falha se voltar a haver duplicação (parte-02.md:1430).
 - **Aceitacao**: a guarda corre no banco e falha se algum item tiver campo e passiva a serem somados duas vezes; `vp3171` e `vp4629` deixam de valer 90 (medir o valor novo e justificá-lo); `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:2237 (CDR sem contagem dupla (ler a fonte antes)). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 
 ## TICKETS NOVOS (acrescentados pelo Lead 22:40 — P0 do leitor 2)
@@ -111,14 +111,14 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Evidencia**: parte-02.md:7431 e 7439-7446 — *“O pen NÃO é escalado por qualidade/refino: motor.js:251-255 reescala ad/ap/mana/vida/armadura/rm/va/rv/critico/regen/cdr e NÃO penMag; a dica MEDIDA do 3175~A diz ‘15% de penetração mágica’ (farm.json). Logo ‘17,25% com A’ está errado”*; e *“Confirmado … motor.js:254-255 ad*m, ap*m, … cdr*m ↑ penMag NÃO está na lista **O 3175~A dá 15% de pen, não 17,25%. E eu mandei o motor escalá-lo — introduzi um bug.**”*; confirmação pela medição em parte-02.md:7479 (*“a medição do dono de 0,55 = 0,40 (Vazio) + 0,15 confirma”*)
 - **Fazer**: retirar a escala de qualidade/refino do `penMag` em todos os sítios onde foi introduzida (`efeitosEquipados`, `statsSet`, `parseSlotId`/`mult`, `valorEquip`/`valorVenda` se aplicarem) e deixar o pen como valor cru do catálogo; manter a escala para os campos que o motor escala (`motor.js:251-255`).
 - **Aceitacao**: `3175~A` → pen 0,15 (não 0,1725) e `4629~A+3` → cdr 0,2346 (continua escalado); medição ao vivo a dar `pen 0,55` com a build do dono; `bun tools/testes/run.mjs` rc=0 com caso novo.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:1175 (pen NAO escalado (motor.js:251-255)). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-02-127 | P0 | Falta a magnitude do roubo de vida na pontuação (`cura/s = autoDps × rv`) — o `ad: 0` do perfil é a causa
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:8712-8725 — feito: `readStats` passou a ler o Roubo de vida do painel e a **regex morta foi removida** (*“a auditoria do catálogo REAL (108 itens) deu ZERO acertos — era código morto que parecia tratar do assunto”*); NÃO feito: *“A magnitude do rv na pontuação (cura/s = dano_de_auto/s × rouboVida, motor.js:1226-1228) e o rv a valer ZERO numa build AP: é UMA só alteração de modelo — o termo de cura precisa do DANO DE AUTO-ATAQUE DA BUILD, e o poder(i) do montarBuildDe pontua item a item, sem essa noção”*; e parte-02.md:8980 e 9059-9061 (*“para a Katarina, o mesmo bloqueio do ponto 1 (perfil ad: 0) faria o rv continuar a valer ~0 mesmo com a fórmula certa”*); número em parte-02.md:8809-8811 (`cura/s = dano_de_AUTO_ATAQUE/s × rouboVida`; 17 cura/s em AP vs 269 em AD — 16× mais)
 - **Fazer**: implementar o termo de cura por `cura/s = autoDps × rv` (`motor.js:1226-1228`) usando o dano de auto-ataque da build (o `det.autoCura`/`curaRV` que o simulador já expõe), e fazê-lo depender do peso do AD do perfil (ver TK-02-128).
 - **Aceitacao**: a mesma % de rv dá valores diferentes por base (17 cura/s em AP vs 269 em AD) e a build de chefe passa a escolher itens com rv quando a cura decide a sobrevivência; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:1716 (rv lido do painel (as DUAS grafias) e usado). **Grep nao e prova semantica**: a suite que cobre o defeito esta verde no banco 0/25; falta a verificacao ticket-a-ticket
 
 ### TK-02-134 | P1 | Bug irmão: o `3036` (pen de ARMADURA) está arquivado como `penMag` — dano mágico falso de +13% a +19,6%
 - **Ficheiro(s)**: extension/automation.js

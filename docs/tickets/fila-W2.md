@@ -20,21 +20,21 @@ Só podes mexer em: planejar, buildIdeal, buildIdealPara, valorPassiva, valorDe,
 - **Evidencia**: parte-02.md:313-314 e 340-341 — `automation.js:1545  const chance = z.porClasse ? (z.porClasse.ap || z.porClasse.ad || ...) : 0;` *"prefere sempre .ap, seja o campeão AD ou AP"*; contraste parte-02.md:377 `automation.js:4799 comprar-vs-farmar: reg.porClasse[classe] || 0 ← JÁ ESTÁ CERTO`
 - **Fazer**: no `planejar`, escolher `z.porClasse[classeDoCampeao]` (classe lida do campeão ao vivo), com fallback só quando a chave não existir. Confirmar no motor que os dois campos vêm separados (docs/game-src/motor.js:383/397/407 — `l.drops` e `l.dropsAp`).
 - **Aceitacao**: teste em tools/testes/ a passar: `planejar` com campeão **AP** continua a devolver o Covil do Barão para o `3089` e com campeão **AD** **não** o devolve (devolve a zona da tabela normal, ex. Gume do Infinito `3031`); `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: pendente de verificacao (nao encontrei evidencia directa no codigo nesta passada)
 
 ### TK-02-24 | P0 | Passivas dos itens não contam na build (só campos estruturados) — dono reclamou “dezenas de vezes”
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:1266 — *“tu sabia q os itens tem passivas, que só a passiva da bota de cdr, e só a passiva do impeto, os dois somam 30? ... eu ja falei sobre levar em conta passiva de itens algumas dezenas de vezes. arruma. tudo. pra todos os bonecos. pra todos os itens. agora”*; campo e passiva lado a lado em parte-02.md:1400 — `3171 Lucidez Escarlate : cdr: 0.15   efeito: "Lucidez: −15% na recarga das habilidades."`; matemática do dono em parte-02.md:1040-1066 (30% dos dois itens vs tecto de 40% de `motor.js:529` e `:537`)
 - **Fazer**: fazer a avaliação de build somar **campo + passiva** para todos os itens e todos os campeões — a passiva textual tem de entrar no mesmo cômputo de CDR/pen/AP, não só o campo estruturado. Confirmar cada número em `docs/game-src/motor.js` antes de codar (REGRA Nº 1); o dono classificou isto como pendência antiga, tratar como P0.
 - **Aceitacao**: caso de teste com `3171` (Lucidez) + `4629` (Ímpeto Cósmico) a dar **30% de CDR** somados (15+15), abaixo do tecto de 40%, sem desperdício; `bun tools/testes/run.mjs` rc=0. Prova ao vivo com marcador discriminante (texto que só existe na build nova).
-- **Estado**: pendente
+- **Estado**: pendente de verificacao (nao encontrei evidencia directa no codigo nesta passada)
 
 ### TK-02-32 | P0 | `objetivoItem="rabadon"` força item AP na build AD do Yasuo
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:1686-1692 — `buildIdealPara({magia:false}) → "3172,3089,3046,6631,3031"` com a nota `↑ 3089 = RABADON (AP) numa build AD!`; *“o pin ignora a classe por desenho … agora que vás construir o Yasuo, ele contamina a build dele com um item AP”*; correcção encaminhada em `93b535a6` (parte-02.md:1710-1719): classe oposta → não entra (salvo flag explícita `objetivoItemForcar`), mesma classe → continua a entrar
 - **Fazer**: fazer o alvo fixo respeitar a classe do campeão, usando a função de classe que já existe (não inventar critério novo).
 - **Aceitacao**: prova obrigatória com as duas listas — `buildIdealPara` de campeão AD **sem** itens AP e de campeão AP **com** o Rabadon; testes com controlo (classe oposta não entra, mesma classe continua a entrar); `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: pendente de verificacao (nao encontrei evidencia directa no codigo nesta passada)
 
 ### TK-02-25 | P1 | `buildIdealPara(c)` devolve build diferente conforme o campeão actual (`valorPassiva` lê `META.champAtual`)
 - **Ficheiro(s)**: extension/automation.js
@@ -80,4 +80,4 @@ Só podes mexer em: planejar, buildIdeal, buildIdealPara, valorPassiva, valorDe,
 - **Evidencia**: parte-02.md:6526-6637 — `idealSemFase: "3175,3089,3153,3135,3100"` · `idealMobs: "3175,3089,3153,3135,3100"` ← IDÊNTICO · `idealChefe: "3175,3089,3153,3135,3100"` ← IDÊNTICO · `buildPorFase: true`; *“O motor afirma trocar a build por fase e devolve a mesma nos três casos … Tens o interruptor ligado e ele não faz nada”*; e *“O 3153 está na ideal — e é a PIOR peça para mobs (488 de 11) … O motor está a vestir a peça de chefe no farm de mobs”*; encaminhado em `1be1e7b7` com o pedido das duas listas exactas (mobs e chefe) depois da correcção e a proibição de inventar peso para a Voracidade
 - **Fazer**: fazer a fase mudar de facto a build (mobs vs chefe), tirando a peça de chefe da build de mobs, e devolver as duas listas exactas; nenhum peso inventado para a Voracidade (se faltar regra, pedir ao dono).
 - **Aceitacao**: `buildIdeal()`, `buildIdeal(mobs)` e `buildIdeal(boss)` dão listas **diferentes** quando devem diferir, com o `3153` fora da de mobs; prova ao vivo das duas builds vestidas em cada fase; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: pendente de verificacao (nao encontrei evidencia directa no codigo nesta passada)
