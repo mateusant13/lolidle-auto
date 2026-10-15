@@ -173,3 +173,13 @@ devolve um valor diferente do `1 - fracHabs` local (6594) usado no `fCrit`.
 (`Math.abs(auto.fracAuto() - (1 - <fracHabs do scoreSet>))`) antes de mexer na fórmula.
 
 ### Total: 65 → 34 falhas (12 correcções reais)
+
+
+## ADENDA 09:25 — `hud` H12c: tentado e NÃO é aí
+Tentei (ambos revertidos por não mudarem o banco):
+1. `cfg.medicaoJogo = { tem: true, … }` (linha 1426) — o teste lê `jogo.tem`.
+2. `lerAnaliseJogo`: `if (out.xpH != null || out.ouroH != null || out.janela) out.tem = true;` — o
+   `vazio.tem = false` nunca subia.
+**Banco inalterado (33) nos dois.** Logo o H12c **não** lê estes dois caminhos: o teste chama outra
+função (ver `hud.test.mjs` à volta da linha 430 — o objecto `cJogo` vem de uma chamada própria).
+**Próximo:** ler as linhas 425-435 do teste e ver **qual função** produz `cJogo`, em vez de adivinhar.
