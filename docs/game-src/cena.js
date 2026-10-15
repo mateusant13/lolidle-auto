@@ -4,11 +4,12 @@ import { spriteCampeao } from './campeoes.js';
 import { Particulas, pixelsDe, halo, mapearCor } from './fx.js';
 import { T, DIR, sprite, corpo, aparencia, efeitoMachado, spriteEstandarte, estiloNovoLigado, ANIM_NOVA, tamanhoExtra, Pincel, contornar, tom, iconeChave, subidaMontaria } from './pixel.js';
 import { gerarMapa, gerarMundo, gerarAbismo, caminho, vizinhos } from './mundo.js';
+import { gerarFreljord } from './freljord.js';      // p668: o mapa da Dungeon do Braum
 import { ARENA_PVP } from './arena-pvp.js';
-import { zonaEm, cidadeEm, mundoLogico, ZONAS_PK } from './runeterra.js';
+import { zonaEm, cidadeEm, mundoLogico, ZONAS_PK, zonaPkEm, corZonaPk } from './runeterra.js';
 import { t } from './i18n.js';
 import { urlBrasao } from './guilda.js';
-import { paredeBarra } from './motor.js';
+import { paredeBarra, PAREDE_PVP } from './motor.js';
 import { ALCANCE_HAB } from './arena.js';
 import { gerarQuadros as quadrosVilemaw, MARGEM as MARGEM_VM } from './vilemaw.js';
 import { GOLPES_VILEMAW } from './chefe-global.js';
@@ -22,7 +23,7 @@ function aguaEm(m, x0, y0, x1, y1) {
 }
 // panos com física (cabelo, capa, cachecol): a cada quadro só no seu campeão e nos PANO_PERTO jogadores mais perto;
 // os outros refazem o pano a cada PANO_LONGE_S segundos (a Fonte cheia lagava)
-const PANO_PERTO = 6, PANO_LONGE_S = 0.4;
+const PANO_PERTO = 4, PANO_LONGE_S = 0.5, PANO_OUTRO_S = 1 / 15;      // p729 (eram 6, 0,4 s e 30 por segundo)
 // brasões de guilda desenhados em cima do nome (uma imagem por brasão, carregada uma vez)
 const imagensBrasao = new Map();
 function imgBrasao(b) { let i = imagensBrasao.get(b); if (!i) { i = new Image(); i.src = urlBrasao(b); imagensBrasao.set(b, i); } return i; }
@@ -343,7 +344,7 @@ export class Cena {
     this.bichosVivos = null; this.fonteVida = null; this.rotaVida = null;        // peixes, pombas, borboletas, passarinhos e coelhos são de cada mapa
     this.arena = !!local.arena; this.arenaPausado = false; this.estadoArena = null; this.miraArena = null;
     this.jogArena = new Map(); this.monsOutros = new Map(); this.projOutros = []; this.alvoPvp = null; this.paredes = [];
-    this.mapa = this.mapas[local.id] ??= local.aram ? gerarAbismo(ARENA_PVP.mapa) : local.arena ? gerarMundo() : gerarMapa(local.bioma, local.semente || 1);
+    this.mapa = this.mapas[local.id] ??= local.dungeon ? gerarFreljord() : local.aram ? gerarAbismo(ARENA_PVP.mapa) : local.arena ? gerarMundo() : gerarMapa(local.bioma, local.semente || 1);
     this.criaturas = new Map();
     this.npcs = this.mapa.npcs.map((n) => ({ ...novaCriatura('npc-' + n.nome, n.nome, n), npc: true, surge: 0 }));
     this.darius = novaCriatura('darius', this.skin || this.campeao || 'darius', local.base ? this.pontoNaFonte() : this.mapa.centro);
@@ -458,6 +459,7 @@ export class Cena {
 
   // ---------- outros jogadores (só na Fonte) ----------
   definirOutros(lista) {
+    if (this.local?.dungeon) return;      // na dungeon os outros são os aliados (definirAliados)
     if (!this.local?.base) lista = [];
     const vistos = new Set();
     for (const p of lista) {
@@ -715,6 +717,199 @@ export class Cena {
     this.alvo = va;
   }
 
+  // ---------- Dungeon do Braum (p670): a luta vem do servidor e a cena só desenha ----------
+  // os aliados: em volta do seu campeão, parados (eles lutam de onde estão, como você no Rift); caído vira corpo
+  definirAliados(lista) {
+    const vistos = new Set(), base = this.mapa.centro;
+    const lugares = [[-2, 1], [2, 1], [-1, -2], [1, -2], [-3, -1], [3, -1]];
+    lista.forEach((p, k) => {
+      vistos.add(p.nome);
+      let o = this.outros.get(p.nome);
+      if (!o) {
+        const [dx, dy] = lugares[k % lugares.length];
+        let x = base.x + dx, y = base.y + dy;
+        for (let r = 0; r < 4 && !this.mapa.livre(x, y); r++) { x = base.x + dx + (r + 1) * Math.sign(dx || 1); }
+        o = { ...novaCriatura('j-' + p.nome, spriteCampeao(p.campeao || 'darius', p.skin || 0), { x, y }), jogador: true, aliado: true, nomeJogador: p.nome, campeaoId: p.campeao, surge: 0.6, vel: 0.2, dir: DIR.N };
+        this.outros.set(p.nome, o); this.efeito('poof', o, 0.6);
+      }
+      o.nivel = p.nivel; o.vida = p.vidaMax ? Math.max(0, p.vida / p.vidaMax) : 1;
+      if (p.morto && !o.caido) { o.caido = true; this.corpos.push({ x: o.x, y: o.y, img: corpo(o.nome), t: 0, dur: 600, dono: p.nome }); o.oculto = true; }
+      else if (!p.morto && o.caido) { o.caido = false; o.oculto = false; this.corpos = this.corpos.filter((c) => c.dono !== p.nome); this.efeito('poof', o, 0.6); this.brilhos(this.centro(o).x, this.centro(o).y, ['#bfe8ff', '#ffffff'], 16, 70); }
+    });
+    for (const nome of [...this.outros.keys()]) if (!vistos.has(nome)) this.outros.delete(nome);
+  }
+  // o evento de um aliado: desenhado como se fosse ele (a posição, a pose e as cores da skin DELE e o campeão dele)
+  comoAliado(o, campeao, f) {
+    const meu = this.campeao;
+    this.campeao = campeao;
+    try { this.comoOutro(o, f); } finally { this.campeao = meu; }
+  }
+  // um monstro da dungeon morreu (o abate vem uma vez só, de quem estiver mais perto no servidor)
+  abateDungeon(id) {
+    const v = this.criaturas.get(id);
+    if (!v) return;
+    this.desfazer(v);
+    this.corpos.push({ x: v.x, y: v.y, img: corpo(v.spriteNome || v.nome), grande: v.grande, t: 0, dur: 6 });
+    const c = this.centro(v);
+    this.fx.explosao(c.x, c.y + 6, { qtd: v.chefe ? 60 : 14, vel: v.chefe ? 140 : 60, cor: ['#ffffff', '#cfe8f7', '#8ad8ff'], vida: v.chefe ? 1.4 : 0.7, tam: 2, encolhe: true, grav: 40 });
+    if (v.chefe) {
+      this.tremor = 0.8; this.flash = 0.5; this.corFlash = '200,240,255';
+      this.onda(c.x, c.y + 20, 7 * T, '#bfe8ff', 1.1, 6); this.onda(c.x, c.y + 20, 4 * T, '#ffffff', 0.8, 4);
+      this.texto(v, t('Braum foi vencido!'), '#ffe08a', 1.6, 0.2);
+    }
+    this.criaturas.delete(id);
+  }
+  // a criatura (sua, de um aliado ou o monstro) pelo nome de quem é / pelo id do monstro
+  quemNaDungeon(nome) { return nome === this.nomeJogador ? this.darius : this.outros.get(nome) || null; }
+  peNaDungeon(c) { const p = this.centro(c); return { x: p.x / T, y: (p.y + (c.grande ? 24 : 10)) / T }; }
+  // as mecânicas dos bonecos e do Braum (o registro da luta, no tempo certo)
+  dungeonMecanica(l) {
+    const braum = [...this.criaturas.values()].find((v) => v.nome === 'Braum');
+    const mon = l.id ? this.criaturas.get(l.id) : null, alvo = l.alvo ? this.quemNaDungeon(l.alvo) : null;
+    const gelo = '160,225,255';
+    switch (l.tipo) {
+      case 'avalancheAviso': {
+        if (!alvo) break;
+        const p = this.peNaDungeon(alvo);
+        this.pisoes.push({ x: p.x, y: p.y, raio: 1.5, t: 0, dur: l.dur || 1.2, rgb: gelo });
+        if (mon) { mon.atk = 0.4; this.balao(mon, t('Poro!'), '#bfe8ff'); this.olhar(mon, alvo); }
+        break;
+      }
+      case 'avalanche': {
+        if (!alvo) break;
+        const de = mon || braum;
+        if (de) this.projetil('disparo', de, alvo, 0.3, '#f0faff');
+        this.depois(0.28, () => {
+          const c = this.centro(alvo);
+          this.tremor = Math.max(this.tremor || 0, 0.35);
+          this.fx.explosao(c.x, c.y + 8, { qtd: 34, vel: 110, cor: ['#ffffff', '#e8f6ff', '#bcdcf0'], vida: 0.9, tam: 3, encolhe: true, grav: 160, achatado: 0.5 });
+          this.onda(c.x, c.y + 10, 1.6 * T, '#e8f6ff', 0.5, 4);
+          this.texto(alvo, t('Bola de neve!'), '#e8f6ff', 1.1);
+        });
+        break;
+      }
+      case 'mordida': if (alvo) { this.texto(alvo, t('Atordoado!'), '#ffe040', 1); this.estrela4(this.centro(alvo).x, this.centro(alvo).y - 18, '#bfe8ff', 20); if (braum) braum.atk = 0.3; } break;
+      case 'inquebravel': {
+        if (!braum) break;
+        this.efeito('barreira', braum, l.dur || 4); braum.quadroDg = { q: 5, ate: this.tempo + (l.dur || 4) };
+        this.balao(braum, t('Inquebrável!'), '#9fe0ff');
+        const c = this.centro(braum); this.onda(c.x, c.y + 20, 2.6 * T, '#9fe0ff', 0.7, 4); this.brilhos(c.x, c.y, ['#ffffff', '#9fe0ff'], 24, 90);
+        break;
+      }
+      case 'fissuraAviso': {
+        if (!braum) break;
+        const p = this.peNaDungeon(this.darius);
+        this.pisoes.push({ x: p.x, y: p.y, raio: 4.2, t: 0, dur: l.dur || 1.5, rgb: gelo });
+        braum.atk = 0.6; braum.pulo = 0.8; braum.puloDur = 0.8; braum.puloAlto = 20; braum.quadroDg = { q: 6, ate: this.tempo + (l.dur || 1.5) };
+        this.balao(braum, t('Fissura Glacial!'), '#9fe0ff');
+        this.aviso(t('Braum prepara a Fissura Glacial!'), '#9fe0ff');
+        break;
+      }
+      case 'fissura': {
+        if (braum) braum.quadroDg = { q: 7, ate: this.tempo + 0.7 };
+        const de = braum ? this.centro(braum) : this.centro(this.darius), para = this.centro(this.darius);
+        this.tremor = 0.7; this.flash = 0.3; this.corFlash = gelo;
+        // a fissura: estacas de gelo saindo do chão do Braum até o grupo
+        for (let k = 0; k <= 12; k++) {
+          const f = k / 12, x = de.x + (para.x - de.x) * f, y = de.y + 20 + (para.y - de.y) * f;
+          this.depois(k * 0.03, () => { this.fx.explosao(x, y, { qtd: 8, vel: 70, ang: -Math.PI / 2, abertura: 1.2, cor: ['#ffffff', '#bfe8ff', '#7ac8f0'], vida: 0.7, tam: 3, grav: 140, encolhe: true }); this.estrela4(x, y - 6, '#bfe8ff', 14); });
+        }
+        this.onda(para.x, para.y + 10, 4.2 * T, '#bfe8ff', 0.8, 6);
+        for (const c of [this.darius, ...this.outros.values()]) if (!c.oculto) { c.pulo = 0.6; c.puloDur = 0.6; c.puloAlto = 26; }
+        break;
+      }
+      case 'braumQ': {      // Mordida do Inverno: gelo arremessado com o escudo
+        if (!braum || !alvo) break;
+        braum.atk = 0.4; braum.quadroDg = { q: 4, ate: this.tempo + 0.6 }; this.olhar(braum, alvo); this.balao(braum, t('Mordida do Inverno!'), '#9fe0ff');
+        this.projetil('disparo', braum, alvo, 0.35, '#bfe8ff');
+        this.depois(0.33, () => { const c = this.centro(alvo); this.fx.explosao(c.x, c.y, { qtd: 22, vel: 90, cor: ['#ffffff', '#bfe8ff', '#7ac8f0'], vida: 0.7, tam: 2.4, encolhe: true, forma: 'faisca' }); this.onda(c.x, c.y + 10, 1.2 * T, '#bfe8ff', 0.5, 3); this.texto(alvo, t('Congelado!'), '#bfe8ff', 1); });
+        break;
+      }
+      case 'braumSalto': {      // Fique Atrás de Mim: salta em cima de quem está atrás do grupo
+        if (!braum || !alvo) break;
+        braum.pulo = 0.55; braum.puloDur = 0.55; braum.puloAlto = 46; braum.quadroDg = { q: 6, ate: this.tempo + 0.55 }; this.balao(braum, t('Fique atrás de Braum!'), '#ffe08a');
+        const de = this.peNaDungeon(braum);
+        this.depois(0.3, () => {
+          const livres = vizinhos(alvo).filter((p) => this.mapa.livre(p.x, p.y)).sort((a, b) => Math.hypot(a.x - de.x, a.y - de.y) - Math.hypot(b.x - de.x, b.y - de.y));
+          const p = livres[0] || alvo;
+          braum.x = braum.de.x = p.x; braum.y = braum.de.y = p.y; braum.fila = []; braum.t = 1; braum.sx = braum.sy = null; this.olhar(braum, alvo);
+        });
+        this.depois(0.55, () => { const c = this.centro(braum); this.tremor = 0.6; this.onda(c.x, c.y + 24, 2.5 * T, '#ffffff', 0.6, 5); this.onda(c.x, c.y + 24, 3.5 * T, '#bfe8ff', 0.8, 4); this.fx.explosao(c.x, c.y + 22, { qtd: 40, vel: 120, cor: ['#ffffff', '#cfe8f7', '#8ad8ff'], vida: 0.9, tam: 3, encolhe: true, grav: 120 }); });
+        break;
+      }
+      case 'braumFuria': {
+        if (!braum) break;
+        braum.furiaVis = true;
+        const c = this.centro(braum); this.tremor = 0.6; this.flash = 0.25; this.corFlash = '255,120,80';
+        this.onda(c.x, c.y + 20, 3.5 * T, '#ff7a50', 0.7, 5); this.brilhos(c.x, c.y, ['#ff7a50', '#ffe08a', '#ffffff'], 30, 120);
+        this.balao(braum, t('Agora é sério!'), '#ff9a6a'); this.aviso(t('Braum ficou furioso!'), '#ff9a6a');
+        break;
+      }
+      case 'chamado': if (braum) { braum.atk = 0.5; this.balao(braum, t('Ao meu lado, amigos!'), '#bfe8ff'); const c = this.centro(braum); this.onda(c.x, c.y + 20, 2.4 * T, '#ffffff', 0.6, 3); } break;
+      case 'onda': if ((l.nomes || []).includes('Braum')) { this.aviso(t('Braum, o Coração de Freljord'), '#ffe08a'); this.tremor = 0.5; } break;
+      case 'estagio': this.aviso(t('Estágio vencido!'), '#9ff0a8'); break;
+    }
+  }
+  // depois da sincronia: o Braum aparece num lugar fixo ao norte do grupo; cada monstro vai até quem ele está atacando
+  // (não todos até você); e o seu campeão volta para o meio se ficou longe
+  guiarDungeon(inimigos) {
+    const base = this.mapa.centro, livreAli = (x, y) => this.mapa.livre(x, y);
+    for (const i of inimigos) {
+      const v = this.criaturas.get(i.id);
+      if (!v) continue;
+      if (i.nome === 'Braum' && !v.posto) {
+        v.posto = true;
+        let p = { x: base.x, y: base.y - 3 };
+        for (let r = 0; r < 4 && !livreAli(p.x, p.y); r++) p = { x: base.x + (r % 2 ? r : -r), y: base.y - 3 };
+        v.x = v.de.x = p.x; v.y = v.de.y = p.y; v.fila = []; v.t = 1; v.surge = 0.8;
+        const c = this.centro(v);
+        this.tremor = 0.7; this.flash = 0.35; this.corFlash = '200,240,255';
+        this.onda(c.x, c.y + 24, 5 * T, '#bfe8ff', 0.9, 6); this.onda(c.x, c.y + 24, 3 * T, '#ffffff', 0.7, 4);
+        this.fx.explosao(c.x, c.y + 20, { qtd: 50, vel: 130, cor: ['#ffffff', '#cfe8f7', '#8ad8ff'], vida: 1.1, tam: 3, encolhe: true, grav: 90 });
+        this.balao(v, t('Fiquem atrás de mim!'), '#ffe08a');
+        this.olhar(v, this.darius);
+      }
+      const alvo = i.foco ? this.quemNaDungeon(i.foco) : null;
+      v.parada = !!(alvo && alvo !== this.darius);      // quem não ataca você não vem atrás de você (vai atrás de quem ataca)
+      if (!alvo || alvo.oculto || alvo === this.darius) { if (alvo && !v.fila.length) this.olhar(v, alvo); continue; }
+      if (v.fila.length || v.t < 1 || this.tempo < (v.buscaA || 0)) continue;
+      v.buscaA = this.tempo + 0.7;
+      const raio = v.distancia > 1 ? v.distancia : 1;
+      if (Math.max(Math.abs(v.x - alvo.x), Math.abs(v.y - alvo.y)) <= raio) { this.olhar(v, alvo); continue; }
+      const ocup = this.ocupados(v);
+      const alvos = (raio > 1 ? this.anel(alvo, raio, ocup) : vizinhos(alvo).filter((p) => livreAli(p.x, p.y) && !ocup.has(p.x + ',' + p.y)))
+        .sort((a, b) => Math.hypot(a.x - v.x, a.y - v.y) - Math.hypot(b.x - v.x, b.y - v.y));
+      for (const a of alvos.slice(0, 3)) { const passos = caminho(this.mapa, v, a, ocup, 300); if (passos) { v.fila = passos; v.vel = Math.max(v.vel || 0.12, 0.16); break; } }
+    }
+    // os campeões: quem bate de perto vai até o monstro que está atacando; quem ataca de longe fica perto do meio
+    const DE_LONGE = new Set(['ezreal', 'lux']);
+    for (const [c, camp, caido] of [[this.darius, this.campeao, this.morto], ...[...this.outros.values()].filter((o) => o.aliado).map((o) => [o, o.campeaoId, o.caido])]) {
+      if (caido || c.fila.length || c.t < 1 || this.tempo < (c.voltaDg || 0)) continue;
+      c.voltaDg = this.tempo + 0.6;
+      const alvo = c.alvoDg && this.criaturas.get(c.alvoDg);
+      if (!DE_LONGE.has(camp) && alvo) {
+        const raio = alvo.grande ? 2 : 1;
+        if (Math.max(Math.abs(c.x - alvo.x), Math.abs(c.y - alvo.y)) <= raio) { this.olhar(c, alvo); continue; }
+        const ocup = this.ocupados(c);
+        const lados = (raio > 1 ? this.anel(alvo, raio, ocup) : vizinhos(alvo).filter((p) => livreAli(p.x, p.y) && !ocup.has(p.x + ',' + p.y))).sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y));
+        for (const p of lados.slice(0, 3)) { const passos = caminho(this.mapa, c, p, ocup, 300); if (passos) { c.fila = passos; c.vel = 0.16; break; } }
+      } else if (Math.max(Math.abs(c.x - base.x), Math.abs(c.y - base.y)) > 3) {
+        const passos = caminho(this.mapa, c, base, this.ocupados(c), 300);
+        if (passos) c.fila = passos.slice(0, -1);
+      }
+    }
+  }
+  // neve caindo em volta da câmera (só na dungeon)
+  nevar(dt) {
+    this.neveAcum = (this.neveAcum || 0) + dt * (this.leve ? 18 : 40);
+    const L = VIS_L * T, A = VIS_A * T;
+    while (this.neveAcum >= 1) {
+      this.neveAcum--;
+      const x = this.cam.x + Math.random() * (L + 60) - 30, y = this.cam.y - 8 + Math.random() * A * 0.3;
+      this.fx.add({ x, y, vx: -12 + Math.random() * 8, vy: 22 + Math.random() * 18, cor: Math.random() < 0.7 ? '#ffffff' : '#d8ecf8', vida: 2.4 + Math.random() * 1.6, tam: Math.random() < 0.2 ? 2 : 1.2, atrito: 0 });
+    }
+  }
+
   // ---------- Runeterra: as posições vêm direto do motor (em tiles, quebradas) ----------
   // (x, y) do motor = o ponto do chão onde a criatura pisa; o sprite de 32 px fica meio tile para a esquerda e quase um tile acima
   colocar(c, fx, fy, olhar) {
@@ -772,7 +967,7 @@ export class Cena {
     else { p.andando = false; this.olhar(p, d); }
   }
   // ---------- outros jogadores em Runeterra (chegam do servidor ~10x por segundo; aqui andam suave) ----------
-  redeArena(lista, meuNivel, difNivel) {
+  redeArena(lista, meuNivel, difNivel, semCap = false) {
     if (!this.arena) return;
     const vistos = new Set(), monsVistos = new Set();
     for (const j of lista) {
@@ -790,7 +985,7 @@ export class Cena {
       o.acumulos = j.sg || 0;          // Hemorragia do Darius (o servidor conta)
       o.nome = visual; o.nivel = j.nv; o.poder = j.pd || 0; o.vida = j.v; o.agressor = j.ag; o.pk = j.pk; o.caveira = !!j.cv || !!j.rv; o.vermelha = !!j.rv; o.vip = j.vip; o.parado = j.p; o.morto = j.m;
       o.brasao = j.gb || null; o.mesmaGuilda = !!(j.gi && j.gi === this.minhaGuilda); o.mesmoGrupo = !!(j.gp && j.gp === this.meuGrupo);
-      o.atacavel = Math.abs(j.nv - meuNivel) <= difNivel && !o.mesmaGuilda && !o.mesmoGrupo;      // da mesma guilda ou do mesmo grupo nunca é alvo
+      o.atacavel = (Math.abs(j.nv - meuNivel) <= difNivel || (semCap && !!zonaPkEm(j.x, j.y)?.semCap)) && !o.mesmaGuilda && !o.mesmoGrupo;      // Zona de Guerra vermelha: sem limite de nível (p689)      // da mesma guilda ou do mesmo grupo nunca é alvo
       if (j.ar) { o.mesmaGuilda = false; o.mesmoGrupo = false; o.atacavel = true; }      // na Arena o oponente é sempre alvo
       o.alvoX = j.x; o.alvoY = j.y; o.olharV = { x: j.dx, y: j.dy }; o.andaRede = j.a;
       o.montaria = j.mt ? (j.mt === 'b' ? 'Montaria' : 'Montaria@' + j.mt) : null;
@@ -957,9 +1152,9 @@ export class Cena {
       const n = Math.hypot(dir.x, dir.y) || 1, ux = dir.x / n || 1, uy = dir.y / n;
       if (m.tecla === 'W') {                   // a Parede de Vento dele: todos veem, e os tiros param nela
         const wx = m.x + ux * 1.4, wy = m.y + uy * 1.4;
-        this.efeitos.push({ tipo: 'paredeVento', dur: 4, t: 0, alvo: null, fixo: { px: 0, py: 0 }, cx: wx * T, cy: wy * T + 8, vx: ux, vy: uy, dono: o });
+        this.efeitos.push({ tipo: 'paredeVento', dur: PAREDE_PVP, t: 0, alvo: null, fixo: { px: 0, py: 0 }, cx: wx * T, cy: wy * T + 8, vx: ux, vy: uy, dono: o });      // contra jogador, 2,5 s (p714)
         this.onda(wx * T, wy * T + 8, 26, '#bfe8ff', 0.5, 2);
-        this.paredes.push({ dono: m.n, x: wx, y: wy, dx: ux, dy: uy, ate: this.tempo + 4 });
+        this.paredes.push({ dono: m.n, x: wx, y: wy, dx: ux, dy: uy, ate: this.tempo + PAREDE_PVP });
       } else if (m.tecla === 'Q' || m.tecla === 'M')
         this.efeitos.push({ tipo: 'estocadaVento', dur: 0.28, t: 0, alvo: null, fixo: { px: 0, py: 0 }, ox: c.x + ux * 6, oy: c.y + 2 + uy * 6, vx: ux, vy: uy, comp: (m.tecla === 'M' ? 6 : 4.5) * T, larg: m.tecla === 'M' ? 7 : 5, lua: m.tecla === 'M' });
       else if (m.tecla === 'R') { this.texto(o, 'Sorye ge ton!', '#bfe8ff', 1); this.estrela4(c.x, c.y - 10, '#bfe8ff', 40); }
@@ -1759,7 +1954,7 @@ export class Cena {
     // segundo e, no meio, o último desenho acompanha o personagem
     // perto (o seu e os mais próximos): refeito no máximo a cada panoPasso (30 por segundo; no modo leve, 15)
     const cache = c.panoCache;
-    if (cache && cache.d === d && this.tempo - cache.t < (c === this.darius || this.panoPerto().has(c) ? this.panoPasso : PANO_LONGE_S)) return { img: cache.img, x: X + cache.dx, y: Y + cache.dy, frente: cache.frente };
+    if (cache && cache.d === d && this.tempo - cache.t < (c === this.darius ? this.panoPasso : this.panoPerto().has(c) ? Math.max(this.panoPasso, PANO_OUTRO_S) : PANO_LONGE_S)) return { img: cache.img, x: X + cache.dx, y: Y + cache.dy, frente: cache.frente };
     const esp = d === DIR.O ? (x) => 32 - x : (x) => x;          // o lado esquerdo é o direito espelhado
     let ancoras, seg, nSeg, cor, frente = false;
     if (forma === 'darius') {
@@ -1819,7 +2014,7 @@ export class Cena {
     const pts = [...cordas[0], ...[...cordas[1]].reverse()];
     const x0 = Math.floor(Math.min(...pts.map((q) => q.x))) - 2, y0 = Math.floor(Math.min(...pts.map((q) => q.y))) - 2;
     const w = Math.ceil(Math.max(...pts.map((q) => q.x))) - x0 + 3, h = Math.ceil(Math.max(...pts.map((q) => q.y))) - y0 + 3;
-    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const cv = c.panoCv || (c.panoCv = document.createElement('canvas')); cv.width = w; cv.height = h;      // o mesmo canvas de sempre (p729)
     cv.getContext('2d', { willReadFrequently: true });         // o contorno lê os pixels: na memória comum, sem copiar da placa de vídeo
     const p = new Pincel(cv), loc = pts.map((q) => [q.x - x0, q.y - y0]);
     if (forma === 'darius') {
@@ -3701,7 +3896,7 @@ export class Cena {
   // estilo novo: borboletas voando pela grama e libélulas por cima da água (de dia)
   bichos(dt) {
     const m = this.mapa;
-    if (!m?.novo) { this.bichosVivos = null; return; }
+    if (!m?.novo || m.bioma === 'freljord') { this.bichosVivos = null; return; }      // p668: sem borboletas na neve
     const lista = this.bichosVivos ??= [], noite = (this.luz ?? 1) < 0.6, W = VIS_L * T, H = VIS_A * T, r = Math.random;
     if (!noite && lista.filter((b) => b.tipo !== 'peixe').length < 8 && r() < dt * 1.5) {
       const naTela = aguaEm(m, Math.floor(this.cam.x / T), Math.floor(this.cam.y / T), Math.ceil((this.cam.x + W) / T), Math.ceil((this.cam.y + H) / T)).filter(([ax, ay]) => ax * T > this.cam.x && ax * T < this.cam.x + W && ay * T > this.cam.y && ay * T < this.cam.y + H);
@@ -4015,6 +4210,7 @@ export class Cena {
   atualizar(dt) {
     this.tempo += dt;
     if (!this.mapa) return;
+    if (this.local?.dungeon) this.nevar(dt);
     this.andar(this.darius, dt);
     for (const c of this.criaturas.values()) this.andar(c, dt);
     if (this.pet) { this.andar(this.pet, dt); if (this.arena) this.guiarMascoteArena(dt); else this.guiarMascote(); }
@@ -4175,7 +4371,7 @@ export class Cena {
     const todos = [...this.criaturas.values(), ...this.npcs];
     if (!this.morto) todos.push(this.darius);
     if (this.pet && !this.morto) todos.push(this.pet);
-    for (const o of this.outros?.values() || []) todos.push(o);
+    for (const o of this.outros?.values() || []) if (!o.oculto) todos.push(o);
     if (this.arena) { for (const o of this.jogArena.values()) todos.push(o); for (const v of this.monsOutros.values()) todos.push(v); }
     for (const c of todos) {
       c.ultimoDesenho = null;
@@ -4218,7 +4414,7 @@ export class Cena {
       else this.desenharEfeito(g, e);
     }
     this.fx.desenhar(g, 'base');
-    this.desenharNoite(g, cx, cy, dp, tx0, ty0, tx1, ty1);
+    if (!this.local?.dungeon) this.desenharNoite(g, cx, cy, dp, tx0, ty0, tx1, ty1);      // no alto da montanha é sempre dia (p670)
     this.fx.desenhar(g, 'brilho');
 
     // nomes e barras por cima de tudo, como no cliente
@@ -4285,7 +4481,7 @@ export class Cena {
       g.strokeText(volta, (VIS_L * T) / 2, VIS_A * T * 0.16 + 26); g.fillText(volta, (VIS_L * T) / 2, VIS_A * T * 0.16 + 26);
     }
     if (m.mini && this.verMinimapa !== false) this.desenharMinimapa(g);
-    if (this.arena) this.desenharBarraChefe(g); else this.mostrarRankingVm?.(null);
+    if (this.arena || this.local?.dungeon) this.desenharBarraChefe(g); else this.mostrarRankingVm?.(null);
     if (this.viagem && !this.morto) this.desenharViagem(g);
     for (const a of this.avisos) {
       g.globalAlpha = a.t > 2.3 ? (3 - a.t) / 0.7 : 1;
@@ -4302,9 +4498,9 @@ export class Cena {
     this.pisoes = this.pisoes.filter((p) => (p.t += dt) < p.dur);
     for (const p of this.pisoes) {
       const k = p.t / p.dur, x = p.x * T, y = p.y * T, rx = p.raio * T, ry = p.raio * T * 0.6;
-      g.fillStyle = `rgba(255,40,20,${0.12 + 0.1 * k})`; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = `rgba(255,60,30,${0.25 + 0.2 * k})`; g.beginPath(); g.ellipse(x, y, rx * k, ry * k, 0, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = `rgba(255,${120 - 80 * k},60,0.9)`; g.lineWidth = 2; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = `rgba(${p.rgb || '255,40,20'},${0.12 + 0.1 * k})`; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = `rgba(${p.rgb || '255,60,30'},${0.25 + 0.2 * k})`; g.beginPath(); g.ellipse(x, y, rx * k, ry * k, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = p.rgb ? `rgba(${p.rgb},0.95)` : `rgba(255,${120 - 80 * k},60,0.9)`; g.lineWidth = 2; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.stroke();
     }
     this.ondas = this.ondas.filter((o) => (o.t += dt) < 0.45);
     for (const o of this.ondas) {
@@ -4369,14 +4565,14 @@ export class Cena {
       // o gradiente do chão é criado uma vez por zona (criar a cada quadro, do tamanho da zona, pesava; p580); no modo leve, cor lisa
       const cache = (this.gradPk ??= new Map());
       let gr = cache.get(z);
-      if (!gr || gr.g !== g) { const n = g.createRadialGradient(x, y, rx * 0.2, x, y, rx); n.addColorStop(0, 'rgba(160,20,20,0.10)'); n.addColorStop(1, 'rgba(200,20,20,0.24)'); gr = { g, n }; cache.set(z, gr); }
-      g.fillStyle = this.leve ? 'rgba(180,20,20,0.16)' : gr.n; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = `rgba(255,60,50,${0.6 + 0.2 * Math.sin(this.tempo * 3)})`; g.lineWidth = 3; g.setLineDash([14, 10]); g.lineDashOffset = -this.tempo * 12;
+      if (!gr || gr.g !== g) { const n = g.createRadialGradient(x, y, rx * 0.2, x, y, rx); n.addColorStop(0, corZonaPk(z, 0.1)); n.addColorStop(1, corZonaPk(z, 0.24)); gr = { g, n }; cache.set(z, gr); }
+      g.fillStyle = this.leve ? corZonaPk(z, 0.16) : gr.n; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = z.semCap ? `rgba(255,60,50,${0.6 + 0.2 * Math.sin(this.tempo * 3)})` : `rgba(255,150,40,${0.6 + 0.2 * Math.sin(this.tempo * 3)})`; g.lineWidth = 3; g.setLineDash([14, 10]); g.lineDashOffset = -this.tempo * 12;
       g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
       for (let i = 0; i < 12; i++) {          // as caveiras da borda: do cache de rótulos e só as que estão na tela
         const a = (i / 12) * Math.PI * 2, kx = x + Math.cos(a) * rx, ky = y + Math.sin(a) * ry + 4;
         if (kx < cx - 20 || kx > cx + VIS_L * T + 20 || ky < cy - 20 || ky > cy + VIS_A * T + 20) continue;
-        escrever(g, '☠', kx, ky, `bold 13px ${FONTE}`, 'rgba(255,90,80,0.8)', 0);
+        escrever(g, '☠', kx, ky, `bold 13px ${FONTE}`, z.semCap ? 'rgba(255,90,80,0.8)' : 'rgba(255,170,70,0.8)', 0);
       }
       g.restore();
     }
@@ -4399,7 +4595,7 @@ export class Cena {
     g.beginPath(); g.rect(x0b, y0b, w, h); g.clip();
     // o que aparece na tela agora
     g.strokeStyle = 'rgba(255,255,255,0.55)'; g.strokeRect(x0 + (this.cam.x / T) * k + 0.5, y0 + (this.cam.y / T) * k + 0.5, VIS_L * k, VIS_A * k);
-    if (m.mundo) for (const z of ZONAS_PK) { g.strokeStyle = 'rgba(255,60,50,0.9)'; g.lineWidth = 1; g.beginPath(); g.ellipse(x0 + z.x * k, y0 + z.y * k, z.r * k, (z.r * k) / 1.1, 0, 0, Math.PI * 2); g.stroke(); g.fillStyle = 'rgba(200,20,20,0.25)'; g.fill(); }
+    if (m.mundo) for (const z of ZONAS_PK) { g.strokeStyle = z.semCap ? 'rgba(255,60,50,0.9)' : 'rgba(255,150,40,0.9)'; g.lineWidth = 1; g.beginPath(); g.ellipse(x0 + z.x * k, y0 + z.y * k, z.r * k, (z.r * k) / 1.1, 0, 0, Math.PI * 2); g.stroke(); g.fillStyle = corZonaPk(z, 0.25); g.fill(); }
     for (const o of this.jogArena.values()) {
       const px = x0 + (o.x + 0.5) * k, py = y0 + (o.y + 0.9) * k;
       if (o.caveira) { g.fillStyle = '#000'; g.fillRect(px - 3, py - 3, 6, 6); g.fillStyle = Math.sin(this.tempo * 8) > 0 ? (o.vermelha ? '#ff2020' : '#ff9a20') : (o.vermelha ? '#ffd0d0' : '#ffe0b0'); g.fillRect(px - 2, py - 2, 4, 4); continue; }      // Caveira: maior e piscando
@@ -4470,6 +4666,7 @@ export class Cena {
     const novoCamp = estiloNovoLigado() && ANIM_NOVA.has(aparencia(c.nome).forma);
     const fase = Math.floor(((novoCamp ? c.distVis : c.dist) || 0) * 4) % 8;
     let frame = c.atk > 0 || c.canal > 0 ? 3 : andando ? 20 + fase : 0;
+    if (c.quadroDg && this.tempo < c.quadroDg.ate) frame = c.quadroDg.q;      // dungeon: a pose da habilidade do Braum (p670)
     // estilo novo: campeões com ataque em 4 tempos (preparação, golpe, impacto, recuperação) e respirando parados
     if (estiloNovoLigado() && ANIM_NOVA.has(aparencia(c.nome).forma)) {
       if (c.atk > (c.atkVisto || 0)) c.golpeT0 = this.tempo;
@@ -4845,7 +5042,7 @@ export class Cena {
     if (e.tipo.startsWith('kat')) return this.efeitoKatarina(g, e, k);
     if (e.tipo.startsWith('taric')) return this.efeitoTaric(g, e, k);
     if (e.tipo.startsWith('zac')) return this.efeitoZac(g, e, k);
-    const base = e.fixo || (e.alvo ? (this.criaturas.has(e.alvo.id) || e.alvo.arenaJog ? this.pos(e.alvo) : e) : this.pos(this.darius));      // segue o monstro ou o jogador de Runeterra
+    const base = e.fixo || (e.alvo ? (this.criaturas.has(e.alvo.id) || e.alvo.arenaJog || e.alvo.aliado ? this.pos(e.alvo) : e) : this.pos(this.darius));      // segue o monstro ou o jogador de Runeterra
     const x = base.px + 16, y = base.py + 18;
     if (e.tipo === 'tiro' || e.tipo === 'disparo' || e.tipo === 'orbe') {
       // projétil saindo da manopla (ou de outro monstro, no ricochete) até o alvo, com rastro
@@ -5900,4 +6097,3 @@ export class Cena {
     g.globalAlpha = 1;
   }
 }
-
