@@ -4288,7 +4288,9 @@ const CFG_VER = 1;
         if (!seen.has(k)) seen.set(k, { assinatura: k, itens: res.itens.map(String), regiao: rod.regiao || null });
       }
     }
-    return [...seen.values()].map((s) => { const p = preverBuild(s.itens, regiaoId); return { ...s, ...p }; });
+    // D (TK-01-42): cada celula traz as JANELAS em que foi medida e o AVISO de nao-comparabilidade
+    // entre janelas (duas medidas de execucoes diferentes nao se comparam directamente).
+    return [...seen.values()].map((s) => { const p = preverBuild(s.itens, regiaoId); const jan = Array.isArray(s.janelas) ? s.janelas : []; return { ...s, ...p, janelas: jan, avisoJanela: jan.length > 1 ? 'medida em ' + jan.length + ' janelas — nao comparavel directamente' : null }; });
   }
 
   /** Ranking NORMALIZADO: TODAS as builds medidas no MESMO patamar (tier A, refino 0) — comparação justa.
