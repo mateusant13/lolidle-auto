@@ -4187,7 +4187,7 @@
       const cap = 3 * (cv[0] + cv[1] * (alvo.nivel || 1) + cv[2] * (alvo.nivel || 1) ** 2);
       burn = Math.min(alvo.hp, cap) * 0.015; dps += burn;
     }
-    return { dps: Math.round(dps), ap: Math.round(ap), cdr: +cdr.toFixed(2), pen: +pen.toFixed(2), burn: Math.round(burn), habs: habs.sort((a, b) => b.dps - a.dps).slice(0, 5), det };
+    return { hemorragia: (typeof hemorragiaDe === 'function' ? hemorragiaDe(p && p.nivel, p && p.bonusAd, alvo) : null), dps: Math.round(dps), ap: Math.round(ap), cdr: +cdr.toFixed(2), pen: +pen.toFixed(2), burn: Math.round(burn), habs: habs.sort((a, b) => b.dps - a.dps).slice(0, 5), det };
   }
 
   /** Multiplicador médio de ATRIBUTO dos itens EQUIPADOS (refino +12%/nv, qualidade): (1+0.12·ref)·multQual. */
