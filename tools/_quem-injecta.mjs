@@ -1,0 +1,15 @@
+const ws = new WebSocket('ws://127.0.0.1:9224/cdp');
+let id = 0; const pend = new Map(); const scripts = [];
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } else if (m.method === 'Debugger.scriptParsed' && m.params && /^chrome-extension:/i.test(m.params.url || '')) scripts.push(m.params.url); });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p, sid) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify(sid ? { id: i, method: m, params: p||{}, sessionId: sid } : { id: i, method: m, params: p||{} })); setTimeout(() => r({ __t: true }), 10000); });
+const nt = await send('Target.createTarget', { url: 'about:blank' });
+const s = (await send('Target.attachToTarget', { targetId: nt.result.targetId, flatten: true })).result.sessionId;
+await send('Debugger.enable', {}, s);
+await send('Page.enable', {}, s);
+await send('Page.navigate', { url: 'https://example.com/' }, s);
+await new Promise(r => setTimeout(r, 6000));
+const e = await send('Runtime.evaluate', { expression: "JSON.stringify({recursos:[...new Set(performance.getEntriesByType('resource').map(x=>x.name).filter(n=>n.startsWith('chrome-extension://')).map(n=>n.split('/')[2]))]})", returnByValue: true }, s);
+console.log('extensoes a injectar em example.com: ' + (e.__t ? 'sem resposta' : String(e.result?.result?.value)));
+console.log('scripts de extensao vistos: ' + [...new Set(scripts.map(u => u.split('/')[2]))].join(', ').slice(0, 300));
+ws.close(); process.exit(0);

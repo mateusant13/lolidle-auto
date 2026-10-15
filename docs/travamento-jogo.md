@@ -43,3 +43,29 @@ Depois: `bun tools/_probe9334b.mjs` (sonda CDP ao 9334; usa o `webSocketDebugger
 
 **Nota de ambiente:** o relay do omp (`omp browser-relay serve -p 9224`) é o que dá o `/cdp`; se ele
 cair, `relay offline`/`timeout` em tudo. Religa-se com `omp browser-relay serve -p 9224 --no-group`.
+
+## ADENDA 12:50 - TRAVAMENTO: 9 EXTENSOES INJECTAM EM TODAS AS PAGINAS (medido)
+Medido com CDP (`Debugger.scriptParsed` numa pagina neutra, example.com) no Chrome do dono:
+
+| ID | Nome |
+|---|---|
+| cfhdojbkjhnklbpkdaibdccddilifddb | Adblock Plus |
+| gighmmpiobklfepjocnamgkkbiglidom | AdBlock |
+| ddkjiahejlhfcafbddmgiahcphecmpfh | uBlock Origin Lite |
+| eimadpbcbfnmbkopoojfekhnkhdbieeh | Dark Reader |
+| pkehgijcmpdhfbdbbnkijodmdjhbjlgp | Privacy Badger |
+| majdfhpaihoncoakbjgbdhglglocklcgno | VPN Gratis - VeePN (proxy) |
+| clngdbkpkpeebahjckkjfobafhncgmne / cnojnbdhbhnkbcieeekonklommdnndci / dpacanjfikmhoddligfbehkpomnbgblf | (sem nome no perfil) |
+
+**Tres bloqueadores + uma VPN/proxy a interceptar pedidos em todas as paginas.** Explica os 3 sintomas:
+- 'comecou do nada' -> extensoes ACTUALIZAM-SE sozinhas (listas/motor dos ad blockers mudam toda a semana);
+- ~1 s a FECHAR a pagina -> a mesma maquinaria no unload (sintoma classico de bloqueador);
+- Chrome LIMPO funciona -> sem extensoes, nada intercepta.
+**A NOSSA extensao esta provada inocente** (2 bisectos + o limpo a funcionar com ela carregada).
+Nao consigo desligar extensoes por CDP - o passo final e do dono (chrome://extensions).
+
+### Como se leu a conta do dono noutro Chrome (transparencia)
+Copiaram-se 3 coisas do perfil para `C:\Temp\ll-ext-profile` (18 MB): `Local State`,
+`Default\Network\Cookies` e `Default\Local Storage`. **NAO** se copiou o `Preferences` - e por isso
+esse Chrome nao tem as extensoes do dono. Nao houve password nem login: a sessao vive nos cookies/
+localStorage. A pasta CONTEM a sessao do dono - apagar quando ele pedir.
