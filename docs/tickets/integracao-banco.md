@@ -695,3 +695,10 @@ a suite passa a ALCANCAR depois do `sobrevivenciaSet` existir. Total 5 -> 11.
 `tMorrer` forem os DOIS `Infinity`, o `dpsChefe` do `estimarLuta('barao')` nao esta a chegar; se a `vida`
 nao crescer 500, o `detalhe` nao esta a ver o catalogo daquele mundo.
 **Estado mantido: 5 falhas, 21/25 verdes.**
+## ADENDA 17:30 - rankItensSobrevivencia: acrescentado e REVERTIDO (5->8)
+O `sobrevivenciaSet` (o criterio, F1-F8 ✓) esta COMMITADO e mantido. O `rankItensSobrevivencia`
+acrescentado agora faz a suite correr e falhar 3 (5->8): o rank tem de trazer `nPocoes` e `ouroPocao`
+CALCULADOS (o G6 pede-os; eu pus zeros fixos) e a ordem tem de diferir do ranking de DPS puro (F9).
+**Proximo passo:** `nPocoes` = o liquido (dano recebido - cura) / cura da pocao (o `estimarLuta` ja tem
+`potS`/`curaPocaoS`); `ouroPocao` = nPocoes x preco da pocao. Revertido para manter 5.
+**Estado: 5 falhas, 21/25 verdes** (com o criterio do dono implementado).
