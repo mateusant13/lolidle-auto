@@ -517,3 +517,11 @@ Ou seja: o `medido` nao e 'o bug' - e a PORTA. O trabalho seguinte e corrigir o 
 pegar nisto, fazer o PAR (medido + as 6-9 assercoes) numa so ronda - como se fez com o H12c.
 7 tentativas medidas: null 24 · agregar 23 · tirar do diag 20/23 · modulo 23 · por-funcao 21 ·
 contrato so-rank 20 · contrato duas-fontes 20/23.
+## ADENDA 13:40 - naBase: BUG REAL (booleano chamado como funcao) — 14->16 mas mantido
+`automation.js:774`: `const naBase = /fonte/i.test(loc.text);` -> um **BOOLEANO**.
+Mas e CHAMADO como funcao em 4 sitios: 2805, 3024, 3754 (`refinarMelhores`), 3844 -> **TypeError**.
+**No jogo tambem rebenta** (o refino, o cofre e o vender nunca corriam por esse caminho).
+Corrigido para `const naBase = () => /fonte/i.test(loc.text);` -> **banco 14 -> 16** (2 reais que
+estavam escondidas atras do TypeError). Mantido pela mesma razao das outras: bug real > numero baixo.
+NOTA: `'Fonte de Runeterra'` casa com `/fonte/i` -> o `refinarMelhores` deixa de sair cedo.
+O `medido` continua por fazer (7 tentativas): com o `naBase` corrigido, o par `medido`+R3 pode agora fechar.
