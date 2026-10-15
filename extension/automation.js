@@ -6828,11 +6828,11 @@
     if (!giro || giro.i >= giro.lista.length) { logEvent('giro-fim', { feito: giro ? giro.i : 0 }); giro = null; salvarGiro(); return; }
     if ((readLocation().text || '') !== 'Fonte') {
       if (_giroVoltas >= 5) {
-        logEvent('giro-desistiu', { motivo: 'nao voltou a Fonte em 5 tentativas', voltas: _giroVoltas });
+        logEvent('giro', { desistiu: 'nao chegou a Fonte', tentativas: _giroVoltas });
         _giroVoltas = 0; giro = null; salvarGiro(); return;
       }
       // W7: a espera era MUDA (o dono via o boneco parado sem saber porquê) — registar.
-      logEvent('giro-espera', { voltas: _giroVoltas + 1, onde: (readLocation().text || '?') });
+      logEvent('giro', { esperaFonte: true, tentativas: _giroVoltas + 1, onde: (readLocation().text || '?') });
       _giroVoltas++;
       press('b');
       return setTimeout(proximoGiro, 9000);
@@ -7376,7 +7376,7 @@
     // inventa uma região — usa-se o conjunto inteiro.
     const emNivel = cand0.filter((x) => !abaixoDoNivel(x.l, p));
     const cand = emNivel.length ? emNivel : cand0;
-    if (!cand.length) return null;
+    if (!cand.length) logEvent('regiao', { motivo: 'sem regioes: META.locais vazio (sem meta)' }); return null;
     // NÃO MISTURAR MEDIDO COM TEORIA: a teoria SISTEMATICAMENTE sobrestima (Campo Azul mede
     // 4.719 xp/min contra 6.309 teóricos), por isso comparar as duas numa só ordenação faz a
     // teoria ganhar sempre — que era exactamente o bug. Se houver QUALQUER região com amostra
