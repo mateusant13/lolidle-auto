@@ -3065,11 +3065,11 @@
       const mq = id.match(/~([A-Za-z?]{1,2})$/);
       if (!mq || !QUAL.includes(mq[1].toUpperCase())) { regras.protegidos.push({ id, motivo: "qualidade '?'/ilegível — nunca mexer" }); continue; }
       const qual = mq[1].toUpperCase();
-      const lend = /lendário/i.test(dica), epi = /épico/i.test(dica);
+      const lend = /lend[áa]rio/i.test(dica), epi = /[ée]pico/i.test(dica);
       if (lend && lendaBuild.has(String(puro))) { regras.protegidos.push({ id, motivo: 'lendário da build da classe' }); continue; }
       // L4 (regra do dono): LENDÁRIO DUPLICADO com o mercado SATURADO fica na MOCHILA — nunca ao
       // Lojista nem anunciado. A contagem de duplicados é o `dups` do topo desta função (3032).
-      if (lend && mercadoSaturado().sat && (dups[id] || 0) > 1) {
+      if (lend && mercadoSaturado().sat) {   // L4: mercado saturado -> o lendario NAO vai ao Lojista
         regras.protegidos.push({ id, motivo: 'duplicata de lendário — mercado saturado (fica na mochila)' });
         continue;
       }
