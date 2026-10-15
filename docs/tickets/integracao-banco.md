@@ -630,3 +630,13 @@ estado a que se chega ao abrir a porta - e o trabalho e o PAR (medido + o que es
 H12c e no w10.
 **Nota de metodo:** o numero de SUITES VERDES e um indicador melhor que o total de falhas quando ha
 portas - uma suite verde = uma area verificada por inteiro.
+## ADENDA 16:05 - w1-regioes B2: causa encontrada (span=0) mas o recurso teorico PIORA (8->11)
+**Causa exacta:** no mundo do teste os 3 abates do #log tem o MESMO instante (`Date.now()` do stub),
+logo `span = 0` -> `analisarWaves().killsMin = 0` -> `ritmoMobs` devolve `null` (e o B2 espera o
+`perWave` MEDIO = 3).
+Tentei o recurso TEORICO (`(perWave / respawn) * 60`, do `META.respawn` - numero LIDO) quando a medida
+e 0 -> **8 -> 11 falhas e 21 -> 20 suites verdes**: ha MUNDOS em que o `ritmoMobs` DEVE devolver null
+(sem ritmo medido) e o recurso responde na mesma. Revertido.
+**O que fica:** a causa esta identificada e e do FIXTURE (abates no mesmo instante). O par certo e
+corrigir o fixture para dar instantes distintos (1 por segundo) - assim a MEDIDA existe e o `null`
+continua a significar 'sem medida'. Estado mantido: 8 falhas / 21 verdes.
