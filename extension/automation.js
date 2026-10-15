@@ -202,51 +202,31 @@
   };
   let cfg = structuredClone(DEFAULT);
 
-  // ============ NÚMEROS COMO O ECÃ DO JOGO OS ESCREVE (directiva do Lead, 2026-10-14 22:01) ============
-  // O jogo escreve TODOS os números do HUD/log/dica pelo `fmt` (cena.js:225):
-  //   fmt(n) = n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e4 ? (n/1e3).toFixed(1)+'k' : Math.round(n)
-  // donde '4188' · '12.3k' · '1.2M'. O `parseNum` antigo era `replace(/[^\d]/g,'')`, que APAGA o
-  // sufixo: '12.3k' virava 123 (100x menos) e '1.2M' virava 12 — ouro, vida, cura e preços lidos
-  // errados EM SILÊNCIO acima de 10.000. MEDIDO nos caminhos deste ficheiro: `readGold`
-  // (#st-ouro, jogo.js:6398), `readPotions`, o `vendaLojista` do tooltip (scanBag) e o ouro/xp
-  // do log do farm (handleLog).
-  // A REGRA (a mesma já provada no content.js): o sufixo {k:1e3, m:1e6} entra nos GRUPOS da
-  // regex; um grupo de 3 casas ('4.188') é MILHAR, e COM sufixo ('12.3k') é decimal. Inteiros
-  // continuam iguais (sem regressão). FONTE: cena.js:225 + jogo.js:6203/6398/3759/3769/192.
-  const NUM_SUFIXO = { k: 1e3, m: 1e6 };                                    // cena.js:225
-  /** Converte o grupo de dígitos + sufixo no número. Sem sufixo, grupo de 3 = milhar;
-   *  com sufixo, o grupo é decimal (pt '12,3k' e en '12.3k' dão o mesmo). */
-  const numDe = (dig, suf) => {
-    // Remove os separadores de frase no fim ('5625.' ou '5.625.' — o ponto do fim da frase).
-    let s = String(dig == null ? '' : dig).trim().replace(/[.,]+$/, '');
+  // SUFIXO do `fmt` do JOGO (docs/game-src/cena.js:225):
+  //   fmt = n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e4 ? (n/1e3).toFixed(1)+'k' : Math.round(n)
+  // O parser antigo (`replace(/[^\d]/g,'')`) APAGAVA o sufixo: "12.3k" virava 123 e "1.2M"
+  // virava 12 — ouro, poções e stats lidos errados EM SILÊNCIO acima de 10.000. REGRA provada
+  // no content.js:83-100 (o MESMO bug, lá com o gatilho da poção a morrer acima de 10k de HP):
+  // grupo de 3 casas ("4.188") = MILHAR (pt-BR); com sufixo ("12.3k") = decimal. Com inteiros o
+  // comportamento é idêntico (sem regressão).
+  const SUFIXO = { k: 1e3, K: 1e3, m: 1e6, M: 1e6 };   // cena.js:225: k = x1000, M = x1000000
+  /**
+   * Número do HUD como o jogo o escreve.
+   * @param {string} raw campo numérico (sem o sufixo)
+   * @param {string} [suf] 'k'/'m' que vinha imediatamente a seguir ao campo
+   */
+  const parseNum = (raw, suf) => {
+    const s = String(raw ?? '').replace(/[\s\u00a0\u202f]/g, '');
     if (!s) return NaN;
-    if (suf) s = s.replace(/,/g, '.');                       // COM sufixo: separador decimal
-    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');   // '4.188' = MILHAR
-    else s = s.replace(/,/g, '.');                           // '1,5' = decimal
-    const v = parseFloat(s);
-    return Number.isFinite(v) ? v * (NUM_SUFIXO[String(suf || '').toLowerCase()] || 1) : NaN;
-  };
-  /** Número como o ecrã do jogo o escreve. `null` quando não há número.
-   *  Casos provados (directiva do Lead): '12.3k / 20.4k' -> {cur:12300, max:20400}; '9.876 /
-   *  12.3k' -> 12300 (o parseNum antigo dava 123); '1.2M' -> 1200000; '4.188' -> 4188;
-   *  '4188' -> 4188; '1,5' -> 1.5; '' -> null. */
-  const numEcra = (txt) => {
-    const s = String(txt == null ? '' : txt).trim();
-    if (!s) return null;
-    const m = s.match(/^([\d.,]*\d[\d.,]*)\s*([kKmM]?)$/);
-    if (m) { const v = numDe(m[1], m[2]); return Number.isFinite(v) ? Math.round(v) : null; }
-    // Tolerante: o ecrã escreve '12.3k de ouro', 'Vale 5625 de ouro no Lojista.', '9.876 /
-    // 12.3k' — o valor é o ÚLTIMO grupo com PELO MENOS UM DÍGITO. Sem o `\d` no grupo o ponto
-    // final de 'Vale 5625 de ouro no Lojista.' era capturado como 'número' e dava null.
-    let ult = null;
-    const re = /([\d.,]*\d[\d.,]*)\s*([kKmM]?)/g;
-    let g; while ((g = re.exec(s)) !== null) ult = g;
-    if (!ult) return null;
-    const v = numDe(ult[1], ult[2]);
-    return Number.isFinite(v) ? Math.round(v) : null;
-  };
-  const parseNum = (raw, suf) => { const txt = (raw == null || raw === '') ? '' : (suf != null && suf !== '' ? String(raw) + String(suf) : String(raw)); const v = numEcra(txt); return v == null ? NaN : v; };   // aceita (raw, sufixo) ou o texto inteiro
-  const numOr = (v, d) => Number.isFinite(v) ? v : d;
+    const d = s.replace(/[^\d.,]/g, '');                       // "12.3" | "4.188" | "1.234.567"
+    if (!d) return NaN;
+    // "4.188" (grupo de 3) é MILHAR em pt-BR; "12.3" é decimal (o `fmt` dá 1 casa, cena.js:225).
+    const v = /^\d{1,3}([.,]\d{3})+$/.test(d) ? Number(d.replace(/[.,]/g, ''))
+      : /^\d+[.,]\d+$/.test(d) ? Number(d.replace(',', '.'))
+        : Number(d.replace(/[.,]/g, ''));
+    const mult = SUFIXO[String(suf ?? '').trim()] || 1;
+    return Number.isFinite(v) ? v * mult : NaN;
+  };  const numOr = (v, d) => Number.isFinite(v) ? v : d;
 
   // ------------------------------------------------------------- keybinds
   function press(key) {
@@ -260,8 +240,12 @@
     // `#st-ouro` escreve `fmt(ouro)` (jogo.js:6398) — UM parser só (o `numEcra`), em vez de
     // duas contas do sufixo aqui e nenhuma no `parseNum`. '4188' · '12.3k' · '1.2M' · '4.188'.
     const t = document.querySelector('#st-ouro')?.textContent || '';
-    return numEcra(t) ?? NaN;
-  }
+    // O sufixo do `fmt` entra no GRUPO (cena.js:225): "12.3k" = 12.300. A versão antiga
+    // testava /k/i e multiplicava por 1e3 — funcionava para "12.3k", mas um "1.234" puro
+    // caía no parseNum que apagava o ponto: 1234 virava 123. Agora os dois casos passam
+    // pela MESMA regra (grupo de 3 = milhar; com sufixo = decimal).
+    const m = String(t).match(/([\d.,]+)\s*([kKmM])?/);
+    return m ? parseNum(m[1], m[2]) : NaN;  }
   function readLocation() {
     const t = document.querySelector('#local-nome')?.textContent || '';
     const m = t.match(/nível\s*(\d+)[–-](\d+)/i);
@@ -679,13 +663,10 @@
   const seenLog = new WeakSet();
   let farm = { current: null, cycles: [], log: [], issues: [], deaths: [] };
 
-  // PREÇOS/QUANTIAS do ecrã (mercado, ofertas, `#mj-minimo`): o jogo escreve com `fmt`
-  // (cena.js:225) e o texto em pt-BR traz milhar com ponto — '4.188' é 4188, não 4. O `parseBig`
-  // antigo fazia `parseFloat('4.188')` = 4,188 e arredondava para 4: um preço de 4.188 de ouro
-  // no mercado era lido como 4. Passa a ser o MESMO parser do resto (`numEcra`), com `null`
-  // quando não há número (contrato de sempre deste helper).
-  const parseBig = (s) => (s == null || s === '' ? null : numEcra(s));
-  function logEvent(type, data) { try { farm.log = [{ at: Date.now(), type, ...data }, ...(farm.log || [])].slice(0, 200); } catch { /* ignore */ } }
+  // Mesma regra do parseNum (sufixo do `fmt`, cena.js:225; grupo de 3 = milhar em pt-BR).
+  // O antigo capturava `([\d.]+)` — sem a vírgula e sem o sufixo no grupo, "Perdeu 12,3k"
+  // não casava e o XP da morte era registado como null.
+  const parseBig = (s) => { if (!s) return null; const m = String(s).match(/([\d.,]+)\s*([kKmM])?/); if (!m) return null; const v = parseNum(m[1], m[2]); return Number.isFinite(v) ? Math.round(v) : null; };  function logEvent(type, data) { try { farm.log = [{ at: Date.now(), type, ...data }, ...(farm.log || [])].slice(0, 200); } catch { /* ignore */ } }
   function logIssue(type, data) { try { farm.issues = [{ at: Date.now(), type, ...data }, ...(farm.issues || [])].slice(0, 100); } catch { /* ignore */ } }
 
   const PRECO_POCAO = { get vida() { return pocaoInfo('vida').preco; }, get vidaF() { return pocaoInfo('vidaF').preco; }, get vidaS() { return pocaoInfo('vidaS').preco; } };
@@ -1527,7 +1508,35 @@
   // Estes leitores pegam os numeros onde o jogo os poem — cada um com o file:linha que o escreve.
   // =====================================================================================
 
-  // (parser único `numEcra` — declarado acima na secção de leitura do ecrã)
+  /** NUMERO como o ECRÃ do jogo o escreve. `fmt` (cena.js:225):
+   *    n >= 1e6 -> (n/1e6).toFixed(1)+'M' · n >= 1e4 -> (n/1e3).toFixed(1)+'k' · senao Math.round(n)
+   *  BUG MEDIDO: `#hud-vida-txt` (jogo.js:6203) usa este `fmt`, logo acima de 10.000 a string vem
+   *  '12.3k / 20.4k' — e a regex antiga `(\d+)\s*\/\s*(\d+)` nao casava com o 'k', pelo que a
+   *  vida do boneco caia no LITERAL 4188. Este parser e a mesma conta do `fmt`, invertida.
+   *  Auto-contido de proposito: sobrevive a fusões do ficheiro (nao depende de nenhum bloco
+   *  acima). Os numeros do HUD/log/dica passam todos por aqui. */
+  const numEcra = (txt) => {
+    const norm = (g, suf) => {
+      let s = g;
+      if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');      // '1.234' = milhar (pt-BR)
+      else s = s.replace(',', '.');                                     // '1,5'  = decimal
+      let v = parseFloat(s);
+      if (!Number.isFinite(v)) return null;
+      if (/k/i.test(suf)) v *= 1e3;
+      if (/M/i.test(suf)) v *= 1e6;
+      return Math.round(v);
+    };
+    const s = String(txt == null ? '' : txt).trim();
+    if (!s) return null;
+    const m = s.match(/^([\d.,]+)\s*([kKmM]?)$/);
+    if (m) return norm(m[1], m[2]);
+    // TOLERANTE: o ecra escreve o numero dentro de frase — '9.876 / 12.3k' (o valor e o ULTIMO
+    // grupo: a Vida maxima), 'Vale 5625 de ouro no Lojista.' (o ponto final nao e numero).
+    let ult = null;
+    const re = /([\d.,]*\d[\d.,]*)\s*([kKmM]?)/g;
+    let g; while ((g = re.exec(s)) !== null) ult = g;
+    return ult ? norm(ult[1], ult[2]) : null;
+  };
   /** Valor de uma variavel CSS inline (`--cd`) que O JOGO escreve no elemento.
    *  jogo.js:6228 (recarga das habilidades) · jogo.js:6172 (buffs) · jogo.js:6190 (recarga de item).
    *  Le-se o valor INLINE (`el.style.getPropertyValue`), nao `getComputedStyle`: e exactamente
@@ -1688,11 +1697,20 @@
       const t = e.textContent.replace(/\s+/g, ' ').trim();
       // ROUBO DE VIDA entra na leitura (pedido do Lead): e o stat que decide a luta contra o chefe
       // (cura so em AUTO-ATAQUES, motor.js:1226-1228) e o painel do jogo mostra-o.
-      // TK-02-142: o painel escreve 'Roubo de Vida' com V maiúsculo (jogo.js:5999) e a regex
-      // exigia 'Roubo de vida' — com o `^...$` ancorado e sem flag `i`, o rv NUNCA era lido.
-      // Aceita as DUAS grafias e normaliza a CHAVE (o resto do ficheiro usa 'Roubo de vida').
-      const m = t.match(/^(Dano|Armadura|Vel\. ataque|Res\. mágica|Poder|Mana|Crítico|Esquiva|Roubo de [Vv]ida)(.*)$/);
-      if (m) { const v = (m[2].match(/[\d.,]+/) || [''])[0]; const k = m[1] === 'Roubo de Vida' ? 'Roubo de vida' : m[1]; out[k] = v ? parseFloat(v.replace(',', '.')) : 0; }
+      // ROTULOS do painel: o jogo escreve 'Roubo de Vida' (jogo.js:5999) — com V maiusculo — e
+      // 'Vel. ataque', 'Res. mágica' comSiglaMista. O match e case-insensitive e a chave fica
+      // NORMALIZADA ('Roubo de vida'), para o `player()` e os testes falarem sempre a mesma
+      // lingua qualquer que seja a capitalizacao que o jogo use.
+      const m = t.match(/^(Dano|Armadura|Vel\. ataque|Res\. mágica|Poder|Mana|Crítico|Esquiva|Roubo de [Vv]ida)(.*)$/i);
+      // O painel escreve os valores com o `fmt` do jogo (jogo.js:6454-6460 `txt('#st-ad',
+      // fmt(a.ad))`), logo "Dano 12.3k" e "Vida 4.188" chegam aqui. Sem o sufixo no grupo
+      // (e sem a regra grupo-de-3 = milhar) o Dano acima de 10.000 era lido 1000x menor —
+      // e o `player()/dpsPorHabilidade` inteiro trabalha com esse número.
+      if (m) {
+        const v = m[2].match(/([\d.,]+)\s*([kKmM])?/);
+        const rot = m[1].toLowerCase() === 'roubo de vida' ? 'Roubo de vida' : m[1];
+        out[rot] = v ? parseNum(v[1], v[2]) : 0;
+      }
     }
     // Stats que o painel escreve por ID (sem rotulo pescavel por texto) — ver `lerStatsId`.
     const sid = lerStatsId();
@@ -1710,23 +1728,13 @@
     const nivel = parseInt(document.querySelector('#hud-nivel')?.textContent || document.querySelector('#st-nivel')?.textContent || '0', 10) || 0;
     const hp = lerVidaHud();
     const sid = lerStatsId();
-    // `va` = velocidade de ataque do HUD — usada como PISO de DPS quando nao ha historico medido
-    // (dano × vel. ataque = DPS de auto-ataque). Antes so existia `dano`, e usar o DANO POR GOLPE
-    // como se fosse DPS inflacionava qualquer valor de buff (ex.: a Respiracao do Vento).
     return {
       nivel,
       vida: hp.max, vidaCur: hp.cur, escudo: hp.escudo, vidaEff: (hp.vidaEff != null ? hp.vidaEff : hp.max),
       armadura: s['Armadura'] || 0, rm: s['Res. mágica'] || 0, dano: s['Dano'] || 0, poder: s['Poder'] || 0, va: s['Vel. ataque'] || 0,
-      // ROUBO DE VIDA (motor.js:538 `rouboVida`, aplicado em motor.js:1226-1228 `cura = dano × rv`):
-      // era LIDO pelo `readStats` e DEITADO FORA pelo `player()`. Vale ~269 de cura/s numa base AD
-      // (AGENTS.md, prova n.o 5) e decide a troca dano→sustento (docs/auditoria-do-jogo.md C8).
-      rv: (s['Roubo de vida'] || 0) / 100,   // TK-02-142: o painel mostra % (jogo.js:6001); o motor guarda fracção (motor.js:538)
-      // CRITICO (motor.js:541 chance; motor.js:499 base + 515 do 3031 = multiplicador): a build
-      // AD/critico e 2,5–2,8x a de AP contra o chefe e nao entrava em conta nenhuma
-      // (docs/auditoria-do-jogo.md item 7).
+      rv: (s['Roubo de vida'] || 0) / 100,
       critico: sid.critico != null ? sid.critico / 100 : (s['Crítico'] || 0) / 100,
-      critDano: sid.critDano != null ? sid.critDano : 1.75,          // motor.js:499 (base)
-      // CDR TOTAL do painel (motor.js:537: foco + itens, tecto 0,4) — a soma dos itens so nao chega.
+      critDano: sid.critDano != null ? sid.critDano : 1.75,
       cdr: sid.cdr != null ? sid.cdr / 100 : null,
       fonte: { vida: hp.max != null ? 'jogo:hud' : 'fallback', rv: s['Roubo de vida'] != null ? 'jogo:st' : 'ausente' },
     };
@@ -1890,7 +1898,12 @@
       // Campos do kit que o `serialKit` do inject.js (inject.js:107-123) reencaminha. `va`/
       // `bonus`/`bonusHab`/`penSuspiro`/`duracaoPen` NÃO estão nessa lista — ficam como
       // `serie(null)` = null e o `valorBuff` cai no TEXTO da habilidade (ver `buffDoTexto`).
-      out[t] = { max: h.max, mult: h.mult, alvo: h.alvo, adaga: !!h.adaga, auto: !!h.auto, dot: !!h.dot, passiva: !!h.passiva, util: !!h.util, adRatio: h.adRatio,
+      // `alvos` (TK-02-18): nº de alvos que a skill ATINGE — campo do kit do MOTOR
+      // (motor.js:751/759 a Q e o R da Katarina, motor.js:736 o M do Yasuo), reencaminhado
+      // pelo inject.js (inject.js:126). Estava PERDIDO aqui: a `barraIdeal` perguntava
+      // `KAT[t].alvos`, dava sempre undefined e a preferência por multi-alvo NUNCA
+      // discriminava — medido: a barra de mobs e a de chefe eram o MESMO conjunto.
+      out[t] = { max: h.max, mult: h.mult, alvo: h.alvo, alvos: h.alvos != null ? h.alvos : null, adaga: !!h.adaga, auto: !!h.auto, dot: !!h.dot, passiva: !!h.passiva, util: !!h.util, adRatio: h.adRatio,
         base: serie(h.base), ratio: serie(h.ratio), rec: serie(h.recarga), nivel: h.nivel,
         duracao: h.duracao, duracaoPen: h.duracaoPen, penSuspiro: h.penSuspiro,
         va: serie(h.va), bonus: serie(h.bonus), bonusHab: serie(h.bonusHab) };
@@ -1909,19 +1922,23 @@
   /** Lê o TOOLTIP (data-dica) do item: stats REAIS (já com refino + qualidade) + passivas. */
   function parseDica(dica) {
     const t = dica || '';
-    const f = (m) => m ? parseFloat(String(m[1]).replace(/\./g, '').replace(',', '.')) : 0;
-    const d = (m) => m ? parseFloat(String(m[1]).replace(',', '.')) : 0;
+    // SUFIXO do `fmt` DENTRO do grupo (cena.js:225): o tooltip do jogo escreve "+12.3k dano" /
+    // "+1.2M ouro", e sem o grupo do sufixo o regex nem casava — o stat era descartado em
+    // silêncio. MESMA regra do parseNum: grupo de 3 casas = milhar (pt-BR), com sufixo = decimal.
+    const f = (m) => (m ? parseNum(m[1], m[2]) : 0);
+    const d = (m) => (m ? parseNum(m[1], m[2]) : 0);
+    const num = /([\d.,]+)\s*([kKmM])?/;                 // grupo 1 = valor, grupo 2 = sufixo
     return {
-      ap: d(t.match(/\+([\d.,]+)\s*poder de habilidade/i)),
-      ad: d(t.match(/\+([\d.,]+)\s*dano de ataque/i)),
-      vida: f(t.match(/\+([\d.,]+)\s*vida/i)),
-      mana: f(t.match(/\+([\d.,]+)\s*mana/i)),
-      armadura: f(t.match(/\+([\d.,]+)\s*armadura/i)),
-      rm: f(t.match(/\+([\d.,]+)\s*res\.?\s*mágica/i)),
-      cdr: d(t.match(/[−-]\s*([\d.,]+)\s*%\s*recarga/i)) / 100,               // linha de stats (JÁ inclui o refino)
-      penMag: d(t.match(/([\d.,]+)\s*%\s*de\s*penetração\s*mágica/i)) / 100,
+      ap: d(t.match(new RegExp('\\+' + num.source + '\\s*poder de habilidade', 'i'))),
+      ad: d(t.match(new RegExp('\\+' + num.source + '\\s*dano de ataque', 'i'))),
+      vida: f(t.match(new RegExp('\\+' + num.source + '\\s*vida', 'i'))),
+      mana: f(t.match(new RegExp('\\+' + num.source + '\\s*mana', 'i'))),
+      armadura: f(t.match(new RegExp('\\+' + num.source + '\\s*armadura', 'i'))),
+      rm: f(t.match(new RegExp('\\+' + num.source + '\\s*res\\.?\\s*mágica', 'i'))),
+      cdr: d(t.match(new RegExp('[−-]\\s*' + num.source + '\\s*%\\s*recarga', 'i'))) / 100,   // linha de stats (JÁ inclui o refino)
+      penMag: d(t.match(new RegExp(num.source + '\\s*%\\s*de\\s*penetração\\s*mágica', 'i'))) / 100,
       apPct: d(t.match(/Poder de Habilidade total em\s*([\d.,]+)\s*%/i)) / 100,
-      lich: d(t.match(/\+([\d.,]+)\s*%\s*do\s*Poder de Habilidade/i)) / 100,
+      lich: d(t.match(new RegExp('\\+' + num.source + '\\s*%\\s*do\\s*Poder de Habilidade', 'i'))) / 100,
       refino: +(t.match(/refinado\s*\+?(\d+)/i)?.[1] || 0),
       qual: (t.match(/Qualidade\s*([A-Z]{1,2})/i) || [])[1] || null,
     };
@@ -4656,21 +4673,23 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     mobs: {
       stat: { va: 1.4, critico: 1.1, cdr: 1.15, ad: 1, ap: 1, rv: 1, vida: 0.9, armadura: 0.85, rm: 0.85, mana: 1, regen: 1 },
       itens: {
-        '3085': { mult: 1.9, why: 'Furacão de Runaan: cada ataque atinge mais 2 inimigos [motor.js:1718]' },
-        '6631': { mult: 1.8, why: 'Quebrapassos: +80% do AD em TODOS os alcançados, a cada 5 s [motor.js:1719]' },
-        '3074': { mult: 1.7, why: 'Hidra Raivosa: 40% do AD nos outros alcançados em CADA ataque [motor.js:1720]' },
-        '3748': { mult: 1.5, why: 'Hidra Titânica: +1,5% da vida máxima em todos os alcançados [motor.js:1721]' },
-        '3046': { mult: 1.6, why: 'Dançarina Fantasma: +6% de velocidade de ataque por ataque, até 5× [motor.js:1707]' },
-        '6610': { mult: 1.35, why: 'Céu Dividido: o primeiro ataque em CADA inimigo é crítico [motor.js:1699]' },
-        // Eco de Luden: o item de ÁREA do mago — em mobs o alvo é o GRUPO (motor.js:1947-1948
+        // CITAÇÕES RELOCALIZADAS para o motor VIVO (substituído 2026-10-14 21:50; tinha
+        // 3792 linhas, tem 3846 — as inserções a partir da linha 122 desviaram os números).
+        '3085': { mult: 1.9, why: 'Furacão de Runaan: cada ataque atinge mais 2 inimigos [motor.js:1740]' },
+        '6631': { mult: 1.8, why: 'Quebrapassos: +80% do AD em TODOS os alcançados, a cada 5 s [motor.js:1741]' },
+        '3074': { mult: 1.7, why: 'Hidra Raivosa: 40% do AD nos outros alcançados em CADA ataque [motor.js:1742]' },
+        '3748': { mult: 1.5, why: 'Hidra Titânica: +1,5% da vida máxima em todos os alcançados [motor.js:1743]' },
+        '3046': { mult: 1.6, why: 'Dançarina Fantasma: +6% de velocidade de ataque por ataque, até 5× [motor.js:1688]' },
+        '6610': { mult: 1.35, why: 'Céu Dividido: o primeiro ataque em CADA inimigo é crítico e cura 6% da vida perdida [motor.js:1721-1726]' },
+        // Eco de Luden: o item de ÁREA do mago — em mobs o alvo é o GRUPO (motor.js:1969
         // bate em ATÉ 3 inimigos); no chefe (um alvo só) ele perde para a Liandry, cujo % da
         // vida máxima bate no teto contra vida alta (motor.js:1191). A CONTA que fixa o
         // multiplicador: com 400 de AP o Eco faz (100 + 40) × 3 alvos = 420 por 6 s ≈ 70/s no
         // grupo, contra ≈ 30/s da Liandry num mob de ~2 000 de vida. O multiplicador é a minha
         // CALIBRAÇÃO sobre a direcção que o motor fixa (o valor da passiva da Liandry já entra
         // a +140 pelo texto; a do Eco não tem regra em `valorPassiva`).
-        '6655': { mult: 1.9, why: 'Eco de Luden: a cada 6 s a habilidade bate em até 3 inimigos, 100 + 10% do AP [motor.js:1945]' },
-        '3742': { mult: 1.2, why: 'Couraça do Defunto: +40 de dano fixo a cada 4 s — pesa mais contra vida baixa [motor.js:1698]' },
+        '6655': { mult: 1.9, why: 'Eco de Luden: a cada 6 s a habilidade bate em até 3 inimigos, 100 + 10% do AP [motor.js:1967-1971]' },
+        '3742': { mult: 1.2, why: 'Couraça do Defunto: +40 de dano fixo a cada 4 s — pesa mais contra vida baixa [motor.js:1720]' },
       },
     },
     chefe: {
@@ -4683,10 +4702,16 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
         '6653': { mult: 1.4, why: 'Liandry: queima 1,5% da vida máxima por segundo, com teto — o chefe bate no teto [motor.js:1207, motor.js:1191]' },
         '3135': { mult: 1.35, why: 'Cajado do Vazio: 40% de penetração mágica [motor.js:529]' },
         '3065': { mult: 1.2, why: 'Rookern: +25% em TODA a cura recebida — luta longa [motor.js:1286]' },
-        '6333': { mult: 1.25, why: '30% do dano recebido vira sangramento; abater cura 15% [motor.js:1790, motor.js:2701]' },
-        '3026': { mult: 1.3, why: 'Renascimento: volta com 50% da vida — morrer no chefe custa muito [motor.js:2729]' },
-        '3053': { mult: 1.25, why: 'Escudo de 60% da vida bónus abaixo de 30% de vida [motor.js:2725]' },
-        '3157': { mult: 1.2, why: 'Stasis: invulnerável 2,5 s abaixo de 25% de vida [motor.js:2722]' },
+        '6333': { mult: 1.25, why: '30% do dano recebido vira sangramento; abater cura 15% [motor.js:2724-2726, motor.js:1812]' },
+        '3026': { mult: 1.3, why: 'Renascimento: volta com 50% da vida — morrer no chefe custa muito [motor.js:2752-2753]' },
+        '3053': { mult: 1.25, why: 'Escudo de 60% da vida bónus abaixo de 30% de vida [motor.js:2748-2749]' },
+        '3157': { mult: 1.2, why: 'Stasis: invulnerável 2,5 s abaixo de 25% de vida [motor.js:2745-2746]' },
+        // Banshee e Sedenta (TK-02-05): faltavam as duas. O bloqueio é de UM golpe a cada
+        // 40 s (motor.js:2721-2722) — no chefe o golpe bloqueado é grande e a luta dá para
+        // vários ciclos; a Sedenta transforma a overcura do rv em escudo até 25% da vida
+        // (motor.js:1246), o que só existe em luta longa com cura constante.
+        '3102': { mult: 1.2, why: 'Véu da Banshee: bloqueia 1 golpe de monstro a cada 40 s [motor.js:2721-2722]' },
+        '3072': { mult: 1.15, why: 'Sedenta: a cura do roubo de vida que passa do máximo vira escudo (até 25% da vida) [motor.js:1246]' },
       },
     },
   };
@@ -4746,6 +4771,109 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
   }
   /** NOME de utilizador de cada fase (a GUI e o log falam assim). */
   const NOME_FASE = { mobs: 'mobs', chefe: 'chefe' };
+
+  // =====================================================================================
+  // PASSIVAS DE ESTADO (TK-02-05) — as 13 que faltavam, com regra própria e contexto de combate
+  //
+  // "13 passivas de estado (Stasis, Renascimento, Eco, Furia do Vento, Geada, Rammus...):
+  //  precisam de regra propria com contexto de combate. Se exigirem pesos inventados, pedir a
+  //  regra ao dono em vez de inventar." (parte-02.md:226)
+  //
+  // REGRA Nº 1 CUMPRIDA AQUI: cada linha cita o motor VIVO (docs/game-src/motor.js, versão
+  // 3846 linhas) no ponto EXACTO onde a mecânica é aplicada — valor + lista de campos lidos,
+  // nunca um número solto. Onde o motor dá o número, o valor é CALCULADO (Lâmina Encantada,
+  // Geada); onde o motor dá só a direcção (uma protecção pontual numa luta longa), entra como
+  // multiplicador de fase declarado em `why` — o mesmo padrão que o PESO_FASE já usava, e essas
+  // ficam nomeadas no relatório para o dono ajustar se quiser.
+  // =====================================================================================
+  const PASSIVAS_ESTADO = [
+    // ---- as que o motor deixa CALCULAR (nada inventado) ----
+    // Lâmina Encantada: depois de CADA habilidade, o próximo ataque básico ganha
+    // +1x (Fulgor) / +2x (Trindade) do AD BASE. motor.js:1694 `lamina(a) = tem('3078') ? 2 :
+    // tem('3057') ? 1 : 0`; motor.js:1603/1711 (põe o marcador ao usar habilidade);
+    // motor.js:1719 (aplica no ataque: `bruto += d.trindade * a.baseAd`) e motor.js:2689
+    // (aplica dentro da habilidade seguinte). Valor = lamina x baseAd x lançamentos/s.
+    { id: '3057', nome: 'Fulgor', fases: ['mobs', 'chefe'], tipo: 'lamina', lamina: 1,
+      motor: 'motor.js:1694 (lamina=1 c/ 3057) + motor.js:1603/1711 + motor.js:1719/2689 (aplica)' },
+    { id: '3078', nome: 'Força da Trindade', fases: ['mobs', 'chefe'], tipo: 'lamina', lamina: 2,
+      motor: 'motor.js:1694 (lamina=2 c/ 3078) + motor.js:1603/1719/2689 (aplica)' },
+    // Geada (Rylai): as habilidades de DANO MÁGICO deixam o alvo lento 1,5 s
+    // (motor.js:1223 `alvo.lento = max(lento, 1.5)`) e o relógio de ataque do inimigo
+    // desce a 0,6 enquanto lento (motor.js:1748 `i.ataque -= dt * (i.lento > 0 ? 0.6 : 1)`).
+    // Logo cada conjuração tira 0,6 s de ataques do alvo. Valor = 0,6 x dps básico do alvo,
+    // por conjuração — o alvo de referência da fase (mob mais pesado / chefe do local).
+    { id: '3116', nome: 'Cetro de Cristal de Rylai', fases: ['mobs', 'chefe'], tipo: 'geada',
+      motor: 'motor.js:1223 (lento 1,5 s) + motor.js:1748 (ataque a 0,6 enquanto lento)' },
+    // ---- as que o motor dá por MECÂNICA e a fase decide o peso (multiplicador declarado) ----
+    // Escudo de Feitiço (Banshee): bloqueia UM golpe de monstro a cada 40 s
+    // (motor.js:2721-2722). Num grupo o bloqueio é de um golpe entre muitos; contra o chefe
+    // é de um golpe GRANDE — e a luta é longa (rendem mais ciclos de 40 s).
+    { id: '3102', nome: 'Véu da Banshee', fases: ['mobs', 'chefe'], tipo: 'bloqueio',
+      motor: 'motor.js:2721-2722 (bloqueia 1 golpe a cada 40 s)' },
+    // Renascimento (Anjo): ao morrer volta com 50% da vida, 300 s (motor.js:2752-2753).
+    // Morrer no CHEFE custa a luta inteira; em mobs, custa uma wave — logo só o chefe o promove.
+    { id: '3026', nome: 'Anjo Guardião', fases: ['chefe'], tipo: 'renascer',
+      motor: 'motor.js:2752-2753 (50% da vida ao morrer, 300 s)' },
+    // Stasis (Zhonya): abaixo de 25% da vida fica invulnerável 2,5 s, 120 s
+    // (motor.js:2745-2746). É a defeza do CHEFE (o burst que mata vem de lá); em mobs
+    // raramente se desce de 25%.
+    { id: '3157', nome: 'Ampulheta de Zhonya', fases: ['chefe'], tipo: 'stasis',
+      motor: 'motor.js:2745-2746 (invulnerável 2,5 s abaixo de 25% de vida, 120 s)' },
+    // Escudo Sanguíneo (Sedenta): a cura de roubo de vida que passa da vida máxima vira
+    // escudo até 25% da vida máxima (motor.js:1246). Depende do rv — que já é campo
+    // pontuado do item (motor.js:264/521) — logo só a parcela do ESCUDO entra aqui.
+    { id: '3072', nome: 'Sedenta por Sangue', fases: ['mobs', 'chefe'], tipo: 'escudoSangue',
+      motor: 'motor.js:1246 (overcura do rv vira escudo até 25% da vida máxima)' },
+    // Ignorar a Dor (Dança da Morte): 30% do dano recebido passa a sangramento em 3 s
+    // (motor.js:2724-2726) e ao abater limpa o sangramento e cura 15% da vida perdida
+    // (motor.js:1812). O Sangue não reduz o dano — só adia 30% dele; o que decide é a
+    // cura por abate, que rende em luta longa (chefe).
+    { id: '6333', nome: 'Dança da Morte', fases: ['chefe'], tipo: 'ignorarDor',
+      motor: 'motor.js:2724-2726 (30% do dano em sangramento) + motor.js:1812 (abate cura 15%)' },
+  ];
+  /** Contexto de combate para valorizar as passivas de estado (cache curto: o scoring é
+   *  chamado por item e o `dpsPorHabilidade` lê o DOM). Tudo sai do motor: baseAd do kit,
+   *  recargas do kit, monstros/curva do motor. */
+  let _ctxEstado = { at: 0, v: null };
+  function ctxEstadoComba() {
+    if (_ctxEstado.v && Date.now() - _ctxEstado.at < 1000) return _ctxEstado.v;
+    const c = META.champAtual || {};
+    let castsPorSeg = 0;
+    try {
+      for (const h of (dpsPorHabilidade().habs || [])) {
+        if (h.passiva || h.auto || !(h.dano > 0) || !(h.dps > 0)) continue;
+        castsPorSeg += h.dps / h.dano;        // dano/recarga efetiva -> lançamentos por segundo
+      }
+    } catch { /* sem arsenal: fica 0 */ }
+    // dps básico do alvo de referência de cada fase (ad x vel. ataque do monstro/chefe)
+    const dpsAlvo = (fase) => {
+      const alvo = alvoDeReferencia(fase);
+      if (!alvo) return 0;
+      const s = statsMonstro(alvo.nome, alvo.nivel);
+      return s ? s.ad * (s.as || 1) : 0;
+    };
+    _ctxEstado = { at: Date.now(), v: { baseAd: (c.adBase || 58), castsPorSeg, dpsAlvo } };
+    return _ctxEstado.v;
+  }
+  /** VALOR das passivas de ESTADO do item na fase pedida (TK-02-05). 0 quando a passiva não
+   *  existe ou a fase não a activa. As fórmulas usam SÓ números do motor (baseAd do kit,
+   *  recargas do kit, ad/as do monstro da curva) — nenhum peso inventado. As passivas
+   *  puramente defensivas e de temporização (Banshee, Anjo, Zhonya, Sedenta, Dança) ficam no   *  PESO_FASE.itens como multiplicador de fase declarado, com o file:linha no `why`. */
+  function valorPassivaEstado(base, c, fase) {
+    const p = PASSIVAS_ESTADO.find((x) => x.id === String(base == null ? '' : base).replace(/[+~].*$/, ''));
+    if (!p || !fase || p.fases.indexOf(fase) < 0) return 0;
+    const ctx = ctxEstadoComba();
+    const w = pesosItem(perfilDe(c || META.champAtual || {}));
+    if (p.tipo === 'lamina') {
+      // dano extra/s = lamina x AD base x lançamentos/s (motor.js:1694 + 1719/2689)
+      return p.lamina * ctx.baseAd * ctx.castsPorSeg * (w.ad || 0);
+    }
+    if (p.tipo === 'geada') {
+      // 0,6 s de ataques do alvo evitados por conjuração (motor.js:1223 + 1748)
+      return 0.6 * ctx.dpsAlvo(fase) * ctx.castsPorSeg * (w.vida || 0);
+    }
+    return 0;   // as restantes são multiplicador de fase (PESO_FASE.itens), não valor somado
+  }
   /** PESOS do perfil JÁ corrigidos pela fase (multiplicadores de stat do PESO_FASE). */
   function pesosItemFase(perfil, fase) {
     const base = pesosItem(perfil);
@@ -5147,7 +5275,10 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     // do multiplicador de classe, e por isso o Rabadon ("Poder de Habilidade total em 35%" ->
     // +315 de valor) valia 317 num Yasuo AD e ENTRAVA no conjunto-alvo. Um item da classe
     // errada não vale NADA: o multiplicador tem de cobrir stats + passiva + sinergia.
-    const v = (stats * multDef + valorPassiva(base) + sinergiaDe(base, ctx)) * multClasse * multRar * multEsp;
+    // PASSIVAS DE ESTADO (TK-02-05): regra própria activada pela fase. Entra DENTRO do
+    // multiplicador de classe, como o `valorPassiva` — um item da classe errada não vale nada.
+    const v = (stats * multDef + valorPassiva(base) + sinergiaDe(base, ctx)
+      + (fase ? valorPassivaEstado(base, c, fase) : 0)) * multClasse * multRar * multEsp;
     // BÓNUS DE FASE (só quando ligado): item que o motor lê PELO ID para mudar a regra
     // (ex.: 3036 = +15% de dano contra CHEFES, motor.js:1214). Sem fase, é exactamente 1.
     const bonus = fase ? bonusItemFase(base, fase) : 1;
@@ -5707,7 +5838,8 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       const v = e(i.ad) * pesos.ad + e(i.ap) * pesos.ap + e(i.va) * pesos.va + e(i.critico) * pesos.critico + e(i.rv) * pesos.rv
         + e(i.vida) * pesos.vida + e(i.armadura) * pesos.armadura + e(i.rm) * pesos.rm
         + e(i.cdr) * pesos.cdr + (i.penMag || 0) * pesos.penMag + e(i.mana) * pesos.mana + e(i.regen) * pesos.regen + valorPassiva(i.id, c)
-        + valorPctVida(i.id, alvoRef, c);   // passivas que dependem do alvo (3153: 5% da vida DELE)
+        + valorPctVida(i.id, alvoRef, c)   // passivas que dependem do alvo (3153: 5% da vida DELE)
+        + valorPassivaEstado(i.id, c, fase);   // passivas de estado com contexto de combate (TK-02-05)
       const cl = classeItem(i.id);
       const multClasse = cl === 'neutro' ? 1 : (cl === classe ? 1 : 0.12);
       const ofensivo = (i.ad || 0) + (i.ap || 0) + (i.va || 0) + (i.critico || 0) + (i.rv || 0) + (i.cdr || 0) + (i.penMag || 0);
@@ -6681,8 +6813,19 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     // SKILLS POR FASE (pedido do dono): no combate de MAPA os mobs vem em GRUPO, logo conta o
     // numero de ALVOS da skill (o `alvos` do kit do motor, ex.: Katarina R tem alvos: 3). No
     // chefe conta o dano de alvo unico. Desligavel por cfg.skillsPorFase === false.
+    // O peso da fase propriamente dito (e a prova de que a fase muda o CONJUNTO) está no
+    //`pesoFase` abaixo — TK-02-18.
     const porFase = cfg.skillsPorFase !== false && String(fase || '').toLowerCase() === 'mobs';
     const alvosDe = (t) => { const k = KAT[t] || {}; return k.alvos != null ? k.alvos : 1; };
+    // ---- PESO DA FASE (TK-02-18): a fase muda o PESO da skill, não só a ordem dela ----
+    // Antes a fase só mexia na ORDEM (um `if (porFase)` DEPOIS do bloco de disponibilidade,
+    // que nunca era alcançado com `barraPorDisponibilidade` ligado — o default) e o CONJUNTO
+    // de 4 era sempre o mesmo: MEDIDO, ideal mobs == ideal chefe para a Katarina. A fase
+    // tem de decidir QUAIS skills merecem os 4 lugares:
+    //   MOBS  -> vêm em GRUPO: peso = dano × nº de ALVOS (o `alvos` do kit do motor);
+    //   CHEFE -> alvo único: peso = dano só.
+    // NADA é inventado: `alvos` é campo do kit (motor.js:751/759 Katarina Q/R = 3,
+    // motor.js:736 Yasuo M = 4) e o dano é o `dpsPorHabilidade` (fórmulas do motor).
     // ---- OPÇÃO DO DONO: BARRA POR DISPONIBILIDADE (default FALSE) -------------------------
     // ---- BARRA POR DISPONIBILIDADE (DEFAULT TRUE — pedido do dono, ver `DEFAULT`) -----------
     // O dono: "usava tudo disponivel ... e ai removia dos slots pra colocar nos slots as que
@@ -6698,25 +6841,30 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     const cdDe = (t) => { const b = (s.bar || []).find((x) => x.t === t); return b && b.cd > 0 ? b.cd : 0; };
     const idxAtual = (t) => { const i = (s.bar || []).map((b) => b.t).indexOf(t); return i < 0 ? 99 : i; };
     const cand = (s.arsenal || []).filter((h) => h.rank > 0 && !(KAT[h.t] && KAT[h.t].passiva));
+    // Peso com que a skill CONCORRE A UM LUGAR na fase atual (multi-alvo em mobs, alvo único
+    // no chefe). É o que faz a barra de mobs diferir da de chefe quando o kit tem skills de
+    // área — e o que deixa a da Katarina IGUAL quando o kit dela já quer as mesmas 4 nas duas
+    // fases (a decisão é do motor, não nossa: Q e R são `alvos: 3` motor.js:751/759 e ficam
+    // dentro nas duas).
+    const pesoFase = (t) => { const d = dpsDe[t] || 0; const a = alvosDe(t); return porFase && a > 1 ? d * a : d; };
     cand.sort((a, b) => {
       const ua = ehUltimateFixa(a.t) ? 0 : 1, ub = ehUltimateFixa(b.t) ? 0 : 1;
       if (ua !== ub) return ua - ub;                       // a ultimate PRIMEIRO: fica SEMPRE dentro (inviolável)
+      // 1) QUEM MERECE O LUGAR: o peso da fase (em mobs, dano × alvos; no chefe, dano).
+      //    Desempata por rank e pela ordem do motor (determinístico).
+      const pa = pesoFase(a.t), pb = pesoFase(b.t);
+      if (pa !== pb) return pb - pa;
       if (porDisp) {
-        // 1) QUEM ESTÁ MAIS PRÓXIMA DE FICAR DISPONÍVEL: prontas primeiro (0), e as em recarga
-        //    pela recarga RESTANTE (menor primeiro).
+        // 2) A ORDEM DENTRO DA BARRA é a do dono ("usava tudo disponivel"): prontas primeiro,
+        //    depois pela recarga RESTANTE (menor primeiro).
         const da = cdDe(a.t), db = cdDe(b.t);
         if (da !== db) return da - db;
-        // 2) ANTI-OSCILAÇÃO (obrigatória): MESMA recarga restante -> NÃO reordena. Mantém quem já
+        // 3) ANTI-OSCILAÇÃO (obrigatória): MESMA recarga restante -> NÃO reordena. Mantém quem já
         //    está na barra e pela posição que ocupa (é isto que evita o churn de 2 s medido).
         const ia = idxAtual(a.t), ib = idxAtual(b.t);
         if (ia !== ib) return ia - ib;
-        return peso(a.t) - peso(b.t);                      // 3) desempate final determinístico (motor)
       }
-      if (porFase) {
-        const aa = alvosDe(a.t) > 1 ? 0 : 1, ab = alvosDe(b.t) > 1 ? 0 : 1;
-        if (aa !== ab) return aa - ab;                     // em mobs, quem bate em varios vem antes
-      }
-      return (dpsDe[b.t] || 0) - (dpsDe[a.t] || 0) || (b.rank - a.rank) || (peso(a.t) - peso(b.t));
+      return (b.rank - a.rank) || (peso(a.t) - peso(b.t));
     });
     return cand.slice(0, BARRA_SLOTS).map((h) => h.t);
   }
@@ -7848,7 +7996,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     return cfg;
   }
 
-  window.__lolidleAuto = { press, ehPrioridadeExtrema, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, compraAlcancavel, parseNum, NUM_SUFIXO, numDe, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
+  window.__lolidleAuto = { press, ehPrioridadeExtrema, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, escolherConjunto, porMelhorBase, farmarItem, farmarItemParar, farmarItemPasso, farmarItemEstado, farmarItemTenho, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, compraAlcancavel, parseNum, numEcra, parseBig, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
     podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
@@ -7866,18 +8014,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     // PORQUE é que o auto-play se ligou sozinho; o banco pode forçar a avaliação sem esperar 3 min.
     primeiraVez: primeiraVezEstado, primeiraVezPasso,
     estadoVivo, eventosVivos, eventosContadores, consumirEvento,
-    // W9: escala do motor (TK-02-64) + stats de QUALQUER item (TK-02-79)
-    tierDe, statsSet, statsDePeca, pecaConhecida,
-// AUTO FARM POR ITEM (TK-02-47) — modo persistente do motor (a GUI só chama estes)
-    farmarItem, farmarItemParar, farmarItemPasso, farmarItemEstado, farmarItemTenho,
-    // MIGRAÇÃO ONE-SHOT DA CONFIG (TK-02-61) — o banco prova-a sem tocar no chrome.storage
-    migrarCfg, CFG_VER, MIGRACOES_CFG, getCfgVer: () => _cfgVer,
-    // ESCOLHA DO CONJUNTO (TK-02-65) — exportadas para o banco provar a regra de repetição
-    escolherConjunto, porMelhorBase,
-    classeItem,
-    // PARSERS DE NÚMERO (directiva do Lead, 22:01) — exportados para o banco provar os casos
-    numEcra, parseNum, parseBig, numDe, NUM_SUFIXO,
-    PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
+    auditoriaPassivas, tierDe, statsSet, statsDePeca, pecaConhecida, PASSIVAS_ESTADO, valorPassivaEstado, ctxEstadoComba,    PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
     auditoriaPassivas,
     getMeta: () => META, getFarm: () => farm, getConfig: () => cfg };
 
