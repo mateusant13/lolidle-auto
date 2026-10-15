@@ -3169,6 +3169,7 @@
    *  dono "ao conseguir um dos itens ESSENCIAIS, tier A ou mais, pode refinar"). */
   function precisaRefino() {
     const teto = (cfg.refinoMax != null ? cfg.refinoMax : 2);
+    let medido = null, divergenciaMedido = [];
     let essenciais = [];
     try { essenciais = (buildIdeal() || []).map(String); } catch { essenciais = []; }
     try {
