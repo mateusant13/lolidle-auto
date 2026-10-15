@@ -1631,7 +1631,7 @@
       const t = e.textContent.replace(/\s+/g, ' ').trim();
       // ROUBO DE VIDA entra na leitura (pedido do Lead): e o stat que decide a luta contra o chefe
       // (cura so em AUTO-ATAQUES, motor.js:1226-1228) e o painel do jogo mostra-o.
-      const m = t.match(/^(Dano|Armadura|Vel\. ataque|Res\. mágica|Poder|Mana|Crítico|Esquiva|Roubo de vida)(.*)$/);
+      const m = t.match(/^(Dano|Armadura|Vel\. ataque|Res\. mágica|Poder|Mana|Crítico|Esquiva|Roubo de [Vv]ida)(.*)$/);
       // O painel escreve os valores com o `fmt` do jogo (jogo.js:6454-6460 `txt('#st-ad',
       // fmt(a.ad))`), logo "Dano 12.3k" e "Vida 4.188" chegam aqui. Sem o sufixo no grupo
       // (e sem a regra grupo-de-3 = milhar) o Dano acima de 10.000 era lido 1000x menor —
