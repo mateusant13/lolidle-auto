@@ -7181,7 +7181,7 @@ const CFG_VER = 1;
     return { fJ,
       regiao: loc.nome.replace(/ nível.*/, ''), boss, nivel, hpBoss: Math.round(s.hp), armadura: Math.round(s.armadura),
       dpsChefe: Math.round(av.dpsTomado), curaSkill: Math.round(curaSkill), danoGolpe: Math.round(av.danoGolpe), intervalo: +av.intervalo.toFixed(1),
-      meuDpsBoss: Math.round(meuDpsBoss), tKillS: realMs ? +(realMs / 1000).toFixed(1) : +tKill.toFixed(1), tMorrerS: tMorrer === Infinity ? null : +tMorrer.toFixed(1),
+      meuDpsBoss: Math.round(meuDpsBossFJ), tKillS: realMs ? +(realMs / 1000).toFixed(1) : +tKill.toFixed(1), tMorrerS: tMorrer === Infinity ? null : +tMorrer.toFixed(1),
       ganha, potS: +potS.toFixed(2),
       tKillRealS: realMs ? +(realMs / 1000).toFixed(1) : null, potReal,
       potTotal: potReal != null ? potReal : (ganha ? Math.ceil(potS * tKill) : null),
