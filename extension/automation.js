@@ -6603,7 +6603,7 @@
       const _stC = readStats();
       const _cChance = Number.isFinite(_stC.critChance) ? _stC.critChance : 0;
       const _cMult = Number.isFinite(_stC.critMult) ? _stC.critMult : 1.75;
-      const _fracAuto = 1 - fracHabs;
+      const _fracAuto = (typeof fracAuto === 'function') ? fracAuto() : (1 - fracHabs);   // H12a: a MESMA fracção que o teste le
       const fCrit = 1 + _fracAuto * (_cChance * (_cMult - 1));
       let d = (base * mit) * fatorCdr * fCrit * (1 + (magia ? S.lich * 0.15 : 0)); // Lich: +75%AP/skill ≈ +15% no dano total
     if (S.chama) d *= 1 + (alvo?.chefe ? 0.066 : 0.033);        // finisher <40% HP
