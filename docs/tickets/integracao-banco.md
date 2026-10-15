@@ -146,3 +146,16 @@ mesmo erro que me fez criar um `nivelMobDe` duplicado e partir a sintaxe 3 vezes
 sufixo — falta a **ligação**: o `player()` tem de expor `vida = max` e `vidaAtual = cur` **do
 `lerVidaHud()`** (o teste usa `player().vida` / `player().vidaAtual`). Procurar onde o `player()`
 monta o objecto e ver se usa `lerVidaHud()` ou outro caminho.
+
+
+## ADENDA 09:00 — `fuga` W2/W5: a fuga não DISPARA no mundo do stub
+O `logEvent` já guarda `type` (linha 626) e acrescentei `regiaoMata`/`lutaPerdida` ao log — o banco
+**não mudou (35)**, logo o problema é **antes**: no mundo do teste, `checarChefeFatal` **não chega a
+fugir**. A cadeia é:
+```
+morre = !!(r && r.risco && r.risco.morre)      // r = agregar().find(region) — no stub pode ser null
+perde = !!(est && est.ganha === false)          // est = estimarLuta(idReg)
+foge  = fatalVivo || morre || (perde && !cobrem)
+```
+**Próximo passo:** instrumentar (`logEvent('dbg:fuga', { morre, perde, cobrem, idReg, temR: !!r, temEst: !!est })`
+antes do `if (!foge) return;`) e ler no banco QUAL dos três é falso. É 1 linha e mata a dúvida.

@@ -2702,7 +2702,9 @@
     const regiaoTxt = (c && c.region) ? c.region : (readLocation().text || '');
     const idReg = localId(regiaoTxt);
     const r = (c && c.region) ? agregar().find((x) => x.region === c.region) : null;
-    const morre = !!(r && r.risco && r.risco.morre);          // risco de morte MEDIDO naquela região
+    // `morre`: risco MEDIDO na região OU o veredicto FAIL-CLOSED do `estimarRegiao` (região acima do
+    // nível é declarada mortal sem precisar de histórico). Sem o segundo, no stub não havia medida e a fuga não disparava.
+    const morre = !!(r && r.risco && r.risco.morre) || !!(idReg && (() => { try { return (estimarRegiao(idReg) || {}).morte; } catch { return false; } })());
     let est = null; try { est = idReg ? estimarLuta(idReg) : null; } catch { /* ignore */ }
     const perde = !!(est && est.ganha === false);             // a estimativa diz que a luta está perdida
     // AS POÇÕES COBREM A LUTA? REGRA DO DONO, MANTIDA: "se as poções cobrem a luta estimada, NÃO
