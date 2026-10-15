@@ -1122,7 +1122,8 @@
     const nm = local.nm || local.faixa || null;
     if (!nm) return null;
     const n0 = +nm[0] || 1, n1 = nm[1] != null ? +nm[1] : n0;
-    const p = nivelJogador != null ? +nivelJogador : (player() || {}).nivel;
+    // `undefined` = nao passado -> le o jogador; `null` = EXPLICITAMENTE sem jogador -> ramo do motor (n1+2)
+    const p = nivelJogador === undefined ? (player() || {}).nivel : (nivelJogador == null ? null : +nivelJogador);
     if (p == null || !(p > 0)) return n1 + 2;
     return Math.max(n0 + 2, Math.min(n1 + 2, p + 4));
   }
