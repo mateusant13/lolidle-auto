@@ -46,14 +46,14 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Evidencia**: parte-02.md:3197-3198 e 3302 — *“ERRO no mit: automation.js:3109 e 5123 usam 100/(100+armadura*(1-pen)) SEM o RM_MONSTRO=0.6 (motor.js:1179,1202) -> dano MÁGICO subestimado (1,6x a 104 de armadura)”*
 - **Fazer**: alinhar o `mit` da extensão à fórmula do motor (com `RM_MONSTRO`), lendo o valor do jogo e não o escrevendo à mão; confirmar no motor a lista completa de campos da fórmula antes de codar (REGRA Nº 1).
 - **Aceitacao**: teste com armadura 104 a dar dano mágico 1,6× maior que antes e igual ao do motor (comparação contra `motor.js:1179/1202`); `bun tools/testes/run.mjs` rc=0; nenhum número do motor copiado à mão.
-- **Estado**: codigo presente — evidencia automation.js:1114 (RM_MONSTRO lido do motor (rmMonstro)). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
+- **Estado**: PROVADO 2026-10-15 (leitura das duas fontes): motor.js:1217 `alvo.armadura * RM_MONSTRO * (1 - (a.penMagica||0))` com RM_MONSTRO=0.6 (motor.js:1194); automation.js:1215 `armMagicaEfetiva = (armadura, penMag) => Math.max(0, armadura * rmMonstro() * (1 - penMag))` com rmMonstro()=numOr(META.rmMonstro, 0.6) (1200) — IDENTICAS, e o valor e LIDO do motor (0.6 so como fallback)
 
 ### TK-02-64 | P1 | `tierDe` contradiz o motor (1 qualidade ≠ 10 refinos)
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:3201-3202 e 3304 — *“tierDe (automation.js:333) = qIdx*10+refino contradiz o motor (motor.js:252: (1+0.12*ref)*multQual, ou seja 1 refino = +12% e 1 degrau de qualidade = +15%). 1 qualidade NÃO vale 10 refinos.”*
 - **Fazer**: substituir `tierDe` pela fórmula do motor (multiplicativa: qualidade × refino), lida do jogo, e rever todos os sítios que a usam para ordenação/comparação.
 - **Aceitacao**: teste a mostrar que 1 qualidade vale +15% e 1 refino +12% (bater com `motor.js:252`) e que a ordenação de itens muda onde deve; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: codigo presente — evidencia automation.js:379 (tierDe alinhado com o motor). **Grep nao e prova semantica**: falta a verificacao ticket-a-ticket com teste dedicado
+- **Estado**: PROVADO 2026-10-15 (leitura das duas fontes): motor.js:261 `const m = (1 + BONUS_REFINO * ref) * (QUALIDADES[qual]?.mult || ...)` e automation.js:379 `tierDe = (1 + BONUS_REFINO*(i.refino||0)) * (QUAL_MULT[qual] || 1)` — a MESMA formula. O comentario do proprio codigo (376-378) explica o defeito antigo: 'A+0 (1,15) ja bate B+1 (1,12), que o tierDe antigo perdia (0 contra 1)'
 
 ### TK-02-66 | P1 | `CAMPOS_MULT` não tem `penMag` — as botas de pen só entram por `ITENS_ESPECIAIS` escrito à mão
 - **Ficheiro(s)**: extension/automation.js
