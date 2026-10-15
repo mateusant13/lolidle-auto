@@ -198,7 +198,19 @@
   };
   let cfg = structuredClone(DEFAULT);
 
-  const parseNum = (s) => { const d = String(s ?? '').replace(/[^\d]/g, ''); return d ? Number(d) : NaN; };
+  const SUFIXO = { k: 1e3, K: 1e3, m: 1e6, M: 1e6 };   // cena.js:225 — k = x1000, M = x1000000
+  const parseNum = (s, suf) => {
+    const t = String(s == null ? '' : s).trim();
+    if (!t) return NaN;
+    const mS = t.match(/([kKmM])\s*$/);
+    const sufixo = mS ? mS[1] : (suf != null ? String(suf).trim() : '');
+    const d = t.replace(/[^\d.,]/g, '');
+    if (!d) return NaN;
+    const v = /^\d{1,3}([.,]\d{3})+$/.test(d) ? Number(d.replace(/[.,]/g, ''))
+      : /^\d+[.,]\d+$/.test(d) ? Number(d.replace(',', '.'))
+        : Number(d.replace(/[.,]/g, ''));
+    return Number.isFinite(v) ? v * (SUFIXO[sufixo] || 1) : NaN;
+  };
   const numOr = (v, d) => Number.isFinite(v) ? v : d;
 
   // ------------------------------------------------------------- keybinds
