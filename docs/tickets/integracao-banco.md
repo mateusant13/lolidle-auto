@@ -298,3 +298,13 @@ regra nova e diz qual mudaste."*
 **Próximo passo:** aplicar a correcção E **actualizar as asserções** que fixam o valor antigo (procurar
 por `12.3`/`12,3` nas suites que usam o `#log`), declarando quais mudaram. Revertido por agora para
 não deixar o banco pior sem o par (código + teste) completo.
+
+
+## ADENDA 10:40 — `MIGRACOES_CFG`: o transplante do ramo w10 QUEBRA a sintaxe
+Transplantei `MIGRACOES_CFG`+`CFG_VER` de `tools/_w10config.js` (com o extractor por chavetas): **sintaxe
+quebrou** e o `git checkout` reverteu TUDO (incluindo a `fatorDanoMonstroMotor` que já estava bem) —
+**reaprendido: um transplante que quebra leva consigo o resto; reaplicar o que era bom e confirmar.**
+
+**Pendente:** `MIGRACOES_CFG` continua em falta (a suite `w10` rebenta com `ReferenceError`). O extractor
+por chavetas não chega para este caso — **ler o bloco no ramo (`tools/_w10config.js`) e transplantar à
+mão**, ou extrair com o mesmo método que funcionou para o `farmarItem*` (que era uma função inteira).
