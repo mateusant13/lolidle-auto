@@ -68,4 +68,3 @@ export function gerarQuadros(img) {
   }));
   return { parado, bote, rugido, largura: W, altura: H };
 }
-

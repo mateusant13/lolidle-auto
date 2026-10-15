@@ -79,4 +79,3 @@ export function livreArena(x, y) {
   const m = ARENA_PVP.mapa;
   return x >= m.x0 && x <= m.x1 && y >= m.y0 && y <= m.y1;
 }
-

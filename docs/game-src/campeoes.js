@@ -57,4 +57,3 @@ const V_SPLASH = 2;      // aumente quando uma imagem de skin entrar ou mudar (a
 export const splashSkin = (id, num) => `assets/img/skins/${pasta(id)}${num}.jpg?v=${V_SPLASH}`;
 // nome do sprite em pixel.js: "darius", "darius@15", "ezreal", "ezreal@5"…
 export const spriteCampeao = (id, skin) => (skin ? `${id}@${skin}` : id);
-

@@ -347,4 +347,3 @@ export function animarMapaLoL(cv, tempo) {
     g.fillRect(v.x + Math.sin(tempo * 0.7 + v.f) * 3, v.y + Math.cos(tempo * 0.5 + v.f) * 2, 1, 1);
   }
 }
-

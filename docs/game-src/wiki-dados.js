@@ -144,4 +144,3 @@ export function numerosPassiva(h) {
   }
   return out;
 }
-

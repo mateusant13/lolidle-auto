@@ -88,4 +88,3 @@ export function proximaVilemaw(agora = Date.now()) {
   for (let d = 0; d < 2; d++) for (const h of VILEMAW.horarios) { const t = dia + d * 86400000 + h * 3600000 - fuso; if (t > agora) return t; }
   return agora + 86400000;
 }
-

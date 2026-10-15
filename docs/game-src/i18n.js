@@ -66,4 +66,3 @@ if (noNavegador) addEventListener('click', (e) => {
   const b = e.target.closest?.('[data-idioma]');
   if (b && b.dataset.idioma !== idioma) definirIdioma(b.dataset.idioma);
 });
-

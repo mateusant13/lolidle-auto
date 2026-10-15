@@ -125,4 +125,3 @@ export function pixelsDe(img) {
   cachePixels.set(img, l);
   return l;
 }
-

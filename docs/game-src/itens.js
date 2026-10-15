@@ -2580,4 +2580,3 @@ export const ITENS_DADOS = [
   "efeito": "Obra-Prima Mágica: aumenta seu Poder de Habilidade total em 35%."
  }
 ];
-

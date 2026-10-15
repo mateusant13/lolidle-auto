@@ -58,4 +58,3 @@ export function traduzirDados() {
   for (const k of Object.keys(R.NOME_ZONA)) R.NOME_ZONA[k] = t(R.NOME_ZONA[k]);
 }
 traduzirDados();
-

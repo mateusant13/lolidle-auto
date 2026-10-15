@@ -63,4 +63,3 @@ export function svgBrasao(b, tam = 32) {
     + `<g transform="translate(4 3.5)"><path d="${ICONES_BRASAO[i]}" fill="#000" opacity=".35" transform="translate(.6 .6)"/><path d="${ICONES_BRASAO[i]}" fill="${simbolo}"/></g></svg>`;
 }
 export const urlBrasao = (b) => 'data:image/svg+xml,' + encodeURIComponent(svgBrasao(b, 48));
-

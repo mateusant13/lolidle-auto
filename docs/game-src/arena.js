@@ -23,7 +23,7 @@ export const AR = {
   area: 2.4,                                  // raio das habilidades em volta do campeão (Q do Darius, Pisotear…)
 };
 // mundo aberto: distância em que um ponto de nascimento fica ativo e em que o monstro some; aggro, leash e respawn
-export const MUNDO = { ativo: 15, some: 20, aggro: 5, leash: 12, respawn: [20, 35], regenCidade: 0.05, surgir: 1.5 };      // surgir: o monstro que nasce fica 1,5 s sem levar dano e sem atacar (anda)
+export const MUNDO = { ativo: 15, some: 20, aggro: 5, leash: 12, respawn: [20, 35], renasce: [3, 4], regenCidade: 0.05, surgir: 1.5 };      // surgir: o monstro que nasce fica 1,5 s sem levar dano e sem atacar (anda)
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const raioDe = (i) => i.raio ?? (i.chefe ? 0.9 : AR.raio);      // a Vilemaw (chefe global) é bem maior
 
@@ -270,7 +270,7 @@ function gerirPontos(estado, c, A, dt) {
           A.chaves = (A.chaves || []).filter((k) => k.fortaleza !== p.fortaleza);
           A.chaves.push({ fortaleza: p.fortaleza, x: p.monstro.x, y: p.monstro.y, ate: Date.now() + 10 * 60000, nasceu: Date.now() });
           emitir(c, 'guardiaoVencido', { fortaleza: p.fortaleza, x: p.monstro.x, y: p.monstro.y });
-        } else p.t = 0;          // monstro comum: volta assim que o campeão se afasta (como sempre foi)
+        } else p.t = morreu ? MUNDO.renasce[0] + Math.random() * (MUNDO.renasce[1] - MUNDO.renasce[0]) : 0;      // monstro comum morto: o ponto espera 3 a 4 s (p581, p698, p712: parado entre pontos, o atirador matava cada um ao nascer)
         p.id = null; p.monstro = null; continue;
       }
       if (!m.aggro && dist(p, A) > MUNDO.some) { sumir.add(m.id); p.id = null; p.t = 0; }      // longe do campeão: guarda até ele voltar
@@ -1786,4 +1786,3 @@ function golpesVilemaw(estado, c, A, a, dt) {
 // (as chaves pegas ficam em A.chavesMao; o jogo guarda a lista no navegador para não perder ao sair de Runeterra)
 export const temChave = (A, fortaleza) => !!A?.chavesMao?.some((q) => q.fortaleza === fortaleza && q.ate > Date.now());
 export const usarChave = (A, fortaleza) => { if (A?.chavesMao) A.chavesMao = A.chavesMao.filter((q) => q.fortaleza !== fortaleza); };
-

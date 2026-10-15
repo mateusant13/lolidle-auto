@@ -758,4 +758,3 @@ export function gerarAbismo(m) {
   const livre = (x, y) => x >= 0 && y >= 0 && x < LARG && y < ALT && !bloq[y][x];
   return { bioma: 'abismo', aram: true, larg: LARG, alt: ALT, chao, obj, bloq, img, agua: [], livre, npcs: [], centro: { x: Math.floor((m.x0 + m.x1) / 2), y: yc }, novo };
 }
-

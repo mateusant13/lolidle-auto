@@ -34,4 +34,3 @@ export function criarConexao({ aoMsg, aoMudar }) {
     enviar(obj) { if (ws?.readyState === 1) ws.send(JSON.stringify(obj)); },
   };
 }
-

@@ -31,4 +31,3 @@ export function guardarIndicacao() {
 export function indicacaoGuardada() {
   try { const r = JSON.parse(localStorage.getItem('lolidle-ref') || 'null'); return r && Date.now() - r.em < 30 * 86400000 ? r.ref : null; } catch { return null; }
 }
-

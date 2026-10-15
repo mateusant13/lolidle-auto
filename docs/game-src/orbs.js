@@ -45,4 +45,3 @@ export const usd = (v) => '$' + (Math.round((Number(v) || 0) * 100) / 100).toFix
 // a taxa de uma venda em Gemas e quanto o vendedor recebe
 export const taxaOrbs = (preco) => ORBS.faixasTaxa.find(([ate]) => preco <= ate)[1];
 export const vendedorRecebe = (preco) => Math.floor(preco * (1 - taxaOrbs(preco)));
-
