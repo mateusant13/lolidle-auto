@@ -5466,6 +5466,9 @@
     return out;
   }
 
+  /** Estado do farm de itens (usado em 4 sitios, nunca declarado — ReferenceError no banco). */
+  let _farmItem = { ids: [], regiao: null, desde: 0, parou: null, destino: null };
+
   function farmarItem(ids) {
     const alvo = farmarItemIds(ids);
     if (!alvo.length) return { ok: false, motivo: 'sem itens (use farmarItem(["3089"]))' };
