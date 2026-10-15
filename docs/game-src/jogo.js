@@ -33,6 +33,7 @@ som.iniciar();
 // texto fixo do jogar.html no idioma escolhido, e os botões PT / EN no topo do painel de status
 traduzirDom(document.body);
 document.querySelector('#controle-som')?.insertAdjacentHTML('afterbegin', seletorIdioma());     // PT/EN no topo da coluna esquerda, ao lado do som
+document.querySelector('#controle-som .seletor-idioma')?.insertAdjacentHTML('afterend', `<button type="button" id="bt-amigos" title="${t('Amigos (O)')}">🤝 <span>${t('Amigos')}</span><span class="nao-lidas" hidden></span></button>`);      // (p702)
 
 // ---------- entrar, carregar e salvar (o progresso fica no servidor) ----------
 // o jogo só começa depois que o jogador entra ou cria o personagem
@@ -125,7 +126,7 @@ function salvar() {
   if (operando) return;
   prepararSave();
   const revEnviado = estado.rev || 0;
-  return rede.salvarNoServidor(estado).then((r) => { avisouSemConexao = false; if (r?.descartados?.length) aplicarDescartados(r.descartados); if (r?.vm) vmInfo = r.vm; if (r?.amigos) aplicarResumoAmigos(r.amigos); if (r?.arena) arenaChamada(r.arena); if (r?.revelados?.length) aplicarRevelados(r.revelados); if (r && 'evento' in r) aplicarEvento(r.evento); if (r && 'reinicio' in r) aplicarReinicio(r.reinicio); if (r?.donos) aplicarDonos(r.donos); if (r && 'twitch' in r) aplicarTwitch(r.twitch); if (r && 'kick' in r) aplicarKick(r.kick); if (r && 'guilda' in r) aplicarGuilda(r.guilda); if (r?.recebidos) aplicarRecebidos(r.recebidos, r.rp); if (r && 'sorteios' in r) aplicarSorteio(r); }).catch((e) => {
+  return rede.salvarNoServidor(estado).then((r) => { avisouSemConexao = false; if (r?.descartados?.length) aplicarDescartados(r.descartados); if (r?.vm) vmInfo = r.vm; if (r?.amigos) aplicarResumoAmigos(r.amigos); if (r?.arena) arenaChamada(r.arena); if (r?.dungeon) dungeonChamada(r.dungeon); if (r?.revelados?.length) aplicarRevelados(r.revelados); if (r && 'evento' in r) aplicarEvento(r.evento); if (r && 'reinicio' in r) aplicarReinicio(r.reinicio); if (r?.donos) aplicarDonos(r.donos); if (r && 'twitch' in r) aplicarTwitch(r.twitch); if (r && 'kick' in r) aplicarKick(r.kick); if (r && 'voto' in r) aplicarVoto(r.voto); if (r && 'guilda' in r) aplicarGuilda(r.guilda); if (r?.recebidos) aplicarRecebidos(r.recebidos, r.rp); if (r && 'sorteios' in r) aplicarSorteio(r); }).catch((e) => {
     if (e.outraAba) return;          // o personagem foi aberto em outra aba: a janela de aviso vem pelo evento lolidle-outra-aba
     // um save que saiu antes de uma compra/venda chega velho: se o jogo já tem o rev novo, é só ignorar
     if (e.desatualizado) { if ((estado.rev || 0) === revEnviado && !recusou) { recusou = true; location.reload(); } return; }
@@ -195,7 +196,8 @@ const textoItem = (id) => {
 const iconeGema = (id) => { const c = M.GEMAS[id]?.cor || '#ccc'; return 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><polygon points="16,2 29,12 16,30 3,12" fill="${c}" stroke="#0b0d12" stroke-width="1.6"/><polygon points="16,2 22,12 16,30 10,12" fill="#fff" opacity=".25"/><polygon points="3,12 29,12 16,2" fill="#fff" opacity=".2"/><polygon points="10,12 16,6 22,12" fill="#fff" opacity=".5"/><polygon points="16,30 22,12 29,12" fill="#000" opacity=".22"/></svg>`); };
 const textoGema = (id) => `${M.nomeGema(id)}\n${t(M.GEMAS[id].desc)}`;
 // no mercado: um item ou um lote de gemas ("gema:<id>:<quantidade>")
-const descreverOferta = (item) => { const g = M.ofertaGema(item); return g ? { nome: M.nomeOferta(item), cor: M.GEMAS[g.id].cor, raridade: 'gema' } : descreverItem(item); };
+const COR_MASCOTE = '#ffe08a';      // o mascote no mercado (p677)
+const descreverOferta = (item) => { const g = M.ofertaGema(item); if (g) return { nome: M.nomeOferta(item), cor: M.GEMAS[g.id].cor, raridade: 'gema' }; const mo = M.ofertaMascote(item); return mo ? { nome: t(M.MASCOTES[mo].nome), cor: COR_MASCOTE, raridade: 'mascote' } : descreverItem(item); };
 let gemaForja = null, gemaMontar = null;            // a gema escolhida para as próximas tentativas no Ornn
 function escolhaGema(para, atual) {
   const lista = M.ORDEM_GEMAS.filter((g) => M.GEMAS[g][para]);
@@ -331,7 +333,7 @@ function entrarCena(l) {
     if (l.aram) combate.arena.congelado = arenaPartida?.estado !== 'luta';      // na ponte só anda na hora da luta
     else sincronizarChaves();
   }
-  else M.definirCidade(null);
+  else { M.definirCidade(null); combate.arena = null; }      // fora de Runeterra o estado de lá sai (senão a marca de luta PvP congelava e a poção curava 30%, p720)
 }
 cena.definirCampeao(CAMP, CAMPEAO.nome);
 cena.definirSkin(estado.skin || 0);
@@ -397,6 +399,15 @@ requestAnimationFrame(ajustarTela); setTimeout(ajustarTela, 600); setTimeout(aju
 addEventListener('orientationchange', () => setTimeout(ajustarTela, 300));
 window.visualViewport?.addEventListener('resize', () => ajustarTela());
 
+// Edge (p723): segurar o botão direito e arrastar para a esquerda é o gesto de "voltar página", e no jogo se anda segurando o
+// botão direito. Até 1,5 s depois de soltar o botão direito o voltar do navegador é desfeito; fora disso, o voltar funciona.
+let direitoSolto = 0;
+addEventListener('mouseup', (e) => { if (e.button === 2) direitoSolto = performance.now(); }, true);
+try { history.pushState({ lolidle: 1 }, '', location.href); } catch {}
+addEventListener('popstate', () => {
+  if (performance.now() - direitoSolto < 1500) { try { history.pushState({ lolidle: 1 }, '', location.href); } catch {} }
+  else history.back();
+});
 // clicar num NPC na tela conversa com ele (o andar é no botão direito, ver comandoNaFonte)
 $('#tela').addEventListener('click', (e) => {
   const r = e.currentTarget.getBoundingClientRect();
@@ -462,6 +473,7 @@ let viagem = null;
 function emCombateAqui() { return localAtual().arena && M.emCombate(combate); }
 function comecarViagem(nome, dur, fazer) {
   if (naAram()) { cena.aviso(t('Você está numa partida da arena.'), '#ff7050'); return; }
+  if (typeof dungeonLuta === 'function' && dungeonLuta()) { cena.aviso(t('Seu grupo está na dungeon: espere a luta acabar na Fonte.'), '#9fe0ff'); return; }      // p665
   if (combate.darius.morto > 0 || bloqueioCaveira()) return;
   if (viagem) { if (viagem.nome === nome) return; cancelarViagem(); }
   if (emCombateAqui()) { avisoCombate(); return; }
@@ -588,7 +600,8 @@ function processarEventos() {
       if (ev.tipo === 'apoioAliado') { acertos.push({ t: 'apoioAliado', alvo: ev.nome, tipo: ev.apoio, lance: ev.lance }); continue; }
       if (ev.tipo === 'ataquePvp') { cena.ataqueEmJogador(ev.alvo); continue; }
       if (ev.tipo === 'zonaPk') {
-        if (ev.entrou) { cena.aviso(t('⚔ {zona}: PK obrigatório · +{p}% de XP', { zona: t(ev.nome), p: Math.round(R.PK_BONUS * 100) }), '#ff4a4a'); log(t('Você entrou na {zona}, uma Zona de Guerra: o PK fica ligado (não desliga) e a experiência rende +{p}%. Cuidado com os outros jogadores!', { zona: t(ev.nome), p: Math.round(R.PK_BONUS * 100) }), 'morte'); som.efeito('alerta'); }
+        if (ev.entrou && R.ZONAS_PK.find((z) => z.nome === ev.nome)?.semCap) { cena.aviso(t('⚔ {zona}: PK obrigatório, sem limite de nível · +{p}% de XP', { zona: t(ev.nome), p: Math.round(R.PK_BONUS * 100) }), '#ff4a4a'); log(t('Você entrou na {zona}, uma Zona de Guerra vermelha: o PK fica ligado, qualquer nível pode atacar você aqui dentro e a experiência rende +{p}%. Matar aqui não dá Caveira.', { zona: t(ev.nome), p: Math.round(R.PK_BONUS * 100) }), 'morte'); som.efeito('alerta'); }
+        else if (ev.entrou) { cena.aviso(t('⚔ {zona}: PK obrigatório · +{p}% de XP', { zona: t(ev.nome), p: Math.round(R.PK_BONUS * 100) }), '#ff9a3a'); log(t('Você entrou na {zona}, uma Zona de Guerra laranja: o PK fica ligado, só quem está até {n} níveis de você pode atacar e a experiência rende +{p}%. Matar aqui não dá Caveira.', { zona: t(ev.nome), n: difNivelPvp, p: Math.round(R.PK_BONUS * 100) }), 'morte'); som.efeito('alerta'); }
         else { cena.aviso(t('Você saiu da Zona de Guerra'), '#8ad8ff'); log(ev.pvp ? t('Você saiu da {zona}. O PK continua ligado, como estava antes.', { zona: t(ev.nome) }) : t('Você saiu da {zona}. Modo seguro de novo.', { zona: t(ev.nome) }), 'npc'); }
         atualizarUI(); continue;
       }
@@ -666,6 +679,7 @@ function processarEventos() {
   for (const m of acertos) tempoReal.enviar(m);
   const a = M.atributos(estado);
   if (localAtual().arena) { cena.sincronizarArena(combate, estado.vida / a.vida, a.mana ? estado.mana / a.mana : 0); seguirMundo(); }
+  else if (dgVendo) dungeonSincronizar();      // p670
   else cena.sincronizar(combate, estado.vida / a.vida, a.mana ? estado.mana / a.mana : 0);
 }
 // ---------- Runeterra: zonas, cidades, NPCs das cidades e viagem rápida ----------
@@ -839,6 +853,7 @@ function chegarNaCidade(id) {
 // música da região (ou a do chefe, enquanto houver um vivo)
 const MUSICA_BIOMA = { base: 'fonte', rota: 'rota', selva: 'selva', rio: 'rio', barao: 'barao', arena: 'rota', abismo: 'chefe' };
 function trilhaAtual() {
+  if (dgVendo) return cena.chefeBarra && cena.tempo - cena.chefeBarra.t < 1 ? 'chefe' : 'selva';      // a dungeon (p670)
   if (combate.inimigos.some((i) => i.chefe && i.hp > 0 && !i.morto)) return 'chefe';
   if (localAtual().arena && cena.mapa?.mundo) return MUSICA_BIOMA[cena.biomaAqui()] || 'rota';
   return MUSICA_BIOMA[localAtual().bioma] || 'fonte';
@@ -866,6 +881,13 @@ function desenharConfig() {
     ${deslizar('musica', t('Música'), s.musica ? pct(s.volMusica) : 0)}
     ${deslizar('efeitos', t('Efeitos'), s.efeitos ? pct(s.volEfeitos) : 0)}
     ${deslizar('alerta', t('Alerta de lendário'), pct(s.volAlerta ?? 0.9))}
+    ${deslizar('privado', t('Mensagem privada'), pct(s.volPrivado ?? 0.7))}
+    <div class="cf-secao">⌨ ${t('Teclas')}</div>
+    <div class="cf-teclas">${teclas.hab.map((k, i) => `<label><span>${t('Habilidade {n} da barra', { n: i + 1 })}</span><button type="button" class="botao cf-tecla${teclaEsperando === 'hab' + i ? ' esperando' : ''}" data-tecla="hab${i}">${teclaEsperando === 'hab' + i ? t('Aperte uma tecla…') : nomeTecla(k)}</button></label>`).join('')}
+      ${Object.entries(M.POCOES).map(([pk, p], i) => `<label><span>${t(p.nome)}</span><button type="button" class="botao cf-tecla${teclaEsperando === 'pocao' + i ? ' esperando' : ''}" data-tecla="pocao${i}">${teclaEsperando === 'pocao' + i ? t('Aperte uma tecla…') : nomeTecla(teclas.pocao[i])}</button></label>`).join('')}</div>
+    ${teclaAviso ? `<p class="cf-aviso">${teclaAviso}</p>` : ''}
+    <p class="fraco cf-dica">${t('As teclas da barra valem em Runeterra e na Arena (no Summoner\'s Rift o campeão usa as habilidades sozinho). Clique num botão e aperte a tecla nova; Esc cancela.')}</p>
+    <button type="button" class="botao cf-padrao" data-teclas-padrao>${t('Voltar as teclas ao padrão')}</button>
     <div class="cf-secao">⚡ ${t('Desempenho')}</div>
     <div class="cf-desempenho" role="group">${[['auto', t('Automático')], ['normal', t('Normal')], ['leve', t('Leve')]].map(([k, n]) => `<button type="button" class="botao${desempenho === k ? ' ativo' : ''}" data-desempenho="${k}" aria-pressed="${desempenho === k}">${n}</button>`).join('')}</div>
     <p class="fraco cf-dica">${t('O modo leve deixa o jogo mais leve em celular e tablet: 30 quadros por segundo e menos enfeites (bichos, partículas e brilhos). No automático ele liga sozinho se o aparelho ficar lento.')}${modoLeve() ? ' <b class="cf-leve-on">' + t('Agora: modo leve ligado.') + '</b>' : ''}</p>
@@ -886,7 +908,31 @@ function desenharConfig() {
     <label class="cf-linha"><span>${t('Altura do chat')}</span><input type="range" min="0" max="500" step="20" value="${layout.chat || 0}" data-chat><b>${layout.chat ? layout.chat + ' px' : t('padrão')}</b></label>
     <button type="button" class="botao cf-padrao" data-layout-padrao>${t('Voltar a coluna ao padrão')}</button>`;
 }
-function abrirConfig() { desenharConfig(); $('#janela-config').hidden = false; }
+function abrirConfig() { teclaEsperando = null; teclaAviso = ''; desenharConfig(); $('#janela-config').hidden = false; }
+// trocar uma tecla (p723): o clique marca qual; a próxima tecla apertada vale (Esc cancela)
+var teclaEsperando = null, teclaAviso = '';
+function guardarTeclas() {
+  gravarLocal('lolidle-teclas', teclas);
+  TECLA_ESPACO = Object.fromEntries(teclas.hab.map((k, i) => [k, i])); ROTULO_ESPACO = teclas.hab.map(nomeTecla);
+  document.querySelectorAll('#hud-pocoes .hud-pocao > span, #pocoes .tecla-pocao').forEach((s, i) => { s.textContent = nomeTecla(teclas.pocao[i % 5]); });
+  barraDesenhada = ''; atualizarUI();
+}
+$('#config-corpo').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tecla]');
+  if (b) { teclaEsperando = teclaEsperando === b.dataset.tecla ? null : b.dataset.tecla; teclaAviso = ''; desenharConfig(); return; }
+  if (e.target.closest('[data-teclas-padrao]')) { teclas = structuredClone(TECLAS_PADRAO); teclaEsperando = null; teclaAviso = ''; guardarTeclas(); desenharConfig(); }
+});
+addEventListener('keydown', (e) => {
+  if (!teclaEsperando || $('#janela-config').hidden) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const k = e.key.toLowerCase();
+  if (k === 'escape') { teclaEsperando = null; teclaAviso = ''; desenharConfig(); return; }
+  if (k in TECLAS_FIXAS || k.length > 1 && !/^f\d+$/.test(k)) { teclaAviso = TECLAS_FIXAS[k] ? t('A tecla {k} já é de {f}. Escolha outra.', { k: nomeTecla(k), f: t(TECLAS_FIXAS[k]) }) : t('Essa tecla não dá para usar. Escolha uma letra, um número ou F1 a F12.'); desenharConfig(); return; }
+  const [grupo, i] = [teclaEsperando.replace(/\d+$/, ''), +teclaEsperando.match(/\d+$/)[0]];
+  // se a tecla já é de outra habilidade ou poção, as duas trocam
+  for (const g of ['hab', 'pocao']) { const j = teclas[g].indexOf(k); if (j >= 0 && !(g === grupo && j === i)) teclas[g][j] = teclas[grupo][i]; }
+  teclas[grupo][i] = k; teclaEsperando = null; teclaAviso = ''; guardarTeclas(); desenharConfig();
+}, true);
 $('#bt-config').addEventListener('click', (e) => { e.currentTarget.blur(); abrirConfig(); });
 $('#config-corpo').addEventListener('input', (e) => {
   const v = e.target.closest('[data-volume]');
@@ -997,7 +1043,7 @@ const entrarSozinhoGuilda = () => { try { return localStorage.getItem('lolidle-g
 function desenharPainelGrupo() {
   const g = grupoAtual, souLider = !g || g.membros.find((m) => m.eu)?.lider;
   const nomesNoGrupo = new Set((g?.membros || []).map((m) => m.n));
-  const perto = cena.posicoesArena().filter((o) => !o.morto && !nomesNoGrupo.has(o.nome) && Math.hypot(o.x - combate.arena.x, o.y - combate.arena.y) < M.GRUPO.raio).slice(0, 6);
+  const perto = !combate.arena ? [] : cena.posicoesArena().filter((o) => !o.morto && !nomesNoGrupo.has(o.nome) && Math.hypot(o.x - combate.arena.x, o.y - combate.arena.y) < M.GRUPO.raio).slice(0, 6);      // fora de Runeterra não há estado de lá (p720)
   const cheio = g && g.membros.length >= M.GRUPO.max;
   const html = `<p class="gp-dica">${t('Cacem juntos: cada membro a até {r} quadrados de você dá +{p}% de experiência, e você ganha uma parte da experiência dos monstros que eles abatem (metade numa dupla). Membros do mesmo grupo não se atacam.', { r: M.GRUPO.raio, p: Math.round(M.GRUPO.porMembro * 100) })}</p>
     ${g ? `<div class="rotulo">${t('Membros ({n}/{max})', { n: g.membros.length, max: M.GRUPO.max })}</div><div class="gp-lista">${g.membros.map((m) => `<div class="gp-m"><span>${m.lider ? '♛ ' : ''}${escG(m.n)}${m.eu ? ' ' + t('(você)') : ''}</span>${souLider && !m.eu ? `<button type="button" class="botao" data-tirar="${escG(m.n)}">${t('Tirar')}</button>` : ''}</div>`).join('')}</div>` : ''}
@@ -1094,7 +1140,7 @@ function msgTempoReal(m) {
     case 'ok': difNivelPvp = m.difNivel || 7; break;
     case 'caveira': avisoCaveira(m); break;
     case 'frag': avisoFrag(m); break;
-    case 'estado': aplicarCaveira(m.caveira); aplicarVermelha(m); cena.meuGrupo = m.grupo?.id || 0; if (combate.arena) combate.arena.bonusGrupo = m.grupo?.bonus || 1; cena.redeArena(m.jogadores, estado.nivel, difNivelPvp); mostrarGrupo(m.grupo); break;
+    case 'estado': aplicarCaveira(m.caveira); aplicarVermelha(m); cena.meuGrupo = m.grupo?.id || 0; if (combate.arena) combate.arena.bonusGrupo = m.grupo?.bonus || 1; cena.redeArena(m.jogadores, estado.nivel, difNivelPvp, !!(combate.arena && R.zonaPkEm(combate.arena.x, combate.arena.y)?.semCap)); mostrarGrupo(m.grupo); break;
     case 'grupoConvite':       // da mesma guilda e sem grupo: entra sozinho (se a opção do painel do Grupo estiver ligada)
       if (m.guilda && !grupoAtual && entrarSozinhoGuilda()) { enviarGrupo('aceitar'); log(t('{nome}, da sua guilda, chamou você para o grupo e você entrou (dá para desligar no botão Grupo).', { nome: m.de }), 'npc'); }
       else mostrarConviteGrupo(m.de);
@@ -1256,19 +1302,34 @@ document.addEventListener('click', (e) => {
   M.usarSkinMontaria(estado, id); atualizarMontaria(); atualizarUI();
 });
 // teclas 1 a 5: as poções, na ordem da barra de poções (em qualquer lugar do jogo)
+// usar uma poção à mão (clique ou tecla). Assistindo a dungeon, a luta é no servidor: a poção vai para lá (p726)
+function usarPocaoJogador(k) {
+  if (typeof dgVendo !== 'undefined' && dgVendo) {
+    rede.acaoDungeon('pocao', { chave: k }).then((r) => { if (r?.ok) som.efeito('cura'); else if (r?.erro) cena.aviso(r.erro, '#ffb070'); }).catch((er) => cena.aviso(er.message || String(er), '#ffb070'));
+    return;
+  }
+  if (M.usarPocao(estado, combate, k)) atualizarUI();
+}
+// ---------- teclas configuráveis (p723): habilidades da barra (Runeterra e Arena) e poções ----------
+var TECLAS_PADRAO = { hab: ['q', 'w', 'e', 'r'], pocao: ['1', '2', '3', '4', '5'] };
+// teclas que já são de outra função: não dá para escolher
+var TECLAS_FIXAS = { p: 'PK', z: 'Montaria', a: 'Atacar o mais perto', s: 'Parar', m: 'Mapa', k: 'Ranking', g: 'Guilda', o: 'Amigos', b: 'Voltar para a Fonte', i: 'Mochila', j: 'Mercado',
+  ' ': 'Câmera', enter: 'Chat', escape: 'Fechar', arrowup: 'Andar', arrowdown: 'Andar', arrowleft: 'Andar', arrowright: 'Andar', tab: 'Chat', shift: '', control: '', alt: '', meta: '' };
+var teclas = (() => { try { const x = JSON.parse(localStorage.getItem('lolidle-teclas')); if (x?.hab?.length === 4 && x?.pocao?.length === 5 && [...x.hab, ...x.pocao].every((k) => typeof k === 'string' && k && !(k in TECLAS_FIXAS))) return x; } catch {} return structuredClone(TECLAS_PADRAO); })();
+var nomeTecla = (k) => (k === ' ' ? t('Espaço') : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1));
 addEventListener('keydown', (e) => {
   if (digitando(e) || e.ctrlKey || e.altKey || e.metaKey || e.repeat || document.querySelector('.janela:not([hidden]), .dialogo-fundo')) return;
-  const k = Object.keys(M.POCOES)[+e.key - 1];
-  if (!/^[1-5]$/.test(e.key) || !k) return;
+  const k = Object.keys(M.POCOES)[teclas.pocao.indexOf(e.key.toLowerCase())];      // a tecla escolhida para cada poção (p723)
+  if (!k) return;
   e.preventDefault();
-  if (M.usarPocao(estado, combate, k)) atualizarUI();
+  usarPocaoJogador(k);
 });
 
 // ---------- Runeterra: teclado e mouse ----------
 let mouseTela = null;                 // posição do mouse no canvas (px CSS), para mirar
 // em Runeterra cada espaço da barra de combate é uma tecla: Q, W, E, R (o campeão anda com o mouse, como no LoL)
-const TECLA_ESPACO = { q: 0, w: 1, e: 2, r: 3 };
-const ROTULO_ESPACO = ['Q', 'W', 'E', 'R'];
+let TECLA_ESPACO = Object.fromEntries(teclas.hab.map((k, i) => [k, i]));      // as teclas escolhidas (p723; padrão Q W E R)
+let ROTULO_ESPACO = teclas.hab.map(nomeTecla);
 const naArena = () => !!localAtual().arena && combate.arena;
 const digitando = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
 // "Mostrar alcance": segurar a tecla mostra o alcance da habilidade e soltar lança (desligado, lança na hora)
@@ -1338,7 +1399,6 @@ addEventListener('keydown', (e) => {
   if (k === 'p') { alternarPvp(); return; }
   if (k === 'z') { if (!naAram()) Arena.alternarMontaria(combate, estado); return; }
   if (k === 'a') { atacarMaisPerto(); return; }
-  if (k === 'y') { definirCameraLivre(!cameraLivre); return; }
   if (k === 's') { pararMovimento(); return; }
   if (k === ' ' && cameraLivre) { e.preventDefault(); cena.camLivre = cena.camNoCampeao(); return; }
   if (k === 'escape' && segurando) { segurando = null; return; }
@@ -1902,6 +1962,84 @@ addEventListener('focus', () => { if (esperandoTwitch) atualizarTwitch(); });
 setInterval(() => { if (!$('#janela-twitch').hidden && !document.hidden) atualizarTwitch(); }, 30000);
 setTimeout(atualizarTwitch, 5000);
 
+// ---------- voto no TopIdle (servidor/topidle.js): quem vota no LoL Idle ganha +10% de XP por 4 h ----------
+// O servidor manda { resta, proximo, link, bonus, horas } no save e no GET /api/voto; o jogo conta para baixo.
+var votoInfo = null, votoAte = 0, votoClicou = 0;
+function votoAtivo() { return votoAte > Date.now(); }
+function aplicarVoto(v) {
+  if (!v || !v.link) return;
+  const ms = Math.max(0, Number(v.resta) || 0), novo = ms > 0 ? Date.now() + ms : 0;
+  // o voto chegou agora (o bônus apareceu ou cresceu)
+  if (votoInfo && novo - Math.max(votoAte, Date.now()) > 20 * 60000) {
+    cena.aviso(t('Voto confirmado! +{p}% de XP por {h} h', { p: Math.round(v.bonus * 100), h: v.horas }), '#ff8a2b');
+    log(t('Obrigado por votar no LoL Idle! Você ganhou +{p}% de XP por {h} horas.', { p: Math.round(v.bonus * 100), h: v.horas }), 'raro');
+    som.efeito('raro');
+    votoClicou = 0;
+  }
+  votoInfo = { ...v, proximoEm: Date.now() + Math.max(0, Number(v.proximo) || 0) };
+  votoAte = novo;
+  aplicarBonusLive();
+}
+function linhaVoto() {
+  const bv = $('#buff-voto');
+  if (!bv) return;
+  bv.hidden = !votoAtivo();
+  if (votoAtivo()) $('#buff-voto-t').textContent = `+${Math.round(votoInfo.bonus * 100)}% · ${tempoKick(votoAte - Date.now())}`;
+}
+// o botão na fileira das redes: brilha quando dá para votar, mostra o tempo do bônus ou quanto falta para o próximo voto
+function botaoVoto() {
+  const b = $('#abrir-voto');
+  if (!b) return;
+  b.hidden = !votoInfo;
+  if (!votoInfo) return;
+  const ativo = votoAtivo(), espera = !ativo && votoInfo.proximoEm > Date.now(), p = Math.round(votoInfo.bonus * 100);
+  const selo = ativo ? tempoKick(votoAte - Date.now()) : espera ? tempoKick(votoInfo.proximoEm - Date.now()) : t('+{p}% XP', { p });
+  const em = b.querySelector('em'); if (em.textContent !== selo) em.textContent = selo;
+  b.classList.toggle('pode', !ativo && !espera);
+  b.classList.toggle('ativo', ativo);
+  b.classList.toggle('espera', espera);
+  const dica = ativo ? t('Bônus do voto ativo: +{p}% de XP por mais {tempo}.', { p, tempo: tempoKick(votoAte - Date.now()) })
+    : espera ? t('Você já votou. Dá para votar de novo no TopIdle em {tempo}.', { tempo: tempoKick(votoInfo.proximoEm - Date.now()) })
+    : t('Vote no LoL Idle no TopIdle e ganhe +{p}% de XP por {h} h', { p, h: votoInfo.horas });
+  if (b.dataset.dica !== dica) { b.title = dica; b.dataset.dica = dica; }
+}
+function abrirVoto() {
+  if (!votoInfo) return;
+  if (votoAtivo()) { log(t('Bônus do voto ativo: +{p}% de XP por mais {tempo}.', { p: Math.round(votoInfo.bonus * 100), tempo: tempoKick(votoAte - Date.now()) })); return; }
+  if (votoInfo.proximoEm > Date.now()) { log(t('Você já votou. Dá para votar de novo no TopIdle em {tempo}.', { tempo: tempoKick(votoInfo.proximoEm - Date.now()) })); return; }
+  votoClicou = Date.now();
+  window.open(votoInfo.link, '_blank', 'noopener');
+  log(t('Abrimos o TopIdle em outra aba: confirme que você é humano e o voto conta. O bônus de XP chega sozinho em instantes.'));
+  rastreioVoto(); botaoVoto();
+}
+$('#abrir-voto').addEventListener('click', (e) => { e.currentTarget.blur(); abrirVoto(); });
+function rastreioVoto() {
+  const b = $('#rastreio-voto');
+  if (!b) return;
+  const pode = votoInfo && estado.nivel >= 5 && !votoAtivo() && votoInfo.proximoEm <= Date.now();
+  b.hidden = !votoAtivo() && !pode;
+  if (b.hidden) return;
+  const html = votoAtivo()
+    ? `<b>🗳 ${t('Bônus do voto +{p}%', { p: Math.round(votoInfo.bonus * 100) })}</b><small>${t('mais {tempo} de XP extra', { tempo: tempoKick(votoAte - Date.now()) })}</small>`
+    : `<b>🗳 ${t('Vote no LoL Idle')}</b><small>${votoClicou ? t('Terminou de votar? O bônus chega em instantes.') : t('Ganhe +{p}% de XP por {h} h · clique', { p: Math.round(votoInfo.bonus * 100), h: votoInfo.horas })}</small>`;
+  if (b.dataset.html !== html) { b.dataset.html = html; b.innerHTML = html; }
+  b.classList.toggle('ativo', votoAtivo());
+}
+async function atualizarVoto() {
+  try { const v = await rede.voto(); if (v?.ativo) aplicarVoto(v); } catch {}
+}
+$('#rastreio-voto').addEventListener('click', (e) => {
+  e.currentTarget.blur();
+  if (!votoAtivo()) abrirVoto();
+});
+// voltou da aba do TopIdle: confere o voto algumas vezes (o aviso do TopIdle chega em segundos)
+addEventListener('focus', () => { if (votoClicou && Date.now() - votoClicou < 15 * 60000) for (const ms of [2000, 8000, 20000]) setTimeout(atualizarVoto, ms); });
+setInterval(() => {
+  if (votoAte && !votoAtivo()) { votoAte = 0; aplicarBonusLive(); log(t('O bônus do voto acabou. Dá para votar de novo no TopIdle a cada 18 horas.')); }
+  linhaVoto(); rastreioVoto(); botaoVoto();
+}, 1000);
+setTimeout(atualizarVoto, 6000);
+
 // ---------- Kick: os pontos do canal das lives oficiais viram horas de bônus de XP (servidor/kick.js) ----------
 // O servidor diz quanto falta (resta, em ms); o jogo conta para baixo. O bônus soma com o da Twitch (teto de +50% no motor).
 let infoKick = null, esperandoKick = false, kickAte = 0, kickConhecido = false;
@@ -1922,7 +2060,7 @@ function tempoKick(ms) {
 }
 function aplicarBonusLive() {
   const k = kickAtivo() ? 1 + (infoKick?.bonus ?? 0.15) : 1;
-  M.usarBonusTwitch(Math.min(1.5, 1 + (bonusTwAtual - 1) + (k - 1) + (bonusGuildaAtual - 1)));
+  M.usarBonusTwitch(Math.min(1.5, 1 + (bonusTwAtual - 1) + (k - 1) + (bonusGuildaAtual - 1) + (votoAtivo() ? votoInfo.bonus : 0)));
   const bt = $('#abrir-kick'), ativo = k > 1;
   bt.classList.toggle('ativo', ativo);
   bt.querySelector('em').textContent = t('+{p}% XP', { p: pctTw(infoKick?.bonus ?? 0.15) });
@@ -2386,6 +2524,8 @@ function abrirMercado(secao) {
 const linhaItem = (id, extra = '') => {
   const g = M.ofertaGema(id);
   if (g) return `<img src="${iconeGema(g.id)}" alt="" title="${textoGema(g.id).replace(/"/g, '&quot;')}"><div><div class="nome" style="color:${M.GEMAS[g.id].cor}">${M.nomeOferta(id)}</div><div class="detalhe">${t('Runa')}${extra}</div></div>`;
+  const mo = M.ofertaMascote(id);
+  if (mo) return `<img class="pet-mini" src="${miniatura(M.MASCOTES[mo].nome)}" alt="" title="${esc(t(M.MASCOTES[mo].desc))}"><div><div class="nome" style="color:${COR_MASCOTE}">${t(M.MASCOTES[mo].nome)}</div><div class="detalhe">${t('Mascote')}${extra}</div></div>`;
   const d = descreverItem(id);
   return `<img src="${imgItem(id)}" alt="" title="${textoItem(id).replace(/"/g, '&quot;')}"><div><div class="nome" style="color:${d.cor}">${d.nome}</div><div class="detalhe">${M.NOME_RARIDADE[d.raridade]}${extra}</div></div>`;
 };
@@ -2408,18 +2548,24 @@ function gruposMercado(ofertas) {
   const mapa = new Map();
   for (const o of ofertas) {
     const ch = chaveGrupo(o.item), g = M.ofertaGema(o.item), un = g ? o.preco / g.q : o.preco;
-    const gr = mapa.get(ch) || { chave: ch, item: o.item, gema: g?.id || null, ofertas: [], min: {}, novo: 0, qtd: 0 };
+    const gr = mapa.get(ch) || { chave: ch, item: o.item, gema: g?.id || null, mascote: M.ofertaMascote(o.item), ofertas: [], min: {}, novo: 0, qtd: 0 };
     gr.ofertas.push(o); gr.qtd += g ? g.q : 1; gr.novo = Math.max(gr.novo, o.id);
     gr.min[o.moeda] = Math.min(gr.min[o.moeda] ?? Infinity, un);
     mapa.set(ch, gr);
   }
   return [...mapa.values()];
 }
-const nomeGrupo = (gr) => (gr.gema ? M.nomeGema(gr.gema) : descreverItem(gr.item).nome);
-const rarGrupo = (gr) => (gr.gema ? 'gema' : descreverItem(gr.item).raridade);
+const nomeGrupo = (gr) => (gr.gema ? M.nomeGema(gr.gema) : gr.mascote ? t(M.MASCOTES[gr.mascote].nome) : descreverItem(gr.item).nome);
+const rarGrupo = (gr) => (gr.gema ? 'gema' : gr.mascote ? 'mascote' : descreverItem(gr.item).raridade);
 const iconeGrupo = (gr) => (gr.gema ? `<span class="slot"><img src="${iconeGema(gr.gema)}" alt=""></span>`
+  : gr.mascote ? `<span class="slot mascote"><img src="${miniatura(M.MASCOTES[gr.mascote].nome)}" alt=""></span>`
   : `<span class="slot ${rarGrupo(gr)}"><img src="${imgItem(gr.item)}" alt="">${rotuloRef(gr.item)}</span>`);
 const precoMin = (gr, moeda) => (gr.min[moeda] == null ? '' : `<em class="${moeda === 'orbs' ? 'gem' : 'ouro'}">${t('a partir de')} ${fmtPreco(Math.ceil(gr.min[moeda]), moeda)}${gr.gema ? ' ' + t('cada') : ''}</em>`);
+// o mascote no mercado (p677, só o Poro de Bigode): a conta tem um? e o texto da ficha
+const jaTemMascote = (item) => { const mo = M.ofertaMascote(item); return !!mo && !!estado.mascotes?.[mo]; };
+const mascoteMercadoHtml = (id) => `<p class="bolsa-efeito">${esc(t(M.MASCOTES[id].desc))}</p>
+  <p class="fraco">${t('Vale para a conta toda (todos os seus personagens). Chega no nível 1: o nível fica com quem treinou.')}</p>
+  ${estado.mascotes?.[id] ? `<p class="alerta">${t('Você já tem um Poro de Bigode. Cada conta pode ter só um.')}</p>` : ''}`;
 // a comparação com o equipado (a mesma da janela de itens): atributos lado a lado e o Poder antes → depois
 function comparacaoHtml(id) {
   if (!M.temAtributo(id)) return `<p class="fraco">${t('Não dá atributos: serve só para montar outros itens no Ornn.')}</p>`;
@@ -2475,27 +2621,28 @@ function desenharMercadoJog() {
   const bloq = aqui ? '' : `disabled title="${t('Fale com o Mercador na Fonte ou numa cidade de Runeterra')}"`;
   if (abaMercado === 'comprar') {
     const busca = $('#mercado-busca').value.trim().toLowerCase(), classe = $('#mercado-classe').value, moeda = $('#mercado-moeda').value, ordem = $('#mercado-ordem').value;
-    let ofs = dm.ofertas.filter((o) => !o.minha && !o.para && (M.ofertaGema(o.item) || M.ITENS[M.baseId(o.item)]));
+    let ofs = dm.ofertas.filter((o) => !o.minha && !o.para && (M.ofertaGema(o.item) || M.ofertaMascote(o.item) || M.ITENS[M.baseId(o.item)]));
     // as reservadas para mim ficam num bloco em destaque, fora das fichas comuns
-    const reserv = dm.ofertas.filter((o) => o.paraMim && !o.minha && (M.ofertaGema(o.item) || M.ITENS[M.baseId(o.item)]));
+    const reserv = dm.ofertas.filter((o) => o.paraMim && !o.minha && (M.ofertaGema(o.item) || M.ofertaMascote(o.item) || M.ITENS[M.baseId(o.item)]));
     const nivelRes = estado.nivel < RESERVA_NIVEL ? `disabled title="${t('Só jogadores do nível {n} ou mais compram ofertas reservadas.', { n: RESERVA_NIVEL })}"` : '';
     const blocoRes = reserv.length ? `<div class="mj-reservadas"><div class="mj-res-tit">🔒 ${t('Reservadas para você ({n})', { n: reserv.length })}</div>${reserv.map((o) => {
-        const falta = o.moeda === 'orbs' ? orbs < o.preco : estado.ouro < o.preco;
+        const falta = o.moeda === 'orbs' ? orbs < o.preco : estado.ouro < o.preco, ja = jaTemMascote(o.item);
         return `<div class="oferta mj-res">${linhaItem(o.item, ' · ' + t('de {nome}', { nome: escG(o.vendedor) }) + ' · ' + t('expira em {tempo}', { tempo: tempoTexto(Math.max(0, (o.expira - Date.now()) / 1000)) }))}
           <span class="preco${o.moeda === 'orbs' ? ' gem' : ''}">${fmtPreco(o.preco, o.moeda)}</span>
-          <button class="botao principal" data-comprar="${o.id}" ${!aqui ? bloq : nivelRes || (falta ? `disabled title="${t('Saldo insuficiente')}"` : '')}>${t('Comprar')}</button></div>`;
+          <button class="botao principal" data-comprar="${o.id}" ${!aqui ? bloq : ja ? `disabled title="${t('Você já tem um Poro de Bigode. Cada conta pode ter só um.')}"` : nivelRes || (falta ? `disabled title="${t('Saldo insuficiente')}"` : '')}>${t('Comprar')}</button></div>`;
       }).join('')}</div>` : '';
     if (moeda) ofs = ofs.filter((o) => o.moeda === moeda);
     let grs = gruposMercado(ofs);
     if (busca) grs = grs.filter((g) => nomeGrupo(g).toLowerCase().includes(busca));
     if (mercadoCat === 'runas') grs = grs.filter((g) => g.gema);
-    else if (mercadoCat === 'botas') grs = grs.filter((g) => !g.gema && M.ehBota(g.item));
-    else if (mercadoCat) grs = grs.filter((g) => !g.gema && rarGrupo(g) === mercadoCat);
-    if (classe) grs = grs.filter((g) => !g.gema && M.classeItem(g.item) === classe);
+    else if (mercadoCat === 'mascotes') grs = grs.filter((g) => g.mascote);
+    else if (mercadoCat === 'botas') grs = grs.filter((g) => !g.gema && !g.mascote && M.ehBota(g.item));
+    else if (mercadoCat) grs = grs.filter((g) => !g.gema && !g.mascote && rarGrupo(g) === mercadoCat);
+    if (classe) grs = grs.filter((g) => !g.gema && !g.mascote && M.classeItem(g.item) === classe);
     const qual = $('#mercado-qual')?.value;
-    if (qual) grs = grs.filter((g) => !g.gema && M.qualidadeDe(g.item) === qual);
+    if (qual) grs = grs.filter((g) => !g.gema && !g.mascote && M.qualidadeDe(g.item) === qual);
     // "Melhor primeiro": raridade, qualidade, refino (+N) e, empatado, o mais barato
-    const TIER_RAR = { lendario: 3, epico: 2, basico: 1 }, tier = (g) => (g.gema ? [0, 0, 0] : [TIER_RAR[rarGrupo(g)] || 0, M.ORDEM_QUAL.indexOf(M.qualidadeDe(g.item)), M.refinoDe(g.item)]);
+    const TIER_RAR = { lendario: 3, epico: 2, basico: 1 }, tier = (g) => (g.mascote ? [4, 0, 0] : g.gema ? [0, 0, 0] : [TIER_RAR[rarGrupo(g)] || 0, M.ORDEM_QUAL.indexOf(M.qualidadeDe(g.item)), M.refinoDe(g.item)]);
     const melhor = (a, b) => { const x = tier(a), y = tier(b); return y[0] - x[0] || y[1] - x[1] || y[2] - x[2]; };
     const menor = (g) => g.min[moeda || 'ouro'] ?? (g.min.ouro ?? Infinity), menorG = (g) => g.min.orbs ?? Infinity;
     grs.sort(ordem === 'caro' ? (a, b) => (menor(b) === Infinity ? -1 : menor(a) === Infinity ? 1 : menor(b) - menor(a))
@@ -2512,25 +2659,26 @@ function desenharMercadoJog() {
     if (!gr) det.innerHTML = `<p class="fraco mj-dica">${t('Escolha um item para ver as ofertas, quem está vendendo e a comparação com o que você tem equipado.')}</p>`;
     else {
       const ofertas = [...gr.ofertas].sort((a, b) => (a.moeda === b.moeda ? a.preco - b.preco : a.moeda === 'ouro' ? -1 : 1));
-      det.innerHTML = `<div class="bolsa-topo">${iconeGrupo(gr)}<div><b class="cor-${rarGrupo(gr)}">${nomeGrupo(gr)}</b><small>${gr.gema ? t('Runa') : M.NOME_RARIDADE[rarGrupo(gr)] + ' · ' + t('{valor} de ouro no Lojista', { valor: inteiro(M.valorVenda(gr.item)) })}</small></div></div>
-        ${gr.gema ? `<p class="bolsa-efeito">${t(M.GEMAS[gr.gema].desc)}</p>` : comparacaoHtml(gr.item)}
+      det.innerHTML = `<div class="bolsa-topo">${iconeGrupo(gr)}<div><b class="cor-${rarGrupo(gr)}">${nomeGrupo(gr)}</b><small>${gr.gema ? t('Runa') : gr.mascote ? t('Mascote') : M.NOME_RARIDADE[rarGrupo(gr)] + ' · ' + t('{valor} de ouro no Lojista', { valor: inteiro(M.valorVenda(gr.item)) })}</small></div></div>
+        ${gr.gema ? `<p class="bolsa-efeito">${t(M.GEMAS[gr.gema].desc)}</p>` : gr.mascote ? mascoteMercadoHtml(gr.mascote) : comparacaoHtml(gr.item)}
         <div class="mj-ofertas-tit">${t('Ofertas')} (${ofertas.length})</div>
         ${ofertas.map((o) => {
-          const g = M.ofertaGema(o.item), falta = o.moeda === 'orbs' ? orbs < o.preco : o.moeda === 'diamante' ? rp < o.preco : estado.ouro < o.preco;
+          const g = M.ofertaGema(o.item), falta = o.moeda === 'orbs' ? orbs < o.preco : o.moeda === 'diamante' ? rp < o.preco : estado.ouro < o.preco, ja = jaTemMascote(o.item);
           return `<div class="mj-oferta"><span class="mj-vend"><b>${escG(o.vendedor)}</b><small>${g ? t('lote de {n}', { n: g.q }) + ' · ' : ''}${t('expira em {tempo}', { tempo: tempoTexto(Math.max(0, (o.expira - Date.now()) / 1000)) })}</small></span>
             <span class="preco${o.moeda === 'orbs' ? ' gem' : ''}">${fmtPreco(o.preco, o.moeda)}</span>
-            <button class="botao" data-comprar="${o.id}" ${!aqui ? bloq : falta ? `disabled title="${t('Saldo insuficiente')}"` : ''}>${t('Comprar')}</button></div>`;
+            <button class="botao" data-comprar="${o.id}" ${!aqui ? bloq : ja ? `disabled title="${t('Você já tem um Poro de Bigode. Cada conta pode ter só um.')}"` : falta ? `disabled title="${t('Saldo insuficiente')}"` : ''}>${t('Comprar')}</button></div>`;
         }).join('')}`;
     }
   } else if (abaMercado === 'vender') {
     // a mochila e as runas em grade; o item escolhido abre o formulário com o menor preço do mercado para ele
-    const runas = M.ORDEM_GEMAS.filter((g) => estado.gemas?.[g]);
-    lista.innerHTML = estado.mochila.length || runas.length
+    const runas = M.ORDEM_GEMAS.filter((g) => estado.gemas?.[g]), petsVenda = Object.keys(estado.mascotes || {}).filter((p) => Object.hasOwn(M.MASCOTES, p) && M.MASCOTES[p].negociavel);
+    lista.innerHTML = estado.mochila.length || runas.length || petsVenda.length
       ? `<div class="mj-mochila">${estado.mochila.map((id, k) => `<button type="button" class="slot ${M.raridade(M.infoItem(id))}${k === vendendo ? ' ativa' : ''}" data-escolher="${k}" ${M.pendente(id) ? `disabled title="${t('Sendo avaliado...')}"` : `title="${descreverItem(id).nome.replace(/"/g, '&quot;')}"`}><img src="${imgItem(id)}" alt="">${rotuloRef(id)}</button>`).join('')}
-        ${runas.map((g) => `<button type="button" class="slot${vendendo === 'g:' + g ? ' ativa' : ''}" data-escolher="g:${g}" title="${M.nomeGema(g)}"><img src="${iconeGema(g)}" alt=""><span class="qtd">${estado.gemas[g]}</span></button>`).join('')}</div>`
+        ${runas.map((g) => `<button type="button" class="slot${vendendo === 'g:' + g ? ' ativa' : ''}" data-escolher="g:${g}" title="${M.nomeGema(g)}"><img src="${iconeGema(g)}" alt=""><span class="qtd">${estado.gemas[g]}</span></button>`).join('')}
+        ${petsVenda.map((p) => `<button type="button" class="slot mascote${vendendo === 'm:' + p ? ' ativa' : ''}" data-escolher="m:${p}" title="${esc(t(M.MASCOTES[p].nome))}"><img src="${miniatura(M.MASCOTES[p].nome)}" alt=""><span class="qtd">🐾${estado.mascotes[p].nivel}</span></button>`).join('')}</div>`
       : `<div class="vazio-lista">${t('Mochila vazia. Só itens da mochila vão para o mercado (tire do equipamento antes).')}</div>`;
-    const gemaVenda = typeof vendendo === 'string' && vendendo.startsWith('g:') ? vendendo.slice(2) : null;
-    const chave = gemaVenda ? 'gema:' + gemaVenda : typeof vendendo === 'number' ? estado.mochila[vendendo] : null;
+    const gemaVenda = typeof vendendo === 'string' && vendendo.startsWith('g:') ? vendendo.slice(2) : null, petVenda = typeof vendendo === 'string' && vendendo.startsWith('m:') ? vendendo.slice(2) : null;
+    const chave = gemaVenda ? 'gema:' + gemaVenda : petVenda ? 'mascote:' + petVenda : typeof vendendo === 'number' ? estado.mochila[vendendo] : null;
     const iguais = chave ? dm.ofertas.filter((o) => !o.minha && !o.para && chaveGrupo(o.item) === chave) : [];
     const gr = iguais.length ? gruposMercado(iguais)[0] : null;
     const noMercado = chave ? `<p class="mj-ref">${gr ? t('No mercado agora: {n} à venda', { n: gr.ofertas.length }) + ' · ' + [precoMin(gr, 'ouro'), precoMin(gr, 'orbs')].filter(Boolean).join(' · ') : t('Ninguém está vendendo este item agora.')}</p>` : '';
@@ -2539,6 +2687,8 @@ function desenharMercadoJog() {
     if (gemaVenda && estado.gemas?.[gemaVenda]) form = formVenda(`<img src="${iconeGema(gemaVenda)}" alt=""><div><b>${M.nomeGema(gemaVenda)}</b><small>${t('Runa')} · ${t('na bolsa: {n}', { n: estado.gemas[gemaVenda] })}</small></div>`,
       `<label class="vf-campo">${t('Quantidade')} <span><input id="vender-qtd" type="number" min="1" max="${Math.min(100, estado.gemas[gemaVenda])}" step="1" value="1"></span></label>`,
       sugestao(gemaVenda === 'sorte' ? 5000 : 40000), bloq);
+    else if (petVenda && estado.mascotes?.[petVenda] && M.MASCOTES[petVenda]?.negociavel) form = formVenda(`<img class="pet-mini" src="${miniatura(M.MASCOTES[petVenda].nome)}" alt=""><div><b class="cor-mascote">${t(M.MASCOTES[petVenda].nome)}</b><small>${t('Mascote')} · ${t('nível {n} (quem comprar começa no 1)', { n: estado.mascotes[petVenda].nivel })}</small></div>`,
+      '', sugestao(250000), bloq);
     else if (typeof vendendo === 'number' && estado.mochila[vendendo]) {
       const id = estado.mochila[vendendo], d = descreverItem(id);
       form = formVenda(`<span class="icone-item"><img src="${imgItem(id)}" alt="">${rotuloRef(id)}</span><div><b class="cor-${d.raridade}">${d.nome}</b><small>${M.NOME_RARIDADE[d.raridade]} · ${t('Lojista paga {valor}', { valor: fmt(M.valorVenda(id)) })}</small></div>`, '', sugestao(M.valorVenda(id) * 3), bloq);
@@ -2764,14 +2914,14 @@ async function cliqueMercado(e) {
     document.querySelectorAll('[data-moeda-venda]').forEach((x) => { const sim = x.dataset.moedaVenda === moedaVenda; x.classList.toggle('ativa', sim); x.setAttribute('aria-pressed', sim); });
     atualizarLiquido(); desenharMercadoJog(); return;      // o preço sugerido muda com a moeda
   }
-  if (b.dataset.escolher != null) { vendendo = b.dataset.escolher.startsWith('g:') ? b.dataset.escolher : +b.dataset.escolher; desenharMercado(); $('#vender-preco')?.focus(); return; }
+  if (b.dataset.escolher != null) { vendendo = /^[gm]:/.test(b.dataset.escolher) ? b.dataset.escolher : +b.dataset.escolher; desenharMercado(); $('#vender-preco')?.focus(); return; }
   if (b.hasAttribute('data-anunciar')) {
     const preco = Math.floor(+$('#vender-preco').value), moeda = $('#vender-moeda').value;
     const para = ($('#vender-para')?.disabled ? '' : $('#vender-para')?.value || '').trim(), extraPara = para ? { para } : {};
     if (!(preco >= 1)) { avisoMercado(t('Digite um preço.')); return; }
     if (para && para.toLowerCase() === NOME.toLowerCase()) { avisoMercado(t('Não dá para reservar para você mesmo nem para outro personagem da sua conta.')); return; }
     // abaixo do que os jogadores pagam: o mínimo trava (o servidor também) e perto dele o jogo pergunta antes
-    const itemRef = typeof vendendo === 'string' ? `gema:${vendendo.slice(2)}:${Math.max(1, Math.floor(+($('#vender-qtd')?.value || 1)))}` : estado.mochila[vendendo];
+    const itemRef = typeof vendendo === 'string' ? (vendendo.startsWith('m:') ? 'mascote:' + vendendo.slice(2) : `gema:${vendendo.slice(2)}:${Math.max(1, Math.floor(+($('#vender-qtd')?.value || 1)))}`) : estado.mochila[vendendo];
     const rf = refsMercado.get(itemRef + '|' + moeda)?.ref;
     if (rf && preco < rf.minimo) {
       await avisar(t('O preço mínimo para este item é {min}. Os jogadores pagam em torno de {ref} por ele nas vendas recentes, e o mercado não aceita menos que um quarto disso.', { min: precoCheio(rf.minimo, moeda), ref: precoCheio(rf.valor, moeda) }), { titulo: t('Preço abaixo do mínimo'), ok: t('Usar o preço mínimo') });
@@ -2779,6 +2929,16 @@ async function cliqueMercado(e) {
       return;
     }
     if (rf && preco < rf.aviso && !(await confirmar(t('Os jogadores pagam em torno de {ref} por este item e você está anunciando por {preco}. Anunciar mesmo assim?', { ref: precoCheio(rf.valor, moeda), preco: precoCheio(preco, moeda) }), { titulo: t('Preço bem abaixo do normal'), ok: t('Anunciar') }))) return;
+    if (typeof vendendo === 'string' && vendendo.startsWith('m:')) {          // o Poro de Bigode (p677): sai da conta toda
+      const pet = vendendo.slice(2), nome = t(M.MASCOTES[pet]?.nome || pet);
+      if (!(await confirmar(t('Anunciar o {pet} por {preco}? Ele sai da sua conta agora (de todos os seus personagens) e quem comprar começa no nível 1. Se você cancelar ou a oferta vencer, ele volta pela caixa do mercado.', { pet: nome, preco: fmtPreco(preco, moeda) }), { titulo: t('Vender mascote'), ok: t('Anunciar') }))) return;
+      b.disabled = true;
+      if (await operarServidor('vender', { mascote: pet, preco, moeda, ...extraPara })) {
+        log(para ? t('Você reservou {item} para {nome} por {preco}.', { item: nome, nome: para, preco: fmtPreco(preco, moeda) }) : t('Você anunciou {item} por {preco} no mercado.', { item: nome, preco: fmtPreco(preco, moeda) }), 'item');
+        som.efeito('compra'); vendendo = null; cena.definirMascote(M.spriteMascote(estado));
+      }
+      return carregarMercado();
+    }
     if (typeof vendendo === 'string') {          // lote de gemas
       const gema = vendendo.slice(2), qtd = Math.floor(+$('#vender-qtd').value);
       if (!(qtd >= 1 && qtd <= (estado.gemas?.[gema] || 0))) { avisoMercado(t('Quantidade inválida.')); return; }
@@ -2801,7 +2961,8 @@ async function cliqueMercado(e) {
   }
   if (b.dataset.cancelar) {
     b.disabled = true;
-    if (await operarServidor('cancelar', { id: +b.dataset.cancelar })) log(t('Oferta cancelada: o item voltou para a mochila (ou para a caixa, se a mochila estava cheia).'), 'npc');
+    const rc = await operarServidor('cancelar', { id: +b.dataset.cancelar });
+    if (rc) log(rc.mascoteFicou ? t('Oferta cancelada. A sua conta já tem outro Poro de Bigode, então este ficou na caixa do mercado: venda o seu para poder recolher este.') : t('Oferta cancelada: o item voltou para a mochila (ou para a caixa, se a mochila estava cheia).'), 'npc');
     return carregarMercado();
   }
   if (b.hasAttribute('data-receber')) {
@@ -2812,6 +2973,7 @@ async function cliqueMercado(e) {
       const partes = [ouro && t('{qtd} de ouro', { qtd: fmt(ouro) }), diamantes && t('{qtd} diamantes', { qtd: fmt(diamantes) }), gem && t('{qtd} Gemas', { qtd: fmt(gem) }), itens.length && `${itens.length} ${itens.length > 1 ? t('itens') : t('item')}`].filter(Boolean);
       log(t('Mercado: você recebeu {partes}.', { partes: partes.join(', ') || t('nada') }) + (ficaram ? ' ' + t('{n} item(ns) ficaram na caixa (mochila cheia).', { n: ficaram }) : ''), 'raro');
       if (ouro || diamantes || gem) som.efeito('moeda');
+      if (r.recebido.mascoteFicou) log(t('O Poro de Bigode ficou na caixa: a sua conta já tem outro. Venda o seu no mercado para poder recolher este.'), 'morte');
     }
     return carregarMercado();
   }
@@ -2846,15 +3008,15 @@ setInterval(async () => {
 }, 30000);
 
 // ---------- chat: Global (todos) e Fonte (balões em cima dos personagens) ----------
-const caixas = { servidor: $('#log'), global: $('#chat-global'), fonte: $('#chat-fonte'), guilda: $('#chat-guilda'), privado: $('#chat-privado') };
-const naoLidas = { global: 0, fonte: 0, guilda: 0, privado: 0 };
+const caixas = { servidor: $('#log'), global: $('#chat-global'), ajuda: $('#chat-ajuda'), fonte: $('#chat-fonte'), guilda: $('#chat-guilda'), privado: $('#chat-privado') };
+const naoLidas = { global: 0, ajuda: 0, fonte: 0, guilda: 0, privado: 0 };
 // privado: com quem você está conversando, quem falou com você por último (/r) e quem você bloqueou (só neste navegador)
 let privadoCom = null, ultimoQueFalou = null;
 const bloqueados = new Set(lerLocal('lolidle-bloqueados', []));
 const salvarBloqueados = () => gravarLocal('lolidle-bloqueados', [...bloqueados]);
 function placeholderChat() {
   const c = canalAtivo;
-  $('#chat-texto').placeholder = c === 'fonte' ? t('Falar com quem está perto de você…') : c === 'guilda' ? t('Mensagem para a sua guilda…')
+  $('#chat-texto').placeholder = c === 'ajuda' ? t('Tire sua dúvida: os tutores respondem aqui…') : c === 'fonte' ? t('Falar com quem está perto de você…') : c === 'guilda' ? t('Mensagem para a sua guilda…')
     : c === 'privado' ? (privadoCom ? t('Mensagem para {nome}… (/w nome para outra pessoa)', { nome: privadoCom }) : t('Escreva /w nome mensagem, ou clique no nome de alguém')) : t('Mensagem para todos os jogadores…');
 }
 // abre a conversa privada com alguém (botão Conversar da ficha)
@@ -2880,6 +3042,8 @@ function trocarCanal(canal) {
 function marcarNaoLidas(canal) {
   const el = document.querySelector(`#abas-console [data-canal="${canal}"] .nao-lidas`);
   el.hidden = !naoLidas[canal]; el.textContent = naoLidas[canal] > 99 ? '99+' : naoLidas[canal];
+  if (['privado', 'guilda', 'fonte'].includes(canal)) el.closest('.aba')?.classList.toggle('tem-msg', !!naoLidas[canal]);      // a aba pisca (p703)
+  $('#chat-min')?.classList.toggle('tem-msg', ['privado', 'guilda'].some((c) => naoLidas[c] > 0));      // e o botão do chat minimizado (só Privado e Guilda, p707)
 }
 function linhaChat(canal, filhos, classe = '') {
   const el = caixas[canal], p = document.createElement('p');
@@ -2938,7 +3102,27 @@ function mostrarMsg(m) {
   if (!primeiraLeitura && m.nome !== NOME) som.efeito(marcou ? 'alerta' : 'mensagem');
   if (!primeiraLeitura && m.canal === 'privado' && m.nome !== NOME && canalAtivo !== 'privado') log(t('Mensagem privada de {nome}: abra a aba Privado (ou responda com /r).', { nome: m.nome }), 'npc');
   if (m.canal === 'fonte' && !primeiraLeitura) cena.falar(m.nome, m.texto);
+  if (!primeiraLeitura && m.nome !== NOME && m.canal === 'privado') avisoMensagem(m);      // (p703; só o Privado desde o p713, Local e Guilda piscam a aba)
+  if (!primeiraLeitura && m.nome !== NOME && m.canal === 'privado') som.alertaPrivado();      // barulhinho do privado (p706)
 }
+// aviso de mensagem nova (p703): no canto da tela, quando o chat não está mostrando aquele canal; clicar abre o chat nele
+const CANAL_AVISO = { privado: ['✉', 'Privado', 'privado'], guilda: ['🛡', 'Guilda', 'guilda'], fonte: ['💬', 'Local', 'local'] };
+let tituloOriginal = document.title, tituloTimer = null;
+function avisoMensagem(m) {
+  const vendo = !document.hidden && !chatMin && canalAtivo === m.canal;
+  if (document.hidden && !tituloTimer) { tituloOriginal = document.title; let k = 0; tituloTimer = setInterval(() => { document.title = k++ % 2 ? tituloOriginal : `💬 ${t('Nova mensagem')}`; }, 1000); }
+  if (vendo) return;
+  const [ico, rot, cls] = CANAL_AVISO[m.canal];
+  let caixa = $('#avisos-msg'); if (!caixa) { caixa = Object.assign(document.createElement('div'), { id: 'avisos-msg' }); document.body.append(caixa); }
+  const el = document.createElement('button'); el.type = 'button'; el.className = 'aviso-msg ' + cls;
+  const topo = document.createElement('b'), corpo = document.createElement('span');
+  topo.textContent = `${ico} ${t(rot)} · ${m.nome}`; corpo.textContent = String(m.texto || '').slice(0, 90);      // texto puro: nada de HTML de outros jogadores
+  el.append(topo, corpo);
+  el.addEventListener('click', () => { if (chatMin) { chatMin = false; gravarLocal('lolidle-chat-min', false); aplicarChat(); } if (m.canal === 'privado') privadoCom = m.nome; trocarCanal(m.canal); $('#chat-texto')?.focus(); el.remove(); });
+  caixa.prepend(el); while (caixa.children.length > 3) caixa.lastChild.remove();
+  setTimeout(() => el.remove(), 8000);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && tituloTimer) { clearInterval(tituloTimer); tituloTimer = null; document.title = tituloOriginal; } });
 async function buscarChat() {
   try {
     const r = await rede.lerChat(chatDesde);
@@ -3110,7 +3294,7 @@ $('#chat-form').addEventListener('submit', async () => {
     if (!privadoCom) { linhaChat('privado', [t('Escreva /w nome mensagem, ou clique no nome de alguém no chat ou no ranking.')], 'sistema'); return; }
     return enviarPrivado(privadoCom, texto);
   }
-  const canal = canalAtivo === 'fonte' || canalAtivo === 'guilda' ? canalAtivo : 'global';
+  const canal = canalAtivo === 'fonte' || canalAtivo === 'guilda' || canalAtivo === 'ajuda' ? canalAtivo : 'global';
   campo.disabled = true;
   try { const r = await rede.enviarChat(canal, texto); campo.value = ''; mostrarMsg(r.msg); if (PERGUNTA_AJUDA.test(texto)) ajudaNoChat(canal); }
   catch (e) { linhaChat(canal, [e.message], 'sistema'); }
@@ -3504,6 +3688,7 @@ async function pedirAmizade(nome) {
   } catch (e) { return e.message; }
 }
 $('#abrir-amigos').addEventListener('click', (e) => { e.stopPropagation(); e.currentTarget.blur(); abrirAmigos(); });
+$('#bt-amigos')?.addEventListener('click', (e) => { e.stopPropagation(); e.currentTarget.blur(); abrirAmigos(); });      // o botão do cartão (p702)
 $('#amigos').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'am-nome') $('#am-pedir').click(); });
 $('#amigos').addEventListener('click', async (e) => {
   const b = e.target.closest('button'); if (!b) return;
@@ -3521,7 +3706,7 @@ $('#amigos').addEventListener('click', async (e) => {
   await carregarAmigos(); desenharAmigos(erro);
   pedidosAmizade = amigosInfo?.recebidos.length || 0; mostrarPedidosAmizade();
 });
-function mostrarPedidosAmizade() { const s = $('#abrir-amigos .nao-lidas'); s.hidden = !pedidosAmizade; s.textContent = pedidosAmizade || ''; }
+function mostrarPedidosAmizade() { for (const s of document.querySelectorAll('#abrir-amigos .nao-lidas, #bt-amigos .nao-lidas')) { s.hidden = !pedidosAmizade; s.textContent = pedidosAmizade || ''; } }
 // a cada save: os pedidos esperando (o número no botão) e os amigos online (avisa quando um entra)
 function aplicarResumoAmigos(r) {
   if (!r) return;
@@ -4357,7 +4542,7 @@ function desenharMapaMundo() {
   for (const z of R.ZONAS_PK) {
     const [zx, zy] = P(z.x, z.y), rr = z.r * K * zm;
     if (zx + rr < 0 || zx - rr > W || zy + rr < 0 || zy - rr > H) continue;       // com zoom, fora da vista
-    g.save(); g.fillStyle = 'rgba(190,20,20,0.22)'; g.strokeStyle = 'rgba(150,10,10,0.9)'; g.lineWidth = 3; g.setLineDash([10, 7]);
+    g.save(); g.fillStyle = R.corZonaPk(z, z.semCap ? 0.26 : 0.34); g.strokeStyle = z.semCap ? 'rgba(230,30,30,0.95)' : 'rgba(255,145,20,1)'; g.lineWidth = 4; g.setLineDash([10, 7]);      // (p701: mais visíveis)
     g.beginPath(); g.ellipse(zx, zy, rr, rr / 1.1, 0, 0, Math.PI * 2); g.fill(); g.stroke(); g.restore();
   }
   for (const z of R.ZONAS) for (const p of rotulosZona[z]) {
@@ -4408,7 +4593,7 @@ function desenharMapaMundo() {
     const lugares = [ly, zy - rr / 1.1 - 8, zy + rr / 1.1 + 32, zy - rr / 1.1 - 26].map((v) => Math.min(H - 20, Math.max(20, v)));
     ly = lugares.find((v) => !bate(v)) ?? ly;
     nomesPk.push({ x: lx, y: ly, meia });
-    texto('☠ ' + t(z.nome), lx, ly, '#ffe0d0', 13, 'rgba(90,0,0,0.95)', 'bold ');
+    texto('☠ ' + t(z.nome), lx, ly, z.semCap ? '#ffe0d0' : '#fff2d8', 13, z.semCap ? 'rgba(120,0,0,0.95)' : 'rgba(170,80,0,0.95)', 'bold ');
   }
   const A = combate.arena;
   if (localAtual().arena && A?.mundo) {
@@ -4500,7 +4685,7 @@ function infoRuneterra() {
       <div><small>${t('Sua zona')}</small><b>${(() => { const z = [...M.LOCAIS].reverse().find((l) => l.faixa && estado.nivel >= l.faixa[0]); return z ? t(R.NOME_ZONA[z.id]) : '—'; })()}</b></div>
       <div><small>PvP</small><b>${t('±{n} níveis', { n: difNivelPvp })}</b></div>
     </div>
-    <p class="mi-curta">${t('Zonas de Guerra (vermelho): PK sempre ligado, +{p}% de XP.', { p: Math.round(R.PK_BONUS * 100) })}</p>
+    <p class="mi-curta">${t('Zonas de Guerra: PK sempre ligado, +{p}% de XP e matar não dá Caveira. Vermelhas (Ermos do Dragão e Fenda do Vazio): sem limite de nível. Laranjas: até {n} níveis de diferença.', { p: Math.round(R.PK_BONUS * 100), n: difNivelPvp })}</p>
     ${dentro ? '' : `<button class="botao mi-ir" data-ir="arena">${t('Ir para Runeterra')}</button>`}`;
 }
 $('#abrir-mapa').addEventListener('click', abrirMapa);
@@ -4631,6 +4816,7 @@ document.addEventListener('click', async (e) => {
 // quem pode sair para a arena agora (a mesma regra das viagens: sem Caveira, fora de combate, vivo)
 function podeIrParaArena() {
   if (bloqueioCaveira()) return false;
+  if (dungeonInfo?.sala) { avisar(t('Saia do grupo da dungeon para ir à arena.')); return false; }      // p665
   if (emCombateAqui() && localAtual().arena && !naAram()) { avisoCombate(); return false; }
   return true;
 }
@@ -4845,6 +5031,323 @@ $('#arena-status').addEventListener('click', async (e) => { if (!e.target.closes
 // ao abrir: desafios ou partida esperando; se a página recarregou no meio de uma partida, volta para ela (ou sai da ponte)
 if (!CONVIDADO) setTimeout(consultarArena, localAtual().aram ? 300 : 4000);
 if (localAtual().aram) arenaSaida = 'fonte';
+
+// ---------- Dungeon do Braum (servidor/masmorra.js): o grupo, os convites e a luta, que roda no servidor ----------
+// var (não let): o save pode responder antes de o módulo chegar aqui
+var dungeonPremio = null, dungeonInfo = null, dungeonTimer = null, dungeonDesde = 0, dungeonRecebendo = false, dungeonAmigos = null, dungeonConvitesVistos = new Set(), dungeonLogLinhas = [], dungeonResultado = null;
+const dungeonLuta = () => dungeonInfo?.sala?.estado === 'luta';
+function relogioDg(s) { s = Math.max(0, Math.round(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+// o que aconteceu na luta, em texto (vai para o registro e, os grandes, para a tela)
+function textoDg(l) {
+  const nomeEst = (k) => t(dungeonInfo?.regras?.estagios?.[k] || '');
+  switch (l.tipo) {
+    case 'comecou': return [t('A dungeon começou! O grupo sobe a montanha de Freljord.'), 1];
+    case 'onda': return [t('Onda {n}: {nomes}', { n: (l.onda || 0) + 1, nomes: [...new Set(l.nomes || [])].map((x) => t(x)).join(', ') }), 0];
+    case 'estagio': return [t('Estágio vencido: {nome}!', { nome: nomeEst(l.estagio) }), 1];
+    case 'avalancheAviso': return [t('Um poro enfurecido prepara uma bola de neve em {nome}!', { nome: l.alvo || '?' }), 0];
+    case 'avalanche': return [t('Bola de neve em {nome}!', { nome: l.alvo || '?' }), 0];
+    case 'braumQ': return [t('Mordida do Inverno em {nome}!', { nome: l.alvo || '?' }), 0];
+    case 'braumSalto': return [t('Braum saltou em {nome}!', { nome: l.alvo || '?' }), 0];
+    case 'mordida': return [t('Mordida do Inverno: {nome} ficou atordoado.', { nome: l.alvo || '?' }), 0];
+    case 'inquebravel': return [t('Braum ergueu o Inquebrável: quem ataca de longe causa 70% menos dano por {s} s.', { s: l.dur || 4 }), 1];
+    case 'fissuraAviso': return [t('Braum prepara a Fissura Glacial!'), 1];
+    case 'fissura': return [t('Fissura Glacial! O grupo todo foi jogado para o alto.'), 0];
+    case 'braumFuria': return [t('Braum ficou furioso!'), 1];
+    case 'chamado': return [t('Braum chamou os lobos da montanha!'), 1];
+    case 'caiu': return [t('{nome} caiu. Volta no próximo estágio, com metade da vida.', { nome: l.alvo || '?' }), 0];
+    case 'desistiu': return [t('{nome} desistiu da dungeon.', { nome: l.alvo || '?' }), 0];
+    case 'venceu': return [t('Vitória! Braum foi vencido.'), 1];
+    case 'falhou': return [t('O grupo não aguentou. A dungeon acabou.'), 1];
+  }
+  return null;
+}
+async function consultarDungeon() {
+  clearTimeout(dungeonTimer);
+  if (CONVIDADO) return;
+  try { aplicarDungeon(await rede.dungeon(dungeonDesde, dungeonLuta() || dgVendo ? dgVd : null)); } catch { dungeonTimer = setTimeout(consultarDungeon, dungeonLuta() ? 1500 : 8000); }
+}
+// o save avisa quando há algo (convite, grupo, resultado): aí o jogo passa a consultar
+function dungeonChamada(c) { if (c && !dungeonTimer && !dungeonInfo?.sala) consultarDungeon(); }
+function aplicarDungeon(r) {
+  const antes = dungeonInfo;
+  dungeonInfo = r;
+  // convites novos
+  for (const c of r.convites || []) if (!dungeonConvitesVistos.has(c.sala)) {
+    dungeonConvitesVistos.add(c.sala); som.efeito('alerta');
+    log(t('{nome} chamou você para a Dungeon do Braum. Abra a janela da Dungeon para aceitar.', { nome: c.de }), 'chefe');
+    cena.aviso(t('{nome} chamou você para a dungeon!', { nome: c.de }), '#9fe0ff');
+  }
+  if (r.sala?.daFila && r.sala.estado === 'sala' && antes?.sala?.id !== r.sala.id) {      // a fila formou o grupo (p694)
+    som.efeito('alerta'); cena.aviso(t('Grupo da dungeon encontrado! Fique pronto na Fonte.'), '#9fe0ff');
+    log(t('A fila formou um grupo para a Dungeon do Braum. Abra a janela e clique em Estou pronto.'), 'chefe');
+    if ($('#janela-dungeon').hidden) abrirDungeon();
+  }
+  if (r.sala?.resultado) dungeonResultado = r.sala.resultado;
+  if (!r.sala && r.pendente?.motivo === 'desistiu') { dungeonResultado ??= r.pendente; if (dgVendo) sairDaDungeonVisual(); }      // desistiu (p692)      // o servidor tira a sala logo depois de entregar: o resultado fica aqui até fechar
+  const L = r.sala?.luta;
+  if (L) {
+    if (antes?.sala?.estado !== 'luta' && r.sala.estado === 'luta') { fecharJanelas(); som.efeito('fanfarra'); }
+    for (const l of L.log) {
+      dungeonDesde = Math.max(dungeonDesde, l.n);
+      const x = textoDg(l); if (!x) continue;
+      log('🧊 ' + x[0], l.tipo === 'caiu' || l.tipo === 'falhou' ? 'morte' : x[1] ? 'chefe' : 'npc');
+      if (x[1] && !dgVendo) cena.aviso(x[0], l.tipo === 'falhou' ? '#ff7050' : '#9fe0ff');
+      if (l.tf != null) dgMecs.push(l);
+    }
+    dungeonVisual(L);
+    if (r.sala.estado === 'fim' && dgVendo && !dgSaindo) dgSaindo = setTimeout(() => { dgSaindo = null; sairDaDungeonVisual(); }, 4500);
+  } else dungeonDesde = 0;
+  // resultado esperando: recebe sozinho (desconta as poções gastas na luta)
+  if (r.pendente && !dungeonRecebendo) receberDungeon();
+  desenharStatusDungeon();
+  if (!$('#janela-dungeon').hidden) desenharDungeon();
+  const ritmo = dungeonLuta() ? 300 : r.sala || r.fila ? 2500 : (r.convites?.length || !$('#janela-dungeon').hidden) ? 4000 : 0;
+  dungeonTimer = ritmo ? setTimeout(consultarDungeon, ritmo) : null;
+}
+async function receberDungeon() {
+  dungeonRecebendo = true;
+  try {
+    const r = await operarServidor('/api/dungeon/fim');
+    const g = r?.resultado?.gastas || {}, n = Object.values(g).reduce((a, b) => a + b, 0);
+    if (r) log(n ? t('Dungeon: você gastou {n} poções na luta.', { n }) : t('Dungeon: você não gastou poções na luta.'), 'npc');
+    const pr = r?.premio;
+    if (pr) {
+      dungeonPremio = pr;
+      if (pr.xp || pr.ouro) log(t('Prêmio da dungeon: +{xp} de XP e +{ouro} de ouro.', { xp: inteiro(pr.xp), ouro: inteiro(pr.ouro) }), 'raro');
+      const esp = Object.entries(pr.espolios || {}).map(([id, q]) => `${q}× ${t(M.ESPOLIOS[id]?.nome || id)}`);
+      if (esp.length) log(t('Espólios de Freljord: {lista}.', { lista: esp.join(', ') }), pr.espolios['bigode-braum'] ? 'raro' : 'loot');
+      if (pr.item) { const it = descreverItem(pr.item); log(t('Lendário da dungeon: {item}!', { item: it.nome }), 'raro'); cena.aviso(t('Lendário: {item}!', { item: it.nome }), '#ffb030'); som.efeito('fanfarra'); alertaLendario?.(it.nome); }
+      if (pr.mascote) { log(t('Você ganhou o mascote Poro de Bigode! Escolha ele na aba Coleção.'), 'raro'); cena.aviso(t('Poro de Bigode!'), '#ffe08a'); som.efeito('fanfarra'); }
+      for (const id of pr.perdidos || []) log(t('Sua mochila está cheia! {item} ficou para trás.', { item: M.ESPOLIOS[id] ? t(M.ESPOLIOS[id].nome) : descreverItem(id).nome }), 'morte');
+      atualizarUI();
+      if (!$('#janela-dungeon').hidden) desenharDungeon();
+    }
+  } finally { dungeonRecebendo = false; }
+}
+function desenharStatusDungeon() {
+  const el = $('#dungeon-status'), r = dungeonInfo, L = r?.sala?.luta;
+  let txt = '';
+  if (r?.sala?.estado === 'luta' && L) txt = `🧊 ${t('Dungeon')} · ${t('Estágio {n}/{m}', { n: L.estagio + 1, m: L.estagios })} · <b>${relogioDg(L.seg)}</b>`;
+  else if (r?.convites?.length) txt = `🧊 ${t('{nome} chamou você para a dungeon', { nome: esc(r.convites[0].de) })}`;
+  else if (r?.sala?.estado === 'sala') txt = `🧊 ${t('Grupo da dungeon')} · ${r.sala.membros.length}/${r.regras.max}`;
+  else if (r?.fila) txt = `🔎 ${t('Procurando grupo para a dungeon')} · ${relogioDg(r.fila.seg)}`;
+  el.hidden = !txt || !$('#janela-dungeon').hidden || dgVendo;      // com a luta na tela, o estágio aparece na própria cena
+  if (!el.hidden && el.innerHTML !== txt) el.innerHTML = txt;
+}
+$('#dungeon-status').addEventListener('click', () => abrirDungeon());
+// painel lateral (p704): encostado à direita da tela do jogo, deixando a coluna da direita livre
+function posicionarDungeonLateral() {
+  const j = $('#janela-dungeon'), lat = $('#lateral'), lado = innerWidth >= 1000 && !document.body.classList.contains('gaveta') && dungeonInfo?.sala?.estado === 'sala';      // só a tela do grupo
+  j.classList.toggle('lateral-dg', lado);
+  j.style.setProperty('--dg-dir', lado && lat ? `${Math.max(0, innerWidth - lat.getBoundingClientRect().left) + 8}px` : '0px');
+}
+addEventListener('resize', () => { if (!$('#janela-dungeon').hidden) posicionarDungeonLateral(); });
+async function abrirDungeon() {
+  if (CONVIDADO) { avisar(t('Salve seu progresso (crie a conta) para entrar na dungeon.')); return; }
+  $('#janela-dungeon').hidden = false; $('#dungeon-status').hidden = true;
+  posicionarDungeonLateral();      // painel lateral no computador (p704)
+  desenharDungeon();
+  rede.amigos().then((r) => { dungeonAmigos = r.amigos || []; if (!$('#janela-dungeon').hidden) desenharDungeon(); }).catch(() => {});
+  await consultarDungeon();
+}
+$('#abrir-dungeon').addEventListener('click', abrirDungeon);
+// as cartas das dungeons: a do Braum (clicável, monta o grupo) e duas que ainda vão chegar (p674)
+function cartasDungeon(pode, R) {
+  const img = (n) => `<img src="assets/img/dungeon/${n}.png" srcset="assets/img/dungeon/${n}.png 1x, assets/img/dungeon/${n}@2x.png 2x" width="240" height="340" alt="" loading="lazy" decoding="async">`;
+  const breve = (n) => `<div class="dg-carta breve" aria-label="${t('Em breve')}">${img(n)}<span class="dg-carta-titulo">???</span><span class="dg-carta-selo">${t('Em breve')}</span></div>`;
+  return `<div class="dg-cartas"><button type="button" class="dg-carta ativa" data-dg="criar" ${pode ? '' : 'disabled'} aria-label="${t('Covil de Braum')}">${img('braum')}<span class="dg-carta-titulo">${t('Covil de Braum')}</span><span class="dg-carta-selo">${t('Freljord · nível {n}', { n: R.nivelMin })}</span></button>${breve('misterio')}${breve('misterio-ambar')}</div>`;
+}
+// p678: o que a vitória dá, com as chances e os valores no nível do jogador
+function recompensasDg(r, R) {
+  const P = R.premio, v = M.premioDungeonDe(Math.max(R.nivelMin, r.nivel || 1)), pct = (x) => `${(x * 100).toLocaleString(LOCALE, { maximumFractionDigits: 2 })}%`;
+  const linha = (ico, nome, valor, chance, cls = '') => `<li class="${cls}"><span class="dg-rc-ico">${ico}</span><span class="dg-rc-nome">${nome}${valor ? `<small>${valor}</small>` : ''}</span><b class="dg-rc-chance">${chance}</b></li>`;
+  return `<div class="dg-recompensas"><b>${t('Recompensas da vitória')}</b><small>${t('Valores no seu nível ({n}). Os espólios você vende no Lojista.', { n: Math.max(R.nivelMin, r.nivel || 1) })}</small><ul>
+    ${linha('✨', t('Experiência'), t('+{n} de XP · uns {m} min de caça', { n: inteiro(v.xp), m: P.xpMin }), t('Sempre'))}
+    ${linha('💰', t('Ouro'), `+${inteiro(v.ouro)}`, t('Sempre'))}
+    ${linha('🧊', `${t('Pele de Yeti')} · ${t('Presa do Lobo do Gelo')}`, t('~{n} de ouro no Lojista', { n: inteiro(v.espolioOuro) }), t('Sempre'))}
+    ${linha('🥨', t('Mecha do Bigode do Braum'), t('~{n} de ouro no Lojista', { n: inteiro(M.ESPOLIOS['bigode-braum']?.valor || 0) }), pct(P.bigode), 'raro')}
+    ${linha('⚔', t('Item lendário da sua classe'), t('qualidade de C a SS, sorteada no servidor'), pct(P.lendario), 'lendario')}
+    ${linha('🐾', t('Mascote Poro de Bigode'), `${t('+1,25% de ouro por nível')}${r.temPoro ? ` · ${t('Você já tem')}` : ''}`, r.temPoro ? '✔' : pct(P.mascote), 'raro')}
+  </ul><small>${t('Na derrota: {a}% do XP, do ouro e dos espólios com 1 estágio vencido e {b}% com 2.', { a: Math.round(P.porEstagio[1] * 100), b: Math.round(P.porEstagio[2] * 100) })}</small></div>`;
+}
+function barraDg(v, max, cls = '') { const p = max > 0 ? Math.max(0, Math.min(100, (v / max) * 100)) : 0; return `<span class="dg-barra ${cls}"><i style="width:${p.toFixed(1)}%"></i></span>`; }
+function desenharDungeon() {
+  const el = $('#dungeon'), r = dungeonInfo, campo = $('#dg-nome'), digitado = campo?.value || '', foco = document.activeElement === campo;
+  if (!r) { el.innerHTML = `<p class="fraco">${t('Carregando…')}</p>`; return; }
+  const s = r.sala || (dungeonResultado ? { estado: 'fim', resultado: dungeonResultado } : null), R = r.regras;
+  posicionarDungeonLateral();      // a tela do grupo vai para o lado; as outras ficam no meio (p704)
+  const topo = `<div class="dg-topo"><div class="dg-escudo" aria-hidden="true"><svg viewBox="0 0 32 32" width="40" height="40"><path d="M2 28 12 10l5 8 4-6 9 16Z" fill="#cfe8f7" stroke="#0e2a3a" stroke-width="1.2"/><path d="M12 10l2.8 4.5-2.4 1.2-2-2.8ZM21 12l2.2 3.6-1.8.8-1.6-2.4Z" fill="#fff"/><path d="M5 28l4-6 3 3 5-5 4 4 3-2 5 6Z" fill="#6aa8d8" opacity=".55"/><path d="M26 4v6M23 7h6M24 5l4 4M28 5l-4 4" stroke="#bfe6ff" stroke-width="1"/></svg></div><div><b>${t('Covil de Braum')}</b>
+      <small>${t('Freljord · de 1 a {n} jogadores · nível {nv}', { n: R.max, nv: R.nivelMin })}</small>
+      <small>${r.espera ? t('Próxima entrada em {t}', { t: relogioDg(r.espera) }) : t('Você pode entrar agora')}</small></div></div>`;
+  if (!s) {
+    const convites = (r.convites || []).map((c) => `<div class="dg-convite">🧊 ${t('{nome} chamou você ({n} no grupo, {s} s)', { nome: `<b>${esc(c.de)}</b>`, n: c.membros, s: c.resta })}
+        <button type="button" class="botao principal" data-dg-resp="${esc(c.sala)}" data-sim="1">${t('Aceitar')}</button><button type="button" class="botao" data-dg-resp="${esc(c.sala)}" data-sim="0">${t('Recusar')}</button></div>`).join('');
+    const pode = r.nivel >= R.nivelMin && !r.espera;      // (p694: com a fila)
+    el.innerHTML = `${topo}${convites}
+      <p>${t('Braum espera no alto da montanha. A subida é automática: os campeões lutam sozinhos com as habilidades da barra e usam as suas poções. Junte até {n} amigos e chegue até ele.', { n: R.max - 1 })}</p>
+      <ol class="dg-estagios">${R.estagios.map((n, k) => `<li><b>${t('Estágio {n}', { n: k + 1 })}</b> ${t(n)}</li>`).join('')}</ol>
+      <ul class="dg-regras"><li>${t('Morrer na dungeon não custa XP nem itens. Quem cai volta no estágio seguinte.')}</li>
+        <li>${t('Para começar, todo o grupo precisa estar na Fonte. Durante a luta você fica na Fonte.')}</li>
+        <li>${t('O grupo tem {m} minutos para vencer o Braum.', { m: Math.round(R.limiteSeg / 60) })}</li>
+        <li>${t('Dá para entrar de novo {m} minutos depois de começar a última.', { m: R.intervaloMin })}</li>
+      </ul>
+      ${recompensasDg(r, R)}
+      ${convites}
+      ${cartasDungeon(pode, R)}
+      ${r.fila ? `<div class="dg-fila"><b>🔎 ${t('Procurando grupo…')}</b><small>${t('{n} na fila · esperando há {t}', { n: r.fila.n, t: relogioDg(r.fila.seg) })}</small><small>${t('Quando juntar {n} jogadores de nível parecido, o grupo se forma e a luta começa sozinha quando todos ficarem prontos na Fonte.', { n: r.fila.tam })}</small><button type="button" class="botao" data-dg-fila="0">${t('Sair da fila')}</button></div>`
+        : `<div class="dg-botoes dg-entrar"><button type="button" class="botao principal dg-criar" data-dg-fila="1" ${pode ? '' : 'disabled'} title="${t('Entra na fila e o jogo forma um grupo com outros jogadores')}">🔎 ${t('Procurar grupo')}</button>
+      <button type="button" class="botao principal dg-criar" data-dg="criar" ${pode ? '' : 'disabled'}>🧊 ${t('Montar um grupo')}</button></div>`}
+      ${r.nivel < R.nivelMin ? `<small class="alerta">${t('A dungeon libera no nível {n}.', { n: R.nivelMin })}</small>` : r.espera ? `<small class="alerta">${t('Você pode entrar de novo em {m} min.', { m: Math.ceil(r.espera / 60) })}</small>` : ''}`;
+    return;
+  }
+  if (s.estado === 'sala') {
+    const eu = s.membros.find((m) => m.nome === NOME), cheio = s.membros.length >= R.max, todos = s.membros.every((m) => m.pronto);
+    const vagas = Array.from({ length: R.max - s.membros.length }, () => `<li class="dg-vaga">${t('vaga livre')}</li>`).join('');
+    const situ = (m) => m.pronto ? `<span class="dg-ok">✔ ${t('Pronto')}</span>` : !m.online ? `<span class="dg-nao">${t('offline')}</span>` : !m.naFonte ? `<span class="dg-nao">${t('fora da Fonte')}</span>` : `<span class="fraco">${t('esperando…')}</span>`;
+    const amigos = s.souLider && !cheio ? (dungeonAmigos || []).filter((a) => a.online && a.nivel >= R.nivelMin && !s.membros.some((m) => m.nome === a.nome)) : [];
+    el.innerHTML = `${topo}
+      <ul class="dg-membros">${s.membros.map((m) => `<li class="${m.nome === NOME ? 'eu' : ''}"><img src="${miniatura(spriteCampeao(m.campeao, m.skin))}" alt="">
+          <div><b>${s.lider === m.nome ? '♛ ' : ''}${esc(m.nome)}</b><small>${esc(dadosCampeao(m.campeao).nome)} · ${t('nível {n}', { n: m.nivel })}</small></div>${situ(m)}
+          ${s.souLider && m.nome !== NOME ? `<button type="button" class="botao dg-tirar" data-dg-tirar="${esc(m.nome)}" title="${t('Tirar do grupo')}">×</button>` : ''}</li>`).join('')}${vagas}</ul>
+      ${s.souLider && !cheio ? `<form class="dg-convidar" data-sem-envio><input id="dg-nome" maxlength="24" placeholder="${t('Nome do jogador')}" autocomplete="off"><button type="submit" class="botao">${t('Convidar')}</button></form>
+        ${amigos.length ? `<div class="dg-amigos"><small>${t('Amigos online:')}</small>${amigos.map((a) => `<button type="button" class="botao" data-dg-amigo="${esc(a.nome)}">+ ${esc(a.nome)}</button>`).join('')}</div>` : ''}` : ''}
+      ${s.daFila ? `<p class="dg-fila-aviso">🔎 ${t('Grupo formado pela fila: a luta começa sozinha quando todos estiverem prontos. Faltam {s} s para ficar pronto.', { s: s.prazo ?? 0 })}</p>` : ''}
+      ${!localAtual().base ? `<p class="alerta">${t('Volte para a Fonte (tecla B) para ficar pronto.')}</p>` : ''}
+      <div class="dg-botoes">${eu?.pronto ? `<button type="button" class="botao" data-dg-pronto="0">${t('Não estou pronto')}</button>` : `<button type="button" class="botao principal" data-dg-pronto="1">✔ ${t('Estou pronto')}</button>`}
+        ${s.souLider ? `<button type="button" class="botao principal dg-comecar" data-dg="comecar" ${todos ? '' : 'disabled'} title="${todos ? '' : t('Todos precisam estar prontos')}">⛰ ${t('Começar')}</button>` : `<small class="fraco">${t('O líder começa quando todos estiverem prontos.')}</small>`}
+        <button type="button" class="botao" data-dg="sair">${t('Sair do grupo')}</button></div>`;
+    const novo = $('#dg-nome'); if (novo) { novo.value = digitado; if (foco) novo.focus(); }
+    return;
+  }
+  const L = s.luta, res = s.resultado;
+  if (s.estado === 'fim' && res) {
+    el.innerHTML = `${topo}<div class="dg-fim ${res.venceu ? 'venceu' : 'perdeu'}"><b>${res.venceu ? t('Vitória! Braum foi vencido.') : res.motivo === 'desistiu' ? t('Você desistiu da dungeon.') : t('O grupo não aguentou.')}</b>
+        <small>${t('Tempo: {t}', { t: relogioDg(res.seg) })} · ${t('Chegou ao estágio {n}', { n: res.estagio + 1 })}</small></div>
+      <table class="dg-tabela"><tr><th>${t('Jogador')}</th><th>${t('Dano')}</th><th>${t('Quedas')}</th><th>${t('Poções')}</th></tr>
+        ${res.jogadores.map((j) => `<tr class="${j.nome === NOME ? 'eu' : ''}"><td>${esc(j.nome)} <small>${esc(dadosCampeao(j.campeao).nome)}</small></td><td>${j.parte}%</td><td>${j.mortes}</td><td>${Object.values(j.pocoes || {}).reduce((a, b) => a + b, 0)}</td></tr>`).join('')}</table>
+      ${dungeonPremio && !dungeonPremio.xp && !dungeonPremio.ouro ? `<p class="fraco">${t('Sem prêmio: o grupo não passou do primeiro estágio.')}</p>` : dungeonPremio ? `<div class="dg-premio"><b>${t('Seu prêmio')}</b><span>+${inteiro(dungeonPremio.xp)} ${t('de XP')}</span><span>+${inteiro(dungeonPremio.ouro)} ${t('de ouro')}</span>
+        ${Object.entries(dungeonPremio.espolios || {}).map(([id, q]) => `<span style="color:${M.ESPOLIOS[id]?.cor || '#fff'}">${q}× ${esc(t(M.ESPOLIOS[id]?.nome || id))}</span>`).join('')}
+        ${dungeonPremio.item ? `<span class="dg-lendario">✨ ${esc(descreverItem(dungeonPremio.item).nome)}</span>` : ''}${dungeonPremio.mascote ? `<span class="dg-lendario">🐾 ${t('Poro de Bigode')}</span>` : ''}</div>` : `<p class="fraco">${t('Recebendo o prêmio…')}</p>`}
+      <div class="dg-botoes"><button type="button" class="botao principal" data-fechar>${t('Fechar')}</button></div>`;
+    return;
+  }
+  if (!L) { el.innerHTML = `${topo}<p class="fraco">${t('Carregando…')}</p>`; return; }
+  const est = Array.from({ length: L.estagios }, (_, k) => `<span class="${k < L.estagio ? 'feito' : k === L.estagio ? 'agora' : ''}">${k + 1}</span>`).join('');
+  const mons = L.monstros.map((m) => `<li class="${m.chefe ? 'chefe' : ''}${m.fur ? ' fur' : ''}${m.chegando ? ' longe' : ''}"><span class="dg-mnome">${m.fur ? '✹ ' : ''}${esc(t(m.nome))}${m.escudo ? ' 🛡' : ''}${m.furia ? ' 🔥' : ''}${m.aviso ? ` <em class="dg-aviso">⚠ ${m.aviso === 'fissura' ? t('Fissura Glacial') : t('Bola de neve')}</em>` : ''}</span>
+      ${barraDg(m.hp, m.max, 'vida-m')}<small>${m.foco ? '→ ' + esc(m.foco) : ''}</small></li>`).join('') || `<li class="fraco">${L.pausa ? t('Próxima onda chegando…') : '…'}</li>`;
+  const total = L.jogadores.reduce((a, j) => a + j.dano, 0) || 1;
+  const jogs = L.jogadores.map((j) => `<li class="${j.morto ? 'morto' : ''}${j.nome === NOME ? ' eu' : ''}"><img src="${miniatura(spriteCampeao(j.campeao, j.skin))}" alt="">
+      <div><b>${j.morto ? '☠ ' : ''}${esc(j.nome)}</b>${barraDg(j.vida, j.vidaMax, 'vida')}${j.manaMax ? barraDg(j.mana, j.manaMax, 'mana') : ''}</div><small>${Math.round(100 * j.dano / total)}%</small></li>`).join('');
+  const ultimos = (dungeonLogLinhas = [...dungeonLogLinhas, ...L.log.filter((l) => !dungeonLogLinhas.some((x) => x.n === l.n))].slice(-7));
+  el.innerHTML = `${topo}<div class="dg-luta-topo"><div class="dg-pips">${est}</div><b>${esc(t(L.nomeEstagio))}</b><span>${L.estagio < L.estagios - 1 ? t('Onda {n}/{m}', { n: L.onda, m: L.ondas }) : ''}</span>
+      <span class="dg-tempo" title="${t('Tempo para vencer: {m} min', { m: Math.round(L.limite / 60) })}">⏱ ${relogioDg(L.seg)} / ${relogioDg(L.limite)}</span></div>
+    <div class="dg-colunas"><section><h4>${t('Grupo')}</h4><ul class="dg-jog">${jogs}</ul></section>
+      <section><h4>${t('Inimigos')} <small>${t('nível {n}', { n: L.nivel })}</small></h4><ul class="dg-mons">${mons}</ul></section></div>
+    <ul class="dg-log">${ultimos.map((l) => { const x = textoDg(l); return x ? `<li><small>${relogioDg(l.t)}</small> ${esc(x[0])}</li>` : ''; }).join('')}</ul>
+    ${s.estado === 'luta' ? `<div class="dg-botoes"><button type="button" class="botao dg-desistir" data-dg="sair">${t('Desistir')}</button></div>` : ''}`;
+}
+$('#janela-dungeon').addEventListener('click', async (e) => {
+  const filaB = e.target.closest('[data-dg-fila]');
+  if (filaB) { try { await rede.acaoDungeon('fila', { sim: filaB.dataset.dgFila === '1' }); } catch (err) { avisar(err.message); } consultarDungeon(); return; }
+  const b = e.target.closest('[data-dg]'), resp = e.target.closest('[data-dg-resp]'), pr = e.target.closest('[data-dg-pronto]'), tirar = e.target.closest('[data-dg-tirar]'), amigo = e.target.closest('[data-dg-amigo]');
+  if (e.target.closest('[data-fechar]') && dungeonResultado) { dungeonResultado = null; dungeonPremio = null; if (dungeonInfo?.sala?.estado === 'fim') dungeonInfo.sala = null; }
+  try {
+    if (b) {
+      if (b.dataset.dg === 'sair' && !(await confirmar(dungeonLuta() ? t('Desistir da dungeon? Você sai da luta e recebe só a parte dos estágios já vencidos; o grupo continua.') : t('Sair do grupo da dungeon?')))) return;
+      if (b.dataset.dg === 'criar') { dungeonLogLinhas = []; dungeonResultado = null; }
+      await rede.acaoDungeon(b.dataset.dg);
+    } else if (resp) { if (resp.dataset.sim === '1') { dungeonLogLinhas = []; dungeonResultado = null; } await rede.acaoDungeon('responder', { sala: resp.dataset.dgResp, aceitar: resp.dataset.sim === '1' }); }
+    else if (pr) {
+      if (pr.dataset.dgPronto === '1') {
+        if (!localAtual().base) { avisar(t('Volte para a Fonte (tecla B) para ficar pronto.')); return; }
+        await salvar();      // o servidor confere pelo último save que você está na Fonte
+      }
+      await rede.acaoDungeon('pronto', { sim: pr.dataset.dgPronto === '1' });
+    } else if (tirar) await rede.acaoDungeon('expulsar', { nome: tirar.dataset.dgTirar });
+    else if (amigo) { await rede.acaoDungeon('convidar', { nome: amigo.dataset.dgAmigo }); log(t('Você chamou {nome} para a dungeon.', { nome: amigo.dataset.dgAmigo }), 'npc'); }
+    else return;
+  } catch (err) { avisar(err.message); }
+  consultarDungeon();
+});
+$('#janela-dungeon').addEventListener('submit', async (e) => {
+  if (!e.target.closest('.dg-convidar')) return;
+  e.preventDefault();
+  const nome = $('#dg-nome').value.trim();
+  if (!nome) return;
+  try { const r = await rede.acaoDungeon('convidar', { nome }); $('#dg-nome').value = ''; log(t('Você chamou {nome} para a dungeon.', { nome: r.nome || nome }), 'npc'); }
+  catch (err) { avisar(err.message); }
+  consultarDungeon();
+});
+// fechou a janela com a luta acontecendo: o status fica no alto da tela
+new MutationObserver(() => desenharStatusDungeon()).observe($('#janela-dungeon'), { attributes: true, attributeFilter: ['hidden'] });
+if (!CONVIDADO) setTimeout(consultarDungeon, 5000);
+// ---------- Dungeon: a luta desenhada na tela (p670) ----------
+// O servidor manda os monstros, o estado do seu campeão e os eventos do motor de cada um (com o tempo da luta). O jogo toca
+// tudo DG_ATRASO segundos atrás do servidor, na ordem, com o mesmo desenho do Rift: o seu campeão no meio, os aliados em volta
+// (os efeitos deles saem como se fossem eles: cena.comoAliado), o mapa de Freljord e as mecânicas do Braum e dos bonecos.
+var dgVendo = false, dgFila = [], dgMecs = [], dgSnaps = [], dgVd = 0, dgSrv = null, dgSaindo = null, dgD = null, dgEu = null;
+const DG_LOCAL = { id: 'freljord', nome: 'Covil de Braum', bioma: 'freljord', dungeon: true, semente: 1 };
+const DG_ATRASO = 0.8;
+const dgAgora = () => (dgSrv ? dgSrv.t + Math.min(1, (performance.now() - dgSrv.em) / 1000) - DG_ATRASO : 0);      // até 1 s além da última resposta
+function dungeonVisual(L) {
+  if (!L.mons) return;
+  if (!dgSrv || L.tf > dgSrv.t) dgSrv = { t: L.tf, em: performance.now() };
+  dgSnaps.push({ t: L.tf, mons: L.mons, jog: L.jogadores, d: L.d }); if (dgSnaps.length > 60) dgSnaps.splice(0, dgSnaps.length - 60);
+  for (const v of L.visual || []) if (v.n > dgVd) dgFila.push(v);
+  if (dgFila.length > 600) dgFila.splice(0, dgFila.length - 600);
+  dgVd = Math.max(dgVd, L.vseq || 0);
+  if (!dgVendo && !naAram()) entrarNaDungeonVisual();
+}
+function entrarNaDungeonVisual() {
+  dgVendo = true; clearTimeout(dgSaindo);
+  fecharJanelas();
+  cena.entrarLocal(DG_LOCAL);
+  cena.aviso(t('Covil de Braum'), '#bfe8ff');
+  log(t('O grupo chegou ao alto da montanha de Freljord.'), 'chefe');
+}
+function sairDaDungeonVisual() {
+  if (!dgVendo) return;
+  dgVendo = false; dgFila = []; dgMecs = []; dgSnaps = []; dgVd = 0; dgSrv = null; dgD = null; dgEu = null;
+  entrarCena(M.LOCAL.fonte);
+  $('#janela-dungeon').hidden = false; desenharDungeon();      // o resultado
+}
+// um evento do motor de alguém do grupo
+function desenharEventoDg(v, falso) {
+  const ev = v.ev;
+  if (!ev) return;
+  if (ev.tipo === 'abate') { cena.abateDungeon(ev.alvo); return; }
+  if (ev.tipo === 'morreu') { if (v.de === NOME) { cena.morto = true; cena.aviso(t('Você caiu! Volta no próximo estágio.'), '#ff4040'); } return; }
+  if (ev.tipo === 'renasceu') { if (v.de === NOME) { cena.morto = false; cena.efeito('poof', cena.darius, 0.6); } return; }
+  const quem = v.de === NOME ? cena.darius : cena.outros.get(v.de);
+  if (quem && ev.tipo === 'dano' && ev.alvo && (ev.fonte === 'ataque' || !quem.alvoDg)) quem.alvoDg = ev.alvo;      // o monstro que ele está atacando (corpo a corpo anda até ele)
+  if (v.de === NOME) { cena.evento(ev, falso); return; }
+  const o = cena.outros.get(v.de);
+  if (o && !o.caido && !(cena.leve && ev.tipo === 'dano' && !ev.critico)) cena.comoAliado(o, o.campeaoId, () => cena.evento(ev, falso));
+}
+// a cada passo do jogo (no lugar da sincronia com o combate de verdade, que está parado na Fonte)
+function dungeonSincronizar() {
+  const agora = dgAgora();
+  let snap = null;
+  for (const s of dgSnaps) if (s.t <= agora) snap = s;
+  snap ??= dgSnaps[0];
+  if (!snap) return;
+  dgD = snap.d || null;      // as recargas e os buffs do seu campeão na luta, para a barra de baixo (p690)
+  const falso = { darius: { recall: 0, ...(snap.d || {}) }, inimigos: snap.mons.map((m) => ({ ...m, morto: false, furioso: !!(m.furioso || m.furia), chegada: m.chegada || 0 })), eventos: [] };
+  cena.definirAliados(snap.jog.filter((j) => j.nome !== NOME));
+  const logAntes = cena.log; cena.log = () => {};      // o registro já conta a luta (textoDg); aqui só o desenho
+  try {
+    while (dgFila.length && dgFila[0].t <= agora) { try { desenharEventoDg(dgFila.shift(), falso); } catch (e) { console.warn('[dungeon]', e?.message); } }
+    while (dgMecs.length && (dgMecs[0].tf ?? 0) <= agora) { try { cena.dungeonMecanica(dgMecs.shift()); } catch (e) { console.warn('[dungeon]', e?.message); } }
+  } finally { cena.log = logAntes; }
+  const eu = snap.jog.find((j) => j.nome === NOME);
+  dgEu = eu || null;      // a vida e a mana da luta, para a barra de baixo (p715)
+  cena.sincronizar(falso, eu ? eu.vida / Math.max(1, eu.vidaMax) : 1, eu?.manaMax ? eu.mana / eu.manaMax : 0);
+  cena.guiarDungeon(falso.inimigos);
+  const b = falso.inimigos.find((m) => m.nome === 'Braum');
+  if (b) cena.chefeBarra = { nome: 'Braum', vida: b.hp / b.hpMax, t: cena.tempo, larg: 300, y: 30, cor: b.furia ? '#ff6a40' : b.escudo ? '#bfe8ff' : '#58b8f0',
+    titulo: `${t('Braum, o Coração de Freljord')} · ${Math.max(0, Math.ceil((100 * b.hp) / b.hpMax))}%${b.escudo ? ' · ' + t('Inquebrável') : b.furia ? ' · ' + t('furioso') : ''}` };
+}
+// ---------- fim da dungeon desenhada ----------
 
 // ---------- NPCs ----------
 const NPC_FALAS = {
@@ -5848,6 +6351,7 @@ function montarPaineis() {
   $('#habilidades').addEventListener('click', (e) => {
     const h = e.target.closest('.hab'); if (!h || h.dataset.t === 'P') return;
     const hk = h.dataset.t;
+    if (dgVendo) { cena.aviso(t('Durante a luta da Dungeon as habilidades ficam como estavam no começo. Troque depois da luta.'), '#ffb070'); return; }      // a luta usa a cópia do começo (p728)
     if (e.target.closest('.mais')) { M.subirHabilidade(estado, hk); atualizarUI(); return; }
     if (HABS[hk].passiva) { log(t('{hab} é passiva: funciona sozinha, não precisa estar na barra.', { hab: HABS[hk].nome }), 'npc'); return; }
     if (!estado.ranks[hk]) { log(t('Aprenda {hab} primeiro (botão + , a partir do nível {n}).', { hab: HABS[hk].nome, n: HABS[hk].nivel }), 'morte'); return; }
@@ -5861,6 +6365,7 @@ function montarPaineis() {
   });
   $('#barra').addEventListener('click', (e) => {
     const h = e.target.closest('.hab[data-t]'); if (!h) return;
+    if (dgVendo) { cena.aviso(t('Durante a luta da Dungeon as habilidades ficam como estavam no começo. Troque depois da luta.'), '#ffb070'); return; }      // (p728)
     const k = [...$('#barra').children].indexOf(h), sai = h.dataset.t;
     if (trocando && M.trocarNaBarra(estado, k, trocando)) log(t('{hab} entrou na barra no lugar de {sai}.', { hab: HABS[trocando].nome, sai: HABS[sai].nome }), 'item');
     else { M.alternarBarra(estado, sai); log(t('{hab} saiu da barra.', { hab: HABS[sai].nome }), 'item'); }
@@ -5886,11 +6391,11 @@ function montarPaineis() {
   });
 
   $('#pocoes').innerHTML = Object.entries(M.POCOES).map(([k, p], i) =>
-    `<button class="pocao" data-pocao="${k}" title="${t('{pocao}: recupera {cura} de {tipo}', { pocao: p.nome, cura: p.cura, tipo: t(p.tipo) })}${p.nivel > 1 ? t(' (nível {n}+)', { n: p.nivel }) : ''}\n${t('Tecla {n}', { n: i + 1 })}"><img src="${frasco(ICONE_POCAO[k])}" alt=""><b></b><span class="tecla-pocao">${i + 1}</span></button>`).join('');
-  $('#pocoes').addEventListener('click', (e) => { const b = e.target.closest('[data-pocao]'); if (b) { M.usarPocao(estado, combate, b.dataset.pocao); atualizarUI(); } });
+    `<button class="pocao" data-pocao="${k}" title="${t('{pocao}: recupera {cura} de {tipo}', { pocao: p.nome, cura: p.cura, tipo: t(p.tipo) })}${p.nivel > 1 ? t(' (nível {n}+)', { n: p.nivel }) : ''}\n${t('Tecla {n}', { n: nomeTecla(teclas.pocao[i]) })}"><img src="${frasco(ICONE_POCAO[k])}" alt=""><b></b><span class="tecla-pocao">${nomeTecla(teclas.pocao[i])}</span></button>`).join('');
+  $('#pocoes').addEventListener('click', (e) => { const b = e.target.closest('[data-pocao]'); if (b) usarPocaoJogador(b.dataset.pocao); });
   $('#hud-pocoes').innerHTML = Object.entries(M.POCOES).map(([k, p], i) =>
-    `<button type="button" class="hud-pocao" data-pocao="${k}" title="${t('{pocao}: recupera {cura} de {tipo}', { pocao: p.nome, cura: p.cura, tipo: t(p.tipo) })}${p.nivel > 1 ? t(' (nível {n}+)', { n: p.nivel }) : ''}\n${t('Tecla {n}', { n: i + 1 })}"><img src="${frasco(ICONE_POCAO[k])}" alt=""><b></b><span>${i + 1}</span></button>`).join('');
-  $('#hud-pocoes').addEventListener('click', (e) => { const b = e.target.closest('[data-pocao]'); if (b) { M.usarPocao(estado, combate, b.dataset.pocao); atualizarUI(); b.blur(); } });
+    `<button type="button" class="hud-pocao" data-pocao="${k}" title="${t('{pocao}: recupera {cura} de {tipo}', { pocao: p.nome, cura: p.cura, tipo: t(p.tipo) })}${p.nivel > 1 ? t(' (nível {n}+)', { n: p.nivel }) : ''}\n${t('Tecla {n}', { n: nomeTecla(teclas.pocao[i]) })}"><img src="${frasco(ICONE_POCAO[k])}" alt=""><b></b><span>${nomeTecla(teclas.pocao[i])}</span></button>`).join('');
+  $('#hud-pocoes').addEventListener('click', (e) => { const b = e.target.closest('[data-pocao]'); if (b) { usarPocaoJogador(b.dataset.pocao); b.blur(); } });
   // habilidades da barra de baixo: em Runeterra, clicar solta a habilidade (como a tecla)
   $('#hud-habs').addEventListener('click', (e) => { const b = e.target.closest('[data-t]'); if (b) { apertarHabilidade(b.dataset.t); b.blur(); } });
   $('#rastreio-vilemaw').addEventListener('click', (e) => { e.currentTarget.blur(); if (vmInfo?.ativo && !localAtual().arena) $('#ir-runeterra').click(); });
@@ -5908,6 +6413,10 @@ function montarPaineis() {
   ligar('#lim-vida', 'limiarVida', (v) => v / 100); ligar('#lim-mana', 'limiarMana', (v) => v / 100);
   $('#auto-vida').checked = estado.auto.vida; $('#auto-mana').checked = estado.auto.mana;
   $('#lim-vida').value = Math.round(estado.auto.limiarVida * 100); $('#lim-mana').value = Math.round(estado.auto.limiarMana * 100);
+  for (const [sel, campo] of [['#auto-qual-vida', 'pocaoVida'], ['#auto-qual-mana', 'pocaoMana']]) {      // qual poção o automático usa (p695)
+    const el = $(sel); el.value = Object.hasOwn(M.POCOES, estado.auto[campo] || '') ? estado.auto[campo] : '';
+    el.addEventListener('change', () => { estado.auto[campo] = Object.hasOwn(M.POCOES, el.value) ? el.value : ''; atualizarUI(); });
+  }
 
   const r = estado.rotina;
   $('#rot-mochila').checked = r.mochila; $('#rot-pocoes').checked = r.pocoes;
@@ -6107,7 +6616,7 @@ let trocando = null;          // habilidade escolhida para entrar na barra cheia
 // a tecla de cada espaço da barra (em Runeterra o 2º espaço é o Espaço)
 function teclaDe(t) {
   const k = estado.barra.indexOf(t);
-  return k < 0 || !localAtual().arena ? '' : ROTULO_ESPACO[k];
+  return k < 0 ? '' : ROTULO_ESPACO[k];      // em qualquer lugar, a tecla escolhida nas Configurações (p724; antes só em Runeterra)
 }
 function desenharBarra() {
   const chave = estado.barra.join(',') + (localAtual().arena ? ':arena' : '');
@@ -6197,16 +6706,18 @@ function atualizarHud(a, d, xpMax, fracRecarga) {
   atualizarBuffs(d);
   atualizarRecargaItens(d);
   const txt = (sel, v) => { const el = $(sel); if (el.textContent !== v) el.textContent = v; };
-  const fv = Math.max(0, estado.vida / a.vida), fm = a.mana ? Math.max(0, estado.mana / a.mana) : 0;      // a Katarina não tem mana
+  const eDg = dgVendo && dgEu ? dgEu : null;      // assistindo a dungeon: a vida e a mana da luta, não as do personagem parado na Fonte (p715)
+  const vidaH = eDg ? eDg.vida : estado.vida, vidaMaxH = eDg ? Math.max(1, eDg.vidaMax) : a.vida, manaH = eDg ? eDg.mana : estado.mana, manaMaxH = eDg ? eDg.manaMax : a.mana;
+  const fv = Math.max(0, vidaH / vidaMaxH), fm = manaMaxH ? Math.max(0, manaH / manaMaxH) : 0;      // a Katarina não tem mana
   $('#hud-vida').style.width = `${fv * 100}%`; $('#hud-mana').style.width = `${fm * 100}%`;
   $('#hud-vida').parentNode.classList.toggle('baixa', fv < 0.3);
-  txt('#hud-vida-txt', `${fmt(Math.max(0, estado.vida))} / ${fmt(a.vida)}${d.escudo > 0 ? ` (+${fmt(d.escudo)})` : ''}`);
+  txt('#hud-vida-txt', `${fmt(Math.max(0, vidaH))} / ${fmt(vidaMaxH)}${d.escudo > 0 ? ` (+${fmt(d.escudo)})` : ''}`);
   // Yasuo: no lugar da mana, o Fluxo (enche lutando e andando; cheio, vira escudo)
   const fluxo = !!M.kit(estado).fluxo, barraMana = $('#hud-mana').parentElement;
   if (barraMana.classList.contains('fluxo') !== fluxo) { barraMana.classList.toggle('fluxo', fluxo); barraMana.title = fluxo ? t('Fluxo: enche lutando e andando; cheio, o próximo golpe que o Yasuo levar vira um escudo de vento') : t('Mana'); }
-  barraMana.classList.toggle('cheio', fluxo && estado.mana >= a.mana - 0.5);
+  barraMana.classList.toggle('cheio', fluxo && manaH >= manaMaxH - 0.5);
   barraMana.classList.toggle('sem', !!M.kit(estado).semMana);          // Katarina: não usa recurso nenhum
-  txt('#hud-mana-txt', fluxo ? (estado.mana >= a.mana - 0.5 ? t('Fluxo cheio') : t('Fluxo {p}%', { p: Math.floor(estado.mana) })) : `${fmt(Math.max(0, estado.mana))} / ${fmt(a.mana)}`);
+  txt('#hud-mana-txt', fluxo ? (manaH >= manaMaxH - 0.5 ? t('Fluxo cheio') : t('Fluxo {p}%', { p: Math.floor(manaH) })) : `${fmt(Math.max(0, manaH))} / ${fmt(manaMaxH)}`);
   txt('#hud-nivel', String(estado.nivel));
   const ret = $('#hud-retrato'), qual = `${CAMP}:${estado.skin || 0}`;
   if (ret.dataset.qual !== qual) {      // a cabeça do sprite do campeão (recorte de 16×16 do topo do sprite de 32), ampliada sem borrar
@@ -6427,7 +6938,7 @@ function mostrarPoder() {
 }
 function atualizarUI() {
   document.body.classList.toggle('na-aram', naAram());
-  const a = M.atributos(estado), d = combate.darius, l = localAtual();
+  const a = M.atributos(estado), d = dgVendo && dgD ? { ...combate.darius, ...dgD, recargas: { ...combate.darius.recargas, ...(dgD.recargas || {}) } } : combate.darius, l = localAtual();
   const txt = (s, v) => { const el = $(s); if (el.textContent !== v) el.textContent = v; };
   txt('#st-nivel', String(estado.nivel));
   const xpMax = M.xpParaNivel(estado.nivel);
@@ -6496,6 +7007,7 @@ function atualizarUI() {
   }
   if (l.base) descLocal = l.descricao + ' ' + t('Botão direito no chão para andar; clique num NPC para conversar.');
   if (l.aram) faixaTxt = t('PvP 1 contra 1');
+  if (dgVendo) { txt('#hud-local', t('Covil de Braum')); faixaTxt = t('Dungeon do Braum'); }      // p670
   txt('#hud-faixa', faixaTxt);
   $('#hud-dir').style.visibility = noMundo && ($('#moldura').classList.contains('hud-baixa') || $('#moldura').classList.contains('hud-mini')) ? 'hidden' : '';
   $('#hud-redes').style.display = noMundo ? 'none' : '';      // em Runeterra o minimapa fica embaixo da faixa: os ícones o cobririam      // celular deitado: o + do zoom do minimapa cobria o texto (some sem tirar o lugar do relógio)
@@ -6946,9 +7458,13 @@ const PASSOS_TOUR = [
   { alvo: () => alvoNpc('Tesoureira de Piltover'), titulo: t('Tesoureira: o cofre'),
     texto: t('A Tesoureira de Piltover (ou o Burrinho de Carga, do lado dela) guarda itens e o seu ouro fora da mochila: 40 espaços, e dá para comprar mais. Bom para a mochila não encher e para separar o que você quer forjar depois.') },
   { alvo: () => $('#abrir-mercado'), titulo: t('Mercado'),
-    texto: t('No Mercado (tecla J) você compra e vende itens e runas com outros jogadores, por ouro, diamantes ou Gemas.') },
+    texto: t('No Mercado (tecla J) você compra e vende itens e runas com outros jogadores, por ouro ou Gemas.') },
+  { alvo: () => $('#abrir-arena'), titulo: t('Arena'),
+    texto: t('PvP 1 contra 1, em melhor de 3 rodadas. A partir do nível 10 dá para jogar a ranqueada e subir de elo; o desafio, chamando alguém pelo nome, vale em qualquer nível. Morrer na Arena não custa nada.') },      // (p722)
+  { alvo: () => $('#abrir-dungeon'), titulo: t('Dungeon do Braum'),
+    texto: t('A partir do nível 20, você e até 4 amigos sobem a montanha de Freljord até o Braum. A luta é automática. Monte o grupo ou clique em Procurar grupo para o jogo juntar jogadores de nível parecido. Dá para entrar a cada 30 minutos.') },
   { titulo: t('Bom jogo!'),
-    texto: t('Um bom ritmo é: pegar uma tarefa, caçar, voltar, entregar, vender o que sobrou e forjar. No nível 10, conheça Runeterra, o mundo aberto. Para rever este tour, clique no ? quando estiver na Fonte.') },
+    texto: t('Um bom ritmo é: pegar uma tarefa, caçar, voltar, entregar, vender o que sobrou e forjar. No nível 10, conheça Runeterra, o mundo aberto, e a Arena; no 20, a Dungeon. Para rever este tour, clique no ? quando estiver na Fonte.') },
 ];
 // ---------- tutorial, parte 3: o tour de Runeterra (na primeira vez lá; o ? em Runeterra mostra de novo) ----------
 const CHAVE_TOUR_RT = `lolidle-tour-runeterra:${NOME}`;
@@ -6961,7 +7477,7 @@ const PASSOS_RUNETERRA = [
   { alvo: () => $('#abrir-mapa'), titulo: t('Zonas e cidades'),
     texto: t('Quanto mais longe de Demacia, mais fortes os monstros. No Mapa (tecla M) você vê o nível de cada zona e viaja entre as cidades que já descobriu. A viagem leva 5 segundos e não funciona em combate.') },
   { alvo: () => $v('#bt-pk'), titulo: t('PK e Zonas de Guerra'),
-    texto: t('A caveira (tecla P) liga o PK para lutar com outros jogadores. Nas Zonas de Guerra, em vermelho no mapa, o PK fica sempre ligado e a experiência rende +40%. Nas cidades ninguém luta.') },
+    texto: t('A caveira (tecla P) liga o PK para lutar com outros jogadores. Nas Zonas de Guerra o PK fica sempre ligado e a experiência rende +40%: nas vermelhas qualquer nível luta, nas laranjas só quem está até 7 níveis de você. Nas cidades ninguém luta.') },
   { alvo: () => $v('#bt-grupo'), titulo: t('Grupo'),
     texto: t('Cace junto: cada amigo do grupo por perto dá +15% de experiência, e vocês podem bater no mesmo monstro.') },
   { titulo: t('Fortalezas'),
@@ -7069,4 +7585,3 @@ $('#alerta-lendario').addEventListener('change', async (e) => {
     }
   } catch {}
 });
-
