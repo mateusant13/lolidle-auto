@@ -702,3 +702,14 @@ CALCULADOS (o G6 pede-os; eu pus zeros fixos) e a ordem tem de diferir do rankin
 **Proximo passo:** `nPocoes` = o liquido (dano recebido - cura) / cura da pocao (o `estimarLuta` ja tem
 `potS`/`curaPocaoS`); `ouroPocao` = nPocoes x preco da pocao. Revertido para manter 5.
 **Estado: 5 falhas, 21/25 verdes** (com o criterio do dono implementado).
+## ADENDA 17:40 - rankItensSobrevivencia com valores CALCULADOS: ainda 5->8, revertido
+Usei o que o `estimarLuta` ja devolve: `potS`, `potTotal` e `ouroPocao` (= potTotal x 110, o preco do
+proprio motor na 7199) -> `nPocoes = ceil(potS x tMorrer)` e `ouroPocao = nPocoes x 110`.
+**Continua 8 (era 5).** As assercoes que faltam (F9, G2, G4-G7) descrevem uma feature DIFERENTE:
+`compararSets` - comparar DOIS conjuntos (DPS dos dois lados, tKill, nPocoes, ouroPocao, 'o Impeto da
+os 350 de vida que o Liandry nao da', 'o vencedor por segundos mata mais rapido'). Nao e o rank: e uma
+funcao de COMPARACAO que ainda nao existe.
+**Proximo passo:** procurar no `chefe.test.mjs` o nome que o G/F9 chamam (ex.: `auto.compararSets`) e
+implementa-lo com `dpsCenarios`/`estimarSet` (DPS) + `sobrevivenciaSet` (vida/tMorrer) - as duas pecas
+ja existem. Revertido para manter 5.
+**Estado: 5 falhas, 21/25 verdes, com o `sobrevivenciaSet` (o criterio) commitado.**
