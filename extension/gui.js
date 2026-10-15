@@ -1,10 +1,15 @@
 /*
  * LoL Idle — Auto Poção · gui.js  (world: ISOLATED)
  * =============================================================================
- * PAINEL DO UTILIZADOR do auto-play. Abre com:
- *   • hover no TEU NOME (canto superior direito do jogo)   • botão flutuante ⚙  • tecla F8
+ * PAINEL DO USUÁRIO do auto-play.
  *
- * COMO ESTE FICHEIRO ESTÁ ORGANIZADO (procura pelos números):
+ * COMO ABRIR (o caminho REAL — é este que as verificações e os prints têm de usar):
+ *   • hover no SEU NOME (canto superior direito do jogo)  • botão flutuante ⚙  • tecla F8
+ *   • ou por código: window.__lolidleGui.abrir()  (fecha com fechar(); troca de aba: setTab())
+ * `classList.add('on')` NÃO é o caminho real: só mostra o painel — quem pinta o conteúdo é o
+ * `abrir()` interno. Quem abrir por classe vai ver o painel vazio e achar que é bug.
+ *
+ * COMO ESTE ARQUIVO ESTÁ ORGANIZADO (procura pelos números):
  *   0. CONSTANTES E AJUDANTES ....... formatação (fmt/esc/…) e ícones do jogo
  *   1. PONTE COM O MOTOR ............ só chama funções que EXISTEM em window.__lolidleAuto
  *   2. KIT DE INTERFACE ............. cartões, linhas, botões, barra de estado, confirmação
@@ -14,11 +19,11 @@
  *   6. AÇÕES (bind) ................. cada botão com confirmação, estado "rodando" e resposta
  *   7. ARRANQUE ..................... liga tudo, agenda os redesenhos, auto-limpeza de timers
  *
- * REGRAS QUE ESTE PAINEL CUMPRE (pedido do dono):
- *   • Nomes de UTILIZADOR, não nomes de função do motor. Jargão tem tradução (botão "?").
- *   • Cada controlo tem UMA LINHA de explicação e diz o que faz ao ser clicado.
+ * REGRAS QUE ESTE PAINEL CUMPRE:
+ *   • Nomes de USUÁRIO, não nomes de função do motor. Jargão tem tradução (botão "?").
+ *   • Cada controle tem UMA LINHA de explicação e diz o que faz ao ser clicado.
  *   • Estados visíveis: verde = ligado/rodando · cinza = desligado · amarelo = à espera/pausado.
- *   • Nada de botões mortos: se o motor não tem a função, o botão fica desactivado e DIZ PORQUÊ.
+ *   • Nada de botões mortos: se o motor não tem a função, o botão fica desativado e DIZ POR QUÊ.
  *   • Ações destrutivas pedem confirmação (vender, reanunciar, gastar pontos, apostar no Ornn).
  *   • O motor nunca é modificado daqui: só se lê estado e se chamam funções existentes.
  * =============================================================================
@@ -39,7 +44,7 @@
   const OFERTAS_KEY = STORAGE_KEY + ':ofertas';   // { at, ofertas } — minhas ofertas
   // Preferências SÓ da GUI (não são config do motor: `setConfig` escreve no objeto que o
   // motor lê e um campo desconhecido lá dentro seria lixo na config dele). Guarda aqui o
-  // minimizar do bloco da build por fase e a modalidade de farm escolhida.
+  // minimizar do bloco da build por fase e dos cartões de farm, e a modalidade de farm escolhida.
   const GUI_KEY = STORAGE_KEY + ':gui';
 
   const ORDER = ['vidaS', 'vidaF', 'vida'];
@@ -93,7 +98,7 @@
   // Espelho de GUI_KEY (preferências da GUI, não do motor). `bfAberto`: o bloco da build por
   // fase está aberto? `farmModo`: 'sozinho' (o motor escolhe a região) ou 'item' (escolhe-se
   // o que dropar). Lido no boot e reescrito a cada clique — sobrevive ao F5.
-  let guiPrefs = { bfAberto: true, farmModo: 'sozinho' };
+  let guiPrefs = { bfAberto: true, farmModo: 'sozinho', fmModoMin: false, fmItensMin: false };
 
   // ============================================================ 0b. AJUDANTES
   const $ = (id) => document.getElementById(id);
@@ -113,7 +118,24 @@
   const hora = (t) => (t ? new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—');
   const limparNivel = (s) => String(s || '?').replace(/\s*n[íi]vel.*$/i, '').replace(/\s*\(.*?\)\s*$/, '').trim();
   const potIcon = (k) => (q1('#hud-pocoes [data-pocao="' + k + '"] img') || {}).src || '';
-  const num = (s) => { const m = String(s == null ? '' : s).replace(/[^\d]/g, ''); return m ? Number(m) : 0; };
+  // Número como o JOGO o escreve. O `fmt` do jogo (docs/game-src/cena.js:225) mete sufixo
+  // acima de 10.000 ("12.3k") e acima de 1.000.000 ("1.2M") — e é esse texto que vive no DOM
+  // (#hud-vida-txt, jogo.js:6203; #st-vida-txt, jogo.js:6438). O parser antigo apagava o sufixo
+  // e corrompia a leitura EM SILÊNCIO ("12.3k" virava 123). REGRA (a mesma provada no
+  // content.js): grupo de 3 casas ("4.188") é MILHAR; com sufixo ("12.3k") é decimal;
+  // k = x1.000, M = x1.000.000. Com inteiros, o comportamento é idêntico ao de antes.
+  const SUFIXO_NUM = { k: 1e3, K: 1e3, m: 1e6, M: 1e6 };
+  const num = (s) => {
+    const txt = String(s == null ? '' : s).replace(/[\s\u00a0\u202f]/g, '');
+    const m = /([\d.,]+)\s*([kKmM])?/.exec(txt);
+    const d = m ? m[1] : '';
+    if (!d) return 0;
+    const v = /^\d{1,3}([.,]\d{3})+$/.test(d) ? Number(d.replace(/[.,]/g, ''))
+      : /^\d+[.,]\d+$/.test(d) ? Number(d.replace(',', '.'))
+        : Number(d.replace(/[.,]/g, ''));
+    const mult = SUFIXO_NUM[(m && m[2]) || ''] || 1;
+    return Number.isFinite(v) ? v * mult : 0;
+  };
   const porMin = (v, ms) => (v || 0) / Math.max(0.05, (Number(ms) || 1) / 60000);
 
   // ============================================================ 1. PONTE COM O MOTOR
@@ -136,15 +158,12 @@
     catch (e) { return { ok: false, erro: String((e && e.message) || e) }; }
   }
   /** Atalho de LEITURA: devolve o valor ou um valor de recurso.
-   *  DEFEITO MEDIDO (2026-10-14, reproduzido pelo Lead): esta função chamava `chamar(nome)` e
-   *  DEITAVA FORA os argumentos seguintes — `ler('planBag', null, bag)` chamava `planBag()` sem a
-   *  mochila, e o motor rebentava com "Cannot read properties of undefined (reading 'items')"
-   *  (com a mochila: 12 ações). Na GUI isso aparecia como "não foi possível calcular o plano da
-   *  mochila" — um falso diagnóstico que mandava procurar o problema no motor.
-   *  O mesmo silêncio estragava `rankRegioes(obj)`, `dpsItens(ids, regiao)`,
-   *  `preverBuild(ids, regiao)`, `ehUltimate(t)`, `localId(txt)`, `planPotions(pot)` e
-   *  `faltandoNaBase(n)` — todas recebiam o valor por omissão em vez do argumento. Agora TODOS os
-   *  argumentos a partir do 3.º são repassados ao motor. */
+   *  Regra da ponte: TODOS os argumentos a partir do 3.º são repassados ao motor. Sem isso,
+   *  `ler('planBag', null, bag)` chamava `planBag()` sem a mochila e o motor rebentava com
+   *  "Cannot read properties of undefined (reading 'items')" — e na GUI isso aparecia como
+   *  "não foi possível calcular o plano da mochila": um erro NOSSO mostrado como falha do motor.
+   *  O mesmo vale para `rankRegioes(obj)`, `dpsItens(ids, regiao)`, `preverBuild(ids, regiao)`,
+   *  `ehUltimate(t)`, `localId(txt)`, `planPotions(pot)` e `faltandoNaBase(n)`. */
   function ler(nome, rec) {
     const extra = Array.prototype.slice.call(arguments, 2);
     const r = extra.length ? chamar.apply(null, [nome].concat(extra)) : chamar(nome);
@@ -169,23 +188,30 @@
   const card = (titulo, ajuda, corpo, id) =>
     '<section class="card"' + (id ? ' id="' + id + '"' : '') + '><h3>' + titulo +
     (ajuda ? '<span class="obs">' + ajuda + '</span>' : '') + '</h3><div class="corpo">' + corpo + '</div></section>';
+  /** Cartão com botão de MINIMIZAR no cabeçalho (o mesmo padrão do bloco da build por fase).
+   *  `min` = true mostra só o título; o estado vive nas preferências da GUI e sobrevive ao F5. */
+  const cardMin = (id, titulo, ajuda, corpo, min, btnId, aberto) =>
+    '<section class="card' + (min ? ' min' : '') + '"' + (id ? ' id="' + id + '"' : '') + '><h3>' + titulo +
+    (ajuda ? '<span class="obs">' + ajuda + '</span>' : '') +
+    '<button class="ic bf-min" id="' + btnId + '" title="' +
+    (aberto ? 'Minimizar: deixa só o título (o mesmo botão volta abrindo)' : 'Abrir este bloco') + '">' +
+    (aberto ? '▾' : '▸') + '</button></h3><div class="corpo">' + corpo + '</div></section>';
   const kv = (rotulo, valor, ajuda) =>
     '<div class="kv2"><span>' + rotulo + '</span><b>' + valor + '</b>' + (ajuda ? '<small>' + ajuda + '</small>' : '') + '</div>';
   const linha = (rotulo, ajuda, ctrl) =>
     '<div class="ctl"><div class="ctl-l"><b>' + rotulo + '</b>' + (ajuda ? '<small>' + ajuda + '</small>' : '') + '</div><div class="ctl-c">' + ctrl + '</div></div>';
-  // `off` (opcional): botão que NÃO pode ser usado agora — fica desactivado e a ajuda diz porquê.
+  // `off` (opcional): botão que NÃO pode ser usado agora — fica desativado e a ajuda diz por quê.
   const acao = (id, texto, ajuda, cls, off) =>
     '<div class="acao"><button id="' + id + '" class="btn ' + (cls || '') + '"' + (off ? ' disabled' : '') + '>' + texto + '</button><small>' + ajuda + '</small></div>';
   /** Bloco de AÇÕES MANUAIS — sempre despromovido e no fim do cartão.
-   *  PEDIDO DO DONO (2026-10-14): "'acoes' e ridiculo. se eu quero acao, eu faco na merda do jogo,
-   *  nao na gui. oq eu quero na gui sao coisas automaticas." A GUI mostra o que acontece SOZINHO
-   *  (estado, switches, o que o motor vai fazer e o que está bloqueado); o clique manual fica
-   *  aqui, rotulado como diagnóstico/forçar, para não parecer o caminho normal. Nada foi apagado:
-   *  os mesmos handlers continuam ligados aos mesmos ids. */
+   *  A GUI mostra o que acontece SOZINHO (estado, switches, o que o motor vai fazer e o que
+   *  está bloqueado); o clique manual fica aqui, rotulado como manutenção manual, para não
+   *  parecer o caminho normal. Nada foi apagado: os mesmos handlers continuam ligados aos
+   *  mesmos ids. */
   const diag = (titulo, corpo) => '<p class="diag-t">' + titulo + '</p>' + (corpo || '');
   const acaoD = (id, texto, ajuda, off) =>
     '<div class="acao"><button id="' + id + '" class="btn sec"' + (off ? ' disabled' : '') + '>' + texto
-    + '<small class="tagd">diagnóstico</small></button><small>' + ajuda + '</small></div>';
+    + '<small class="tagd">manual</small></button><small>' + ajuda + '</small></div>';
   const tg = (id, rotulo, ajuda, marcado) =>
     '<label class="tg"><input type="checkbox" id="' + id + '"' + (marcado ? ' checked' : '') + '><span class="sw"></span>' +
     '<span class="tg-t"><b>' + rotulo + '</b><small>' + ajuda + '</small></span></label>';
@@ -281,7 +307,7 @@
     '#lolidle-ap .hrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
     '#lolidle-ap .logo{height:20px;width:auto}',
     '#lolidle-ap .tit{font-weight:800;font-size:13px;letter-spacing:.2px}',
-    '#lolidle-ap .fase{color:var(--dim);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44%}',
+    '#lolidle-ap .fase{color:var(--dim);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:58%}',
     '#lolidle-ap .pill{display:inline-flex;align-items:center;gap:5px;border-radius:20px;padding:2px 9px;font-size:10.5px;font-weight:700;border:1px solid var(--lin)}',
     '#lolidle-ap .pill i{width:8px;height:8px;border-radius:50%;background:#5a5145;display:block}',
     '#lolidle-ap .pill.on{color:var(--verde);border-color:#2b5c33}#lolidle-ap .pill.on i{background:var(--verde);box-shadow:0 0 7px #4ce06a99}',
@@ -294,7 +320,7 @@
     '#lolidle-ap .mini{display:flex;flex-direction:column;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:3px 8px;min-width:70px}',
     '#lolidle-ap .mini b{font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '#lolidle-ap .mini small{color:var(--dim);font-size:9.5px}',
-    '#lolidle-ap .mini.wide{min-width:150px;max-width:230px}',
+    '#lolidle-ap .mini.wide{min-width:150px;max-width:270px}',
     '#lolidle-ap .ligar{display:flex;align-items:center;gap:7px;background:#1a1512;border:1px solid var(--lin);border-radius:8px;padding:4px 9px;cursor:pointer}',
     '#lolidle-ap .ligar b{font-size:11px}',
     '#lolidle-ap .sw{position:relative;width:38px;height:20px;flex:none;display:inline-block}',
@@ -336,21 +362,20 @@
     '#lolidle-ap .arv-cobre.on{color:#8fe6a4}',
     '#lolidle-ap .arv-cobre.off{color:#ff9a8a}',
     // ---- switch da árvore (pequeno, sem a moldura do .tg) ----
-    '#lolidle-ap .arv-tg{display:flex;align-items:center;flex:none;cursor:pointer}',
+    '#lolidle-ap .arv-tg{display:flex;align-items:center;flex:none;cursor:pointer;margin-right:1px}',
     '#lolidle-ap .arv-tg input{display:none}',
     '#lolidle-ap .arv-tg .sw{width:32px;height:18px}',
     '#lolidle-ap .arv-tg .sw::after{width:12px;height:12px;left:3px;top:3px}',
     '#lolidle-ap .arv-tg input:checked+.sw::after{transform:translateX(14px)}',
     // ---- BUILD POR FASE (mobs x chefe) — agora DENTRO da aba Itens ----
-    // BUG MEDIDO (dono, 2026-10-14): este bloco vivia entre o </nav> e o <main>, FORA de todos
-    // os `.pane`. Como o CSS dos separadores só esconde `.pane`, ele ficava em cima de TODAS as
-    // abas (incluindo a 1.ª) e NÃO havia nada que o escondesse — era isto o "não minimiza em
-    // aba nenhuma". Agora vive na aba Itens e tem um botão de minimizar a sério.
+    // Este bloco vive DENTRO da aba Itens. Fora de todos os `.pane` ele aparecia por cima de
+    // TODAS as abas (o CSS dos separadores só esconde `.pane`) e nada o escondia. Agora tem
+    // botão de minimizar a sério.
     '#lolidle-ap #ap-build-fase{flex:none}',
     '#lolidle-ap .bf>h3{align-items:center}',
     '#lolidle-ap .bf-min{flex:none;width:26px;height:22px;font-size:11px}',
-    '#lolidle-ap .bf.min{padding:6px 10px}',
-    '#lolidle-ap .bf.min .corpo{display:none}',
+    '#lolidle-ap .card.min{padding:6px 10px}',
+    '#lolidle-ap .card.min .corpo{display:none}',
     // ---- ESTADO DO AUTO-PLAY (aba Painel) ----
     '#lolidle-ap .est{margin:0;font-size:11.5px;padding:6px 9px;border-radius:7px;border:1px solid var(--lin2);background:var(--pnl2)}',
     '#lolidle-ap .est b{font-size:12.5px}',
@@ -360,9 +385,8 @@
     '#lolidle-ap .est.err{color:#ffc6ba;border-color:#6d2a20;background:#251310}',
     '#lolidle-ap .sec-acoes{display:grid;grid-template-columns:1fr 1fr;gap:7px}',
     // ---- ACOES MANUAIS: bloco despromovido (diagnostico) ----
-    // PEDIDO DO DONO (2026-10-14): "'acoes' e ridiculo. se eu quero acao, eu faco na merda do
-    // jogo, nao na gui. oq eu quero na gui sao coisas automaticas." — o clique manual continua
-    // a existir (nada foi apagado do motor), mas sempre no fim do cartao, tracejado e rotulado.
+    // O clique manual continua a existir (nada foi apagado do motor), mas sempre no fim do
+    // cartao, tracejado e rotulado como manutencao manual.
     '#lolidle-ap .diag-t{margin:7px 0 4px;padding-top:6px;border-top:1px dashed var(--lin2);font-size:10px;color:#8a7f6c;text-transform:uppercase;letter-spacing:.4px}',
     '#lolidle-ap .diag-t + .acoes .acao{background:#121010;border-style:dashed}',
     '#lolidle-ap .diag-t + .acoes .btn{font-size:10.5px;padding:4px 8px;font-weight:600}',
@@ -383,8 +407,8 @@
     '#lolidle-ap .bf-col h4 .tag.ok{background:#1d3a24;color:var(--verde);border-color:#2b5c33}',
     '#lolidle-ap .bf-dica{margin:0 0 4px;color:var(--dim);font-size:10px}',
     '#lolidle-ap .bf-itens{display:flex;gap:5px;flex-wrap:wrap}',
-    // ALARGADO 2026-10-14: o chip era um quadrado de 46px e o nome do item não cabia. O dono
-    // via so "Aequipado" - sem saber QUE peca era. 82px da largura para o nome.
+    // O chip tem 82px de largura para o NOME do item: sem espaço só se via a qualidade
+    // ("A +2 equipado"), sem saber que peça era.
     '#lolidle-ap .bf-item{position:relative;width:82px;height:54px;border:2px solid #332c24;border-radius:6px;background:#191614;display:block;overflow:hidden}',
     '#lolidle-ap .bf-item img{width:100%;height:100%;object-fit:cover;display:block}',
     '#lolidle-ap .bf-item .q{position:absolute;top:0;right:1px;font-size:9px;color:var(--ouro);text-shadow:0 0 3px #000}',
@@ -434,6 +458,7 @@
     '#lolidle-ap table.tbl{width:100%;border-collapse:collapse;font-size:10.5px;font-variant-numeric:tabular-nums}',
     '#lolidle-ap table.tbl th{color:var(--dim);font-weight:600;text-align:right;padding:3px 5px;border-bottom:1px solid var(--lin);position:sticky;top:0;background:var(--pnl);white-space:nowrap}',
     '#lolidle-ap table.tbl th:first-child,#lolidle-ap table.tbl td:first-child{text-align:left}',
+    '#lolidle-ap table.tbl td:first-child{white-space:normal;min-width:90px}',
     '#lolidle-ap table.tbl td{padding:3px 5px;text-align:right;border-bottom:1px solid #1c1815;color:#c8bda8;white-space:nowrap}',
     '#lolidle-ap table.tbl td:first-child{color:var(--txt)}',
     '#lolidle-ap table.tbl tr.melhor td{background:#1d2417}',
@@ -477,7 +502,7 @@
     '#lolidle-ap .pot.baixo{border-color:#7a3a10;background:#1c1108}#lolidle-ap .pot.baixo .q{color:#ff9a5a}',
     '#lolidle-ap .tag{display:inline-block;background:#1d2733;border:1px solid #33505f;color:#cfe8ff;border-radius:5px;padding:1px 6px;font-size:10px;margin:1px 2px 1px 0}',
     '#lolidle-ap footer{display:flex;align-items:center;gap:9px;padding:6px 10px;background:#151211;border-top:1px solid var(--lin)}',
-    '#lolidle-ap .fb{font-size:11px;color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '#lolidle-ap .fb{font-size:11px;color:var(--dim);flex:1;min-width:0}',
     '#lolidle-ap .fb.ok{color:var(--verde)}#lolidle-ap .fb.err{color:var(--verm)}#lolidle-ap .fb.warn{color:var(--ambar)}#lolidle-ap .fb.run{color:var(--azul)}',
     '#lolidle-ap .spin{display:inline-block;width:9px;height:9px;border:2px solid #7cc4ff;border-top-color:transparent;border-radius:50%;animation:lolidle-spin .7s linear infinite;vertical-align:-1px;margin-right:5px}',
     '@keyframes lolidle-spin{to{transform:rotate(360deg)}}',
@@ -571,8 +596,7 @@
       + '    <button id="ap-panic" class="btn danger big" title="Para tudo imediatamente: desliga o auto-play e a auto-poção e pausa o motor">⛔ PARAR TUDO</button>'
       + '  </div>'
       + '</header>'
-      // 8 ABAS → 4 (pedido do dono: "tem muita aba, tu tem que fazer merge das relacionadas").
-      // Agrupadas por ASSUNTO: Painel = estado + switches (controlo); Itens = mochila +
+      // 8 ABAS → 4, agrupadas por ASSUNTO: Painel = estado + switches (controle); Itens = mochila +
       // build por fase + cofre + mercado/Ornn; Personagem = habilidades + atributos;
       // Ganhos = farm/ganhos + histórico. Os ids dos elementos NÃO mudaram (os handlers
       // continuam a encontrar tudo); só mudou a `<section class="pane">` onde cada um vive.
@@ -584,10 +608,10 @@
       + '</nav>'
       + '<main>'
       + '  <section class="pane on" id="ap-t-painel">'
-      // ESTADO + CONTROLE primeiro: é o que o dono abre. Um indicador de estado e UM botão
+      // ESTADO + CONTROLE primeiro: é a primeira aba. Um indicador de estado e UM botão
       // principal cujo rótulo diz o que muda; pausar/parar tudo ficam secundários.
       + '    <div id="ap-painel-estado"></div>'
-      + '    <p class="intro">PAINEL DE CONTROLO: o que está acontecendo agora, o que o motor vai fazer, o que está bloqueado e os switches que mandam no auto-play. É aqui que se liga e desliga — as ações manuais ficam no fim, em Diagnóstico.</p>'
+      + '    <p class="intro">PAINEL DE CONTROLE: o que está acontecendo agora, o que o motor vai fazer, o que está bloqueado e os switches que mandam no auto-play. É aqui que se liga e desliga — as ações manuais ficam no fim, em Manutenção manual.</p>'
       + '    <div class="grid2">'
       + '      <div id="ap-now-estado"></div>'
       + '      <div id="ap-now-fase"></div>'
@@ -609,8 +633,8 @@
       + '    <div id="ap-auto-base"></div>'
       + '    <div id="ap-auto-ferramentas"></div>'
       + '    <div id="ap-auto-diag"></div>'
-      // AÇÕES MANUAIS no FIM: é o último cartão do painel, despromovido (o dono não quer
-      // botões de coisas que ele mesmo faz no jogo como se fossem o caminho normal).
+      // AÇÕES MANUAIS no FIM: é o último cartão do painel, despromovido — o caminho normal é
+      // o que acontece sozinho.
       + '    <div id="ap-auto-acoes"></div>'
       + '  </section>'
       + '  <section class="pane" id="ap-t-itens">'
@@ -641,7 +665,7 @@
       + '    <div id="ap-at-acoes"></div>'
       + '  </section>'
       + '  <section class="pane" id="ap-t-ganhos">'
-      + '    <p class="intro">FARM e GANHOS: as duas modalidades (o motor escolhe a região, ou escolhes tu os itens que você quer dropar), o que você está ganhando por minuto, o histórico por região e o que já aconteceu (mortes, chefes, eventos).</p>'
+      + '    <p class="intro">FARM e GANHOS: as duas modalidades (o motor escolhe a região, ou você escolhe os itens que quer dropar), o que você está ganhando por minuto, o histórico por região e o que já aconteceu (mortes, chefes, eventos).</p>'
       + '    <div id="ap-fm-modo"></div>'
       + '    <div id="ap-fm-itens"></div>'
       + '    <div id="ap-fm-agora"></div>'
@@ -673,9 +697,9 @@
       m.innerHTML = '<div class="box lolidle-box">'
         + '<header><b>Escolher itens para farmar</b><span class="muted">o auto-play calcula em que região cada item dropa e leva você até lá</span><span class="sp"></span>'
         + '<input id="ap-item-busca" type="search" placeholder="procurar item…"><button id="ap-modal-x" class="sec">Fechar</button></header>'
-        // 108 itens no catálogo (19 básicos, 40 épicos, 49 lendários). O dono quer poder escolher
-        // QUALQUER um deles, por isso os básicos (peças) passaram a ter filtro próprio em vez de
-        // ficarem escondidos pelo código.
+        // 108 itens no catálogo (19 básicos, 40 épicos, 49 lendários). Qualquer um deles pode
+        // ser escolhido, por isso os básicos (peças) têm filtro próprio em vez de ficarem
+        // escondidos pelo código.
         + '<div class="filtros"><button class="if ativa" data-if="todos">Todos</button><button class="if" data-if="lendario">Lendários</button><button class="if" data-if="epico">Épicos</button><button class="if" data-if="basico">Básicos (peças)</button>'
         + '<span class="muted" id="ap-item-nota"></span></div>'
         + '<div class="grade" id="ap-item-grade"></div>'
@@ -777,6 +801,12 @@
     if (_ultimoHtml.get(id) === html) return;
     _ultimoHtml.set(id, html);
     el.innerHTML = html;
+    // Nada de texto cortado sem poder ser lido: o que tem ellipsis (`.ln .d`) ganha `title`
+    // com o texto inteiro.
+    try {
+      const ds = el.querySelectorAll('.ln .d');
+      for (let i = 0; i < ds.length; i++) { const tx = ds[i].textContent; if (tx) ds[i].title = tx; }
+    } catch (e) { /* DOM mínimo */ }
   }
 
   const cfg = () => ler('getConfig', {}) || {};
@@ -795,9 +825,9 @@
   const ligado = () => !!cfg().enabled;
   const naBase = () => /fonte/i.test(String((ler('readLocation', {}) || {}).text || ''));
 
-  /** Diagnóstico da base (porque é que o motor está parado) — cache de 10 s. */
+  /** Leitura da base (porque o motor está parado) — cache de 10 s. */
   const diagBase = () => cache('diag', 10000, () => ler('diagnosticoBase', null));
-  /** O QUE FALTA FAZER NA BASE (necessidades reais, do motor) — mesma cache do diagnóstico. */
+  /** O QUE FALTA FAZER NA BASE (necessidades reais, do motor) — mesma cache. */
   const faltasBase = () => cache('faltas', 10000, () => {
     const n = ler('necessidadesBase', null);
     if (!n) return null;
@@ -827,8 +857,8 @@
   /** Build ideal — cache de 30 s. */
   const buildIdeal = () => cache('ideal', 30000, () => ler('buildIdeal', []) || []);
 
-  // ============================ OS 4 ESTADOS DO AUTO-PLAY (controlos)
-  // O MOTOR tem TRÊS controlos com semânticas DIFERENTES (automation.js:5363-5398):
+  // ============================ OS 4 ESTADOS DO AUTO-PLAY (controles)
+  // O MOTOR tem TRÊS controles com semânticas DIFERENTES (automation.js:5363-5398):
   //   cfg.enabled=false -> modo OBSERVAÇÃO: o portão `podeAgir` fecha e nada é clicado;
   //   pausar()          -> congela as AÇÕES mas continua OBSERVANDO (a medição acumula) e
   //                        `despausar()` retoma do mesmo ponto;
@@ -940,8 +970,10 @@
     const a = estadoAgora();
     const el = $('ap-estado');
     if (el) { el.className = 'pill ' + a.pill.cls; const b = el.querySelector('b'); if (b) b.textContent = a.pill.txt; }
-    const fe = $('ap-fase'); if (fe && fe.textContent !== a.fase) fe.textContent = a.fase;
-    const set = (id, txt) => { const e = $(id); if (e && e.textContent !== txt) e.textContent = txt; };
+    const fe = $('ap-fase'); if (fe && fe.textContent !== a.fase) fe.textContent = a.fase; if (fe) fe.title = a.fase;
+    // Valores que podem ficar cortados (`.mini b` e `.fase` têm ellipsis) ganham `title`
+    // com o texto inteiro — nada fica ilegível por omissão.
+    const set = (id, txt) => { const e = $(id); if (e && e.textContent !== txt) e.textContent = txt; if (e) e.title = txt; };
     set('ap-h-nivel', a.nivel ? String(a.nivel) : '—');
     set('ap-h-ouro', fmt(a.ouro));
     set('ap-h-hp', a.hp ? fmt(a.hp.cur) + ' / ' + fmt(a.hp.max) : '—');
@@ -949,9 +981,8 @@
     set('ap-h-regiao', a.regiao || '—');
     const on = $('ap-on'); if (on && on.checked !== a.ligado) on.checked = a.ligado;
     set('ap-on-txt', a.ligado ? 'ligado' : 'desligado');
-    // O botão grande do cabeçalho é o MESMO botão principal do painel: o rótulo diz o que muda a
-    // partir do estado de agora (antes dizia 'RETOMAR TUDO' com o estado 'desligado' ao lado, e o
-    // dono lia os dois como a mesma coisa).
+    // O botão grande do cabeçalho é o MESMO botão principal do painel: o rótulo diz o que muda
+    // a partir do estado de agora — nunca dois controles a parecer a mesma coisa.
     const pb = $('ap-panic');
     if (pb) {
       const b = BTN_AUTO[a.estado] || BTN_AUTO.observacao;
@@ -964,8 +995,8 @@
   }
 
 
-  // ------------------------------------------------- BLOCO DO TOPO: BUILD POR FASE
-  // (pedido do dono: "bota tudo no gui ... la no começo da pagina do gui")
+  // ------------------------------------------------- BUILD POR FASE
+  // O bloco grande vive na aba Itens; na primeira aba fica o resumo de uma linha.
   /** Nome de usuário de cada FONTE de uma peça. */
   const FONTE_NOME = { equipado: 'equipado', mochila: 'na mochila', mercado: 'no mercado', cofre: 'no cofre', falta: 'falta' };
   const FONTE_AJUDA = {
@@ -981,10 +1012,8 @@
   function bfItem(i) {
     const fonte = FONTE_NOME[i.fonte] ? i.fonte : 'falta';
     const titulo = i.nome + ' — ' + (FONTE_NOME[fonte] || fonte) + (i.porque ? ' · ' + i.porque : '') + ' · ' + (FONTE_AJUDA[fonte] || '');
-    // BUG MEDIDO (dono, 2026-10-14): o chip mostrava SO o selo de qualidade + a fonte, e o
-    // NOME do item vivia apenas no atributo `title` (tooltip). Resultado no ecra:
-    // "Aequipado", "B+2equipado", "falta" - sem nome nenhum, impossivel saber que peca e.
-    // O `i.nome` sempre existiu nos dados; faltava RENDERIZA-LO. Agora o chip diz o nome.
+    // O chip mostra o NOME do item além do selo de qualidade e da fonte (o `i.nome` sempre
+    // existiu nos dados; faltava renderizá-lo).
     const nome = i.nome || i.base || '?';
     return '<span class="bf-item ' + esc(fonte) + '" title="' + esc(titulo) + '">'
       + '<img src="' + ITEM_IMG(i.base) + '" alt="" loading="lazy" onerror="this.style.opacity=.25">'
@@ -1019,16 +1048,14 @@
   }
   /** Desenha o bloco da build por fase — que agora vive na aba ITENS — com um botão de
    *  MINIMIZAR no cabeçalho.
-   *  BUG MEDIDO (dono, 2026-10-14): este bloco estava entre o </nav> e o <main>, FORA de todos os
-   *  `.pane`; como o CSS dos separadores só esconde `.pane`, ele ficava em cima de TODAS as abas
-   *  (incluindo a 1.ª) e não havia NADA que o escondesse — era este o "não minimiza em aba
-   *  nenhuma". Agora: (1) vive na aba Itens; (2) minimiza a sério, com o estado guardado em
-   *  GUI_KEY (sobrevive ao F5 e à troca de aba). */
+   *  Regras deste bloco: (1) vive na aba Itens — fora de um `.pane` ele aparece por cima de
+   *  TODAS as abas, porque o CSS dos separadores só esconde `.pane`; (2) minimiza a sério, com o
+   *  estado guardado em GUI_KEY (sobrevive ao F5 e à troca de aba). */
   function renderBuildFase() {
     const el = $('ap-build-fase');
     if (!el) return;
     const c = cfg();
-    const on = c.buildPorFase !== false;                 // LIGADO por defeito (pedido do dono)
+    const on = c.buildPorFase !== false;                 // LIGADO por padrão
     const abertoBf = guiPrefs.bfAberto !== false;
     const temMotor = !!MOTOR();
     const pMob = temMotor ? planoFase('mobs') : null;
@@ -1053,8 +1080,8 @@
       + (abertoBf ? '▾' : '▸') + '</button></h3>'
       + '<div class="corpo">' + corpo + '</div></section>');
   }
-  /** RESUMO DE UMA LINHA do mesmo bloco, para a 1.ª aba. Pedido do dono: a primeira aba é um
-   *  PAINEL DE CONTROLO, não um relatório — o bloco grande mudou para Itens e aqui fica só o
+  /** RESUMO DE UMA LINHA do mesmo bloco, para a 1.ª aba: a primeira aba é um PAINEL DE
+   *  CONTROLE, não um relatório — o bloco grande mudou para Itens e aqui fica só o
    *  estado (o que está em uso e quantas peças faltam), para não se perder a leitura.
    *  CUSTO: `planoFase` tem cache de 6 s (`cache('bf-'+fase, 6000, …)`), logo isto são no máximo
    *  2 chamadas ao motor a cada 6 s — e partilha a MESMA cache com o bloco grande. */
@@ -1130,11 +1157,11 @@
     setHtml('ap-now-fase', card('O que o auto-play está fazendo AGORA', 'medido neste ciclo',
       '<p class="aviso ' + (a.ligado && !a.pausado ? 'ok' : 'warn') + '">' + esc(a.fase) + '</p>' + corpoFase));
 
-    // 3) porque está parado (diagnóstico completo)
+    // 3) porque está parado (leitura completa)
     const dg = diagBase();
     if (!a.ligado || a.pausado) {
       const saude = ler('saudeAutoplay', null) || {};
-      setHtml('ap-now-parado', card('Por que NADA está acontecendo', 'diagnóstico do motor',
+      setHtml('ap-now-parado', card('Por que NADA está acontecendo', 'leitura do motor',
         '<p class="aviso warn">' + (a.pausado ? 'O motor está <b>pausado</b>.' : 'O auto-play está <b>desligado</b> (modo observação).') + '</p>'
         + '<p class="hint">Último "batimento" do motor: ' + (saude.ultimoTickHaMs == null ? 'nunca' : 'há ' + fmtDur(saude.ultimoTickHaMs)) + ' · temporizadores ativos: ' + (saude.timers == null ? '—' : saude.timers) + '</p>'
         + '<div class="acoes">' + acao('ap-retomar', '▶ Retomar tudo', 'Liga o auto-play e a auto-poção e despausa o motor.') + '</div>'));
@@ -1147,7 +1174,7 @@
         (dg.motivo ? '<p class="aviso warn">Motivo mais urgente: <b>' + esc(dg.motivo) + '</b></p>' : '')
         + lista
         + '<p class="hint">Quando esta lista fica vazia, o motor viaja para ' + esc(a.regiao || 'a melhor região') + '.</p>'
-        + diag('Forçar agora (diagnóstico)',
+        + diag('Forçar agora (manutenção manual)',
           '<div class="acoes">' + acaoD('ap-base-go-agora', '🏠 Rodar a rotina de base agora', 'Executa todos os passos pendentes de uma vez (com confirmação). O motor faz isto sozinho quando decide voltar à Fonte.') + '</div>')));
     } else if (dg && dg.trava && dg.trava.length) {
       setHtml('ap-now-parado', card('Por que o motor ainda não saiu da Fonte', 'leitura direta das travas do motor',
@@ -1170,7 +1197,7 @@
       const t = L.target;
       setHtml('ap-now-combate', card('Combate ao vivo', 'medido pelo dano que aparece na tela',
         '<div class="kvs">'
-        + kv('dano que fazes', fmt(d.out || r.myDps || 0), '/s')
+        + kv('dano que você faz', fmt(d.out || r.myDps || 0), '/s')
         + kv('dano que recebes', fmt(d.in || 0), '/s')
         + kv('cura total', fmt(r.healRate || 0), '/s')
         + kv('cura das habilidades', fmt(r.healSkillRate || 0), '/s')
@@ -1205,8 +1232,7 @@
   }
 
   // ------------------------------------- ÁRVORE DE INTERRUPTORES (hierarquia do motor)
-  // PEDIDO DO DONO (2026-10-14): "faca o autoplay ser um switch que liga varios switchs ... uma
-  // hierarquia". O motor JÁ tem a tabela (`INTERRUPTORES`) e o resolvedor (`podeFazer`) e expõe
+  // O motor JÁ tem a tabela (`INTERRUPTORES`) e o resolvedor (`podeFazer`) e expõe
   // os dois por `arvoreInterruptores()` -> [{nome, pai, cfg, temExcecao, pode, porque}].
   // AQUI SÓ SE DESENHA ESSA VERDADE: pais e filhos indentados. Nada é decidido nesta GUI — se o
   // motor mudar a tabela (um switch novo é UMA linha lá), a árvore muda sozinha.
@@ -1220,6 +1246,7 @@
     refino: 'Refinar no Ornn',
     montar: 'Montar item no Ornn',
     cofre: 'Cofre (guardar e retirar)',
+    fugir: 'Fugir do que mata',
     equip: 'Equipar a melhor peça de cada slot',
     atrib: 'Distribuir pontos de atributo',
     hab: 'Subir habilidades',
@@ -1238,6 +1265,7 @@
     refino: 'gasta ouro refinando seus lendários tier A+ até o teto',
     montar: 'tenta montar no Ornn a receita mais barata que serve a build (é uma aposta)',
     cofre: 'guarda no cofre e vai buscar o que está lá',
+    fugir: 'foge da região (tecla B) quando o golpe passa da cura possível, quando a região mata ou quando a luta está perdida sem poções que cheguem — e volta sozinho à região quando a fuga não foi por morte certa',
     equip: 'troca sempre que aparecer uma peça melhor para o slot',
     atrib: 'gasta sozinho os pontos de atributo livres',
     hab: 'sobe as habilidades quando há pontos',
@@ -1249,9 +1277,10 @@
   /** O QUE CADA SWITCH COBRE — é a linha colorida ao lado dele: VERDE quando está ligado (o que
    *  passa a acontecer) e VERMELHA quando está desligado (o que deixa de acontecer). O texto fala
    *  do efeito no jogo, não do nome técnico da chave.
-   *  Fonte: a tabela INTERRUPTORES do motor (automation.js:2237) e as funções que cada switch
+   *  Fonte: a tabela INTERRUPTORES do motor (automation.js:2460) e as funções que cada switch
    *  comanda (venderBase, autoEquip, reporPocoes, refinarMelhores, montarMelhorReceita, cofre,
-   *  distribuirAtributos, subirHabilidades, anunciarLendarios, trocarBuildDaFase, rotacaoSkills). */
+   *  distribuirAtributos, subirHabilidades, anunciarLendarios, trocarBuildDaFase, rotacaoSkills,
+   *  checarChefeFatal). */
   const ARV_COBRE = {
     manutencao: { on: 'Vende, equipa, gasta pontos e mexe no cofre quando vale a pena — em qualquer campeão.', off: 'Nada de manutenção: a mochila enche, os pontos ficam parados e o cofre não é lido.' },
     autoplay: { on: 'Farma, viaja e escolhe a região sozinho.', off: 'Não farma nem viaja: só observa e mede.' },
@@ -1262,6 +1291,7 @@
     refino: { on: 'Refina no Ornn os lendários tier A+ até o teto.', off: 'Os itens ficam no refino em que estão.' },
     montar: { on: 'Tenta montar no Ornn a receita mais barata que serve a build.', off: 'Nenhuma tentativa de montagem: nenhum item novo sai das peças.' },
     cofre: { on: 'Lê o cofre na Fonte e guarda o que deve ficar guardado.', off: 'O cofre nunca é lido — o painel fica sem saber o que está guardado.' },
+    fugir: { on: 'Foge para a Fonte quando algo mata você — e volta sozinho à região quando a fuga não foi por morte certa.', off: 'Nada foge: se o golpe ou a região mata, você morre.' },
     equip: { on: 'Equipa sempre a melhor peça de cada slot.', off: 'O que está vestido fica como está, mesmo com peça melhor na mochila.' },
     atrib: { on: 'Gasta os pontos de atributo pelo modelo escolhido.', off: 'Os pontos de atributo ficam parados.' },
     hab: { on: 'Sobe as habilidades quando há pontos.', off: 'Os pontos de habilidade ficam parados.' },
@@ -1287,7 +1317,7 @@
     return m ? { quem: m[1], motivo: m[2] } : { quem: null, motivo: '' };
   }
   /** UM switch: estado PRÓPRIO + o que ele cobre (linha verde/vermelha) + os filhos indentados.
-   *  INDEPENDÊNCIA (pedido do dono): o switch do filho mostra o que ELE diz — se está ligado e o
+   *  INDEPENDÊNCIA: o switch do filho mostra o que ELE diz — se está ligado e o
    *  pai o bloqueia, fica "ligado, mas inerte" e diz por quem, em vez de parecer desligado. */
   function arvNo(s, ramos, nivel) {
     if (nivel > 8) return '';                       // guarda contra um pai cíclico: nunca recursa sem fim
@@ -1319,13 +1349,14 @@
         + '><span class="sw"></span></label>'
       : '<span class="arv-cfg" title="não tem switch próprio: liga e desliga com o pai">implícito</span>';
     const meus = ramos[nome] || [];
+    // SWITCH À ESQUERDA: o interruptor vem antes do nome, não no fim da linha.
     return '<div class="arv-no ' + cls + (nome === 'autoplay' ? ' mestre' : '') + '" data-no="' + esc(nome) + '">'
       + '<i class="arv-dot"></i>'
+      + ctrl
       + '<b>' + esc(ARV_NOME[nome] || nome) + '</b>'
       + '<small class="arv-est">' + esc(est) + '</small>'
       + motivo
       + (s.temExcecao ? '<span class="tag arv-exc" title="o motor pula este switch em certas condições">⚠ ' + esc(arvExc(nome, s)) + '</span>' : '')
-      + '<span class="sp"></span>' + ctrl
       + '</div>'
       + linha
       + (meus.length ? '<div class="arv-filhos">' + meus.map((f) => arvNo(f, ramos, nivel + 1)).join('') + '</div>' : '');
@@ -1368,7 +1399,7 @@
     const agindo = lista.length - bloq.length;
     const mestre = porNome.autoplay;
     const alvo = c.champAlvo === undefined ? 'yasuo' : (c.champAlvo || 'qualquer campeão');
-    // O CASO QUE O DONO PEDIU PARA VER: ligado no switch e mesmo assim sem agir.
+    // O CASO A DESTACAR: ligado no switch e mesmo assim sem agir.
     const alerta = (mestre && mestre.pode === false && c.enabled !== false)
       ? '<p class="aviso warn">O switch mestre está <b>LIGADO</b> mas <b>skippado</b> agora: ' + esc(arvExc('autoplay', mestre))
         + ' (alvo: <b>' + esc(alvo) + '</b>). Enquanto for assim, nenhum switch abaixo age — nem vender, nem equipar.</p>'
@@ -1414,7 +1445,7 @@
           '<select id="ap-reg-modo"><option value="auto">Automática (recomendada)</option><option value="fixa">Fixa (escolho eu)</option></select>')
         + linha('Região fixa', 'escolher uma região aqui passa a região para FIXA (o automático desliga e você vê isso no aviso abaixo)',
           '<select id="ap-reg-id">' + regioes.map((r) => '<option value="' + esc(r.id) + '">' + esc(r.nome) + ' — ' + fmt(r.xpMin) + ' xp/min · ' + fmt(r.goldMin) + ' ouro/min</option>').join('') + '</select>')
-        + diag('Forçar viagem (diagnóstico)',
+        + diag('Forçar viagem (manutenção manual)',
           '<div class="acoes">' + acaoD('ap-ir-agora', '🧭 Ir agora para a região escolhida', 'Viaja já para a região selecionada. O motor viaja sozinho quando está ligado e a região é a melhor para o seu nível.') + '</div>')
         + '<div id="ap-reg-info"></div>'));
 
@@ -1441,10 +1472,10 @@
           ORDER.map((k) => '<span class="hint">' + POCAO_NOME[k] + '</span><input type="number" id="ap-min-' + k + '" min="0" style="width:64px" value="' + esc(minP[k]) + '">').join(' '))
         + '<p class="hint">As faixas acima são a regra simples (por vida perdida). Com a "decisão inteligente" ligada, o motor sobrepõe-se a elas quando sabe exatamente quanto vai doer o próximo golpe.</p>'));
 
-      // TODAS as ações manuais (o que o dono pode fazer no jogo com um clique) ficam AQUI, no
-      // fim do Painel, tracejadas e rotuladas como diagnóstico. O que aparece em cima é o que
-      // acontece sozinho: estado, switches, o que o motor vai fazer e o que está bloqueado.
-      setHtml('ap-auto-acoes', card('Diagnóstico e manutenção — ações manuais', 'o motor faz isto sozinho quando o switch está ligado; use só para forçar ou medir',
+      // TODAS as ações manuais (o que você pode fazer no jogo com um clique) ficam AQUI, no
+      // fim do Painel, tracejadas e rotuladas como manutenção manual. O que aparece em cima é o
+      // que acontece sozinho: estado, switches, o que o motor vai fazer e o que está bloqueado.
+      setHtml('ap-auto-acoes', card('Manutenção manual — forçar e medir', 'o motor faz isto sozinho quando o switch está ligado; use só para forçar ou medir',
         diag('Forçar agora (o automático deveria estar fazendo)',
           '<div class="acoes">'
           + acaoD('ap-farm-go', '▶ Ir agora para a melhor região', 'Liga o auto-play e viaja agora. O motor escolhe e viaja sozinho com o switch Tudo (auto-play) ligado.')
@@ -1470,21 +1501,21 @@
           + acaoD('ap-giro', '🔄 Medir várias regiões', 'Viaja por todas as regiões durante alguns minutos cada, para medir ganhos reais.')
           + acaoD('ap-testes', '🧪 Medir conjuntos de itens', 'Monta conjuntos e o motor roda cada um medindo ouro, xp e dano reais.')
           + acaoD('ap-scan-painel', '🎒 Forçar leitura da mochila', 'Lê a mochila no jogo (a aba Itens usa esta leitura).')
-          + acaoD('ap-export', '💾 Exportar dados medidos', 'Descarrega um ficheiro JSON com tudo o que o motor aprendeu (backup ou análise).')
+          + acaoD('ap-export', '💾 Exportar dados medidos', 'Baixa um arquivo JSON com tudo o que o motor aprendeu (backup ou análise).')
           + acaoD('ap-reload', '🔃 Recarregar a extensão', 'Recarrega os scripts da extensão (útil depois de uma atualização).')
           + '</div>')));
 
       // ESTADO, não ação: quem decide é o switch. Os botões para forçar cada passo vivem no
-      // cartão de diagnóstico, no fim do Painel (pedido do dono: a GUI é para o que é automático).
+      // cartão de manutenção manual, no fim do Painel — a GUI é para o que é automático.
       setHtml('ap-auto-base', card('Ações de base — quem decide', 'o motor executa sozinho quando vai à Fonte',
         '<p class="hint">Ir à Fonte, vender, repor poções, cofre, mercado, atributos e tarefas são decididos pelos <b>switches</b> da lista acima. Quando o switch está ligado e alguma pendência paga a viagem, o motor vai e faz — não há nada para clicar aqui.</p>'
-        + '<p class="hint">Para forçar um passo agora, use <b>Diagnóstico e manutenção</b>, no fim deste painel.</p>'));
+        + '<p class="hint">Para forçar um passo agora, use <b>Manutenção manual</b>, no fim deste painel.</p>'));
 
       setHtml('ap-auto-tarefa', card('Tarefas e recompensas', 'Capitão da Legião, na Fonte',
         '<div id="ap-tarefa-estado"></div>'
         + '<p class="hint">Aceitar a tarefa, entregar quando fica pronta e pegar as diárias são feitos sozinhos na rotina de base (com o switch <b>Manutenção</b> ligado).</p>'));
 
-      // Os botões desta antiga "Ferramentas" passaram para o cartão de diagnóstico (fim do Painel).
+      // Os botões desta antiga "Ferramentas" passaram para o cartão de manutenção manual (fim do Painel).
       setHtml('ap-auto-ferramentas', '');
     }
     // A ÁRVORE DE INTERRUPTORES redesenha SEMPRE (o estado dela muda com a config, com o campeão
@@ -1495,9 +1526,9 @@
     const automatica = !c.regionDefault;
     const modo = $('ap-reg-modo');
     if (modo) { const v = automatica ? 'auto' : 'fixa'; if (modo.value !== v) modo.value = v; }
-    // DROPDOWN DA REGIÃO (defeito do dono: "quando ta regiao automatica, muda o dropdown da fixa"):
-    // com a região automática ele não pode parecer que manda. Fica marcado como ignorado e aponta
-    // para a região que o MOTOR está a usar (nunca para uma região diferente da que está em uso).
+    // DROPDOWN DA REGIÃO: com a região automática o dropdown não pode parecer que manda. Fica
+    // marcado como ignorado e aponta para a região que o MOTOR está a usar (nunca para uma
+    // região diferente da que está em uso).
     const rid = $('ap-reg-id');
     const idIdeal = ler('regiaoIdeal', null);
     if (rid) {
@@ -1518,7 +1549,7 @@
         + '<p class="hint">' + (fb3.faltam.length
           ? 'Pendente agora: <b>' + esc(fb3.faltam.map((k) => NECESSIDADE_NOME[k] || k).join(' · ')) + '</b>.'
           : 'Nada pendente: a base está completa.') + '</p>'
-        + (naBase() ? '' : '<p class="hint">Não você está na Fonte — esta lista só se executa lá.</p>')));
+        + (naBase() ? '' : '<p class="hint">Você não está na Fonte — esta lista só se executa lá.</p>')));
     } else {
       setHtml('ap-auto-falta', '');
     }
@@ -1545,9 +1576,8 @@
     const minP2 = c.minPotion || { vida: 200, vidaF: 100, vidaS: 30 };
     for (const k of ORDER) { const e = $('ap-min-' + k); if (e && String(e.value) !== String(minP2[k])) e.value = minP2[k]; }
     const rec = recomendacao();
-    // REGIÃO EM USO, dita por palavras (defeito do dono: o modo automático estava a usar uma região
-    // fixa sem ele saber). Nunca fica ambíguo: ou é automática (com o nome que o motor escolheu),
-    // ou é fixa (com o nome que ele escolheu).
+    // REGIÃO EM USO, dita por palavras. Nunca fica ambíguo: ou é automática (com o nome que o
+    // motor escolheu), ou é fixa (com o nome que você escolheu).
     const emUso = c.regionDefault
       ? 'FIXA (você escolheu: <b>' + esc(nomeRegiao(c.regionDefault)) + '</b>)'
       : 'automática (o motor escolheu: <b>' + esc(rec ? limparNivel(rec.regiao) : (idIdeal ? nomeRegiao(idIdeal) : '—')) + '</b>)';
@@ -1564,12 +1594,12 @@
         ? '<p class="aviso ' + (st.pronta ? 'ok' : '') + '">Tarefa atual: ' + esc(st.texto || '—') + (st.pronta ? ' — <b>PRONTA para entregar</b>' : '') + '</p>'
         : '<p class="vazio">Sem tarefa ativa. Fala com o Capitão da Legião na Fonte.</p>';
     }
-    // diagnóstico
+    // leitura do que trava
     const dg = diagBase();
     const saude = ler('saudeAutoplay', null) || {};
     const meta = ler('getMeta', {}) || {};
     const travas = (dg && dg.trava) ? dg.trava : [];
-    setHtml('ap-auto-diag', card('Diagnóstico (para perceber o que trava)', 'lido diretamente do motor',
+    setHtml('ap-auto-diag', card('O que está travando', 'leitura direta do motor',
       '<div class="kvs">'
       + kv('auto-play', a.ligado ? 'ligado' : 'desligado')
       + kv('pausa', a.pausado ? 'pausado' : 'livre')
@@ -1584,9 +1614,6 @@
   }
 
   // ------------------------------------- COFRE + MERCADO (leituras GRAVADAS pelo motor)
-  // PEDIDO DO DONO (2026-10-14): "porque é que o GUI tem um botão 'Abrir e ler o cofre' que
-  // falha quando não estou na Fonte? o script devia gravar o que está no cofre e mostrar-me
-  // isso quando eu quiser, sem eu carregar em nada."
   // REGRA DESTE BLOCO: o que está GUARDADO é sempre visível (é o que o motor já gravou em
   // chrome.storage: `salvarCofre`/`salvarOfertas`); ABRIR/RETIRAR são ações secundárias e
   // só ficam ativas quando o jogo as permite. Nunca se mostra o erro cru como se fosse bug.
@@ -1603,7 +1630,7 @@
     } catch (e) { /* sem DOM do jogo */ }
     return /fonte|cidade/i.test(localTexto());
   }
-  /** Relê do storage uma chave que o MOTOR grava ({ at, ... }) e actualiza o espelho da GUI. */
+  /** Relê do storage uma chave que o MOTOR grava ({ at, ... }) e atualiza o espelho da GUI. */
   const lerGravado = (chave, set) => new Promise((resolve) => {
     try { chrome.storage.local.get(chave, (r) => { const v = (r && r[chave]) || null; set(v); resolve(v); }); }
     catch (e) { resolve(null); }
@@ -1638,12 +1665,12 @@
   const cofreSlot = (i, n) => String((i && (i.k || i.slot || i.slotId)) || ('#' + (n + 1)));
   const nomeCofre = (i) => (i && (i.nome || i.base)) || '?';
   const tagCofre = (i) => (i && i.qual ? '[' + i.qual + ']' : '') + (i && i.refino ? (i.qual ? ' +' : '+') + i.refino : '');
-  /** Motivos do cofre traduzidos — o motor fala em selectores, o dono fala em sítios. */
+  /** Motivos do cofre traduzidos — o motor fala em seletores, a GUI fala em sítios. */
   function motivoCofre(m) {
     const t = String(m || '');
     if (/sem Tesoureira\/Burrinho|sem cofre aqui/i.test(t)) return 'o cofre só abre na Fonte ou na cidade (Tesoureira de Piltover / Burrinho de Carga). Você está em ' + (localTexto() || '?') + '.';
     if (/sem opcao cofre/i.test(t)) return 'o NPC respondeu, mas não apareceu a opção "cofre" — tenta outra vez na Fonte ou na cidade.';
-    if (/^sem .* no cofre$|slot nao achado/i.test(t)) return 'esse item já não está no cofre (a leitura pode estar desatualizada) — use "Forçar leitura do cofre agora" (diagnóstico).';
+    if (/^sem .* no cofre$|slot nao achado/i.test(t)) return 'esse item já não está no cofre (a leitura pode estar desatualizada) — use "Forçar leitura do cofre agora" (manutenção manual).';
     if (/sem slot guardar/i.test(t)) return 'não encontrei esse item no cofre para o guardar — abre o cofre na Fonte ou na cidade.';
     return t || 'não foi possível (o motor não disse porquê)';
   }
@@ -1668,19 +1695,19 @@
         + '<p class="hint">O motor lê o cofre sozinho quando passa pela Fonte e <b>grava</b> o que lá está. A partir daí esta lista aparece aqui sempre que você quiser, onde você estiver.</p>';
     const corpo = lista
       + (pode ? '' : '<p class="hint">O cofre só abre na Fonte ou na cidade (Tesoureira de Piltover / Burrinho de Carga) — você está em <b>' + esc(local) + '</b>. A lista acima é a última leitura gravada.</p>')
-      + diag('Cofre: forçar leitura e ações manuais (diagnóstico)')
+      + diag('Cofre: forçar leitura e ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-cofre-ler', '👀 Forçar leitura do cofre agora',
         pode ? 'Fala com a Tesoureira (Fonte) ou o Burrinho (cidade), lê o que está guardado e <b>grava</b> — esta lista passa a ser a verdade.'
           : 'Só funciona na Fonte ou na cidade. Você está em <b>' + esc(local) + '</b>.', !pode)
       + acaoD('ap-cofre-melhor', '⬆ Retirar o melhor item',
         melhor ? 'Tira <b>' + esc(nomeCofre(melhor)) + '</b> ' + esc(tagCofre(melhor)) + ' — maior qualidade e, depois, maior refino. Abre o cofre sozinho se for preciso.'
-          : 'Ainda não há leitura do cofre: use "Forçar leitura do cofre agora" (diagnóstico) para o motor saber o que lá está.', !pode || !melhor)
+          : 'Ainda não há leitura do cofre: use "Forçar leitura do cofre agora" (manutenção manual) para o motor saber o que lá está.', !pode || !melhor)
       + '</div>'
       + (itens.length
         ? linha('Retirar um item específico', 'a lista é o que o motor sabe que está guardado no cofre',
           '<select id="ap-cofre-alvo">' + itens.map((i) => '<option value="' + esc(i.base || '') + '">' + esc(nomeCofre(i)) + ' ' + esc(tagCofre(i)) + '</option>').join('') + '</select>'
-          + '<button id="ap-cofre-tirar" class="btn sec"' + (pode ? '' : ' disabled') + '>⬆ Retirar<small class="tagd">diagnóstico</small></button>')
+          + '<button id="ap-cofre-tirar" class="btn sec"' + (pode ? '' : ' disabled') + '>⬆ Retirar<small class="tagd">manual</small></button>')
         : '');
     setHtml('ap-it-cofre', card('Cofre — o que está guardado', '<span id="ap-cofre-quando">—</span>', corpo));
     const q = $('ap-cofre-quando');
@@ -1693,12 +1720,47 @@
   let bagLida = null, bagLidaEm = 0, bagAuto = false;   // bagAuto: leitura passiva (sem clique)
   const protegidos = () => cache('proteg', 30000, () => {
     const mapa = new Map();
-    mapa.set(RABADON, 'Rabadon — regra do dono: nunca é vendido nem anunciado');
+    mapa.set(RABADON, 'Rabadon — nunca é vendido nem anunciado, nem duplicado');
+    const m = MOTOR();
+    // PRIORIDADE EXTREMA: a tabela é do MOTOR (automation.js:47, exposta em window.__lolidleAuto
+    // junto do resto) — nada desta lista foi escrito à mão. O critério é o item ser multiplicador
+    // de classe e vale em QUALQUER campeão: 3031 dá +40% no dano do acerto crítico e 3089 dá
+    // +35% em todo o Poder de Habilidade (motor vivo, confirmado por conteúdo). O duplicado
+    // também fica protegido: a decisão sobre ele é do jogador.
+    const prio = (m && Array.isArray(m.PRIORIDADE_EXTREMA)) ? m.PRIORIDADE_EXTREMA : [];
+    for (const p of prio) {
+      if (!p || p.id == null) continue;
+      const chave = String(p.id);
+      if (mapa.has(chave)) continue;                    // o rótulo do Rabadon já está no mapa
+      mapa.set(chave, (p.motivo || 'multiplicador de classe')
+        + (p.classe ? ' · protege em qualquer campeão (item de ' + String(p.classe).toUpperCase() + ')' : ''));
+    }
     const lc = ler('lendariosDaClasse', null);
     if (lc && typeof lc.forEach === 'function') lc.forEach((b) => mapa.set(String(b), 'lendário da build do seu campeão'));
     for (const e of (ler('readEquip', []) || [])) {
       const q = String(e.qual || '').toUpperCase();
       if (q === 'S' || q === 'SS') mapa.set(String(e.base), 'está equipado e é qualidade ' + q + ' (tier alto)');
+    }
+    // TRATAMENTO ESPECIAL da minha classe e PEÇAS RESERVADAS das duas builds (mobs/chefe): a
+    // lista e a decisão de quais contam para ESTE campeão vem do motor (ehEspecialMeu,
+    // basesReservadas, fasesDoItem) — a GUI só desenha.
+    const esp = (m && Array.isArray(m.ITENS_ESPECIAIS)) ? m.ITENS_ESPECIAIS : [];
+    for (const e of esp) {
+      if (!e || e.id == null) continue;
+      const chaveE = String(e.id);
+      if (mapa.has(chaveE)) continue;
+      if (chamar('ehEspecialMeu', chaveE).v !== true) continue;      // o motor diz se é MEU
+      mapa.set(chaveE, (e.motivo || 'item especial da sua classe') + ' · tratamento especial do seu campeão');
+    }
+    const res = chamar('basesReservadas');
+    if (res.ok && res.v && typeof res.v.forEach === 'function') {
+      res.v.forEach((b) => {
+        const chaveR = String(b);
+        if (mapa.has(chaveR)) return;
+        const f = chamar('fasesDoItem', chaveR);
+        const fases = (f.ok && Array.isArray(f.v) && f.v.length) ? f.v.join(' + ') : 'fase';
+        mapa.set(chaveR, 'peça da build de ' + fases + ' — fica reservada para a troca por fase');
+      });
     }
     return mapa;
   });
@@ -1725,10 +1787,10 @@
         : '<p class="aviso ok">Você tem a build ideal completa. 🎉</p>')
       + (ideal.length === 0 ? '<p class="aviso err">O motor ainda não sabe qual é o seu campeão (o HUD ainda não carregou). Sem isso não há build ideal nem protecções.</p>' : '')));
 
-    setHtml('ap-it-proteg', card('Blindados — nunca são vendidos', 'regra do dono + tier alto',
-      '<div class="chips">' + Array.from(prot.entries()).map(([b, motivo]) =>
+    setHtml('ap-it-proteg', card('Blindados — nunca são vendidos', 'o mesmo critério que o motor aplica',
+      '<div class="chips" data-blindados="motor">' + Array.from(prot.entries()).map(([b, motivo]) =>
         '<span class="chip ' + (String(b) === RABADON ? 'lendario' : '') + '" title="' + esc(motivo) + '">' + (ITEM_IMG(b) ? '<img src="' + ITEM_IMG(b) + '" alt="">' : '') + esc(nomeItem(b)) + ' <small>🔒</small></span>').join('') + '</div>'
-      + '<p class="hint">Rabadon é sempre blindado. Um lendário da sua build ideal também. Itens equipados de qualidade S ou SS também não são tocados.</p>'));
+      + '<p class="hint">A lista sai do <b>motor</b>: multiplicadores de classe (o Gume do Infinito <b>3031</b> e o Rabadon <b>3089</b> ficam protegidos em qualquer campeão, duplicados incluídos), itens de tratamento especial do seu campeão, lendários da build, peças reservadas das builds de mobs e de chefe e o que está equipado em qualidade S ou SS. Um item que ainda está a ser avaliado (qualidade "?") também não é tocado.</p>'));
 
     // mochila: o motor lê o `#mochila` DIRECTAMENTE (o jogo mantém-no atual, aberto ou não —
     // jogo.js:6621), logo tenta-se uma leitura passiva antes de pedir um clique ao usuário.
@@ -1737,7 +1799,7 @@
       setHtml('ap-it-mochila', card('Mochila', 'ainda não legível nesta página',
         '<p class="vazio">A mochila ainda não está legível.</p>'
         + '<p class="hint">Se você ainda não abriu a bolsa desde que a página carregou, abra uma vez no jogo (tecla I). A partir daí o motor lê-a sozinho, sem voltando abrindo.</p>'
-        + diag('Leitura da mochila (diagnóstico)')
+        + diag('Leitura da mochila (manutenção manual)')
       + '<div class="acoes">' + acaoD('ap-scan', '🎒 Forçar leitura da mochila', 'Lê o conteúdo da mochila — não abre nem fecha nada no jogo.') + '</div>'));
       setHtml('ap-it-plano', '');
     } else {
@@ -1749,8 +1811,8 @@
           : '<span class="chip ' + esc(i.raridade || '') + '" title="' + esc(nomeItem(i.base) + ' · qualidade ' + i.qual + (i.refino ? ' · refino +' + i.refino : '')) + '">'
             + '<img src="' + ITEM_IMG(i.base) + '" alt="">' + esc(nomeItem(i.base)) + ' <small>' + esc(i.qual || '') + (i.refino ? '+' + i.refino : '') + '</small></span>').join('') || '<span class="vazio">mochila vazia</span>')
         + '</div>'
-        + diag('Leitura da mochila (diagnóstico)')
-        + '<div class="acoes">' + acaoD('ap-scan', '🔄 Forçar leitura da mochila', 'Lê a mochila de novo (diagnóstico). O motor lê sozinho quando a mochila muda.') + '</div>'));
+        + diag('Leitura da mochila (manutenção manual)')
+        + '<div class="acoes">' + acaoD('ap-scan', '🔄 Forçar leitura da mochila', 'Lê a mochila de novo. O motor lê sozinho quando a mochila muda.') + '</div>'));
 
       // O motor exige a mochila: `planBag(bag, marketCount, marketCap)` (automation.js:338).
       // Sem ela rebenta — e o erro é NOSSO (falta de argumento), não do motor.
@@ -1790,7 +1852,7 @@
     } else setHtml('ap-it-dps', '');
 
     // O antigo cartão "Farmar itens específicos" MUDOU-SE para a aba Ganhos, onde passou a ser a
-    // modalidade "Auto farm pra item" (renderFarmItens, secção 5). O div `ap-it-farmar` deixou de
+    // modalidade "Auto farm pra item" (renderFarmItens, seção 5). O div `ap-it-farmar` deixou de
     // existir no DOM — não há nada para desenhar aqui.
     // COFRE: primeiro o que está GUARDADO (última leitura que o motor gravou); abrir/retirar
     // ficam em baixo e só aparecem ativos quando o jogo os permite.
@@ -1825,9 +1887,8 @@
       if (ux !== uy) return ux - uy;
       return (dpsDe[y.t] || 0) - (dpsDe[x.t] || 0);
     });
-    // BUG CORRIGIDO (relatado pelo dono): a recomendação ignorava o REQUISITO DE NÍVEL — dizia
-    // para desbloquear uma skill de nível 38 num boneco de nível 29. Uma habilidade bloqueada
-    // pelo nível NÃO pode ser o "próximo ponto".
+    // A recomendação respeita o REQUISITO DE NÍVEL: uma habilidade bloqueada pelo nível NÃO
+    // pode ser o "próximo ponto".
     const nivelAtual = Number((ler('player') || {}).nivel || 0) || 0;
     const liberada = (h) => (Number(h.nivel) || 1) <= (nivelAtual || 999);
     const podeSubir = (h) => (h.rank || 0) < (h.maxRank || 0) && !h.max && liberada(h);
@@ -1859,8 +1920,8 @@
         '<div class="chips">' + idealBarra.map((t) => '<span class="tag">' + esc(nomeDe(t)) + (ler('ehUltimate', false, t) ? ' 👑' : '') + '</span>').join('') + '</div>'
         + '<p class="aviso ' + (igual ? 'ok' : 'warn') + '">' + (igual ? 'A sua barra já está igual à ideal.' : 'A sua barra está diferente da ideal — o switch "Repor a rotação na barra" corrige isto sozinho.') + '</p>'));
     } else setHtml('ap-sk-ideal', '');
-    setHtml('ap-sk-acoes', card('Habilidades — o que o motor sobe sozinho', 'o switch "Subir habilidades" faz isto; os botões abaixo são diagnóstico',
-      diag('Habilidades: ações manuais (diagnóstico)')
+    setHtml('ap-sk-acoes', card('Habilidades — o que o motor sobe sozinho', 'o switch "Subir habilidades" faz isto; os botões abaixo são manutenção manual',
+      diag('Habilidades: ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-subir-habs', '⬆ Subir habilidades (' + fmt(pontos) + ' ponto(s))', 'Gasta todos os pontos livres: primeiro desbloqueia, depois sobe a que dá mais dano.', pontos ? '' : 'sec')
       + acaoD('ap-rotacao', '🔁 Repor a rotação na barra', 'Põe na barra as 4 habilidades prontas que dão mais dano (mantém sempre as melhores disponíveis).')
@@ -1923,8 +1984,8 @@
       + Object.keys(st).map((k) => kv(k, fmt1(st[k]))).join('')
       + '</div>'));
 
-    setHtml('ap-at-acoes', card('Atributos — o que o motor gasta sozinho', 'o switch "Distribuir pontos de atributo" faz isto; o botão abaixo é diagnóstico',
-      diag('Atributos: ação manual (diagnóstico)')
+    setHtml('ap-at-acoes', card('Atributos — o que o motor gasta sozinho', 'o switch "Distribuir pontos de atributo" faz isto; o botão abaixo é manutenção manual',
+      diag('Atributos: ação manual (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-distribuir', '➕ Distribuir ' + fmt(sk.pontosAtrib || 0) + ' ponto(s)', 'Gasta todos os pontos livres pelo modelo escolhido. Não há como desfazer.', (sk.pontosAtrib || 0) > 0 ? '' : 'sec')
       + '</div>'
@@ -1942,7 +2003,7 @@
   }
 
   // ---------------------------------------------------------------- ABA FARM
-  // POR ABATE x POR MINUTO (correção medida pelo Lead, 2026-10-14):
+  // POR ABATE x POR MINUTO (regra do motor):
   //   bossFase: { durMs: 35616, gold: 1526, xp: 3654, kills: 1, perMin: { gold: 2570.75, xp: 6155.66 } }
   //   O `bossFase` mede UM chefe (kills: 1) e o `perMin` é `loot / (durMs/60)` — uma TAXA sobre a
   //   janela. O xp/min sobe quando o chefe morre mais rápido (artefato de denominador: o xp do
@@ -1958,9 +2019,9 @@
     if ((fase.kills || 0) > 0) return { gold: (fase.gold || 0) / fase.kills, xp: (fase.xp || 0) / fase.kills };
     return null;
   };
-  /** Poções de uma fase. MEDIDO: nas amostras atuais `potions: 0` em TODOS os ciclos, porque o
-   *  auto-play estava desligado — 0/min não é medição do combate, é a extensão sem agir. Quando a
-   *  fase tem abates e nenhuma poção, mostra-se "—" em vez de 0. */
+  /** Poções de uma fase. Regra: `potions: 0` numa fase COM abates não é medição do combate —
+   *  é o motor sem agir (modo observação). Quando a fase tem abates e nenhuma poção, mostra-se
+   *  "—" em vez de 0. */
   const potTxt = (fase, porMinuto) => {
     const v = porMinuto != null ? porMinuto : (fase ? (fase.potions || 0) : null);
     if (v == null) return '—';
@@ -2012,7 +2073,7 @@
         bloco('Mobs', prev.mob, prev.teorico && prev.teorico.mob)
         + bloco('Chefe', prev.chefe, prev.teorico && prev.teorico.chefe)
         + '<p class="hint">Assinatura da build: ' + esc(prev.assinatura || '—') + '. O motor prefere sempre o que foi <b>medido</b>; a teoria serve só para começar.</p>'
-        + diag('Medição (diagnóstico)')
+        + diag('Medição (manutenção manual)')
         + '<div class="acoes">' + acaoD('ap-fm-testes', '🧪 Medir conjuntos de itens', 'O teste mede cada conjunto no jogo e alimenta esta previsão.') + '</div>'));
     } else setHtml('ap-fm-previsor', '');
 
@@ -2045,7 +2106,7 @@
         : '<p class="vazio">O motor ainda não leu o catálogo do jogo.</p>'
         + '<p class="hint">Esta tabela é <b>teoria</b> (calculada). A tabela de cima é o que foi <b>medido</b> — vale mais.</p>'));
 
-    // últimos ciclos: MOBS por minuto, CHEFE por abate (ver a nota no topo desta secção)
+    // últimos ciclos: MOBS por minuto, CHEFE por abate (ver a nota no topo desta seção)
     const ciclos = (f.cycles || []).slice(0, 30);
     setHtml('ap-fm-ciclos', card('Últimos ciclos', 'um ciclo = farmar até matar o chefe',
       tabela(['#', 'hora', 'região / chefe', 'mob ouro/min', 'mob xp/min', 'mob poções/min', 'chefe ouro/abate', 'chefe xp/abate', 'tempo do chefe'],
@@ -2065,9 +2126,8 @@
 
 
   // ------------------------------------- FARM: DUAS MODALIDADES (aba Ganhos)
-  // PEDIDO DO DONO (2026-10-14): "faz secoes melhores de farm. quero auto farm sozinho, auto farm
-  // pra item onde escolho todos os itens que quero dropar."
-  //   (a) SOZINHO  — o motor escolhe a região (é o que já existia).
+  // Duas modalidades de farm:
+  //   (a) SOZINHO  — o motor escolhe a região.
   //   (b) POR ITEM — o usuário marca itens e o motor diz onde cada um dropa. A resposta vem da
   //       função `planejar(ids)` do motor (automation.js:1537), que devolve por item e por zona:
   //       { item, nome, zona, zonaNome, faixa, mobs, chefe, chance, sobreviveMob, chefeFatal,
@@ -2084,7 +2144,7 @@
   const farmModo = () => (guiPrefs.farmModo === 'item' ? 'item' : 'sozinho');
   /** Grava uma preferência da GUI (GUI_KEY) e mantém o espelho local em sincronia. */
   function salvarPrefs(patch) {
-    guiPrefs = Object.assign({ bfAberto: true, farmModo: 'sozinho' }, guiPrefs, patch);
+    guiPrefs = Object.assign({ bfAberto: true, farmModo: 'sozinho', fmModoMin: false, fmItensMin: false }, guiPrefs, patch);
     try { chrome.storage.local.set({ [GUI_KEY]: guiPrefs }); } catch (e) { /* sem storage */ }
   }
   const metaItens = () => (ler('getMeta', {}) || {}).itens || [];
@@ -2193,25 +2253,27 @@
       + '<div class="acoes">'
       + acao('ap-fm-auto', '🎯 Voltar a escolher a região sozinho', fixa ? 'Limpa a região fixa: o motor volta a escolher a melhor região para o seu nível.' : 'Já está automática: o motor escolhe a região sozinho.', '', !fixa)
       + '</div>'
-      + diag('Forçar viagem (diagnóstico)')
+      + diag('Forçar viagem (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-fm-go', '▶ Ir agora para a melhor região', 'Liga o auto-play e viaja já para a melhor região para o seu nível. Um clique.')
       + '</div>'
       + '<p class="hint">O motor escolhe a região sozinho e muda quando compensa. Para mudar o objetivo, use a aba <b>Painel</b>.</p>';
     const corpoItem = '<p class="hint">Marque abaixo os itens que você quer dropar: o motor diz em que região cada um cai, com a chance e os drops/hora, e leva você até lá.</p>';
-    setHtml('ap-fm-modo', card('Como você quer farmar', 'duas modalidades — escolha uma',
+    const minModo = guiPrefs.fmModoMin === true;
+    setHtml('ap-fm-modo', cardMin(null, 'Como você quer farmar', 'duas modalidades — escolha uma',
       '<div class="modos">'
       + '<button class="modo' + (modo === 'sozinho' ? ' ativa' : '') + '" id="ap-fm-modo-sozinho"><b>🤖 Auto farm sozinho</b><small>o motor escolhe a região, muda quando compensa e não pergunta nada</small></button>'
       + '<button class="modo' + (modo === 'item' ? ' ativa' : '') + '" id="ap-fm-modo-item"><b>🎯 Auto farm pra item</b><small>você escolhe os itens que quer dropar e o motor vai à região que os dropa</small></button>'
       + '</div>'
-      + (modo === 'item' ? corpoItem : corpoSozinho)));
+      + (modo === 'item' ? corpoItem : corpoSozinho), minModo, 'ap-fm-min-modo', !minModo));
   }
   /** O cartão do "auto farm pra item": escolha, plano de drop e o botão que executa. */
   function renderFarmItens() {
     if (farmModo() !== 'item') { setHtml('ap-fm-itens', ''); return; }
     const n = selItens.size;
     const total = metaItens().length;
-    setHtml('ap-fm-itens', card('Auto farm pra item — o que quero dropar', n ? n + ' item(ns) escolhido(s)' : 'nenhum item escolhido',
+    const minItens = guiPrefs.fmItensMin === true;
+    setHtml('ap-fm-itens', cardMin(null, 'Auto farm pra item — o que quero dropar', n ? n + ' item(ns) escolhido(s)' : 'nenhum item escolhido',
       '<div class="chips" id="ap-fm-chips"></div>'
       + (n ? '' : '<p class="vazio">Nenhum item escolhido ainda.</p>'
         + '<p class="hint">Clique em <b>Escolher itens</b> e marque o que você quer. A lista mostra os itens do jogo agrupados por raridade e por espaço (arma, armadura, cabeça, mão, botas, acessório)'
@@ -2222,15 +2284,15 @@
       + acao('ap-plan-limpar', '✖ Limpar escolha', 'Tira todos os itens da escolha (não mexe em nada no jogo).', 'sec', !n)
       + '</div>'
       + '<div id="ap-plan-out"></div>'
-      + '<p class="hint">O motor não tem (ainda) um modo "farmar até cair": a região fica <b>fixa</b> e ele continua lá até você mudar — não para sozinho quando o item cai.</p>'));
+      + '<p class="hint">O motor não tem (ainda) um modo "farmar até cair": a região fica <b>fixa</b> e ele continua lá até você mudar — não para sozinho quando o item cai.</p>', minItens, 'ap-fm-min-itens', !minItens));
     renderPlanoItens();
     renderChips();
   }
 
   // ---------------------------------------------------------------- ABA MERCADO
   let ofertasCache = null, ornnCache = null, compraCache = null;  function renderMercado() {
-    // BUG CORRIGIDO (2026-10-14): `mercadoSaturado()` devolve { sat, lend, total } — um
-    // OBJECTO, logo era sempre verdadeiro e o cartão dizia "mercado cheio? sim" mesmo vazio.
+    // `mercadoSaturado()` devolve { sat, lend, total } — um
+    // OBJETO, logo era sempre verdadeiro e o cartão dizia "mercado cheio? sim" mesmo vazio.
     const sat = ler('mercadoSaturado', null);
     const cheio = sat && typeof sat === 'object' ? !!sat.sat : (sat === true);
     const lend = (sat && typeof sat === 'object' && sat.lend != null) ? sat.lend : null;
@@ -2246,8 +2308,8 @@
         ? tabela(['item', 'raridade', 'qualidade', 'preço'], ofertas.map((o) => '<tr><td>' + esc(o.nome || o.base || '?') + '</td><td>' + esc(o.raridade || '—')
           + '</td><td>' + esc(o.qual || '—') + '</td><td>' + fmt(o.preco) + '</td></tr>'))
         : '<p class="vazio">Ainda não há leitura das suas ofertas.</p>'
-          + '<p class="hint">O motor lê-as quando passa pelo mercado e grava a lista — a partir daí aparece aqui, sem precisares de carregar em nada. O botão abaixo força uma leitura nova.</p>')
-      + diag('Mercado: leitura e ações manuais (diagnóstico)')
+          + '<p class="hint">O motor lê-as quando passa pelo mercado e grava a lista — a partir daí aparece aqui, sem precisar clicar em nada. O botão abaixo força uma leitura nova.</p>')
+      + diag('Mercado: leitura e ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-mk-ler', '📖 Forçar leitura das minhas ofertas', 'Abre o mercado, lê a aba "Minhas ofertas", grava e fecha. Não muda nada.')
       + acaoD('ap-mk-anunciar', '🏪 Anunciar lendários abaixo de A', 'Põe à venda os lendários abaixo de tier A a 90% do preço mais baixo. Nunca Rabadon nem tier A+.')
@@ -2257,7 +2319,7 @@
 
     setHtml('ap-mk-plano', card('Reajuste de preços', 'baixa o preço do que está caro em relação ao mercado',
       '<div id="ap-mk-plano-out"></div>'
-      + diag('Reajuste de preços: ações manuais (diagnóstico)')
+      + diag('Reajuste de preços: ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-mkt-plan', '🔍 Calcular reajuste', 'Compara cada oferta sua com o menor preço do mercado para o mesmo item e qualidade.')
       + acaoD('ap-mkt-go', '💱 Aplicar reajuste', 'Cancela e reanuncia cada oferta no preço calculado (90% do menor).')
@@ -2265,7 +2327,7 @@
 
     setHtml('ap-mk-ornn', card('Bancada do Ornn', 'montar itens com peças é uma APOSTA',
       '<div id="ap-mk-ornn-out"></div>'
-      + diag('Bancada do Ornn: ações manuais (diagnóstico)')
+      + diag('Bancada do Ornn: ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-ornn-ler', '📜 Forçar leitura das receitas do Ornn', 'Fala com o Ornn na Fonte e lista tudo o que ele pode montar, com o custo e as peças que você tem.')
       + acaoD('ap-mk-montar', '🔨 Montar a melhor receita', 'Escolhe a receita mais barata que serve a sua build e tenta montar. Gasta ouro por tentativa.')
@@ -2274,7 +2336,7 @@
 
     setHtml('ap-mk-compra', card('Vale a pena comprar agora?', 'decisão do motor com base no seu ouro',
       '<div id="ap-mk-compra-out">' + (compraCache ? esc(compraCache.texto || '') : '<p class="vazio">Ainda não calculei. Use o botão abaixo.</p>') + '</div>'
-      + diag('Compra: ações manuais (diagnóstico)')
+      + diag('Compra: ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-melhor-compra', '🤔 Calcular melhor compra', 'Compara comprar o item ideal, comprar um substituto mais barato, ou esperar.')
       + acaoD('ap-mk-comprar', '🛒 Comprar o ideal no mercado', 'Compra o que falta da build ideal pelo menor preço, sem zerar o ouro.')
@@ -2342,9 +2404,9 @@
     ];
     const glossario = [
       ['Auto-play', 'O motor que joga por você: escolhe a região, luta, usa poções, volta à base e organiza o inventário.'],
-      ['Auto-poção', 'Só a parte das poções: usa a mais fraca que chega para sobreviveres, em vez de gastar sempre a Suprema.'],
+      ['Auto-poção', 'Só a parte das poções: usa a mais fraca que chega para você sobreviver, em vez de gastar sempre a Suprema.'],
       ['Switch pai (hierarquia)', 'Os switches estão em ÁRVORE: o auto-play é o mestre e cada um depende de outro. Desligar um pai fecha tudo o que está por baixo dele — a aba Painel mostra quem manda em quem, indentado.'],
-      ['Skippado (excepção)', 'O switch está ligado mas o motor não age naquele sítio. Exemplo: no mapa de Runeterra o motor não vende nem mexe no cofre; fora do campeão alvo o auto-play inteiro não age.'],
+      ['Skippado (exceção)', 'O switch está ligado mas o motor não age naquele sítio. Exemplo: no mapa de Runeterra o motor não vende nem mexe no cofre; fora do campeão alvo o auto-play inteiro não age.'],
       ['Mob', 'Monstro comum do mapa.'],
       ['Chefe', 'Monstro forte da região; ao ser derrotado fecha o ciclo.'],
       ['Ciclo', 'Uma passagem completa: farmar mobs na região até matar o chefe.'],
@@ -2379,7 +2441,7 @@
       + '<h4>Glossário — o que querem dizer as palavras</h4>'
       + '<dl>' + glossario.map((g) => '<dt>' + g[0] + '</dt><dd>' + g[1] + '</dd>').join('') + '</dl>'
       + '<h4>O que a GUI é (e o que não é)</h4>'
-      + '<p>Esta janela é para <b>coisas automáticas</b>: o que está acontecendo, o que o motor vai fazer, o que está bloqueado e os <b>switches</b> que ligam e desligam cada capacidade. O que você mesmo faz no jogo com um clique (vender, curar, comprar, subir habilidade) fica no fim do Painel, em <b>Diagnóstico e manutenção</b>, marcado como <b>diagnóstico</b> — serve para forçar ou medir, não é o caminho normal.</p>'
+      + '<p>Esta janela é para <b>coisas automáticas</b>: o que está acontecendo, o que o motor vai fazer, o que está bloqueado e os <b>switches</b> que ligam e desligam cada capacidade. O que você mesmo faz no jogo com um clique (vender, curar, comprar, subir habilidade) fica no fim do Painel, em <b>Manutenção manual</b> — serve para forçar ou medir, não é o caminho normal.</p>'
       + '<h4>Botões de segurança</h4>'
       + '<p><b>O botão grande</b> (topo) faz sempre o próximo passo a partir do estado de agora: <b>▶ Ligar auto-play</b> (observação → ligado), <b>⏸ Desligar</b> (ligado → observação), <b>▶ Retomar</b> (pausado → ligado) ou <b>▶ Religar</b> (desligado → ligado). O rótulo diz o que vai mudar.</p>'
       + '<p><b>⏸ Pausar</b> congela as ações e continua medindo; <b>⛔ Parar tudo</b> limpa o estado ativo e fica gravado no navegador até você religar.</p>'
@@ -2388,12 +2450,10 @@
 
   // ---------------------------------------------------------------- DISPATCH DE REDESENHO
   function renderTudo() {
-    // NOTA (2026-10-14): aqui HAVIA `if (!aberto) return;`. Combinado com o
-    // `if (aberto) renderTudo()` do arranque, isso deixava o painel INTEIRO no
-    // placeholder inicial até alguém abrir a aba (hover/F8) — foi isso que o dono
-    // viu como "o bloco do build de chefe preso em todos os separadores": não era
-    // o dado que faltava, era o render que nunca corria. O gate de cadência vive
-    // agora só no `tick()` (que continua a não fazer nada com o painel fechado).
+    // O render NÃO depende de o painel estar aberto: ele corre no arranque e nos segundos
+    // seguintes (ver o arranque). Um portão de cadência aqui deixaria os blocos no placeholder
+    // inicial até alguém abrir o painel. O gate de cadência vive só no `tick()` (que continua
+    // a não fazer nada com o painel fechado).
     renderCabecalho();
     if (tabAtiva === 'painel') renderPainel();
     else if (tabAtiva === 'itens') { renderBuildFase(); renderItens(); renderMercado(); }
@@ -2599,7 +2659,7 @@
       chamar('fecharMercado');
       await lerOfertasGravadas();
       renderMercado();
-      return { ok: true, msg: ofertasCache.length ? ofertasCache.length + ' oferta(s) lidas e gravadas.' : 'não você tem ofertas no mercado.' };
+      return { ok: true, msg: ofertasCache.length ? ofertasCache.length + ' oferta(s) lidas e gravadas.' : 'você não tem ofertas no mercado.' };
     });
   }
   async function planoMercado(btn) {
@@ -2712,7 +2772,7 @@
   /** Retira do cofre: `alvo` = base do item, ou null para o MELHOR que o motor conhece. */
   async function retirarCofre(btn, alvo) {
     const escolhido = alvo ? { base: alvo, nome: nomeItem(alvo) } : melhorConhecido();
-    if (!escolhido) { fbAviso('Ainda não há leitura do cofre — use "Forçar leitura do cofre agora" (diagnóstico) para o motor saber o que lá está.'); return; }
+    if (!escolhido) { fbAviso('Ainda não há leitura do cofre — use "Forçar leitura do cofre agora" (manutenção manual) para o motor saber o que lá está.'); return; }
     await executar(btn, 'Retirar do cofre', async () => {
       if (!cofreAberto().length) {                        // o motor só retira com o cofre ABERTO
         const abriu = await chamarA('abrirCofreTesoureira');
@@ -2763,8 +2823,8 @@
   // ---- itens: escolher e planear --------------------------------------------
   const rarDe = (i) => (i && i.raridade) || 'basico';
   /** Itens do catálogo que passam no filtro e na busca. Os BÁSICOS (peças/componentes) também
-  /** entram: o catálogo tem 108 itens (19 básicos, 40 épicos, 49 lendários) e o dono quer poder
-  /** escolher qualquer um deles — quem decide é o filtro, não o código. */
+  /** entram: o catálogo tem 108 itens (19 básicos, 40 épicos, 49 lendários) e qualquer um deles
+  /** pode ser escolhido — quem decide é o filtro, não o código. */
   function itensFiltrados() {
     const busca = (($('ap-item-busca') || {}).value || '').toLowerCase();
     return metaItens().filter((i) => {
@@ -2901,7 +2961,7 @@
     if (msg && est) msg.textContent = 'testando "' + (est.nome || '') + '" (' + (est.i + 1) + '/' + est.total + ') em ' + limparNivel(est.regiao) + (est.matandoChefe ? ' · a matar o chefe' : ' · mobs ' + (est.mobSeg || 0) + '/' + est.mobAlvo + 's');
   }
 
-  // ============================================================ 6b. MAPA DE ACÇÕES
+  // ============================================================ 6b. MAPA DE AÇÕES
   const ACOES = {
     'ap-close': () => fechar(),
     'ap-pin': (btn) => { fixado = !fixado; btn.classList.toggle('ativo', fixado); fb('info', fixado ? 'Painel FIXO: só fecha com o ✕ ou Esc.' : 'Painel solto: fecha 2,5 s depois de tirares o rato.'); },
@@ -2935,7 +2995,7 @@
       const v = r.v || {};
       if (v.ok === false) return { ok: false, motivo: v.motivo || 'não foi possível iniciar' };
       return { ok: true, msg: 'testando ' + (v.lista || []).length + ' região(ões), alguns minutos em cada.' };
-    }, { confirma: { titulo: 'Testar várias regiões', linhas: ['O motor vai viajar por todas as regiões, medindo ganhos em cada uma.', 'Enquanto isto corre não vais estar sempre no melhor sítio.'], ok: 'Começar o giro' } }),
+    }, { confirma: { titulo: 'Testar várias regiões', linhas: ['O motor vai viajar por todas as regiões, medindo ganhos em cada uma.', 'Enquanto isto corre você não vai estar sempre no melhor sítio.'], ok: 'Começar o giro' } }),
     'ap-testes': () => { renderTestes(); const m = $('lolidle-ap-testes'); m.hidden = false; m.classList.add('on'); },
     'ap-export': (b) => executar(b, 'Exportar dados', async () => {
       const r = chamar('exportar');
@@ -2946,7 +3006,7 @@
       a2.download = 'lolidle-dados-' + new Date().toISOString().slice(0, 10) + '.json';
       a2.click();
       setTimeout(() => URL.revokeObjectURL(a2.href), 5000);
-      return { ok: true, msg: 'ficheiro descarregado (ciclos, mortes, catálogo e recomendações).' };
+      return { ok: true, msg: 'arquivo baixado (ciclos, mortes, catálogo e recomendações).' };
     }),
     'ap-scan': (b) => executar(b, 'Ler mochila', async () => { const v = lerMochila(true); if (!v) return { ok: false, motivo: 'não consegui ler a mochila (a bolsa está acessível?)' }; return { ok: true, msg: v.used + '/' + v.cap + ' espaços usados.' }; }),
     'ap-curar': (b) => acaoSimples('Curar', 'curarBase', 'curado na Soraka.')(b),
@@ -3059,9 +3119,9 @@
     'ap-plan-limpar': () => { if (!selItens.size) { fbAviso('Não há nada escolhido para limpar.'); return; } selItens.clear(); mudouEscolha(); fb('ok', 'Escolha limpa — nenhum item marcado.'); },
     // MODALIDADES DE FARM (aba Ganhos): a escolha é uma preferência da GUI (GUI_KEY), não do motor.
     'ap-fm-modo-sozinho': () => {
-      // DEFEITO MEDIDO (dono, 2026-10-14): o auto farm pra item fixa a região (`regionDefault`) e
-      // NUNCA a limpava — a partir daí o auto farm sozinho usava a região fixa em vez de
-      // `regiaoIdeal()`, e os dois modos ficavam misturados. Escolher o modo sozinho LIMPA o fixo.
+      // A modalidade "pra item" fixa a região (`regionDefault`). Escolher o modo sozinho LIMPA
+      // o fixo, senão os dois modos ficavam misturados (o sozinho usaria a região fixa em vez de
+      // `regiaoIdeal()`).
       salvarPrefs({ farmModo: 'sozinho' });
       const tinha = cfg().regionDefault || null;
       if (tinha) { definirCfg({ regionDefault: null }); fb('ok', 'AUTO FARM SOZINHO — a região fixa (' + nomeRegiao(tinha) + ') foi limpa: o motor volta a escolher sozinho.'); }
@@ -3084,6 +3144,21 @@
       _ultimoHtml.delete('ap-build-fase');                // o HTML muda (classe min + seta): força o redesenho
       renderBuildFase();
       fb('info', abrir ? 'Build por fase: aberta.' : 'Build por fase: minimizada — fica só o título.');
+    },
+    // MINIMIZAR dos cartões de farm (aba Ganhos): o estado vive em GUI_KEY e sobrevive ao F5.
+    'ap-fm-min-modo': () => {
+      const abrir = guiPrefs.fmModoMin === true;
+      salvarPrefs({ fmModoMin: !abrir });
+      _ultimoHtml.delete('ap-fm-modo');
+      renderFarmModo();
+      fb('info', abrir ? 'Como você quer farmar: aberto.' : 'Como você quer farmar: minimizado — fica só o título.');
+    },
+    'ap-fm-min-itens': () => {
+      const abrir = guiPrefs.fmItensMin === true;
+      salvarPrefs({ fmItensMin: !abrir });
+      _ultimoHtml.delete('ap-fm-itens');
+      renderFarmItens();
+      fb('info', abrir ? 'Auto farm pra item: aberto.' : 'Auto farm pra item: minimizado — fica só o título.');
     },
     // O botão da aba Painel tem id próprio porque o da mochila (aba Itens) também é `ap-scan`.
     'ap-scan-painel': (b) => ACOES['ap-scan'](b),
@@ -3141,10 +3216,9 @@
       else { const sel = $('ap-reg-id'); const id = sel ? sel.value : null; definirCfg({ regionDefault: id }); fb('ok', 'Região FIXA: ' + nomeRegiao(id) + '. O motor fica aqui até você voltar para "Automática".'); }
       ultimoRender = 0;
     },
-    // ESCOLHER UMA REGIÃO NA LISTA PASSA A REGIÃO PARA FIXA (defeito do dono: com o modo em
-    // "Automática" o clique era ignorado com um aviso e ele ficava sem saber porque nada mudava).
-    // O controlo de modo muda no mesmo instante, para nunca haver dois controlos a apontar para
-    // sítios diferentes.
+    // ESCOLHER UMA REGIÃO NA LISTA PASSA A REGIÃO PARA FIXA (com o modo em "Automática" o
+    // clique era ignorado e nada mudava). O controle de modo muda no mesmo instante, para nunca
+    // haver dois controles a apontar para sítios diferentes.
     'ap-reg-id': (el) => {
       if (!el.value) return;
       definirCfg({ regionDefault: el.value });
@@ -3271,16 +3345,12 @@
         ofertasStore = (res && res[OFERTAS_KEY]) || null;    // o que o motor gravou do mercado
         // Preferências da GUI (minimizar da build por fase, modalidade de farm): não são config
         // do motor, por isso vivem em GUI_KEY e não em STORAGE_KEY.
-        guiPrefs = Object.assign({ bfAberto: true, farmModo: 'sozinho' }, (res && res[GUI_KEY]) || {});
+        guiPrefs = Object.assign({ bfAberto: true, farmModo: 'sozinho', fmModoMin: false, fmItensMin: false }, (res && res[GUI_KEY]) || {});
         ultimoRender = 0;
-        // BUG MEDIDO (2026-10-14, Katarina/nivel 29): o render só corria com o painel
-        // ABERTO (guarda `if (aberto)`). Se o painel nunca abrisse — hover que não
-        // dispara, F8 não premido, ou a janela em segundo plano — TODOS os blocos
-        // ficavam no placeholder inicial PARA SEMPRE: #ap-fase="carregando…",
-        // #ap-h-*= "—", #ap-build-fase="" (o "build de chefe preso" que o dono viu).
-        // Provado: com o painel fechado tudo lia placeholder; ao abrir (F8) os mesmos
-        // blocos renderam nivel 29, ouro 9.500.000 e a fase do farm. O dado nunca
-        // faltou — faltava renderizar. Renderiza uma vez no arranque, sempre.
+        // O render corre no arranque e nos segundos seguintes, com o painel fechado ou aberto.
+        // Se dependesse de alguém abrir o painel (hover, F8), os blocos ficavam no placeholder
+        // inicial (#ap-fase="carregando…", #ap-h-*="—", #ap-build-fase=""). Renderiza uma
+        // vez no arranque, sempre.
         renderTudo();
         // O arranque do content script corre ANTES de o HUD do jogo estar pintado
         // (medido: a 1.ª render deixava #ap-h-nivel e #ap-h-ouro a "—" enquanto a
@@ -3300,7 +3370,7 @@
         if (ch[STORAGE_KEY]) config = ch[STORAGE_KEY].newValue;
         // Preferências da GUI: mudam o que se vê (bloco minimizado, modalidade de farm).
         if (ch[GUI_KEY]) {
-          guiPrefs = Object.assign({ bfAberto: true, farmModo: 'sozinho' }, ch[GUI_KEY].newValue || {});
+          guiPrefs = Object.assign({ bfAberto: true, farmModo: 'sozinho', fmModoMin: false, fmItensMin: false }, ch[GUI_KEY].newValue || {});
           if (aberto) { _ultimoHtml.delete('ap-build-fase'); renderTudo(); }
         }
         if (ch[STATUS_KEY] || ch[FARM_KEY]) { cacheAgora = { at: 0, v: null }; if (aberto && tabAtiva === 'painel') renderAgora(); }
