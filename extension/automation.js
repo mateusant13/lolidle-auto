@@ -2520,8 +2520,10 @@ const CFG_VER = 1;
   function agregar() {
     const por = {};
     for (const c of farm.cycles || []) {
-      const r = (por[c.region] = por[c.region] || { region: c.region, n: 0, g: 0, x: 0, p: 0, gp: 0, hs: 0, hp: 0, k: 0, hpm: null, chs: 0, chn: 0, chp: 0, chpn: 0, m: 0, deaths: 0, boss: null, bossMs: 0, bossN: 0, bpoc: 0, bpc: 0 });
+      const r = (por[c.region] = por[c.region] || { region: c.region, n: 0, janelas: [], g: 0, x: 0, p: 0, gp: 0, hs: 0, hp: 0, k: 0, hpm: null, chs: 0, chn: 0, chp: 0, chpn: 0, m: 0, deaths: 0, boss: null, bossMs: 0, bossN: 0, bpoc: 0, bpc: 0 });
       r.n++;
+      // D (TK-01-42): guardar as JANELAS (run ids) — duas medidas de janelas diferentes nao sao comparaveis.
+      if (c.janela != null && !r.janelas.includes(c.janela)) r.janelas.push(c.janela);
       const mm = c.mobFase?.perMin;
       if (mm) { r.g += mm.gold; r.x += mm.xp; r.p += mm.potions; r.gp += mm.goldPotion || 0; r.hs += mm.healSkill || 0; r.hp += mm.healPotion || 0; r.k += mm.kills || 0; r.m++; }
       const mf = c.mobFase;
