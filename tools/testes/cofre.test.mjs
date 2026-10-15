@@ -50,7 +50,7 @@ const soDireito = (evs) => evs.every((e) => e.tipo === 'mousedown' && e.button =
 
 export const suite = {
   nome: 'cofre',
-  titulo: 'Cofre na Fonte (Tesoureira acima da praca: andar 2 tiles e so depois procurar o NPC)',
+  titulo: 'Cofre na Fonte (Tesoureira em CY-5: subir ate ela, verificando #npcs a cada tile)',
 
   async run(t) {
 
@@ -134,10 +134,16 @@ export const suite = {
       const r = await auto.abrirCofreTesoureira();
       const evs = m.eventosDe('tela');
       t.check('C6: o cofre nao abriu (nao ha NPC nenhum no DOM)', r.ok === false);
+      // ACTUALIZADO (2026-10-15, Regra N.o 6): o tecto de subida passou de 2 para 6 tiles POR
+      // TENTATIVA. Motivo MEDIDO na fonte do jogo: a Tesoureira esta em \`mundo.js:20\` NPCS_FONTE com
+      // \`y: CY - 5\` — 5 tiles acima do centro — e o dono reportou ao vivo "subi 4 tiles na Fonte e a
+      // Tesoureira nao apareceu em #npcs". Com 2+2=4 o boneco ficava UM TILE AQUEM. A assercao antiga
+      // (4 cliques) codificava o comportamento errado; a nova exige os 12 (2 tentativas x 6) e que o
+      // motivo reporte o numero REAL de tiles andados.
       t.check('C6: o motivo e o VERDADEIRO, nao o generico antigo',
-        r.motivo === 'subi 4 tiles na Fonte e a Tesoureira nao apareceu em #npcs');
-      t.check('C6: CONTROLO - tentou mesmo andar: 4 cliques no canvas (2 tentativas x 2 tiles)',
-        evs.length === 4 && soDireito(evs));
+        r.motivo === 'subi ' + evs.length + ' tiles na Fonte e a Tesoureira nao apareceu em #npcs');
+      t.check('C6: CONTROLO - tentou mesmo andar: 12 cliques no canvas (2 tentativas x 6 tiles = CY-5 com margem)',
+        evs.length === 12 && soDireito(evs));
       // GUARDA (2026-10-14): o 1.º parametro de esperarNpcDoCofre sao TENTATIVAS, nao ms. Com um
       // "2000" colado ali (como no tempo em ms) o jogo ficaria 2000 x 180 ms ~ 6 MINUTOS a esperar.
       const procuras = m.estado.queries.filter((q) => q.sel === '#npcs button[data-npc="Tesoureira de Piltover"]').length;

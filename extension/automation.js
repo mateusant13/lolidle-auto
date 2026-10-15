@@ -2909,7 +2909,7 @@
    *  `{ nome: 'Tesoureira de Piltover', x: CX - 1, y: CY - 5 }`, com o Burrinho de Carga ao lado,
    *  tambem em `CY - 5`). Fora da Fonte recusa: nas cidades o cofre e o Burrinho, no sitio onde o
    *  boneco esta (motor.js `podeCofre` = base OU cidade). */
-  async function subirNaFonte(nTiles = 2, opts = {}) {
+  async function subirNaFonte(nTiles = COFRE_TILES_ACIMA, opts = {}) {
     if (!naBase()) return { ok: false, tiles: 0, motivo: 'nao esta na Fonte' };
     return andarParaCima(nTiles, opts);
   }
@@ -3797,8 +3797,15 @@
    *  `CY - 5`) e só entra em `#npcs` depois de o boneco subir. O código antigo procurava o NPC PARADO
    *  onde o boneco estava. Agora, na FONTE e sem a Tesoureira no DOM, ele ANDA 2 TILES PARA CIMA
    *  (clique no chão do canvas — ver o bloco "ANDAR NO CHÃO") e só depois procura o NPC. */
-  const COFRE_TILES_ACIMA = 2;        // o "duas vezes pra cima" do dono (medido ao vivo, 2026-10-14)
-  const COFRE_TENTATIVAS_SUBIDA = 2;  // 1.ª = os 2 tiles do dono; 2.ª = +2 (boneco longe da praça)
+  // A TESOUREIRA ESTA A 5 TILES ACIMA DO CENTRO DA PRACA: `mundo.js:20` NPCS_FONTE da-lhe
+  // `y: CY - 5` (e `mundo.js:131`: "acima da fonte: o cofre de ferro e o barril da Tesoureira").
+  // O boneco chega a Fonte no CENTRO (CY), logo 4 tiles (o antigo 2+2) ficavam UM TILE AQUEM e o
+  // NPC nunca entrava em `#npcs` — defeito relatado pelo dono, verbatim: "subi 4 tiles na Fonte e a
+  // Tesoureira nao apareceu em #npcs" / "e pra andar la em cima do canvas, duas vezes".
+  // 6 tiles = CY-5 com 1 de margem; o `opts.ate` verifica o `#npcs` DEPOIS DE CADA TILE, logo para
+  // assim que a Tesoureira aparece (tipicamente no 5.º) e nunca anda mais do que o preciso.
+  const COFRE_TILES_ACIMA = 6;
+  const COFRE_TENTATIVAS_SUBIDA = 2;  // o "duas vezes" do dono: 1.ª passagem e, se algo a interromper, 2.ª
   async function abrirCofreTesoureira() {
     if (document.querySelector('.cofre-slot[data-k]')) return { ok: true, ja: true };
     fecharJanelas(); await humano(250);
