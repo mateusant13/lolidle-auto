@@ -713,3 +713,11 @@ funcao de COMPARACAO que ainda nao existe.
 implementa-lo com `dpsCenarios`/`estimarSet` (DPS) + `sobrevivenciaSet` (vida/tMorrer) - as duas pecas
 ja existem. Revertido para manter 5.
 **Estado: 5 falhas, 21/25 verdes, com o `sobrevivenciaSet` (o criterio) commitado.**
+## ADENDA 17:55 - medido: 23/25 VERDES (recorde) mas 4->10 falhas; estado mantido 4/22
+Com o fix do w10 ja no sitio, aplicar o `medido` pelo contrato da **23/25 suites verdes** (uma a mais
+que as 22 atuais) - mas o total sobe 4 -> 10: as suites `refinar`/`w10` passam a CORRER e falham 6
+assercoes reais atras da porta (as mesmas que ja documentei).
+**Decisao:** manter 4 falhas / 22 verdes. O 23/25 fica registado como o estado a que se chega ao abrir
+a porta - e as 6 assercoes sao o trabalho seguinte, com o contrato ja extraido (`{n:4, ouroMin:9999}`
+e `divergenciaMedido` com '3089').
+**Estado: 4 falhas, 22/25 verdes.**
