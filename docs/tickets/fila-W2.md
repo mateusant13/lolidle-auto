@@ -63,3 +63,12 @@ Só podes mexer em: planejar, buildIdeal, buildIdealPara, valorPassiva, valorDe,
 - **Fazer**: NOTA: autoEquip=off e regra do dono (regra14) — ver DECISOES DO DONO D-01. Este ticket cobre o OUTRO lado: a build ideal (medida/teorica) tem de ser EQUIPADA por accao explicita e mantida, com verificacao ao vivo dos 5 slots (o agente ja equipou 1001+1036+3044+1018+3133 em L2579; falta manter e avancar para a build lendaria — TK-01-50).
 - **Aceitacao**: leitura ao vivo dos equipados = assinatura da build vencedora do momento; nenhum item fora da build equipado; log do jogo confirma.
 - **Estado**: pendente
+
+
+## TICKET NOVO (acrescentado pelo Lead 22:06)
+### TK-02-48 | P1 | `planejar()` salta itens sem zona e não agrega por item — a GUI tem de os cruzar com `ondeItem`
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:2265 — *“(3) planejar() NAO devolve os itens sem zona (salta-os com ‘if (!o) continue’), por isso a GUI tem de cruzar com getMeta().ondeItem para dizer ‘nao dropa em zona nenhuma’; (4) planejar() nao agrega por item (a melhor zona e calculada na GUI); (5) a chance vem de porClasse (ap/ad) escolhida pelo motor”*
+- **Fazer**: fazer o `planejar` devolver todos os itens pedidos (incluindo os sem zona, com marca explícita “sem drop”) e agregar por item (melhor zona, chance por abate, drops/hora), para a GUI não ter de recalcular nada — e para a chance continuar a sair da classe certa (ver TK-02-03).
+- **Aceitacao**: teste a chamar `planejar` com um item sem zona e a receber o registo marcado; e com 3 itens a receber 3 linhas agregadas com a melhor zona de cada; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente

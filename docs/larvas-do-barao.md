@@ -221,7 +221,7 @@ as janelas de aviso, não de build. **Depende da temporização**, e é por isso
     ondas  = 1 + floor((T − 6,75) / ciclo)        (ciclo 34,3 s, ou ~26,4 s se o A interromper)
     larvas = 2 × ondas
 
-| duração T | ciclo 34,4 s | ciclo 26,4 s |
+| duração T | ciclo 34,3 s | ciclo 26,4 s |
 |---|---|---|
 | 60 s | 4 larvas | 6 |
 | 68 s (docs/sim-baron.md §5) | 4 | 6 |

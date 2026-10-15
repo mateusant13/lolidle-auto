@@ -115,6 +115,33 @@ export const SELETORES_CONHECIDOS = [
   // (jogo.js:1449 -> cena.andarPara/arena.mandarAndar). Usado por andarParaCima()/subirNaFonte()
   // em automation.js para subir ate a Tesoureira na Fonte. Sem ele aqui, seria UNSTUBBED.
   '#tela',
+  // ---- HUD lido pela extensao (2026-10-14, frente OBSERVABILIDADE) ----
+  // stats que o painel do jogo escreve POR ID (jogo.js:6463-6465): chance de critico,
+  // multiplicador de critico e reducao de recarga. A regex por rotulo ('.st') nao os apanha.
+  '#st-cdr',
+  '#st-crit',
+  '#st-critx',
+  // vida/escudo: o HUD ('12.3k / 20.4k (+1.2k)', jogo.js:6203) e a ficha (jogo.js:6438).
+  '#st-vida-txt',
+  // efeitos activos com tempo e acumulos (jogo.js:6164-6177) e recarga de item (jogo.js:6181-6193).
+  '#hud-buffs',
+  '#hud-buffs .hud-buff',
+  '#hud-equip',
+  '#hud-equip > i',
+  // mana (jogo.js:6201, 6209) — a Katarina nao tem, o Yasuo tem Fluxo.
+  '#hud-mana',
+  '#hud-mana-txt',
+  // O MEDIDOR DO JOGO: 'analise' (jogo.js:523-542) desenhado em #janela-analise (jogo.js:544-560)
+  // e na linha sempre visivel #rastreio-analise (jogo.js:6250-6255).
+  '#rastreio-analise',
+  '#janela-analise',
+  '#analise-corpo',
+  '#hud-hora',
+  '#hud-local',
+  '#buff-barao',
+  '#buff-barao-t',
+  '#hud-xpb-txt',
+  '#hud-bolsa-n',
 ];
 
 export const PADROES_CONHECIDOS = [
@@ -130,7 +157,11 @@ export const PADROES_CONHECIDOS = [
 
 /* seletores consultados DENTRO de um elemento (el.querySelector) */
 const ESCOPADOS_CONHECIDOS = [
-  /^b$/, /^em$/, /^img$/, /^p$/, /^\.mais$/, /^\.mk-nome$/,
+  /^b$/, /^em$/, /^img$/, /^p$/, /^small$/, /^span$/, /^i$/, /^\.hud-cd$/, /^\.an-cartao$/, /^\.an-linha$/, /^\.an-tempo$/,
+  // `:scope >` e a query que O PROPRIO JOGO usa em jogo.js:6187 (`:scope > .hud-cd`): o stub
+  // tem de a conhecer para a leitura da recarga de item nao contar como buraco.
+  /^:scope > \.hud-cd$/, /^:scope > em$/,
+  /^\.mais$/, /^\.mk-nome$/,
   /^header \.fechar$/, /^\.fechar$/, /^\.novidades-ok$/, /^article,li,div$/,
 ];
 
@@ -223,6 +254,17 @@ export function criarMundo(opts) {
       add: (c) => { if (!el.classList.contains(c)) el.className = (String(el.className) + ' ' + c).trim(); },
       remove: (c) => { el.className = String(el.className).split(/\s+/).filter((x) => x !== c).join(' '); },
       toggle: () => false,
+    };
+    // ESTILO INLINE (2026-10-14, frente OBSERVABILIDADE): o jogo escreve a fraccao EXACTA da
+    // recarga numa variavel CSS inline — jogo.js:6228 (habilidades), 6172 (buffs), 6190 (itens).
+    // A extensao le `el.style.getPropertyValue('--cd')`; sem isto o leitor rebentava e o valor
+    // era inventado. O fixture passa `style: { '--cd': '0.420' }`.
+    const _props = Object.assign({}, spec.style || {});
+    el.style = {
+      _props: _props,
+      getPropertyValue: (n) => (Object.prototype.hasOwnProperty.call(_props, n) ? _props[n] : ''),
+      setProperty: (n, v) => { _props[n] = String(v); },
+      removeProperty: (n) => { const v = _props[n] || ''; delete _props[n]; return v; },
     };
     el.getAttribute = (n) => (Object.prototype.hasOwnProperty.call(el._attrs, n) ? el._attrs[n] : null);
     el.setAttribute = (n, v) => { el._attrs[n] = String(v); };

@@ -1373,3 +1373,28 @@ A duração, o número de poções, a vida mínima e a cura por segundo caem DEN
 | Dragão Infernal | 6 | 5 | 3114 | 2918 |
 | Barão Nashor | 146 | 125 | 955 | 1383 |
 
+## 8) AS LARVAS DO BARÃO — a cadência REAL (não é 14 s)
+
+O pedido dizia 2 larvas a cada 14 s, e o 14 está em motor.js:3076 — mas é só o campo **espera** do
+invocar. O invocar é 1 de 3 mecânicas do rodízio (motor.js:3080): **invocar -> tentáculos -> ácido**.
+O ciclo completo é (0 + 14) + (1,3 + 9) + (1 + 9) = **34,3 s** [motor.js:3076-3079].
+
+Na luta simulada as invocações foram em **6.75 / 41.15 / 71.75 / 102.20 / 132.90 / 163.70 s**.
+
+| grandeza | valor |
+|---|---|
+| intervalo entre invocações | 34.4 / 30.6 / 30.45 / 30.7 / 30.8 s (mediana 30.7 s) |
+| ciclo SEM interrupção | 34,30 s ((0+14)+(1,3+9)+(1+9), motor.js:3076-3079) |
+| interrupções pela Adaga Certeira | 4 (motor.js:3089 -> tMec volta a 6 s em vez de 9) |
+| larvas nascidas | 12 em 6 invocações (2 por invocação, motor.js:3118) |
+| larvas abatidas | 12 |
+
+**A surpresa que não era surpresa:** o atordoamento da Adaga Certeira (motor.js:2259) corta a carga
+e mete tMec a 6 (motor.js:3089). Cada carga interrompida ENCURTA o ciclo do chefe — e ciclo mais
+curto é invocação mais cedo, ou seja, a A faz nascer MAIS larvas, não menos: 
+sem interrupção seriam 10.7 larvas em 183.05 s; as interrompidas dão 12.
+
+Cada larva (motor.js:3118): nível 42-6 = 36, 5551 HP (CURVA.hp(36) x 1,1), 368 AD mágico (CURVA.ad(36) x 1,05),
+as 0,8, armadura 59 (CURVA.armadura(36) x 1), nascem com chegada 1,0 s e 1,3 s (motor.js:3118) e
+batem 174 de dano mágico por golpe (368 AD, mitigado pela RM 130, x1.45 do nível, x0.75 do papel) — conferido na linha do tempo: -174, 2 larvas a cada 1,25 s.
+

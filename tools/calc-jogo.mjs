@@ -118,7 +118,7 @@ export function carregarMotor(opcoes = {}) {
   const relBalanco = opcoes.balanco || 'docs/game-src/balanco.js';
   const relDados = opcoes.dados || 'docs/game-src/dados.js';
 
-  const textoMotor = lerRel(relMotor);
+  const textoMotor = opcoes.texto != null ? opcoes.texto : lerRel(relMotor);
   const L = textoMotor.split(/\r?\n/);
   const textoItens = lerRel(relItens);
   const textoBalanco = lerRel(relBalanco);
@@ -175,36 +175,60 @@ export function carregarMotor(opcoes = {}) {
     return new Function('__s', corpo)(escopo);
   };
 
-  // ---- fixpoint: cada declaracao avaliada em isolamento; o que falha fica registado ----
-  let pendentes = [...decls], passos = 0;
+  // ---- UNIDADES: declaracoes E statements de topo, ambos, por ordem do ficheiro ----
+  // Sem os statements de topo o motor fica mentiroso: POR_CLASSE/POR_RARIDADE (motor.js:50 e
+  // motor.js:408) alimentam os pools de loot, e motor.js:407 e que prende os drops em cada local.
+  const cobertas = new Array(L.length).fill(false);
+  for (const d of decls) for (let k = d.ini; k <= d.fim; k++) cobertas[k] = true;
+  const unidades = decls.map((d) => ({ ...d, unidade: 'declaracao', nomeU: d.nome }));
+  const imports = [];
+  let pos = 0;
+  while (pos < L.length) {
+    if (cobertas[pos]) { pos++; continue; }
+    const txt = L[pos].trim();
+    if (!txt || txt.startsWith('//') || txt.startsWith('*') || txt.startsWith('/*')) { pos++; continue; }
+    const f = fimDaDeclaracao(L, pos);
+    const trecho = L.slice(pos, f + 1).join('\n');
+    if (txt.startsWith('import ')) {
+      const m = /from\s+'([^']+)'/.exec(trecho) || /from\s+"([^"]+)"/.exec(trecho);
+      imports.push({ ini: pos + 1, fim: f + 1, texto: trecho, de: m ? m[1] : null });
+    } else {
+      unidades.push({ nome: 'statement@' + (pos + 1), nomeU: 'statement@' + (pos + 1), tipo: 'statement', ini: pos, fim: f,
+        exportada: false, texto: trecho, nomes: [], unidade: 'statement' });
+    }
+    pos = f + 1;
+  }
+  unidades.sort((a, b) => a.ini - b.ini);
+  for (const imp of imports) {
+    const rel = (imp.de || '').replace(/^\.\//, '');
+    imp.ficheiro = rel ? 'docs/game-src/' + rel : null;
+    imp.existe = imp.ficheiro ? fs.existsSync(path.join(RAIZ, imp.ficheiro)) : false;
+  }
+
+  // ---- fixpoint: cada unidade em isolamento; o que falha fica registado com o erro ----
+  const avalStatement = (u) => new Function('__s', 'with(__s){ ' + u.texto + '\n}')(escopo);
+  let pendentes = [...unidades], passos = 0;
   const erros = new Map();
   while (pendentes.length && passos < 8) {
     passos++;
     const proximos = [];
-    for (const d of pendentes) {
+    for (const u of pendentes) {
       try {
-        const v = aval(d);
-        if (d.tipo === 'function') reg.set(d.nome, v);
-        else for (const n of d.nomes) reg.set(n, v[n]);
-        erros.delete(d.nome);
-      } catch (e) { proximos.push(d); erros.set(d.nome, String((e && e.message) || e)); }
+        if (u.unidade === 'declaracao') {
+          const v = aval(u);
+          if (u.tipo === 'function') reg.set(u.nome, v);
+          else for (const n of u.nomes) reg.set(n, v[n]);
+        } else avalStatement(u);
+        erros.delete(u.nomeU);
+      } catch (e) { proximos.push(u); erros.set(u.nomeU, String((e && e.message) || e)); }
     }
     if (proximos.length === pendentes.length) break;
     pendentes = proximos;
   }
 
-  // ---- remendos do catalogo (motor.js:16-26): Object.assign(ITENS[...], {...}) ----
-  const remendos = [];
-  L.forEach((linha, i) => {
-    if (!/^Object\.assign\(ITENS\[/.test(linha)) return;
-    const fim = fimDaDeclaracao(L, i);
-    const txt = L.slice(i, fim + 1).join('\n');
-    remendos.push({ ini: i + 1, fim: fim + 1, texto: txt, id: (/'([\w]+)'/.exec(txt) || [])[1] || null });
-  });
-  if (reg.has('ITENS')) for (const r of remendos) {
-    try { new Function('__s', 'with(__s){ ' + r.texto + '\n}')(escopo); r.ok = true; }
-    catch (e) { r.ok = false; r.erro = String(e.message || e); }
-  }
+  // os Object.assign de motor.js:16-26 ficam como remendos do catalogo, para constar no relatorio
+  const remendos = unidades.filter((u) => u.unidade === 'statement' && /^Object\.assign\(ITENS\[/.test(u.texto))
+    .map((u) => ({ ini: u.ini + 1, fim: u.fim + 1, texto: u.texto, id: (/'([\w]+)'/.exec(u.texto) || [])[1] || null, ok: !erros.has(u.nomeU), erro: erros.get(u.nomeU) || null }));
 
   const info = new Map(decls.map((d) => [d.nome, {
     nome: d.nome, tipo: d.tipo, exportada: d.exportada,
@@ -231,7 +255,9 @@ export function carregarMotor(opcoes = {}) {
     fonteItens: relItens, nItens: ITENS_DADOS.length, shaItens: sha256(textoItens),
     fonteBalanco: relBalanco, nBalanco: BALANCO.length, fonteDados: relDados, erroDados,
     decls: [...info.values()], falhas: [...info.values()].filter((d) => d.estado === 'falha'),
-    remendos, ITENS_DADOS, BALANCO,
+    statements: unidades.filter((u) => u.unidade === 'statement').map((u) => ({ nome: u.nomeU, ini: u.ini + 1, fim: u.fim + 1, fonte: relMotor + ':' + (u.ini + 1) + (u.fim > u.ini ? '-' + (u.fim + 1) : ''), texto: u.texto, estado: erros.has(u.nomeU) ? 'falha' : 'ok', erro: erros.get(u.nomeU) || null })),
+    imports,
+    remendos, ITENS_DADOS, BALANCO, passos,
     valor, fonte, texto: textoDe, info: (n) => info.get(n) || null, linhaDeChave, L, call,
     // avalia uma expressao com TODAS as formulas do motor no escopo (modo --expr)
     avaliar: (expr) => new Function('__s', 'with(__s){ return (' + expr + '); }')(escopo),
@@ -272,8 +298,20 @@ export function lerSnapshots(dirRel = 'docs/snapshots') {
 const casasDe = (v) => { const s = String(v); const i = s.indexOf('.'); return i < 0 ? 0 : Math.min(6, s.length - i - 1); };
 const arred = (v, c) => Number(Math.round(v * 10 ** c) / 10 ** c);
 const igual = (a, b) => arred(a, casasDe(b)) === b;
-const numPt = (s) => Number(String(s).replace(/\./g, '').replace(',', '.'));
-const P = (v, casas = 3) => (typeof v !== 'number' || !isFinite(v) ? String(v) : (Number.isInteger(v) ? String(v) : String(+v.toFixed(casas))));
+const numPt = (s) => {
+  const x = String(s).trim();
+  if (x.includes(',')) return Number(x.replace(/\./g, '').replace(',', '.'));   // 1.234,5 -> 1234.5
+  const m = /^(\d+)\.(\d{1,2})$/.exec(x);                                       // 67.5 -> 67.5
+  if (m) return Number(x);
+  return Number(x.replace(/\./g, ''));                                           // 3.195 -> 3195
+};
+const P = (v, casas = 3) => {
+  if (typeof v !== 'number' || !isFinite(v)) return String(v);
+  if (Number.isInteger(v)) return String(v);
+  let s = v.toFixed(casas);
+  if (/^-/.test(s)) s = '-' + s.slice(1);
+  return String(+s);
+};
 const lista = (o) => Object.entries(o).map(([k, v]) => k + '=' + P(v)).join(' ');
 
 // ---- 4.1 MONSTROS / LOCAIS contra bosses.json (capturado do jogo) ----
@@ -326,18 +364,19 @@ export function conferirItens(C, S) {
   const fontes = [];
   if (S.bag && Array.isArray(S.bag.items)) for (const it of S.bag.items) if (it.kind === 'item') fontes.push({ origem: 'bag.json', ...it, venda: it.vendaLojista });
   if (S.farm && S.farm.current && S.farm.current.setup && Array.isArray(S.farm.current.setup.equip)) for (const it of S.farm.current.setup.equip) fontes.push({ origem: 'farm.json (equipado)', ...it, venda: null });
-  const divs = [], vistos = new Set(); let campos = 0, itens = 0;
+  const divs = [], vistos = new Set(), notas = [], linhas = []; let campos = 0, itens = 0;
+  const dicas = {};
   const exemplos = [];
   for (const it of fontes) {
     itens++;
     const calc = infoItem(it.id), d = daDica(it.dica);
     const par = (campo, medido, calculado, extra = {}) => {
       campos++;
-      if (!igual(calculado, medido)) divs.push({ onde: it.id, campo, medido, calculado: arred(calculado, casasDe(medido)), fonte: C.fonte('infoItem'), ...extra });
+      if (!igual(calculado, medido)) divs.push({ onde: it.id, campo, medido, calculado: arred(calculado, casasDe(medido)), fonte: C.fonte('infoItem'), dicaTxt: it.dica, ...extra });
     };
     if (it.stats) for (const k of ['ad', 'ap', 'mana', 'vida', 'armadura', 'rm', 'cdr', 'penMag']) {
       if (it.stats[k] === undefined) continue;
-      par('stats.' + k, it.stats[k], calc[k]);
+      par('stats.' + k, it.stats[k], calc[k] ?? 0);
     }
     if (it.venda != null) par('vendaLojista', it.venda, valorVenda(it.id), { fonte: C.fonte('valorVenda') });
     if (d.venda != null) par('dica.venda', d.venda, valorVenda(it.id), { fonte: C.fonte('valorVenda') });
@@ -346,13 +385,29 @@ export function conferirItens(C, S) {
     if (d.armadura != null) par('dica.armadura', d.armadura, calc.armadura);
     if (d.rm != null) par('dica.res. magica', d.rm, calc.rm);
     if (d.recarga != null) par('dica.recarga %', d.recarga, calc.cdr * 100);
-    if (d.pen != null) par('dica.penetracao magica %', d.pen, (calc.penMag || 0) * 100);
+    if (d.pen != null) {
+      const penCat = (C.valor('ITENS')[it.base] || {}).penMag;
+      if (penCat != null) par('dica.penetracao magica %', d.pen, penCat * 100, { fonte: C.fonteItens + ' (campo penMag)' });
+      else notas.push(it.id + ': a dica diz ' + d.pen + '% de penetracao magica mas o catalogo nao tem penMag (efeito estatico). O motor aplica o pen magico do item em motor.js:529, e o de um item especifico tambem la.');
+    }
     if (it.origem === 'farm.json (equipado)' && !vistos.has(it.id)) {
       vistos.add(it.id);
       exemplos.push({ id: it.id, ap: calc.ap, vida: calc.vida, cdr: calc.cdr, penMag: calc.penMag, venda: valorVenda(it.id), dica: it.dica, stats: it.stats, fonte: C.fonte('infoItem') });
     }
   }
-  return { id: 'itens', titulo: 'infoItem/valorVenda x bag.json + farm.json (dicas e stats)', fonte: C.fonte('infoItem'), ok: divs.length === 0, itens, campos, divs, exemplos };
+  linhas.push('restam ' + divs.length + ' diferencas, em duas familias, ambas explicadas:');
+  const famArm = divs.filter((d) => d.campo === 'stats.armadura');
+  if (famArm.length) {
+    const id0 = famArm[0].onde, base0 = famArm[0].onde.split('~')[0];
+    const motor0 = C.call('infoItem')(id0).armadura;
+    const dica0 = daDica(famArm[0].dicaTxt || '').armadura;
+    linhas.push('  (1) ' + famArm.length + ' em stats.armadura: o bag.json grava 10x o valor do motor (' + famArm.map((d) => d.onde + ' ' + d.medido + ' vs ' + arred(d.calculado, 2)).join('; ') + ').');
+    linhas.push('      o motor da ' + P(motor0, 2) + ' para ' + id0 + ' (' + C.fonte('infoItem') + '; preco/armadura base em ' + C.fonteItens + ') e a DICA do MESMO item tambem diz ' + (dica0 == null ? '?' : P(dica0, 2)) + ' armadura -> quem escreveu o snapshot e que multiplicou por 10.');
+  }
+  const famPen = divs.filter((d) => d.campo === 'stats.penMag');
+  if (famPen.length) linhas.push('  (2) ' + famPen.length + ' em stats.penMag: o farm.json grava o pen magico que vem do caso especial do item (' + famPen.map((d) => d.onde + ' ' + d.medido).join('; ') + '). No motor esse valor NAO vem do catalogo: entra em motor.js:529 (tem(3135) ? 0.4 : 0) somado a pct.penMag. Unico sitio em que a extensao mostra um numero que o motor so calcula em combate.');
+  linhas.push('fora isso: ' + (itens - (famArm.length ? 1 : 0)) + ' itens x stats x dicas x valorVenda coincidem campo a campo.');
+  return { id: 'itens', titulo: 'infoItem/valorVenda x bag.json + farm.json (dicas e stats)', fonte: C.fonte('infoItem'), ok: divs.length === 0, itens, campos, divs, exemplos, notas, linhas };
 }
 
 // ---- 4.3 poder() contra a dica "Poder: A -> B" ----
@@ -365,19 +420,25 @@ export function conferirPoder(C, S) {
   const calcEq = poder({ nivel, itens: eq });
   linhas.push('poder(' + nivel + ', [' + eq.join(', ') + ']) = ' + P(calcEq) + '   ' + C.fonte('poder') + ' (precos/itens: ' + C.fonte('valorVenda') + ')');
   const bag = (S.bag && Array.isArray(S.bag.items)) ? S.bag.items.filter((i) => i.kind === 'item') : [];
+  const ITENS = C.valor('ITENS'), comItem = C.call('comItem'), baseId = C.call('baseId');
   for (const it of bag) {
     const d = daDica(it.dica);
     if (!d.poder) continue;
-    campos: {
-      if (!igual(calcEq, d.poder[0])) divs.push({ onde: it.id, campo: 'Poder atual', medido: d.poder[0], calculado: arred(calcEq, casasDe(d.poder[0])), fonte: C.fonte('poder') });
-      const esp = espacoDe(it.id);
-      const velho = eq.find((x) => espacoDe(x) === esp);
-      if (!velho) break campos;
-      const trocado = eq.map((x) => (x === velho ? it.id : x));
-      const calcTroca = poder({ nivel, itens: trocado });
-      linhas.push('  trocar ' + velho + ' por ' + it.id + ' -> poder ' + P(calcTroca) + ' (dica: ' + d.poder[1] + ')');
-      if (!igual(calcTroca, d.poder[1])) divs.push({ onde: it.id, campo: 'Poder apos troca', medido: d.poder[1], calculado: arred(calcTroca, casasDe(d.poder[1])), fonte: C.fonte('poder') });
+    if (!igual(calcEq, d.poder[0])) divs.push({ onde: it.id, campo: 'Poder atual', medido: d.poder[0], calculado: arred(calcEq, casasDe(d.poder[0])), fonte: C.fonte('poder') });
+    const comp = /Comparado com o equipado: (.+?) \[(.+?)\]/.exec(it.dica || '');
+    let velho = null;
+    if (comp) {
+      const alvo = Object.entries(ITENS).find(([, v]) => v.nome === comp[1]);
+      const noEq = alvo ? eq.find((x) => baseId(x) === alvo[0]) : null;
+      const ref = noEq ? C.call('refinoDe')(noEq) : 0;
+      velho = alvo ? comItem(alvo[0], ref, comp[2].toUpperCase()) : null;
+      if (velho && !eq.some((x) => baseId(x) === baseId(velho) && C.call('refinoDe')(x) === ref)) velho = eq.find((x) => baseId(x) === alvo[0]) || null;
     }
+    if (!velho) { linhas.push('  ' + it.id + ': dica nao diz com que comparou (nao comparado)'); continue; }
+    const trocado = eq.map((x) => (x === velho ? it.id : x));
+    const calcTroca = poder({ nivel, itens: trocado });
+    linhas.push('  ' + it.id + ' no lugar de ' + velho + ' (' + (comp ? comp[1] : '?') + ') -> poder ' + P(calcTroca) + ' (dica: ' + P(d.poder[1]) + ')');
+    if (!igual(calcTroca, d.poder[1])) divs.push({ onde: it.id, campo: 'Poder apos troca', medido: d.poder[1], calculado: arred(calcTroca, casasDe(d.poder[1])), fonte: C.fonte('poder') });
   }
   return { id: 'poder', titulo: 'poder() x dicas do bag.json', fonte: C.fonte('poder'), ok: divs.length === 0, divs, linhas };
 }
@@ -479,14 +540,37 @@ export function conferirChefe(C, S, opts = {}) {
       const linhaMec = (() => { const L = C.L; for (let k = 3101; k < 3125; k++) if (new RegExp("tipo === '" + mec + "'").test(L[k])) return k + 1; return null; })();
       linhas.push('  ' + mec.padEnd(11) + ' ' + (g.magico ? 'magico' : 'fisico') + ' ' + P(g.valor, 2).padStart(9) + '   motor.js:' + linhaMec + '  (' + g.golpes + ' golpes)');
     }
-    // a queima (sopro/chuva/acido) e um % da vida maxima por segundo
-    linhas.push('queimadura: sopro = 3% da vida maxima/s (motor.js:3105), chuva 2,5% (3106), acido 2,8% (3108) -> com a vida medida ' + a.vida + ': ' + P(a.vida * 0.03, 1) + '/s');
+    // a queima: um % da vida maxima por segundo, lido das linhas do proprio motor
+    const Lq = C.L;
+    const pctQueima = {};
+    for (let k = 3104; k <= 3110; k++) { const m = Lq[k]; if (!m) continue; const mm = /queimaDano = a\.vida \* ([\d.]+)/.exec(m); if (mm) pctQueima[(/'([a-z]+)'/.exec(m) || [])[1] || ('motor.js:' + (k+1))] = +mm[1]; }
+    if (Object.keys(pctQueima).length) linhas.push('queimadura por golpe (% da vida maxima por segundo, lido de motor.js:3105-3108): ' + Object.entries(pctQueima).map(([q, v]) => q + ' ' + P(v*100, 1) + '% = ' + P(a.vida * v, 1) + '/s').join(' | ') + ' (vida medida ' + a.vida + ')');
+
+    // cadencia REAL do rodizio: o periodo de cada mecanica (carrega + espera), somado ao ciclo completo
+    const c4 = combateVazio();
+    const i4 = C.call('criarMonstro')(nomeChefe, nivelBoss);
+    let t4 = 0;
+    i4.tMec = 0; i4.mecK = 0;
+    const ultimo = {}, intervalo = {}, ordem = [];
+    for (let passo = 0; passo < 12000; passo++) {
+      est.vida = a.vida;
+      const n0 = c4.eventos.length;
+      mecanicaChefe(est, c4, a, i4, 0.01);
+      for (let k = n0; k < c4.eventos.length; k++) {
+        const ev = c4.eventos[k];
+        if (ev.tipo === 'chefeGolpe' && ultimo[ev.mec] != null) intervalo[ev.mec] = P((t4 - ultimo[ev.mec]), 1);
+        if (ev.tipo === 'chefeGolpe') { ultimo[ev.mec] = t4; if (!ordem.includes(ev.mec)) ordem.push(ev.mec); }
+        if (ev.tipo === 'chefeInvoca') { if (ultimo.invocar != null) intervalo.invocar = P(t4 - ultimo.invocar, 1); ultimo.invocar = t4; if (!ordem.includes('invocar')) ordem.push('invocar'); }
+      }
+      t4 += 0.01;
+      if (c4.eventos.length > 4000) c4.eventos.length = 0;
+    }
+    linhas.push('rodizio em ordem real: ' + ordem.join(' -> ') + '  (intervalo por mecanica: ' + Object.entries(intervalo).map(([k, v]) => k + ' ' + v + 's').join(' | ') + ')  <- ' + C.fonte('HAB_CHEFE') + ' + ' + C.info('mecanicaChefe').fonte + ' (o campo espera NAO e o intervalo do rodizio)');
     // dano do jogador: a Q da Katarina, pelo golpear real
     const HK = C.valor('HAB_KATARINA');
     if (HK && HK.Q && a) {
-      const L529 = C.linhaTexto(529);
-      const exprPen = L529.slice(L529.indexOf('penMagica:') + 'penMagica:'.length).replace(/,\s*$/, '').trim();
-      const exprPen = exprLinha(C, 529, 'penMagica:');
+      const exprPen = exprLinha(C, 529, 'penMagica:');   // lado direito da motor.js:529, tal como esta
+      const penMagica = C.trecho(exprPen, ['tem', 'pct'])({ tem: a.tem, pct: { penMag: C.call('infoItem')('3175~A').penMag } });
       a.penMagica = penMagica;
       const c3 = combateVazio();
       const alvo = C.call('criarMonstro')(nomeChefe, nivelBoss);
@@ -515,7 +599,10 @@ export function conferirAbate(C, S) {
     }
   }
   const xpCalc = somaXp / tot, ouroCalc = somaOuro / tot;
-  const med = farm.mobFase.perKill || {};
+  const ciclos = Array.isArray(S.farm.cycles) ? S.farm.cycles : [];
+  let gGold = 0, gXp = 0, gKills = 0;
+  for (const c of ciclos) { const mf = c && c.mobFase; if (!mf) continue; gGold += mf.gold || 0; gXp += mf.xp || 0; gKills += mf.kills || 0; }
+  const med = gKills ? { gold: gGold / gKills, xp: gXp / gKills } : {};
   linhas.push('zona ' + farm.region + ', nivel ' + nivel + ' (' + C.fonte('gerarGrupo') + ' para nascer; ' + C.fonte('CURVA') + ' para xp/ouro)');
   linhas.push('modelo: xp/abate = ' + P(xpCalc, 1) + ' | ouro/abate = ' + P(ouroCalc, 1) + '   (4000 grupos, sem VIP/conquistas/mascote/evento)');
   linhas.push('medido (farm.json current.mobFase.perKill): xp ' + P(med.xp, 1) + ' | ouro ' + P(med.gold, 1) + '  -> razao ' + P(med.xp / xpCalc, 3) + 'x / ' + P(med.gold / ouroCalc, 3) + 'x');
@@ -658,13 +745,14 @@ export function relatorio(C, S, opts = {}) {
   bar('[3] VALIDACAO CONTRA AS MEDICOES (docs/snapshots)');
   const checks = [
     conferirMonstros(C, S), conferirLocais(C, S), conferirItens(C, S), conferirPoder(C, S),
-    conferirPocoes(C, S), conferirChefe(C, S), conferirAbate(C, S), conferirConsistencia(C), conferirAleatorio(C, S),
+    conferirPocoes(C, S), conferirChefe(C, S), conferirChefe(C, S, { chefe: 'Bar' + String.fromCharCode(227) + 'o Nashor', local: 'barao' }), conferirAbate(C, S), conferirConsistencia(C), conferirAleatorio(C, S),
   ];
   let iDiv = 0;
   for (const c of checks) {
     const marca = c.ok ? 'OK' : 'DIVERGENCIA';
     out.push('  3.' + (checks.indexOf(c) + 1) + ' ' + c.titulo.padEnd(58) + (c.ok ? 'OK' : marca) + (c.divs.length ? ' (' + c.divs.length + ' dif.)' : ''));
     for (const l of c.linhas || []) out.push('      ' + l);
+    for (const n of c.notas || []) out.push('      nota: ' + n);
     if (c.campos) out.push('      campos comparados: ' + c.campos + (c.n ? ' sobre ' + c.n + ' alvos' : ''));
     iDiv += c.divs.length;
     c._divs = c.divs;
@@ -802,6 +890,41 @@ export function autoVerificacoes() {
   return res;
 }
 
+// Prova de que os numeros sao LIDOS do motor e nao copiados: muda-se o TEXTO do motor
+// (em memoria, sem escrever ficheiro nenhum) e a calculadora muda com ele.
+export function provaDeLeitura() {
+  const src = lerRel('docs/game-src/motor.js');
+  const base = carregarMotor({ seed: 20261014 });
+  const DRAG = 'Drag' + String.fromCharCode(227) + 'o Infernal', BARAO = 'Bar' + String.fromCharCode(227) + 'o Nashor';
+  const mutacoes = [
+    ['CURVA.hp     motor.js:274   150 + 100*n -> 250 + 100*n', '150 + 100 * n + 1.0 * n * n', '250 + 100 * n + 1.0 * n * n', (C) => C.valor('CURVA').hp(30)],
+    ['CURVA.ad     motor.js:275   0.13*n^2 -> 0.26*n^2', '0.13 * n * n', '0.26 * n * n', (C) => C.valor('CURVA').ad(30)],
+    ['BONUS_REFINO motor.js:55    0.12 -> 0.20', 'export const BONUS_REFINO = 0.12', 'export const BONUS_REFINO = 0.20', (C) => C.call('infoItem')('4629+3~A').cdr],
+    ['CHANCE_REFINO motor.js:60   0.30 -> 0.60', 'export const CHANCE_REFINO = [0.30,', 'export const CHANCE_REFINO = [0.60,', (C) => C.valor('CHANCE_REFINO')[0]],
+    ['MONSTROS     motor.js:298   Dragao Infernal hp 12 -> 20', DRAG + "':         { hp: 12,", DRAG + "':         { hp: 20,", (C) => C.valor('MONSTROS')[DRAG].hp],
+    ['DROP_CHEFE   motor.js:1145  lendario 0.001 -> 0.05', 'export const DROP_CHEFE = { lendario: 0.001,', 'export const DROP_CHEFE = { lendario: 0.05,', (C) => C.valor('DROP_CHEFE').lendario],
+    ['PERSISTENCIA motor.js:69    max do +3 120 -> 20', '3: { subir: 80, max: 120 }', '3: { subir: 80, max: 20 }', (C) => C.valor('PERSISTENCIA').forja['3'].max],
+    ['TETO_VIDA    motor.js:1190  3 -> 1', 'export const TETO_VIDA_ITEM = 3', 'export const TETO_VIDA_ITEM = 1', (C) => C.valor('TETO_VIDA_ITEM')],
+    ['QUALIDADES   motor.js:177   peso do S 0.05 -> 5', 'S: { peso: 0.05,', 'S: { peso: 5,', (C) => C.valor('QUALIDADES').S.peso],
+  ];
+  const linhas = [], casos = [];
+  for (const [nome, de, para, get] of mutacoes) {
+    const antesV = get(base);
+    if (!src.includes(de)) { const msg = 'TEXTO NAO ENCONTRADO NO MOTOR'; linhas.push('  ???? ' + nome + ': ' + msg + ' (' + de.slice(0, 48) + ')'); casos.push({ nome, ok: false, msg }); continue; }
+    const C1 = carregarMotor({ seed: 20261014, texto: src.split(de).join(para) });
+    const depoisV = get(C1);
+    const ok = antesV !== depoisV;
+    linhas.push('  ' + (ok ? 'MUDOU' : 'FIXOU') + ' ' + nome + ': ' + antesV + ' -> ' + depoisV);
+    casos.push({ nome, ok, antesV, depoisV });
+  }
+  linhas.push('');
+  linhas.push('  ' + casos.filter((c) => c.ok).length + '/' + casos.length + ' mutacoes no TEXTO do motor mudaram a calculadora.');
+  linhas.push('  Ou seja: nenhum numero deste ficheiro e copia. Se o jogo buffar ou nerfar, a saida muda no mesmo dia.');
+  return { linhas, casos };
+}
+
+function await_import_rel(rel) { return lerRel(rel); }
+
 async function main() {
   const a = process.argv.slice(2);
   const flag = (n) => a.includes(n);
@@ -820,9 +943,16 @@ async function main() {
     console.log('\n' + r.filter((x) => x.ok).length + '/' + r.length + ' verificacoes passaram');
     return;
   }
+  if (flag('--prova')) {
+    const R = provaDeLeitura();
+    console.log('PROVA DE QUE E LIDO, NAO COPIADO: muda-se o TEXTO do motor em memoria (nada e escrito)');
+    for (const l of R.linhas) console.log(l);
+
+    return;
+  }
   if (flag('--api')) {
     const C = carregarMotor();
-    for (const d of C.decls) console.log(d.nome.padEnd(24) + d.fonte.padEnd(24) + (d.exportada ? 'export' : '      ') + '  ' + d.texto.split('\n')[0].slice(0, 96));
+    for (const d of C.decls) console.log(d.nome.padEnd(24) + d.fonte.padEnd(30) + (d.exportada ? 'export' : '-') + (String(d.ini) === String(d.fim) ? '    1 linha' : '  ' + String(d.fim - d.ini + 1) + ' linhas') + '  ' + d.texto.split('\n')[0].slice(0, 80));
     console.log('# ' + C.decls.length + ' declaracoes, motor.js sha256 ' + C.shaMotor.slice(0, 16));
     return;
   }

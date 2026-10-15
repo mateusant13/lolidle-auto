@@ -84,3 +84,19 @@ Só podes mexer em tools/ (sims, backtest, testes, snap-export). NÃO mexas em e
 - **Fazer**: ler `#janela-analise`/`#rastreio-analise` (ou a função `analise`) como fonte primária e usar `kXp`/`kOuro` só como fallback; mostrar na GUI o número do jogo, não o estimado.
 - **Aceitacao**: número igual ao do `#rastreio-analise` ao vivo, provado por marcador discriminante; `bun tools/testes/run.mjs` rc=0.
 - **Estado**: pendente
+
+
+## TICKETS NOVOS (acrescentados pelo Lead 22:06)
+### TK-02-55 | P1 | Faltam as asserções do banco para as correcções novas do motor (provas feitas só por script efémero)
+- **Ficheiro(s)**: tools/testes/ (novas/actualizadas suites)
+- **Evidencia**: parte-02.md:3049 — *“NAO escrevi nem alterei NENHUMA assercao do banco (o meu escopo e automation.js). As assercoes novas que pediste (3031/3089, rotacao, fuga, regiao memorizada, barra, auditoria de passivas) ficam do teu lado; deixei-as provadas por script efemero e expus no window.__lolidleAuto o que o banco precisa: auditoriaPassivas, regiaoSegura, primeiaVez, primeiraVezPasso, PRIORIDADE_EXTREMA, ehPrioridadeExtrema”*
+- **Fazer**: escrever as asserções para: (a) protecção `3031`/`3089` (duplicados incluídos) com controlo de item comum a ir ao mercado; (b) `rotacao` sob manutenção a mexer a barra com auto-play desligado; (c) `fugir` em manutenção, sem exigir chefe, com controlo `fugir=false`; (d) `regiaoSegura` a descartar memória letal e a aceitar memória segura; (e) `barraPorDisponibilidade` (cenário de 2 prontas + 2 em recarga, empate sem oscilação, ultimate sempre em 1.º); (f) `auditoriaPassivas().duplas.length === 0`.
+- **Aceitacao**: `bun tools/testes/run.mjs` rc=0 com as suites novas e POPULATION acima de 260; relatório nomeia cada asserção acrescentada e qual comportamento antigo deixa de ser aceite.
+- **Estado**: pendente
+
+### TK-02-58 | P1 | Discrepância entre o que o subagent reporta e o que a extensão a correr mostra (código novo, runtime velho)
+- **Ficheiro(s)**: extension/ (recarregar) — verificação ao vivo, sem escrever código
+- **Evidencia**: parte-02.md:3069-3079 — `campo4629: 0.15` (o subagent disse “4629 NAO tem campo cdr” — **tem**), `barraPorDisponibilidade: false` (o subagent diz que inverteu para TRUE), `ideal: "dragao"` (o subagent diz que agora é “vermelho”); *“O ficheiro tem 428.844 bytes — exactamente o que ele reporta. Logo o código está lá; a extensão a correr é que pode estar velha. Vou forçar o reload e reconfirmar.”*
+- **Fazer**: forçar `lolidle:reload` + reload da página (ignoreCache) e reconfirmar os três pontos com **marcador discriminante** (texto que só existe no código novo), antes de afirmar anything sobre o estado ao vivo (REGRA Nº 4).
+- **Aceitacao**: after reload, `barraPorDisponibilidade: true`, `campo4629: 0.15` confirmado, e `regiaoIdeal()` igual ao que o banco prevê — cada um provado por marcador discriminante; se divergir, o relatório diz qual dos três ficou velho.
+- **Estado**: pendente

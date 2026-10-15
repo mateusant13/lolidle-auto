@@ -71,7 +71,33 @@ let config = structuredClone(DEFAULT_CONFIG);
   const countHist = { vidaS: [], vidaF: [], vida: [] };
 
   const log = (...a) => { if (config.debug) console.log('[auto-poção]', ...a); };
-  const parseNum = (s) => { const d = String(s ?? '').replace(/[^\d]/g, ''); return d ? Number(d) : NaN; };
+  // Sufixo que o `fmt` do JOGO mete nos números do HUD:
+  //   fmt = n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e4 ? (n/1e3).toFixed(1)+'k' : Math.round(n)
+  // (docs/game-src/cena.js:225) — e é esse `fmt` que escreve `#hud-vida-txt`
+  // (`${fmt(vida)} / ${fmt(a.vida)}`, docs/game-src/jogo.js:6203) e `#st-vida-txt` (:6438).
+  // O parser antigo (`replace(/[^\d]/g,'')`) APAGAVA o sufixo: "12.3k" virava 123 e "1.2M"
+  // virava 12 — e a regex do readHP, sem o sufixo nos grupos, ou não casava
+  // ("12.3k / 20.4k" → sem par cur/max) ou cortava o máximo para 123 ("9.876 / 12.3k",
+  // o "k" ficava fora do grupo). Nos dois casos o gatilho da poção morria acima de
+  // 10 000 de HP — que é exactamente a fonte do gatilho em tempo real (content.js:467-478).
+  const SUFIXO = { k: 1e3, K: 1e3, m: 1e6, M: 1e6 };   // cena.js:225: k = x1000, M = x1000000
+  /**
+   * Número do HUD como o jogo o escreve.
+   * @param {string} raw campo numérico (sem o sufixo)
+   * @param {string} [suf] 'k'/'m' que vinha imediatamente a seguir ao campo
+   */
+  const parseNum = (raw, suf) => {
+    const s = String(raw ?? '').replace(/[\s\u00a0\u202f]/g, '');
+    if (!s) return NaN;
+    const d = s.replace(/[^\d.,]/g, '');                       // "12.3" | "4.188" | "1.234.567"
+    if (!d) return NaN;
+    // "4.188" (grupo de 3) é MILHAR em pt-BR; "12.3" é decimal (o `fmt` dá 1 casa, cena.js:225).
+    const v = /^\d{1,3}([.,]\d{3})+$/.test(d) ? Number(d.replace(/[.,]/g, ''))
+      : /^\d+[.,]\d+$/.test(d) ? Number(d.replace(',', '.'))
+        : Number(d.replace(/[.,]/g, ''));
+    const mult = SUFIXO[String(suf ?? '').trim()] || 1;
+    return Number.isFinite(v) ? v * mult : NaN;
+  };
   const sum = (list) => list.reduce((s, e) => s + e.v, 0);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -79,9 +105,11 @@ let config = structuredClone(DEFAULT_CONFIG);
   function readHP() {
     const txt = document.querySelector('#hud-vida-txt')?.textContent
       || document.querySelector('#st-vida-txt')?.textContent || '';
-    const m = txt.match(/([\d.,]+)\s*\/\s*([\d.,]+)/);
+    // O `fmt` mete "k"/"M" acima de 10 000/1 000 000 (cena.js:225), logo o sufixo TEM de entrar
+    // nos grupos: sem ele "12.3k / 20.4k" não casava nada e "9.876 / 12.3k" dava max = 123.
+    const m = txt.match(/([\d.,]+)\s*([kKmM])?\s*\/\s*([\d.,]+)\s*([kKmM])?/);
     if (m) {
-      const cur = parseNum(m[1]), max = parseNum(m[2]);
+      const cur = parseNum(m[1], m[2]), max = parseNum(m[3], m[4]);
       if (Number.isFinite(cur) && Number.isFinite(max) && max > 0) return { cur, max };
     }
     const w = document.querySelector('#hud-vida')?.style?.width;
@@ -159,11 +187,80 @@ let config = structuredClone(DEFAULT_CONFIG);
   let dmgOutTotal = 0, dmgInTotal = 0;                  // dano REAL acumulado (eventos do jogo)
   const dmgFonteTotal = {};                             // dano REAL por fonte (Q/W/E/R/ataque/queima/item...)
   const danoHist = [];                                  // amostras {at,out,in,porSkill} p/ o DPS por luta
-  let furiaAte = 0;        // Rugido do Dragão: AS ×1,5 por 5 s (motor: i.as *= 1.5; i.furiaT = 5)
+
+  // ---- Rugido do Dragão: AS ×1,5 por 5 s. O ESTADO EXACTO é `i.furiaT` do chefe no motor:
+  //   motor.js:3107  `else if (tipo === 'rugido') { i.as *= 1.5; i.furiaT = 5; }`
+  //   motor.js:3085  `if (i.furiaT > 0) { i.furiaT -= dt; if (i.furiaT <= 0) i.as /= 1.5; }`  (acaba)
+  // O código antigo INVENTAVA o tempo: `furiaAte = Date.now() + 5000` no golpe (observabilidade.md D7,
+  // content.js:166). Agora lê-se o relógio do motor quando o inject.js o publica; o palpite de 5 s
+  // fica só como FALLBACK para quando não é publicado (inject.js ainda não publica — ver abaixo).
+  const RUGIDO_S = 5;                                   // motor.js:3107: i.furiaT = 5
+  let furiaT = null;        // segundos EXACTOS restantes, lidos de i.furiaT (motor.js:3107)
+  let furiaTEm = 0;         // em que ms é que esse valor foi lido (decai com o relógio local)
+  let furiaAte = 0;         // fallback local (golpe + 5 s), usado só sem estado real
+  /** Segundos de rugido restantes pelo relógio do MOTOR (decai desde a leitura); null = sem estado real. */
+  function furiaRestante() {
+    if (furiaT == null) return null;
+    return furiaT - (Date.now() - furiaTEm) / 1000;
+  }
+  function furiaAtiva() {
+    const r = furiaRestante();
+    return r != null ? r > 0 : Date.now() < furiaAte;
+  }
+  /**
+   * Estado do chefe publicado pelo inject.js (mundo MAIN, que tem a instância da Cena e o
+   * `combate` vivo — observabilidade.md §2.1/P0-1). Contrato REAL, como o inject.js:379/435
+   * o publica (wrap de Cena.prototype.sincronizar, cena.js:671, a cada tick):
+   *   postMessage({ __lolidleAuto: 'estado', inimigos: [ { ..., mec, tMec, carrega, furiaT } ] })
+   * O `furiaT` vive no MONSTRO (motor.js:3107/3085) — o Rugido do Dragão acelera o chefe —,
+   * por isso vem dentro de cada inimigo; o `combate.darius` não o tem.
+   *   `furiaT` é NÚMERO em segundos — o mesmo campo do motor (motor.js:3107), não booleano.
+   * Também aceitamos `furiaT` no topo da mensagem (ex.: 'combate') e o booleano `furia`,
+   * que só serve para armar o fallback.
+   * @returns segundos restantes (>= 0) ou null se a mensagem não traz o estado do motor
+   */
+  function lerFuriaT(d) {
+    if (!d || typeof d !== 'object') return null;
+    const topo = Number(d.furiaT);
+    if (Number.isFinite(topo) && topo >= 0) return topo;              // campo no topo da mensagem
+    const ini = d.inimigos;
+    if (!Array.isArray(ini)) return null;
+    // A lista de inimigos é AUTORITATIVA: se ela veio, o motor acabou de a desenhar, e um
+    // `furiaT: 0` em todos significa que o Rugido ACABOU (motor.js:3085). Tratar "0 em todos"
+    // como "sem dado" deixaria o palpite de 5 s ligado até 5 s depois do fim — o defeito D7
+    // de volta, pela porta da lista vazia de furias.
+    let m = 0;
+    for (const i of ini) {                                            // o maior furiaT entre os inimigos
+      const v = Number(i && i.furiaT);
+      if (Number.isFinite(v) && v >= 0) m = Math.max(m, v);
+    }
+    return m;
+  }
+
   window.addEventListener('message', (e) => {
     if (e.source !== window || !e.data) return;
+    if (e.data.__lolidleAuto) {
+      const ft = lerFuriaT(e.data);
+      if (ft != null) {                                   // estado EXACTO do motor: manda ele
+        furiaT = ft; furiaTEm = Date.now();
+        furiaAte = ft > 0 ? Date.now() + ft * 1000 : 0;   // fallback alinhado ao que o motor diz
+        // SÓ a mensagem própria do estado sai daqui. Se o `furiaT` vier colado noutra
+        // mensagem (ex.: 'combate'), a leitura NÃO pode descartar o resto do payload —
+        // o dano continuaria a ser contado. ('estado' é a do inject.js:435.)
+        if (e.data.__lolidleAuto === 'chefe-estado' || e.data.__lolidleAuto === 'estado') return;
+      } else {
+        // sem número, um booleano só arma o FALLBACK (não há tempo restante para ler)
+        if (e.data.furia === true) furiaAte = Date.now() + RUGIDO_S * 1000;
+        if (e.data.__lolidleAuto === 'chefe-estado' || e.data.__lolidleAuto === 'estado') return;
+      }
+    }
     if (e.data.__lolidleAuto === 'carga') { cargaAtual = { mec: e.data.mec, dur: e.data.dur, at: Date.now() }; hpush({ t: 'carga', mec: e.data.mec }); return; }
-    if (e.data.__lolidleAuto === 'golpe') { if (e.data.mec === 'rugido') furiaAte = Date.now() + 5000; hpush({ t: 'golpe', mec: e.data.mec }); cargaAtual = null; return; }
+    if (e.data.__lolidleAuto === 'golpe') {
+      // fallback (motor.js:3107): 5 s a contar do golpe — só vale enquanto o inject não publicar
+      // o i.furiaT exacto; a partir daí `furiaT != null` e `furiaAtiva()` usa o relógio do motor.
+      if (e.data.mec === 'rugido') furiaAte = Date.now() + RUGIDO_S * 1000;
+      hpush({ t: 'golpe', mec: e.data.mec }); cargaAtual = null; return;
+    }
     if (e.data.__lolidleAuto === 'combate') { const o = e.data.out || {}, tm = e.data.tomou || 0; push(ev.combate, Date.now(), { out: o, tomou: tm }); for (const f in o) { dmgOutTotal += o[f]; dmgFonteTotal[f] = (dmgFonteTotal[f] || 0) + o[f]; } dmgInTotal += tm; return; }
     if (e.data.__lolidleAuto === 'chefe-hp') { bossHp = { nome: e.data.nome, vida: e.data.vida, at: Date.now() }; return; }
     if (!e.data.__lolidle) return;
@@ -344,7 +441,8 @@ let config = structuredClone(DEFAULT_CONFIG);
       hp: hp && Number.isFinite(hp.cur) ? { cur: hp.cur, max: hp.max, lost: hp.max - hp.cur, pct: hp.max ? hp.cur / hp.max : hp.pct } : null,
       target: readTarget(),
       boss: bossState.active,
-      furia: Date.now() < furiaAte,
+      furia: furiaAtiva(),                                 // motor.js:3107/3085 (i.furiaT), não palpite
+      furiaT: furiaRestante() != null ? Math.round(furiaRestante() * 100) / 100 : null,
       carga: cargaAtual && (Date.now() - cargaAtual.at < 4000) ? cargaAtual : null,
       hit: { mob: hitInfo(hitsMob), boss: hitInfo(hitsBoss) },
       hitLog: { boss: hitLog(hitsBoss), mob: hitLog(hitsMob) },

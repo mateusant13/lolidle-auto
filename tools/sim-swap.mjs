@@ -41,7 +41,7 @@
 import {
   ITENS, baseId, infoItem, statsJogador, statsBossFiel, nivelDoChefe, difNivel,
   fatorDanoMonstro, fatorDanoJogador, dpsTeorico, dpsDaHabilidade, ranksNoNivel,
-  melhoresBuilds, buildExtensao, ouroDoEquipamento, curaDaBuild,
+  melhoresBuilds, buildExtensao, ouroDoEquipamento, curaDaBuild, refinoDe, qualidadeDe,
   HAB_SIM, KITS_SIM, CURVA_FIEL, POCOES_MOTOR, EXAUSTAO, vidaRefItem, TETO_VIDA_ITEM,
 } from './sim-chefes.mjs';
 
@@ -449,10 +449,13 @@ function main() {
   const soBota = DONO.filter((v, i) => v === BASE[i]).length;
   L('  >>> OS 4 ITENS SAO OS MESMOS (' + soBota + '/5 iguais). A UNICA diferenca e a BOTA:');
   L('      ' + nome(DONO[0]) + ' (' + DONO[0] + ')  ->  ' + nome(BASE[0]) + ' (' + BASE[0] + ')');
+  // motor.js:251-255 escala ad/ap/mana/vida/armadura/rm/va/rv/critico/regen/cdr — e NAO o penMag
+  // (docs/audit-itens.md e a regra do AGENTS.md): o penMag da bota fica 15% seja qual for a qualidade.
+  const penDe = (x) => ITENS[baseId(x)].penMag || 0;
   const iDono = infoItem(DONO[0]), iBase = infoItem(BASE[0]);
-  L('  Numeros da bota (itens.js, com qualidade/refino, motor.js:251-255):');
-  L('      ' + DONO[0] + ': ap=' + (+iDono.ap).toFixed(1) + ', penMag=' + (+iDono.penMag).toFixed(2) + ', cdr=' + (+iDono.cdr).toFixed(3) + ', vida=' + (+iDono.vida).toFixed(0) + ', mana=' + (+iDono.mana).toFixed(0));
-  L('      ' + BASE[0] + ': ap=' + (+iBase.ap).toFixed(1) + ', penMag=' + (+iBase.penMag).toFixed(2) + ', cdr=' + (+iBase.cdr).toFixed(3) + ', vida=' + (+iBase.vida).toFixed(0) + ', mana=' + (+iBase.mana).toFixed(0));
+  L('  Numeros da bota (itens.js; motor.js:251-255 escala o ap/cdr/vida/mana e NAO o penMag):');
+  L('      ' + DONO[0] + ': ap=' + (+iDono.ap).toFixed(1) + ', penMag=' + (100 * penDe(DONO[0])).toFixed(0) + '%, cdr=' + (+iDono.cdr).toFixed(3) + ', vida=' + (+iDono.vida).toFixed(0) + ', mana=' + (+iDono.mana).toFixed(0));
+  L('      ' + BASE[0] + ': ap=' + (+iBase.ap).toFixed(1) + ', penMag=' + (100 * penDe(BASE[0])).toFixed(0) + '%, cdr=' + (+iBase.cdr).toFixed(3) + ' (base ' + ITENS[baseId(BASE[0])].cdr + ' x (1+0,12x' + refinoDe(BASE[0]) + ')), vida=' + (+iBase.vida).toFixed(0) + ', mana=' + (+iBase.mana).toFixed(0));
   const stD = analisar(DONO, { ranks: RANKS_REAL }), stB = analisar(BASE, { ranks: RANKS_REAL });
   L('  Efeito no jogador:');
   L('      com ' + nome(DONO[0]) + ': AP=' + stD.st.ap.toFixed(0) + ', reducaoRecarga=' + (100 * stD.st.reducaoRecarga).toFixed(1) + '%, penMagica=' + (100 * stD.st.penMagica).toFixed(0) + '% -> dps ' + stD.totalCorr.toFixed(0));
@@ -464,9 +467,12 @@ function main() {
   const ganho = (tuplaDe(rD, DONO).seg - tuplaDe(rB, BASE).seg);
   L('  >>> GANHO SO POR TROCAR A BOTA: ' + ganho.toFixed(2) + 's e ' + (tuplaDe(rD, DONO).pocoes - tuplaDe(rB, BASE).pocoes) + ' pocoes.');
   L('      E a mesma coisa na MEDIDA do jogo: o dono levou ' + DONO_MEDIDO.realT + 's com esta bota (docs/snapshots/dps.json).');
-  L('      Repare: o CDR do ' + nome(BASE[0]) + ' (' + (100 * iBase.cdr).toFixed(0) + '% x qualidade ' + iBase.qual + ' x refino +' + iBase.ref + ' = ' +
-    (100 * iBase.cdr).toFixed(1) + '%) vale MAIS que os ' + (100 * iDono.penMag).toFixed(0) + '% de penMag da outra, porque a Katarina');
-  L('      e de MAGIA e o unico AP da bota e menor (ap=' + iDono.ap.toFixed(0) + ' vs ' + iBase.ap.toFixed(0) + ') (motor.js:864-885).');
+  L('      Porque e que o CDR ganha a penMag aqui: a Katarina e de MAGIA (motor.js:884), logo todo o');
+  L('      dano dela (menos o auto-ataque) e forcado a magico (motor.js:1201) e defende-se com');
+  L('      armadura*0,6 (motor.js:1202). A ' + nome(DONO[0]) + ' da mais ' + (iDono.ap - iBase.ap).toFixed(0) + ' de AP, mas a ' + nome(BASE[0]) + '');
+  L('      da mais CDR — e o CDR encolhe a recarga do Q (rank 10) e da A (motor.js:738/752), que');
+  L('      sao a maior parte do DPS dela. Os 15% de penMag da outra valem menos que ' + (100 * (iBase.cdr - 0)).toFixed(0) + '% de CDR.');
+  L('      (o penMag a mais nao se sobrepoe: motor.js:529 soma os dois, com tecto de 60%.)');
   L('');
 
   // alternativas: SO o que o dono tem (ou o catalogo do jogo, quando o dono nao tem e pode comprar)
@@ -540,3 +546,44 @@ function main() {
 
   // ---- 5.7 o veredicto ----
   L('--- 7) A TROCA EM COMBATE COMPENSA? ---');
+  const ganham = ordenado.filter((x) => x.dSeg != null && x.dSeg > x.t.nTrocas * CUSTO_TROCA);
+  const poupam = ordenado.filter((x) => x.dOuro < -50 || x.dPoc < 0);
+  L('  Onde COMPENSA (ganha mais segundos do que o custo da troca):');
+  if (!ganham.length) L('    NENHUM caso. Nesta luta o custo de ' + CUSTO_TROCA + 's por troca e maior que o ganho.');
+  for (const x of ganham) L('    + ' + x.rotulo + '  ->  ' + x.dSeg.toFixed(2) + 's ganhos vs ' + (x.t.nTrocas * CUSTO_TROCA) + 's de custo');
+  L('  Onde POUPA ouro/pocoes (mesmo sem ganhar segundos):');
+  if (!poupam.length) L('    NENHUM caso.');
+  for (const x of poupam) L('    - ' + x.rotulo + '  ->  ' + (x.dPoc > 0 ? '+' : '') + x.dPoc + ' pocoes, ' + (x.dOuro > 0 ? '+' : '') + nf(x.dOuro) + 'g');
+  L('');
+  L('  REGRA QUE SAI DESTA LUTA: o Dragao Infernal nao tem fase que justifique a troca. Ele e UM alvo');
+  L('  do primeiro ao ultimo segundo, o dano dele e quase todo magico e constante, e a melhor build');
+  L('  de mago ja o mata sem pocoes. Nao ha "fase" — logo nao ha gatilho que pague os cliques.');
+  L('');
+  L('  ONDE A TROCA COMPENSARIA (e isto e o que o codigo permite, com o numero de cada caso):');
+  L('   1. BARRA CHEIA COM HABILIDADES NOVAS: motor.js:2826-2827 — o jogo aprende o rank 1 das');
+  L('      habilidades novas MESMO com a barra cheia "para a habilidade ficar disponivel para troca".');
+  L('      A troca de barra e o unico uso que o proprio motor documenta.');
+  L('   2. CHEFE COM INVOCACAO — o Barao: motor.js:3117-3120 invoca 2 larvas, mas isso e SO');
+  L('      1 dos 3 do rodizio (motor.js:3080). O ciclo inteiro e:');
+  L('        invocar (carrega 0, espera 14) + tentaculos (1,3 + 9) + acido (1,0 + 9) = 34,3 s');
+  L('        [motor.js:3076-3078 + motor.js:3080]');
+  L('      Logo as larvas vem a cada 34,3 s, NAO a cada 14. Ai ha mesmo "o que esta em campo" e uma');
+  L('      barra de area passa a valer. O Dragao NAO invoca nada (motor.js:3080: so sopro/chuva/rugido).');
+  L('   3. SEGUNDO ALVO EM CAMPO: no Fosso do Dragao os filhotes coexistem (motor.js:370), mas o');
+  L('      chefe aparece sozinho na invocacao dele (motor.js:1121).');
+  L('   4. PVP/Runeterra: motor.js:3056 emCombate existe para nao fugir da luta; trocar item');
+  L('      continua permitido (nao ha guarda) — mas o dono proibiu testar em jogo.');
+  L('');
+  L('--- 8) O QUE NAO CONSEGUI VERIFICAR ---');
+  L('  1. Se o custo real de uma troca e 1,0s ou 4,25s (jogo.js:6000-6008 + quadro() a 60/s).');
+  L('     PRECISA DE MEDICAO NO JOGO (o dono proibiu jogar nesta sessao).');
+  L('  2. Se o proc do 3153 DEVE levar critico (motor.js:1700 vs 1702). PRECISA DE REGRA DO DONO.');
+  L('  3. O erro absoluto do simulador para a build do dono: sim ' + donoCorr.tempoMatar + 's vs real ' +
+    DONO_MEDIDO.realT + 's. A comparacao entre builds e valida; os segundos absolutos nao.');
+  L('  4. A BASE_CAMPEAO da Katarina no sim-chefes e "CALIBRADO NAO VERIFICADO (1 ponto medido)"');
+  L('     (sim-chefes.mjs:352-353): os dados-katarina.js nao existem em docs/game-src.');
+  L('');
+  return { BASE, baseT, resultados, ordenado, MELHOR, MELHOR_T, DONO };
+}
+
+const R = main();
