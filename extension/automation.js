@@ -282,7 +282,7 @@
         const cls = String(s.className || '');
         const rar = cls.includes('lendario') ? 'lendario' : cls.includes('epico') ? 'epico' : cls.includes('basico') ? 'basico' : '?';
         const dica = s.getAttribute('data-dica') || '';
-        const vendaM = dica.match(/Vale\s+([\d.]+)\s+de ouro no Lojista/i);
+        const vendaM = dica.match(/Vale\s+([\d.,]+\s*[kKmM]?)\s+de ouro no Lojista/i);
         items.push({
           kind: 'item', base, qual: qual || 'C', raridade: rar, id, refino: (id.match(/\+(\d+)/) || [])[1] ? +(id.match(/\+(\d+)/)[1]) : 0,
           vendaLojista: vendaM ? parseNum(vendaM[1]) : null, dica, stats: parseDica(dica),
