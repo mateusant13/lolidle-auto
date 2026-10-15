@@ -37,3 +37,36 @@
 2. Uma peça de cada vez. O banco leva ~40 s e diz exactamente qual asserção caiu.
 3. Onde duas frentes mexeram na MESMA função (statsSet/scoreSet/estimarSet: w9 × w12), fazer a
    **união** — o w12 traz a pen do kit/crit/hemorragia, o w9 traz o rv e a separação das pens.
+
+
+---
+
+## RESULTADO DA SESSÃO DE INTEGRAÇÃO (2026-10-15, madrugada)
+
+**Técnica que funcionou (usar sempre):** aplicar **peça a peça** com verificação automática —
+extrair o bloco por **contagem de chavetas** (`{ +1 / } -1`), escrever o ficheiro, correr
+`node --check` e **reverter só essa peça** se quebrar. Um script de ~40 linhas faz isso; foi o que
+levou o banco de **20 → 16 falhas** sem nunca deixar o ficheiro inválido.
+
+**Peças que aplicam LIMPO (26, validadas hoje):**
+`carregarMeta`, `curva`, `barraIdeal`, `readStats`, `parseBig`, `infoItem`, `valorPassiva`,
+`scoreSet`, `estimarSet`, `statsSet`, `statsDePeca`, `pecaConhecida`, `farmarItem`(+Parar/Passo/
+Estado/Tenho/Ids), `escolherConjunto`, `porMelhorBase`, `nivelMobDe`, `mediaWaveDe`,
+`estimarRegiao`, `viajarPara`, `proximoGiro`, `localId` + as declarações
+`larvasInvoca`/`LARVAS_JANELA_MS`/`_estadoVivo`/`_eventosVivos`/`_eventosCont`/`_farmItem`/`_giroTent`/
+`VIAGEM_MAPA_MAX`/`VIAGEM_MAX_TENT`/`_viagemMapaTent`/`NIVEL_DIF_FB`, e os patches: `parseNum`+`SUFIXO`+
+`numDoTexto`, `readStats` com `[Vv]ida`, `player().vidaAtual`+fallback 4188, regex do Lojista com
+sufixo, handler `chefeInvoca`, `rv` no `statsSet`, `crit` no `scoreSet`, duplicata de lendário com
+mercado saturado → PROTEGER, raridade do actor pelo catálogo, `CAMPOS_MULT`+`penMag`, `alvos` no kit.
+
+**Peças que QUEBRAM (não aplicar como estão — exigem leitura à mão):**
+- `nivelChefeDe` do **w1-regioes**: aplicado, o `node --check` passa mas a suite w1-regioes passa de
+  2 para ~14 falhas (A4/A5/A6) — a versão do ramo assume helpers/assinaturas que o master não tem.
+- `hemorragia` no `estimarSet` (w12): a asserção H15 só passa com o `hemorragiaDe` + o critério
+  `fracAuto` do w12 em conjunto — isolado não fecha.
+- `valorEquip`/`valorVenda` do w10: fecham o P1 mas mexem em cadeias que outras suites usam; aplicar
+  só depois de fechar o resto.
+
+**FALHAS RESTANTES (16 quando o banco foi medido no melhor ponto):** H12a/H12c (crítico medido),
+H15 (hemorragia), T142a (rv com V maiúsculo), R3 (fluxo do Ornn no stub), P1 (qualidade ausente),
+A4/A5/A6 (w1), B1 (3153 na build ideal), e os 3 símbolos de export.
