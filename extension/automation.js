@@ -2698,7 +2698,10 @@
     // VOLTAR À REGIÃO? Só quando a fuga NÃO foi por derrota prevista nem por golpe injogável —
     // `risco.morre` é uma probabilidade medida (a região pode ter mudado), mas "perde a luta" e
     // "golpe que mata" são determinísticos: voltar era o ciclo morte→fuga→morte que o dono proibiu.
-    if (idReg && !fatalVivo && !perde) setTimeout(() => viajarPara(idReg), 8000);
+    if (idReg && !fatalVivo && !perde && !_viagemAgendada) {
+      _viagemAgendada = true;
+      setTimeout(() => { _viagemAgendada = false; viajarPara(idReg); }, 8000);
+    }
   }
 
   /** Espera após o recall: RECALL do motor (s) + folga pra base/UI. */
@@ -2714,6 +2717,7 @@
    *  boneco ficava preso na regiao errada. A regra passa a viver AQUI, para valer a TODOS os
    *  chamadores (incluindo os que vierem depois), em vez de ser repetida em cada um. */
   let _viagemTent = 0;
+  let _viagemAgendada = false;   // guarda: só UMA viagem em voo (evita a cadeia de setTimeout no stub)
   function viajarPara(id) {
     if (/runeterra/i.test(semAcento(String(id || '')))) { logEvent('runeterra', { bloqueado: id }); return; }   // Runeterra é manual
     // Nao esta na base? RECALL primeiro e so depois viaja. Sem isto a viagem e cancelada.
