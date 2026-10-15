@@ -55,3 +55,22 @@ continuou a pendurar**, logo há uma segunda cadeia (o `viajarPara` não é o ú
   divergir do que os testes esperam. É o terreno certo para atacar a seguir, suite a suite.
 - **Armadilha nova:** matar o processo `pwsh` **não mata o `bun` filho** — ele fica a correr e segura
   o ficheiro. Matar sempre `Get-Process bun | Kill` depois de cada medição.
+
+
+## ADENDA 08:05 — a cadeia NÃO é a viagem
+Experimento decisivo: **desliguei a única `setTimeout` que o `checarChefeFatal` agenda**
+(`automation.js:2703`, `setTimeout(() => { _viagemAgendada = false; viajarPara(idReg); }, 8000)`) e
+exportei o detector → **o banco CONTINUA a pendurar**.
+
+Logo o ciclo está no **caminho síncrono do próprio `checarChefeFatal`**, antes do agendamento:
+`podeFazer('fugir')`, `agregar()`, `localId()`, `estimarLuta(idReg)`, `readPotions()`,
+`curaPocaoMax()` ou os getters `HEALVAL` (→ `pocaoInfo`). Suspeito principal: **`estimarLuta`**
+(→ `avaliar` → `estimarSet` → `dpsPorHabilidade` → `freqSkills`), que só é exercido por este caminho.
+
+**Próximo passo (barato e decisivo):** dentro do `checarChefeFatal`, pôr `logEvent('dbg:N')` entre
+cada chamada (N = 1..7) e ver qual é o último N impresso antes do pendura. 2 minutos de trabalho,
+sem adivinhar.
+
+Nota: as minhas 3 tentativas anteriores falharam por **strings que não casavam** (a linha real tem o
+`_viagemAgendada = false` dentro). Lição: **procurar a linha por regex e imprimi-la antes de editar** —
+foi o que destravou este experimento.
