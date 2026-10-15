@@ -33,7 +33,7 @@ import { suite as suiteHud } from './hud.test.mjs';
 // W3 (w3-barra) — integração com o inject.js (TK-INT-01).
 import { suite as suiteIntegracao } from './integracao.test.mjs';
 import { suite as suiteW5 } from './w5-itens.test.mjs';
-import { suite as suiteW5 } from './w5-itens.test.mjs';const argv = process.argv.slice(2);
+const argv = process.argv.slice(2);
 if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
   console.log('  --verbose       imprime todas as assercoes (ok/FALHOU)');
@@ -48,9 +48,9 @@ let filtro = null;
 const iF = argv.indexOf('--filter');
 if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 
-const SUITES = [suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteHud, suiteIntegracao, suiteW5];const checks = [];
-const SUITES = [suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteW5];
-const checks = [];const notas = [];
+const SUITES = [suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteHud, suiteIntegracao, suiteW5];
+const checks = [];
+const notas = [];
 let populacaoExecutada = 0;
 
 function criarT(nome) {

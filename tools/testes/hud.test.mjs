@@ -465,6 +465,47 @@ export const suite = {
         luta.hpBoss > 0 && luta.nivel === auto.nivelChefeDe({ nm: [25, 33] }, 25));
     }
 
+
+    /* ========= H14 — COPIAS À MÃO: detetam quando o motor muda (REGRA N.º 3) ========= */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      // --- POCAO_FB: sem o motor nao ha divergencia (ainda nao se pode comparar).
+      t.check('H14: sem o motor, as divergencias das pocoes estao vazias (nao ha com que comparar)',
+        auto.divergenciasPocao().length === 0);
+      // com o motor a mandar o MESMO valor: continua vazio.
+      alimentarMeta(m, { pocoes: {
+        vida: { cura: 300, preco: 40, nivel: 1 }, vidaF: { cura: 900, preco: 110, nivel: 15 },
+        vidaS: { cura: 2200, preco: 260, nivel: 30 } } });
+      t.check('H14: com o motor a concordar, continua vazio', auto.divergenciasPocao().length === 0);
+      // o jogo BUFFOU a Suprema para 2600 de cura: a copia tem de acusar.
+      alimentarMeta(m, { pocoes: {
+        vida: { cura: 300, preco: 40, nivel: 1 }, vidaF: { cura: 900, preco: 110, nivel: 15 },
+        vidaS: { cura: 2600, preco: 260, nivel: 30 } } });
+      const div = auto.divergenciasPocao();
+      t.check('H14: um buff na Pocao Suprema (2200 -> 2600) e ACUSADO',
+        div.length === 1 && div[0].pocoes === 'vidaS' && div[0].campo === 'cura');
+      t.check('H14: e a divergencia traz o valor do fallback e o do motor',
+        div.length === 1 && div[0].fallback === 2200 && div[0].motor === 2600);
+      t.check('H14: quem le a pocao ve o valor do MOTOR (pocaoInfo prefere o motor)',
+        auto.pocaoInfo('vidaS').cura === 2600);
+      // --- KAT_FB: a comparacao com o kit do motor.
+      const m2 = criarMundo();
+      const auto2 = carregarAutomation(m2);
+      alimentarCatalogo(m2); definirCampeao(m2, 'adtest');
+      t.check('H14: sem kit do motor, as divergencias do kit estao vazias',
+        auto2.divergenciasKit().length === 0);
+      // o motor manda um kit DIFERENTE do fallback da Katarina: a copia acusa.
+      definirCampeao(m2, 'katarina', { kit: { Q: { max: 1, base: [999], ratio: [1], recarga: [10] } } });
+      const divK = auto2.divergenciasKit('katarina');
+      t.check('H14: um kit do motor diferente do fallback e ACUSADO', divK.length > 0);
+      t.check('H14: e a divergencia diz o campo e os dois valores',
+        divK.some((d) => d.hab === 'Q' && d.campo === 'base' && d.motor === 999));
+      t.check('H14: o kit usado em jogo e o do MOTOR (o fallback fica so para quando nao ha motor)',
+        auto2.dpsPorHabilidade().nivel >= 0);
+    }
     /* ================ H13 — TECTOS DO MOTOR num sitio so, cada um com o file:linha ================ */
     {
       const m = criarMundo();
@@ -477,9 +518,11 @@ export const suite = {
       t.check('H13: tecto de esquiva = 0,25 (motor.js:536)', caps.esquiva === 0.25);
       t.check('H13: tecto de chance de critico = 1 (motor.js:541)', caps.critico === 1);
       t.check('H13: velocidade de ataque maxima = 3 (motor.js:344)', caps.velAtaque === 3);
-      // pen de armadura: a conta do motor e 1-(1-penE)x0,7 = 0,835 com penE maximo (motor.js:539/560)
-      t.check('H13: pen de armadura maxima = 0,835 (motor.js:539, nao 0,7)',
-        Math.abs(caps.penArmadura - 0.835) < 1e-9);
+      // pen de armadura: a conta do motor e `1 - (1 - penE) x 0,7` (motor.js:539). Com o pen do KIT
+      // no maximo (0,45, motor.js:560) e a 3036: 1 - 0,55 x 0,7 = 0,615. A extensao fazia
+      // `Math.min(0,7, soma dos itens)` — via so o 0,30 da 3036 e NAO via o pen do kit.
+      t.check('H13: pen de armadura maxima = 0,615 (motor.js:539/560, nao 0,7)',
+        Math.abs(caps.penArmadura - 0.615) < 1e-9);
     }
     /* ================================ H11 — MECANICA DO CHEFE LIDA DO MOTOR ================================ */
     {

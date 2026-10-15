@@ -954,8 +954,27 @@
   // `nivel` = nível MÍNIMO que a loja exige (motor.js:261-267 `POCOES`: a Suprema só no 30, a
   // Forte no 15). Sem este campo, a extensão não sabia que a Suprema não existe no nível 15 e
   // ficava a pedi-la para sempre — era a raiz do ciclo de recall (ver `minimoPocoesAgora`).
-  const POCAO_FB = { vida: { cura: 300, preco: 40, nivel: 1 }, vidaF: { cura: 900, preco: 110, nivel: 15 }, vidaS: { cura: 2200, preco: 260, nivel: 30 } };
+  // FALLBACK das poções — usado SO quando o motor ainda não mandou `META.pocoes` (o `pocaoInfo`
+  // abaixo prefere sempre o do motor). Cópia à mão de motor.js:261-267 `POCOES`; enquanto o motor
+  // não fala, é isto que vale. Quando ele fala, `divergenciasPocao()` acusa a diferença — um buff
+  // no jogo não passa em silêncio (REGRA N.º 3 do AGENTS.md).
+  const POCAO_FB = { vida: { cura: 300, preco: 40, nivel: 1 }, vidaF: { cura: 900, preco: 110, nivel: 15 }, vidaS: { cura: 2200, preco: 260, nivel: 30 } };   // motor.js:261-267
   const pocaoInfo = (k) => (META.pocoes && META.pocoes[k]) || POCAO_FB[k];
+  /** ONDE o fallback das poções discorda do motor (cura/preço/nível). Vazio = o motor ainda não
+   *  falou, ou concorda. É o que impede uma cópia congelada de passar por verdade. */
+  function divergenciasPocao() {
+    const out = [];
+    const M = META.pocoes || null;
+    if (!M) return out;
+    for (const k of Object.keys(POCAO_FB)) {
+      const a = POCAO_FB[k], b = M[k];
+      if (!b) continue;
+      for (const campo of ['cura', 'preco', 'nivel']) {
+        if (a[campo] !== b[campo]) out.push({ pocoes: k, campo, fallback: a[campo], motor: b[campo] });
+      }
+    }
+    return out;
+  }
   /** A LOJA VENDE esta poção ao nível dele? (motor.js:261-267 `POCOES[k].nivel`; `META.pocoes`
    *  vem do motor pelo inject.js.) Fora do nível, o botão de compra vem `disabled` no jogo. */
   function pocaoCompravel(k) {
@@ -1702,6 +1721,41 @@
     M: { max: 10, rec: (r) => 14 - 0.5 * (r - 1), base: (r) => 200 + 80 * (r - 1), ratio: (r) => 1.2 + 0.07 * (r - 1), mult: 1 },
   };
   let KAT = KAT_FB;
+  /** ONDE o kit de FALLBACK (copiado à mão) discorda do kit do MOTOR para o mesmo campeão.
+   *  O `KAT_FB` só é usado quando o motor não manda kit nenhum (`aplicarKit`, automation.js:1544);
+   *  quando o motor manda, esta comparação ACUSA a diferença em vez de a deixar congelada —
+   *  é a REGRA N.º 3 do AGENTS.md aplicada ao único sitio onde a cópia é inevitável. */
+  function divergenciasKit(id) {
+    const campeao = id || (META.champAtual && META.champAtual.id) || null;
+    // O `KAT_FB` e o kit da KATARINA (automation.js:1243): compará-lo com o kit de OUTRO campeão
+    // seria ruido, não divergência. Só compara quando o fallback é o que está em causa.
+    if (campeao !== 'katarina') return [];
+    const fonte = campeao && META.kits && META.kits[campeao];
+    if (!fonte || !fonte.kit) return [];
+    const out = [];
+    for (const t of Object.keys(KAT_FB)) {
+      const fb = KAT_FB[t], mot = fonte.kit[t];
+      if (!mot) continue;
+      for (const campo of ['max', 'mult', 'alvo', 'adRatio']) {
+        if (fb[campo] != null && mot[campo] != null && fb[campo] !== mot[campo]) {
+          out.push({ champeao: campeao, hab: t, campo, fallback: fb[campo], motor: mot[campo] });
+        }
+      }
+      // séries por rank: base/ratio/recarga
+      for (const campo of ['base', 'ratio', 'recarga']) {
+        const a = fb[campo === 'recarga' ? 'rec' : campo], b = mot[campo];
+        if (typeof a === 'function' && Array.isArray(b)) {
+          for (let r = 1; r <= Math.min(b.length, 10); r++) {
+            const va = a(r), vb = b[r - 1];
+            if (Number.isFinite(va) && Number.isFinite(vb) && Math.abs(va - vb) > 1e-9) {
+              out.push({ champeao: campeao, hab: t, campo, rank: r, fallback: va, motor: vb });
+            }
+          }
+        }
+      }
+    }
+    return out;
+  }
   let _giro = { base: 30, nivel: 19, ap: 1, ad: 0.4 };   // coeficientes da Voracidade (motor)
 
   // ============ VORACIDADE POR ABATE (Katarina) — a mecânica que faltava ============
@@ -7385,7 +7439,7 @@
     // modeladas com eles: vida com k/M e escudo, recarga exacta, efeitos activos, recarga de item,
     // o medidor do jogo (xp/h, ouro/h, abates/h, DPS, loot), nivel do chefe pela regra do motor,
     // Voracidade por abate com os abates/min medidos ao vivo, roubo de vida e critico.
-    numEcra, lerVidaHud, lerStatsId, lerBuffs, lerRecargaItens, lerAnaliseJogo,
+    numEcra, lerVidaHud, lerStatsId, lerBuffs, lerRecargaItens, lerAnaliseJogo, divergenciasPocao, divergenciasKit, pocaoInfo,
     killsMinAoVivo, voracidadeDe, cdVoraz, nivelChefeDe, mecanicaDe, fracHabs, fracAuto, multCrit, critDoSet, tierDe, capsMotor: () => ({ cdr: CAP_CDR, penMag: CAP_PEN_MAG, esquiva: CAP_ESQUIVA, critico: CAP_CRITICO, velAtaque: VEL_ATAQUE_MAX, penArmadura: penArmaduraDe(0.45, true) }),
     // ---- BUILD POR FASE (mob × chefe) e AS QUATRO FONTES ----
     buildParaMob, buildParaChefe, buildDaFase, buildIdealParaFase, faseBuild, planoBuildFase,

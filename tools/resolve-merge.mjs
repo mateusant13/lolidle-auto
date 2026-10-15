@@ -1,33 +1,50 @@
-// resolve-merge.mjs — resolve os conflitos repetitivos do pipeline leitor->worker.
-// 1) docs/tickets/* -> fica SEMPRE a versao do master (a mais nova; os workers levaram copias velhas
-//    por causa do checkout de ficheiros de contexto nos worktrees).
-// 2) tools/testes/run.mjs -> UNIAO dos dois lados (cada worker acrescenta a sua suite).
-// Uso: node tools/resolve-merge.mjs
+// resolve-merge.mjs — conflitos repetitivos do pipeline leitor->worker.
+// docs/tickets/* -> ours (master é o mais novo). tools/testes/run.mjs -> UNIAO com newline.
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 const emConflito = execSync('git diff --name-only --diff-filter=U', { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
 const fora = { resolvidos: [], runUnido: false };
 for (const f of emConflito) {
-  if (f.startsWith('docs/tickets/')) { execSync('git checkout --ours -- "' + f + '"'); execSync('git add -- "' + f + '"'); fora.resolvidos.push(f + ' (ours)'); }
+  if (f.startsWith('docs/tickets/') || f.startsWith('docs/historico/')) {
+    execSync('git checkout --ours -- "' + f + '"'); execSync('git add -- "' + f + '"');
+    fora.resolvidos.push(f + ' (ours)');
+  }
 }
 const runPath = 'tools/testes/run.mjs';
 if (emConflito.includes(runPath)) {
   let s = readFileSync(runPath, 'utf8').replace(/\r/g, '');
   s = s.replace(/<<<<<<< HEAD\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> [^\n]*\n/g, (m, ours, theirs) => {
-    const lo = ours.trim().split('\n').map(x => x.trim()).filter(Boolean);
-    const lt = theirs.trim().split('\n').map(x => x.trim()).filter(Boolean);
-    if (lo.length === 1 && lt.length === 1 && /^import/.test(lo[0]) && /^import/.test(lt[0])) return lo[0] + '\n' + lt[0];
-    if (lo.length === 1 && lt.length === 1 && /^const SUITES/.test(lo[0])) {
-      const extraT = lt[0].replace(/^const SUITES = \[/, '').replace(/\];?$/, '').split(',').map(x => x.trim()).filter(Boolean);
-      const base = lo[0].replace(/\];?$/, '').replace(/^const SUITES = \[/, '').split(',').map(x => x.trim()).filter(Boolean);
-      const todos = [...new Set([...base, ...extraT])];
-      return 'const SUITES = [' + todos.join(', ') + '];';
+    const juntar = (a, b) => {
+      const A = a.trim(), B = b.trim();
+      if (!A) return B; if (!B) return A;
+      return A + '\n' + B;
+    };
+    const linhasO = ours.split('\n').map(x => x.trim()).filter(Boolean);
+    const linhasT = theirs.split('\n').map(x => x.trim()).filter(Boolean);
+    if (linhasO.length === 1 && linhasT.length === 1) {
+      if (/^import/.test(linhasO[0]) && /^import/.test(linhasT[0])) return linhasO[0] + '\n' + linhasT[0];
+      if (/^const SUITES/.test(linhasO[0]) && /^const SUITES/.test(linhasT[0])) {
+        const num = t => t.replace(/^const SUITES = \[/, '').replace(/\];?\s*$/, '').split(',').map(x => x.trim()).filter(Boolean);
+        return 'const SUITES = [' + [...new Set([...num(linhasO[0]), ...num(linhasT[0])])].join(', ') + '];';
+      }
     }
-    return ours.trim() + '\n' + theirs.trim();
+    return juntar(ours, theirs);
   });
+  // saneamento final: newline entre declaracoes coladas e imports unicas
+  s = s.replace(/(\.test\.mjs'|\.mjs');(import |const |if \(|let )/g, "$1\n$2");
+  const vistas = new Set();
+  s = s.split('\n').filter(l => { const m = l.match(/^import \{ suite as \w+ \} from '\.\/([\w.-]+)'/); if (m) { if (vistas.has(m[1])) return false; vistas.add(m[1]); } return true; }).join('\n');
+  const su = s.split('\n').map((l, i) => [i, l]).filter(([i, l]) => /^const SUITES = /.test(l));
+  if (su.length > 1) {
+    const nomes = new Set();
+    for (const [i, l] of su) l.replace(/^const SUITES = \[/, '').replace(/\];?\s*$/, '').split(',').map(x => x.trim()).filter(Boolean).forEach(n => nomes.add(n));
+    s.split('\n');
+    const arr = s.split('\n'); arr[su[0][0]] = 'const SUITES = [' + [...nomes].join(', ') + '];';
+    for (let k = su.length - 1; k >= 1; k--) arr.splice(su[k][0], 1);
+    s = arr.join('\n');
+  }
   writeFileSync(runPath, s);
   execSync('git add -- ' + runPath);
-  fora.runUnido = true;
-  fora.resolvidos.push(runPath + ' (uniao)');
+  fora.runUnido = true; fora.resolvidos.push(runPath + ' (uniao+saneamento)');
 }
 console.log(JSON.stringify(fora, null, 1));
