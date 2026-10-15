@@ -329,3 +329,55 @@ Personagem calibrado com a medição real (`docs/snapshots/player.json`: nível 
 
 - `bun tools/sim-build.mjs` — imprime todas as constantes com `file:linha`, as quatro respostas e o ranking do 5.º espaço.
 - `grep -n "<token>" extension/automation.js` — cada linha da tabela acima traz o token para reconfirmar na revisão em que estiver.
+
+
+---
+
+## 8. RE-AUDITORIA W9 (2026-10-14, worker W9) — o que MUDOU e o que FALTA
+
+> A tabela G1..G23 acima e o retrato da revisao 6 317 linhas. Esta seccao e o DELTA medido depois
+> das correccoes dos tickets da fila W9 (`scoreSet`, `tierDe`, `CAMPOS_MULT`, `infoItem`,
+> `mit`/`pen`, `nome` do item). Cada linha traz o teste que a prende, na suite `score`
+> (`tools/testes/score.test.mjs`, 58 assercoes novas).
+
+### 8.1 O que passou a ser LIDO do motor (derivaveis fechados)
+
+| Grupo | Antes | Agora | Teste |
+|---|---|---|---|
+| G12 `tierDe` | `qIdx(qual)*10 + refino` (c) — "1 qualidade = 10 refinos" | `(1 + BONUS_REFINO*ref) * QUALIDADES[qual].mult` (motor.js:252, 55, 174-178) | `T64a-g` |
+| G8 `CAMPOS_MULT` | 6 entradas, SEM `penMag` | 7: `['penMag','ap']` (motor.js:501/514 `pct`) — o 3175 e o 3020 entram pelo CAMPO, sem lista manual | `T66a-e` |
+| G18/G23 `mit` (ramo fisico) | `alvo.armadura * (1 - S.pen)` — usava a pen MAGICA | `(1 - S.penArmadura)` no fisico, `armMagicaEfetiva(arm, pen)` no magico (motor.js:529 vs 539) | `T150a-b`, `T134a-c` |
+| G17 caps | `Math.min(0.7, soma)` na pen de armadura — tecto que o motor NAO aplica | limite fisico [0,1]; a composicao do motor da ate 0,835 | `T134b` |
+| G6 `valorPassiva` (pen) | o texto somava a pen mesmo com o campo `penMag` presente (3175: 0,15x700 + 15x7) | o texto so conta quando `it.penMag == null` (3135 continua a contar: nao tem campo) | `T31c-h` |
+| (novo) `infoItem` | `stats: it.stats || null` — campo que o catalogo nao tem: **devolvia SEMPRE null** | `statsDePeca()`: os 11 campos do motor (motor.js:252-255) para QUALQUER item; resolve a melhor instancia conhecida (equipado/mochila) | `T79a-h`, `T109a-f` |
+| (novo) `player().rv` | lido do painel e DEITADO FORA | devolvido em fraccao (motor.js:538); a regex aceita "Roubo de Vida" (jogo.js:5999) | `T142a-c` |
+| G20 `rmMonstro` | `META.rmMonstro` nunca chegava (chave fora da whitelist do `carregarMeta`) | a chave passou a ser honrada; **falta o `inject.js` enviar** (ticket `extra-W9-62.md`) | `T62c` (0,5 -> 52) |
+
+### 8.2 O que AUMENTOU (dito, nao escondido)
+
+- **`scoreSet` ganhou um termo de cura** (`cura/s = dano de auto-ataque/s x rv`, motor.js:1226-1228) com um **peso heuristico NOVO e declarado**: 1 cura/s conta como 1 de dano/s. E classe **(c)** — se o dono quiser que a cura valha mais ou menos que o dano, e decisao dele (critério "as poções ficam caras").
+
+### 8.3 Contagem (delta, nao re-auditoria dos 23 grupos)
+
+| Classe | Antes | Delta | Agora |
+|---|---|---|---|
+| (a) NECESSARIO | 5 | 0 | **5** |
+| (b) DERIVAVEL | 103 | +16 | **119** |
+| (c) HEURISTICA MINHA | 151 | -1 (eco do pen do 3175) +1 (peso da cura) = 0 | **151** |
+| **Total** | 259 | +16 | **275** |
+
+O total SOBE porque a contagem original nao contava os 11 campos de stats por item do `infoItem` nem o termo de cura — a comparacao item a item exige re-auditar os 23 grupos, o que nao foi feito.
+
+### 8.4 O que FALTA (fora do write scope da fila W9 — tickets criados)
+
+| Ticket | O que fica de pe | Ficheiro |
+|---|---|---|
+| `extra-W9-51.md` | a build ideal continua a escolher item a item, nao a COMBINACAO | `montarBuildDe`/`buildIdeal*` |
+| `extra-W9-63.md` | a passiva ainda vale texto x multEsp x PESO_FASE (3135: 280 -> 1 061) | `valorDeFase`/`montarBuildDe` |
+| `extra-W9-87.md` | o simulador NAO CORRE contra o motor vivo (o "conflito" do TK-02-87) | `tools/sim-build.mjs:65` |
+| `extra-W9-62.md` | o `inject.js` nao envia o `RM_MONSTRO` | `extension/inject.js` |
+| `extra-W9-127.md` | o termo de cura nao chegou ao `montarBuildDe`; `pesosItem('mago').ad = 0` | `valorDeFase`/`pesosItem` |
+| `extra-W9-150.md` | os escudos ficam fora da vida efectiva do `avaliar` | `avaliar` |
+| `extra-W9-parsenum.md` | `parseNum`/`parseBig` corrompem `k`/`M` e milhares (ouro/xp/precos) | leitura de numeros |
+
+**Os 151 heuristicos da classe (c)** continuam a ser a lista de decisao do dono (§2, G1..G23): nao foram inventados nem apagados por este worker.
