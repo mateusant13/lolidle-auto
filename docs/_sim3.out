@@ -1,0 +1,373 @@
+================================================================================================
+SIMULADOR DE BUILDS — LoL Idle. Matemática do motor do JOGO (docs/game-src/motor.js).
+================================================================================================
+Constantes extraídas (cada uma com o file:linha de onde saiu):
+  RM_MONSTRO      0.6 [motor.js:1179]
+  TETO_VIDA_ITEM  3 [motor.js:1190]
+  VEL_ATAQUE_MAX  3 [motor.js:344]
+  ESPACOS_ITENS   4 [motor.js:29]
+  BARRA           4 [motor.js:900]
+  DANO_CRIT_BASE  1.75 [motor.js:499]
+  GUME_CRIT       0.4 [motor.js:515]
+  RABADON_MULT    1.35 [motor.js:522]
+  ARCANJO_PCT     0.03 [motor.js:521]
+  TIRANIA_PCT     0.02 [motor.js:514]
+  VOID_PEN        0.6 [motor.js:529]
+  VOID_PEN_3135   0.4 [motor.js:529]
+  CDR_CAP         0.4 [motor.js:537]
+  CDR_CAP_ATRIB   0.3 [motor.js:537]
+  PEN_ARM_3036    0.7 [motor.js:539]
+  CHEFE_3036      1.15 [motor.js:1214]
+  LICH_PROC       0.75 [motor.js:1688]
+  LUDEN_BASE      100 [motor.js:1948]
+  LUDEN_AP        0.1 [motor.js:1948]
+  LUDEN_CD        6 [motor.js:1945]
+  LUDEN_ALVOS     3 [motor.js:1946]
+  LIANDRY_PCT     0.015 [motor.js:1207]
+  CHAMA_4645      1.2 [motor.js:1205]
+  MORELO_3165     1.12 [motor.js:1206]
+  SHUNPO_PEGA     1 [motor.js:2162]
+  BONUS_REFINO    0.12 [motor.js:55]
+  QUALIDADES mult  C=0.9 B=1 A=1.15 S=1.35 SS=1.7 [motor.js:173]
+  patches de cdr   2022{cdr: 0.05, resumo: 'Reduz a recarga das habilidades'} [motor.js:16] | 1006{regen: 3} [motor.js:17] | 3057{efeito: 'Lâmina Encantada: depois de usar uma habilidade, o próximo ataque (ou o Disparo Místico do Ezreal) causa +100% do Dano de Ataque base.'} [motor.js:18] | 4629{cdr: 0.15} [motor.js:24] | 3108{cdr: 0.05} [motor.js:25] | 3802{cdr: 0.05} [motor.js:26]
+  P.giro Katarina  30 + 19*nivel + 1*ap + 0.4*max(0,ad-adBase) [motor.js:737]
+  voracidadeChefe  5 [motor.js:736]   pegaCada 0.35 [motor.js:736]
+  papel.dano       katarina 1.2 [motor.js:883]   lux 1.59 [motor.js:876]
+  cdr por Foco     0.004 [motor.js:537]   teto dos atributos 30% · teto total 40%  [motor.js:537]
+  Foco -> dano hab 0.002 [motor.js:457]   (Katarina/Zac/Yasuo, motor.js:531,1218)
+
+CDR DOS ATRIBUTOS = 0,00%  (Foco 0,0 pontos, MEDIDO no painel do dono: Força 81 · Vitalidade 3 · Resistência 0 · Agilidade 0 · Foco 0)
+  os 23,46% do total da build com Ímpeto vêm TODOS do Ímpeto 4629+3~A (0,15 × 1,15 qualidade A × 1,36 refino +3, motor.js:24,255) — nenhum de atributos.
+  O Foco entra no motor como 0.004 × Foco [motor.js:537]; com Foco 0 o termo é 0. Parâmetro: --foco N (default 0 = o medido).
+
+PERSONAGEM CALIBRADO (medido ao vivo): katarina nível 29 — docs/snapshots/player.json + docs/snapshots/katarina.json
+  medido: AD 161 · AP 1104 · VA 1.16 · vida 4476 · armadura 164 · RM 134
+  build da medição: 3175~A, 3089+2~B, 3100+3~A, 3135~A, 4629+3~A
+  base derivada (nível+atributos, sem itens): AD 161,0 · AP 200,9 · VA_base 1,160 · vida 3928,6
+  luta medida vs Dragão Infernal: 35.6s, outDps 1360, por fonte {"A":114,"Q":195,"item":203,"ataque":119,"P":598,"R":131}
+
+CONFERÊNCIA DO MODELO contra a MEDIÇÃO — barra MEDIDA na luta (W/Q/R/A)
+  modelo  : 1605 dps (hab 615 + passiva 576 + ataque 110 + lich 304 + queima 0) · habilidades/s 0,392 · procs Lich/s 0,392
+  medido  : 1360 dps (por fonte: {"A":114,"Q":195,"item":203,"ataque":119,"P":598,"R":131})
+  -> passiva (giro) medida 598 dps vs 576 do modelo; item (Lich) medido 203 dps vs 304 do modelo;
+     ataques medidos 119 dps vs 110 do modelo. O modelo assume "em recarga, sempre": é TETO.
+CONFERÊNCIA DO MODELO contra a MEDIÇÃO — barra da sim (top-4 por dano/recarga)
+  modelo  : 1864 dps (hab 676 + passiva 576 + ataque 110 + lich 502 + queima 0) · habilidades/s 0,647 · procs Lich/s 0,647
+  medido  : 1360 dps (por fonte: {"A":114,"Q":195,"item":203,"ataque":119,"P":598,"R":131})
+  -> passiva (giro) medida 598 dps vs 576 do modelo; item (Lich) medido 203 dps vs 502 do modelo;
+     ataques medidos 119 dps vs 110 do modelo. O modelo assume "em recarga, sempre": é TETO.
+
+------------------------------------------------------------------------------------------------
+Q1) BOTA DE CDR + outro item de dano  VS  BOTA DE PEN + ÍMPETO CÓSMICO
+    dono: "nao sei se bota de cdr sem IMPETO e outro item de dano no lugar e melhor que bota de pen com impeto".
+    fixos: 3089~B, 3135~B, 3100~B (Rabadon + Cajado do Vazio + Perdição de Lich)
+    A) 3089~B, 3135~B, 3100~B, 3158~B, 4645~B -> AP 859 · cdr 8,0% · pen 40%
+    B) 3089~B, 3135~B, 3100~B, 3175~B, 4629~B -> AP 899 · cdr 15,0% · pen 55%
+    C) 3089~B, 3135~B, 3100~B, 3020~B, 4629~B -> AP 852 · cdr 15,0% · pen 48%
+    D) 3089~B, 3135~B, 3100~B, 3158~B, 4629~B -> AP 805 · cdr 23,0% · pen 40%
+    fórmula: dano mágico = mitigar(1, armadura×0.6×(1−penMagica)) [motor.js:1202,1179];
+             recarga efectiva = recarga×(1−cdr) [motor.js:1581]; caps pen 0.6 e cdr 0.4 [motor.js:529,537]
+    (a bota de CDR 3158 é ÉPICA: 150 de mana e 8% de cdr, SEM AP; a de pen 3175 é LENDÁRIA: 70 de AP e 15% de pen — a comparação de 5 espaços é esta)
+    armadura |  A) bota CDR+Chama | B) bota pen+Ímpeto | C) bota pen épica+Ímpeto | D) bota CDR+Ímpeto | vencedor
+           0 |                1775 |               1960 |                      1893 |             1994 | B (+184)
+          20 |                1634 |               1833 |                      1758 |             1838 | B (+200)
+          40 |                1516 |               1726 |                      1644 |             1707 | B (+211)
+          60 |                1416 |               1634 |                      1546 |             1595 | B (+218)
+          80 |                1329 |               1552 |                      1460 |             1498 | B (+223)
+         100 |                1253 |               1479 |                      1384 |             1413 | B (+226)
+         104 |                1238 |               1465 |                      1370 |             1397 | B (+227)
+         120 |                1185 |               1413 |                      1316 |             1338 | B (+228)
+         150 |                1097 |               1325 |                      1227 |             1239 | B (+228)
+         200 |                 976 |               1202 |                      1103 |             1104 | B (+225)
+         250 |                 880 |               1100 |                      1002 |              995 | B (+220)
+         300 |                 802 |               1015 |                       918 |              907 | B (+213)
+         400 |                 681 |                879 |                       787 |              770 | B (+199)
+    RESPOSTA: B (bota de pen + Ímpeto) ganha em TODA a faixa testada — 184 dps a mais com armadura 0 e 199 a mais com armadura 400.
+    NÃO há inversão entre 0 e 400 de armadura (B ganha desde a armadura 0). A razão é dupla:
+      (1) a bota de pen é LENDÁRIA e traz 70 de AP (×1.35 do Rabadon) enquanto a de CDR é ÉPICA e traz 8% de cdr;
+      (2) o Ímpeto Cósmico traz 70 AP + 15% de cdr, e o CDR acelera habilidades E o giro da Katarina (motor.js:1581 e motor.js:2162).
+    ONDE A RESPOSTA INVERTE (bota de pen ÉPICA 3020 + Ímpeto  vs  bota de CDR 3158 + Ímpeto):
+      armadura < 206 -> D (CDR) ganha; armadura > 206 -> C (pen épica) ganha  [C 1090 vs D 1090 dps]
+    O CDR só compensa se a bota de CDR tivesse o MESMO AP: o teste isolado abaixo mostra quanto é da bota e quanto é do item.
+    só a bota (Ímpeto nos dois)      1397 -> 1465  (d 67 dps, 4,8%)
+    só a bota (Chama nos dois)       1238 -> 1312  (d 73 dps, 5,9%)
+    só a flex (bota CDR nos dois)    1238 -> 1397  (d 159 dps, 12,8%)
+
+------------------------------------------------------------------------------------------------
+Q2) DOIS CAJADOS DO VAZIO (3135) + bota de CDR, com um cajado no lugar do Ímpeto
+    REGRA DURA DO MOTOR: "cada lendário uma vez" — motor.js:2879 (equipar) e motor.js:2891 (cabeNoEquip).
+    A linha do motor: if (ITENS[baseId(id)].lendario && estado.itens.some((x) => baseId(x) === baseId(id))) return false;
+    E a penetração não empilharia de qualquer forma: motor.js:529 usa tem(3135) ? 0.4 : 0 (booleano), com teto 0.6.
+    hipótese (se fosse permitido):
+      normal   3158~B, 3135~B, 4629~B, 3089~B, 3100~B -> AP 805 cdr 23,0% pen 40%  = 1397 dps
+      dois 3135 3158~B, 3135~B, 3135~B, 3089~B, 3100~B -> AP 838 cdr 8,0% pen 40%  = 1219 dps
+    dAP 33,8 · dcdr -15,0 pontos · dpen 0 pontos (NÃO empilha) · dvida -350
+    dDPS -178 (-12,7%).
+    RESPOSTA: NÃO FUNCIONA — o motor recusa o 2.º lendário igual (motor.js:2879/2891) e a pen não empilha
+    (motor.js:529). Mesmo ignorando a regra, o 2.º Cajado troca 15% de CDR por 25 de AP.
+
+------------------------------------------------------------------------------------------------
+Q3) LICH (3100 Perdição de Lich): o proc depende da FREQUÊNCIA DE SKILLS, não de um multiplicador fixo
+    motor.js:1944 arma d.lich = true em CADA habilidade (aoUsarHabilidade, chamado por usar() em motor.js:1584);
+    motor.js:1688 gasta no próximo ATAQUE BÁSICO: 0,75×AP como dano mágico.
+    Logo procs/s = min(habilidades/s, ataques/s) — o proc NÃO é "1 por habilidade" nem "por ataque".
+    A extensão (automation.js:1243) soma lich*ap a CADA habilidade e divide pela recarga dela: isso é 1 proc/habilidade.
+    Katarina, barra MEDIDA na luta (W/Q/R/A)
+      barra W/Q/R/A · habilidades/s 0,326 · ataques/s 1,16 · giros/s 0,304 · giro 1291 de dano
+      procs do Lich/s 0,326 (limitado por HABILIDADES) × 0,75×AP(710) mitigado = 152 dps
+      total COM Lich 956 dps (15,9% do total) | SEM Lich (4645 no lugar) 812 dps | d(Lich−Chama) 144 dps
+      modelo da EXTENSÃO (1 proc/habilidade) daria 152 dps -> 1,00x o modelo do motor
+    Katarina, barra da sim (top-4 por dano/recarga)
+      barra Q/A/E/T · habilidades/s 0,538 · ataques/s 1,16 · giros/s 0,304 · giro 1291 de dano
+      procs do Lich/s 0,538 (limitado por HABILIDADES) × 0,75×AP(710) mitigado = 250 dps
+      total COM Lich 1099 dps (22,8% do total) | SEM Lich (4645 no lugar) 856 dps | d(Lich−Chama) 242 dps
+      modelo da EXTENSÃO (1 proc/habilidade) daria 250 dps -> 1,00x o modelo do motor
+    Maga (Lux, recargas do motor.js:633-668; barra top-4 Q/E/T/A)
+      habilidades/s 0,750 · procs do Lich/s 0,750 (limitado por HABILIDADES)
+      Lich = 462 dps em 1721 dps (26,8% do total)
+      (AP/AD de base da Katarina por falta de snapshot da Lux — o que decide o proc é a RECARGA, que é do motor.)
+    O PROC EM FUNÇÃO DA FREQUÊNCIA (AP fixo, mesmo alvo) — é a resposta ao "modela em função da frequência":
+      habilidades/s  0,10 -> procs/s 0,10 -> Lich    46 dps
+      habilidades/s  0,20 -> procs/s 0,20 -> Lich    93 dps
+      habilidades/s  0,33 -> procs/s 0,33 -> Lich   153 dps
+      habilidades/s  0,54 -> procs/s 0,54 -> Lich   251 dps
+      habilidades/s  0,75 -> procs/s 0,75 -> Lich   349 dps
+      habilidades/s  1,16 -> procs/s 1,16 -> Lich   539 dps
+      habilidades/s  1,50 -> procs/s 1,16 -> Lich   539 dps  <- aqui o TECTO é o ATAQUE (1,16/s)
+      habilidades/s  2,00 -> procs/s 1,16 -> Lich   539 dps  <- aqui o TECTO é o ATAQUE (1,16/s)
+    RESPOSTA: para a Katarina (ataques/s 1,16 > habilidades/s) quem manda é a RECARGA do kit,
+    logo "usar muita skill" NÃO eleva o Lich acima do ritmo real das recargas — e o modelo da extensão (1 proc/habilidade)
+    acerta nela por acidente. O multiplicador fixo 2,2 do valorPassiva (automation.js:3809) é que achata a diferença
+    entre campeões: o valor real é proporcional a 1/recarga (sai do kit), não a uma constante.
+    RANKING DO 5.º ESPAÇO (quem entra no lugar do Lich, mesma build e alvo) — responde "deveria fazer entrar nas builds":
+      Perdição de Lich               AP   710 ->  1099 dps
+      Tormento de Liandry            AP   656 ->  1075 dps
+      Chama Sombria                  AP   724 ->   856 dps
+      Criafendas                     AP   717 ->   853 dps
+      Coroa da Rainha Despedaçada    AP   710 ->   848 dps
+      Morellonomicon                 AP   676 ->   828 dps
+      Cajado do Arcanjo              AP   670 ->   824 dps
+      Cetro de Cristal de Rylai      AP   663 ->   820 dps
+    ATENÇÃO: este ranking é do contexto ANTIGO — 4 itens (bota de CDR 3158 + Rabadon + Cajado do Vazio + candidato),
+    sem o 4.º item do núcleo e com a bota de CDR. O re-teste com o núcleo real do dono (3175+3089+3135+3100 + 5.º) está em Q5/Q7.
+
+------------------------------------------------------------------------------------------------
+Q4) DOIS RABADONS (3089)
+    motor.js:522  if (tem('3089')) ap *= 1.35;                              // Rabadon: +35% do poder total
+    É tem(3089) (booleano) -> o ×1.35 aplica-se UMA vez, por muitos Rabadons que existam.
+    E motor.js:2879/2891 recusa um 2.º lendário igual no equipamento.
+    1 Rabadon : AP 859 -> 1238 dps
+    2 Rabadons: AP 906 -> 1103 dps
+    (o 2.º Rabadon ocupa o espaço do Cajado do Vazio, 95 AP -> 130 AP: dAP 47,3 = (130 − 95) × 1.35 — o multiplicador NÃO duplica)
+    dDPS -136 (-11,0%) — é o AP flat do 2.º Rabadon, não 1,35² = 1,82x.
+    RESPOSTA: NÃO empilha e NÃO pode ser equipado (lendário único). O 2.º Rabadon só vale o AP flat.
+
+------------------------------------------------------------------------------------------------
+EXTRA) sensibilidade das passivas CONDICIONAIS (a fracção da luta não sai de ficheiro nenhum)
+    Chama Sombria com 0% da luta abaixo de 40% de vida: 1238 dps
+    Chama Sombria com 25% da luta abaixo de 40% de vida: 1280 dps
+    Chama Sombria com 50% da luta abaixo de 40% de vida: 1321 dps
+    Chama Sombria com 100% da luta abaixo de 40% de vida: 1404 dps
+    (motor.js:1205 aplica x1.2 só quando f < 0,4; a fracção é parâmetro, não constante do jogo.)
+
+------------------------------------------------------------------------------------------------
+Q5) 5.º ESPAÇO: TORMENTO DE LIANDRY (6653: 60 AP, 300 vida, 0 CDR, queima 1,5%/s)  VS  ÍMPETO CÓSMICO (4629: 70 AP, 350 vida, 15% CDR)
+    base fixa (a build do dono sem o 5.º espaço): 3175~B, 3089~B, 3135~B, 3100~B
+      [itens.js: 3175 Sapatos Enfeitiçados (bota, 70 AP, penMag 0.15) · 3089 Rabadon (130 AP) · 3135 Cajado do Vazio (95 AP, penMag 0.4) · 3100 Lich (100 AP)]
+    A)  base + 6653 Liandry      -> AP 886 · cdr 0,0% = atrib 0,0% + itens 0,0% · pen 55% · vida 4229
+    B)  base + 4629 Ímpeto       -> AP 899 · cdr 15,0% = atrib 0,0% + itens 15,0% · pen 55% · vida 4279
+    B3) base + 4629+3~A Ímpeto   -> AP 952 · cdr 23,5% = atrib 0,0% + itens 23,5% · pen 55% · vida 4476  (o Ímpeto +3 de qualidade A do dono: motor.js:255 multiplica o cdr como qualquer atributo)
+    O CDR: motor.js:537  reducaoRecarga: Math.min(0.4, Math.min(0.3, 0.004 * at.foco) + cdrItens),
+      ATRIBUTOS: Foco = 0,0 pontos [MEDIDO no painel do jogo: Força 81 + Vitalidade 3 = 84 = 3×28, Foco 0] -> CDR de atributos 0,0%
+      ITENS: 3175/3089/3135/3100/6653 não têm cdr (itens.js) -> cdr de itens 0% na build A
+      O Ímpeto é o ÚNICO cdr desta comparação: 0,15 [patch motor.js:24] × 1,15 (qualidade A) × 1,36 (refino +3) = 23,46% [motor.js:255]
+      (o Foco ainda daria +0,2%/ponto de dano de habilidade, motor.js:457,531,1218 — com Foco 0 não dá nada)
+    ganho de FREQUÊNCIA do Ímpeto (recarga efectiva = recarga×(1−cdr), motor.js:1581):
+      B  vs A: (1−0,00)/(1−0,15) = ×1,1765  -> +17,6% de habilidades/s
+      B3 vs A: (1−0,00)/(1−0,23) = ×1,3065  -> +30,7% de habilidades/s
+    queima do Liandry: motor.js:1207 põe alvo.queima = vidaRefItem(alvo)×1,5% por 3 s; motor.js:1653 tira a vida DIRETO, SEM mitigação de armadura
+      por alvo: min(hpMax, 3×CURVA.hp(40))×1,5% = min(69000, 17 250)×1,5% = 258,8 dps (motor.js:1190,1191,273-274)
+    B3 é o MESMO Ímpeto com +3 de refino e qualidade A (o do dono): o cdr de item leva ×refino e ×qualidade (motor.js:255),
+      por isso o B3 não é uma comparação de item igual — serve só para ver quanto vale o refino que o dono já tem.
+
+    ### barra MEDIDA na luta (W/Q/R/A) — a que o dono usa
+    1 ALVO — varredura de armadura (Dragão Infernal, nível 40, hp 69000)
+      armadura │ A) Liandry │ B) Ímpeto │ B3) Ímpeto+3~A │ vencedor A/B │ margem
+             0 │      1729 │     1706 │          1940 │ A) Liandry 6653 │ 23 dps
+            20 │      1628 │     1593 │          1815 │ A) Liandry 6653 │ 35 dps
+            50 │      1506 │     1455 │          1661 │ A) Liandry 6653 │ 51 dps
+           104 │      1341 │     1267 │          1449 │ A) Liandry 6653 │ 75 dps
+           150 │      1235 │     1144 │          1311 │ A) Liandry 6653 │ 91 dps
+           200 │      1143 │     1037 │          1189 │ A) Liandry 6653 │ 106 dps
+           250 │      1067 │      949 │          1088 │ A) Liandry 6653 │ 118 dps
+           300 │      1003 │      875 │          1004 │ A) Liandry 6653 │ 128 dps
+           400 │       903 │      757 │           870 │ A) Liandry 6653 │ 145 dps
+    ARMADURA 104 (o Dragão medido) — N alvos em volta (a queima é POR ALVO, motor.js:1207; o giro corta todos, motor.js:2159,2180)
+      alvos │ A) Liandry │ B) Ímpeto │ B3) Ímpeto+3~A │ vencedor A/B │ margem
+          1 │      1341 │     1267 │          1449 │ A) Liandry 6653 │ 75 dps
+          2 │      2234 │     2020 │          2318 │ A) Liandry 6653 │ 214 dps
+          3 │      3127 │     2774 │          3187 │ A) Liandry 6653 │ 354 dps
+          4 │      3770 │     3229 │          3711 │ A) Liandry 6653 │ 541 dps
+          5 │      4413 │     3685 │          4235 │ A) Liandry 6653 │ 727 dps
+          6 │      5055 │     4141 │          4760 │ A) Liandry 6653 │ 914 dps
+
+    ### barra da sim (top-4 por dano/recarga)
+    1 ALVO — varredura de armadura (Dragão Infernal, nível 40, hp 69000)
+      armadura │ A) Liandry │ B) Ímpeto │ B3) Ímpeto+3~A │ vencedor A/B │ margem
+             0 │      1942 │     1960 │          2234 │ B) Ímpeto 4629  │ 18 dps
+            20 │      1830 │     1833 │          2094 │ B) Ímpeto 4629  │ 4 dps
+            50 │      1694 │     1679 │          1921 │ A) Liandry 6653 │ 15 dps
+           104 │      1508 │     1465 │          1679 │ A) Liandry 6653 │ 43 dps
+           150 │      1387 │     1325 │          1520 │ A) Liandry 6653 │ 62 dps
+           200 │      1281 │     1202 │          1380 │ A) Liandry 6653 │ 79 dps
+           250 │      1194 │     1100 │          1264 │ A) Liandry 6653 │ 94 dps
+           300 │      1121 │     1015 │          1167 │ A) Liandry 6653 │ 106 dps
+           400 │      1005 │      879 │          1011 │ A) Liandry 6653 │ 126 dps
+    ARMADURA 104 (o Dragão medido) — N alvos em volta (a queima é POR ALVO, motor.js:1207; o giro corta todos, motor.js:2159,2180)
+      alvos │ A) Liandry │ B) Ímpeto │ B3) Ímpeto+3~A │ vencedor A/B │ margem
+          1 │      1508 │     1465 │          1679 │ A) Liandry 6653 │ 43 dps
+          2 │      2342 │     2148 │          2466 │ A) Liandry 6653 │ 194 dps
+          3 │      3176 │     2832 │          3253 │ A) Liandry 6653 │ 345 dps
+          4 │      3869 │     3347 │          3846 │ A) Liandry 6653 │ 522 dps
+          5 │      4562 │     3863 │          4440 │ A) Liandry 6653 │ 699 dps
+          6 │      5255 │     4379 │          5033 │ A) Liandry 6653 │ 877 dps
+
+    POR FONTE — 1 alvo, armadura 104, barra medida (quem ganha e quem perde):
+      A) Liandry        1341 dps │ hab   402 │ giro   384 │ atq  110 │ lich   187 │ queima   259 │ hab/s 0,300 │ giros/s 0,279
+      B) Ímpeto         1267 dps │ hab   478 │ giro   456 │ atq  110 │ lich   223 │ queima     0 │ hab/s 0,353 │ giros/s 0,329
+      B3) Ímpeto+3~A    1449 dps │ hab   553 │ giro   524 │ atq  110 │ lich   262 │ queima     0 │ hab/s 0,392 │ giros/s 0,365
+
+    SENSIBILIDADE À UPTIME (o modelo assume "em recarga, sempre": é TETO, ver CONFERÊNCIA DO MODELO)
+      a luta medida deu 1038 dps de habilidades+giro contra 1191 do modelo para a MESMA build (docs/snapshots/katarina.json) -> uptime medido ~0,87
+      uptime │ A) Liandry │ B) Ímpeto │ B3) Ímpeto+3~A │ vencedor A/B │ A vs B3
+        1,00 │      1341 │     1267 │          1449 │ A) Liandry 6653 │ B) Ímpeto+3~A   +108 dps
+        0,87 │      1201 │     1102 │          1261 │ A) Liandry 6653 │ B) Ímpeto+3~A   +60 dps
+        0,85 │      1179 │     1077 │          1232 │ A) Liandry 6653 │ B) Ímpeto+3~A   +53 dps
+        0,70 │      1017 │      887 │          1015 │ A) Liandry 6653 │ A) Liandry 6653 +2 dps
+        0,55 │       843 │      697 │           797 │ A) Liandry 6653 │ A) Liandry 6653 +46 dps
+        0,45 │       690 │      570 │           652 │ A) Liandry 6653 │ A) Liandry 6653 +37 dps
+      -> Liandry vs Ímpeto: o Ímpeto ganha com qualquer uptime testado
+      -> Liandry vs Ímpeto+3~A (o do dono): INVERTE com uptime < 0,706
+
+    ONDE A RESPOSTA INVERTE (barra medida):
+      1 alvo, armadura 0→400: o Ímpeto ganha SEMPRE
+      armadura 104: até 0 alvos o Ímpeto ganha · 1 alvos ou mais o Liandry ganha
+      razão: a queima do Liandry NÃO é mitigada pela armadura (motor.js:1653 tira a vida directo) e é POR ALVO (motor.js:1207);
+      o dano das habilidades É mitigado (motor.js:1201-1202) e a Q/R só atingem 3 alvos (motor.js:738,746,2190,2275).
+
+    AS DUAS PREMISSAS LADO A LADO (a antiga fica registada, não apagada) — armadura 104, 1 alvo, barra medida:
+      A) Liandry 6653  Foco 0 (MEDIDO — correcto)   1341 dps   |   Foco 57,5 (dedução REFUTADA)   1749 dps  (+408)
+      B) Ímpeto 4629   Foco 0 (MEDIDO — correcto)   1267 dps   |   Foco 57,5 (dedução REFUTADA)   1843 dps  (+576)
+      Ímpeto − Liandry: -75 dps com Foco 0 (o certo)   |   94 dps com Foco 57,5 (a dedução errada)
+      quem ganha é o MESMO nas duas premissas? NÃO  (a premissa errada inflacionava o Ímpeto: dava-lhe o cdr dos atributos que não existem)
+
+    RESPOSTA Q5:
+      armadura 104 (Dragão medido), 1 alvo  -> vence A) Liandry 6653  (vantagem 75 dps)   [com o Ímpeto +3~A: 1449 dps]
+      armadura 0,   1 alvo                  -> vence A) Liandry 6653  (vantagem 23 dps)   [com o Ímpeto +3~A: 1940 dps]
+      armadura 50,  1 alvo                  -> vence A) Liandry 6653  (vantagem 51 dps)   [com o Ímpeto +3~A: 1661 dps]
+      armadura 104, 3 alvos                 -> vence A) Liandry 6653  (vantagem 354 dps)   [com o Ímpeto +3~A: 3187 dps]
+      armadura 30,  3 alvos                 -> vence A) Liandry 6653  (vantagem 276 dps)   [com o Ímpeto +3~A: 3818 dps]
+      COM O UPTIME MEDIDO (~0,87; armadura 104, 1 alvo) -> vence A) Liandry 6653 (98 dps)
+        e contra o Ímpeto +3~A do dono: 1263 vs 1202 -> vence B) Ímpeto+3~A (61 dps)
+
+------------------------------------------------------------------------------------------------
+Q6) O CDR: de onde vem cada ponto, e o teto efectivo (Foco = 0,0)
+    motor.js:537  reducaoRecarga: Math.min(0.4, Math.min(0.3, 0.004 * at.foco) + cdrItens),
+    motor.js:450  foco: { curto: '+8 mana, −0,4% recarga', nome: 'Foco', serve: 'Mais mana e habilidades voltando mais rápido.', efeito: '+8 de mana, +0,06 de regeneração de mana e −0,4% de recarga (máx. 30%)',
+    motor.js:24  Object.assign(ITENS['4629'], { cdr: 0.15 });           // Ímpeto Cósmico (aceleração de habilidade)
+    motor.js:255  regen: (i.regen || 0) * m, cdr: (i.cdr || 0) * m };
+    motor.js:508  regenItens += i.regen; cdrItens += i.cdr;
+    motor.js:457  export const FOCO_DANO_HAB = 0.002, FOCO_FLUXO = 0.01;
+    motor.js:531  danoHab: k.semMana ? FOCO_DANO_HAB * at.foco : 0,          // Foco da Katarina
+    motor.js:1218  if (hab && a.danoHab) dano *= 1 + a.danoHab;               // Foco da Katarina (vale também no giro das adagas)
+    (motor.js:3497-3499: conquistas NÃO dão cdr — só ad/vida/armadura/rm/ouro; motor.js:3536-3537: o mascote também não)
+
+    CADA TERMO COM A SUA FONTE (nada deduzido de totais):
+      ATRIBUTOS  Foco = 0,0 pontos [MEDIDO no painel: Força 81 · Vitalidade 3 · Resistência 0 · Agilidade 0 · Foco 0; 81+3 = 84 = 3×28, motor.js:483,1047]
+                 -> CDR de atributos = min(0.3, 0.004 × 0,0) = 0,00%  (motor.js:537)
+                 -> dano de habilidade do Foco = 0.002 × 0,0 = 0,0%  (motor.js:457,531,1218)
+      ITENS      Ímpeto 4629: cdr 0,15 [patch motor.js:24] × 1,15 (qualidade A) × 1,36 (refino +3) = 23,46%  [motor.js:255]  <- é o valor que a extensão mostrou como 0,23
+                 Botas Ionianas 3158: cdr 0,08 [itens.js] × 1,15 × 1,36 = 12,51% (+3~A) ou × 1,7 × 1,36 = 18,50% (+3~SS)  [motor.js:255]
+                 3175 (bota de pen), 3089, 3135, 3100 e o Liandry 6653: cdr 0 (itens.js). A bota de pen dá penMag 0,15 — valor CRU, sem ×refino/×qualidade (motor.js:506,509 espalha o item e só reescala os campos listados em motor.js:255; a medição de 0,55 = 0,40+0,15 confirma)
+      TETOS      atributos 30% (=75 pontos de Foco) · total 40% — soma directa, corte só no fim (motor.js:537)
+
+    PREMISSA ANTIGA (registada, não apagada): deduzia Foco = 0,23/0,004 = 57,5 pontos do cdr 0,23 medido.
+      REFUTADA pela leitura do painel (Foco 0) e pela decomposição do item (0,15×1,15×1,36 = 0,2346 -> 0,23 na tela).
+      Com Foco 57,5 o CDR de atributos seria 23,0%; o valor medido é 0.
+
+    O QUE CADA ITEM ACRESCENTA (base = o cdr que já existe; nada de atributos):
+      nada (build com Liandry 6653, sem Ímpeto e sem bota de cdr) cdr 0,00%  ->  1,0000× habilidades/s  =  +0,0%
+      + Botas Ionianas 3158 (8% ~B)                          cdr 8,00%  ->  1,0870× habilidades/s  =  +8,7%
+      + Botas Ionianas 3158+3~A (12,51%)                     cdr 12,51%  ->  1,1430× habilidades/s  =  +14,3%
+      + Ímpeto 4629 (15% ~B)                                 cdr 15,00%  ->  1,1765× habilidades/s  =  +17,6%
+      + Ímpeto 4629+3~A (23,46%)                             cdr 23,46%  ->  1,3065× habilidades/s  =  +30,7%
+      + Ímpeto 4629+3~A  +  Botas Ionianas 3158+3~A          cdr 35,97%  ->  1,5618× habilidades/s  =  +19,5%
+      + Ímpeto 4629+3~A  +  Botas Ionianas 3158+3~SS         cdr 40,00% (bruto 41,96% -> TRAVADO)  ->  1,6667× habilidades/s  =  +27,6%
+
+    TETO EFECTIVO com o Ímpeto +3~A já na build: 23,46% gastos, sobram 16,54 pontos até ao tecto de 40%.
+      É a pergunta do Lead: a bota de CDR já não parte de 0 — parte de 23,46% e só tem 16,54 pontos de espaço (Q8).
+
+------------------------------------------------------------------------------------------------
+Q7) SE O ÍMPETO GANHAR, QUEM SAI DA BUILD?
+    a build do dono tem 5 espaços: 3175~B, 3089~B, 3135~B, 3100~B, 6653~B   (1 bota + 4, cada lendário uma vez: motor.js:2877-2879,2889)
+
+    1 alvo, armadura 104 (Dragão Infernal medido)
+      não mexer (build actual)              1341 dps   3175~B, 3089~B, 3135~B, 3100~B, 6653~B
+      sai Cajado do Vazio -> entra Ímpeto   1300 dps  (-41 vs actual)   3175~B, 3089~B, 3100~B, 6653~B, 4629~B
+      sai Tormento de Liandry -> entra Ímpeto  1267 dps  (-75 vs actual)   3175~B, 3089~B, 3135~B, 3100~B, 4629~B
+      sai Perdição de Lich -> entra Ímpeto  1266 dps  (-75 vs actual)   3175~B, 3089~B, 3135~B, 6653~B, 4629~B
+      sai Capuz da Morte de Rabadon -> entra Ímpeto  1246 dps  (-96 vs actual)   3175~B, 3135~B, 3100~B, 6653~B, 4629~B
+      sai a BOTA -> entra Ímpeto (ILEGAL)   1435 dps   3089~B, 3135~B, 3100~B, 6653~B, 4629~B   <- 5 itens fora a bota: o motor recusa (motor.js:29,2878,2890)
+
+    1 alvo, armadura 30 (alvo de armadura baixa)
+      não mexer (build actual)              1584 dps   3175~B, 3089~B, 3135~B, 3100~B, 6653~B
+      sai Cajado do Vazio -> entra Ímpeto   1668 dps  (+84 vs actual)   3175~B, 3089~B, 3100~B, 6653~B, 4629~B
+      sai Tormento de Liandry -> entra Ímpeto  1543 dps  (-41 vs actual)   3175~B, 3089~B, 3135~B, 3100~B, 4629~B
+      sai Perdição de Lich -> entra Ímpeto  1494 dps  (-89 vs actual)   3175~B, 3089~B, 3135~B, 6653~B, 4629~B
+      sai Capuz da Morte de Rabadon -> entra Ímpeto  1470 dps  (-113 vs actual)   3175~B, 3135~B, 3100~B, 6653~B, 4629~B
+      sai a BOTA -> entra Ímpeto (ILEGAL)   1754 dps   3089~B, 3135~B, 3100~B, 6653~B, 4629~B   <- 5 itens fora a bota: o motor recusa (motor.js:29,2878,2890)
+
+    3 alvos, armadura 104
+      não mexer (build actual)              3127 dps   3175~B, 3089~B, 3135~B, 3100~B, 6653~B
+      sai Perdição de Lich -> entra Ímpeto  3232 dps  (+105 vs actual)   3175~B, 3089~B, 3135~B, 6653~B, 4629~B
+      sai Cajado do Vazio -> entra Ímpeto   3036 dps  (-91 vs actual)   3175~B, 3089~B, 3100~B, 6653~B, 4629~B
+      sai Capuz da Morte de Rabadon -> entra Ímpeto  2942 dps  (-185 vs actual)   3175~B, 3135~B, 3100~B, 6653~B, 4629~B
+      sai Tormento de Liandry -> entra Ímpeto  2774 dps  (-354 vs actual)   3175~B, 3089~B, 3135~B, 3100~B, 4629~B
+      sai a BOTA -> entra Ímpeto (ILEGAL)   3343 dps   3089~B, 3135~B, 3100~B, 6653~B, 4629~B   <- 5 itens fora a bota: o motor recusa (motor.js:29,2878,2890)
+
+    BUSCA EXAUSTIVA — 990 builds completas de 5 espaços (3 botas × C(11,4) de lendários), com as regras do motor:
+      TOP 5 — 1 alvo, armadura 104 (Dragão Infernal medido)
+          1341 dps  3175~B, 3089~B, 3135~B, 3100~B, 6653~B   [cdr 0,0% · pen 55% · AP 886]
+          1300 dps  3175~B, 3089~B, 3100~B, 6653~B, 4629~B   [cdr 15,0% · pen 15% · AP 852]
+          1279 dps  3158~B, 3089~B, 3135~B, 3100~B, 6653~B   [cdr 8,0% · pen 40% · AP 791]
+          1273 dps  3020~B, 3089~B, 3135~B, 3100~B, 6653~B   [cdr 0,0% · pen 48% · AP 838]
+          1267 dps  3175~B, 3089~B, 3135~B, 3100~B, 4629~B   [cdr 15,0% · pen 55% · AP 899]
+        melhor COM Ímpeto: 1300 dps  3175~B, 3089~B, 3100~B, 6653~B, 4629~B  (perde 41 dps para a melhor)
+      TOP 5 — 1 alvo, armadura 30 (alvo de armadura baixa)
+          1668 dps  3175~B, 3089~B, 3100~B, 6653~B, 4629~B   [cdr 15,0% · pen 15% · AP 852]
+          1661 dps  3158~B, 3089~B, 3100~B, 6653~B, 4629~B   [cdr 23,0% · pen 0% · AP 757]
+          1607 dps  3020~B, 3089~B, 3100~B, 6653~B, 4629~B   [cdr 15,0% · pen 8% · AP 805]
+          1584 dps  3175~B, 3089~B, 3135~B, 3100~B, 6653~B   [cdr 0,0% · pen 55% · AP 886]
+          1560 dps  3158~B, 3089~B, 3135~B, 3100~B, 6653~B   [cdr 8,0% · pen 40% · AP 791]
+        melhor COM Ímpeto: 1668 dps  3175~B, 3089~B, 3100~B, 6653~B, 4629~B  (é a MELHOR de todas)
+      TOP 5 — 3 alvos, armadura 104
+          3232 dps  3175~B, 3089~B, 3135~B, 6653~B, 4629~B   [cdr 15,0% · pen 55% · AP 845]
+          3129 dps  3158~B, 3089~B, 3135~B, 6653~B, 4629~B   [cdr 23,0% · pen 40% · AP 751]
+          3127 dps  3175~B, 3089~B, 3135~B, 3100~B, 6653~B   [cdr 0,0% · pen 55% · AP 886]
+          3074 dps  3020~B, 3089~B, 3135~B, 6653~B, 4629~B   [cdr 15,0% · pen 48% · AP 798]
+          3036 dps  3175~B, 3089~B, 3100~B, 6653~B, 4629~B   [cdr 15,0% · pen 15% · AP 852]
+        melhor COM Ímpeto: 3232 dps  3175~B, 3089~B, 3135~B, 6653~B, 4629~B  (é a MELHOR de todas)
+
+    RESPOSTA Q7:
+      melhor build (1 alvo, armadura 104, barra do dono): 3175~B, 3089~B, 3135~B, 3100~B, 6653~B = 1341 dps
+        AP 886 · cdr 0,0% = atrib 0,0% + itens 0,0% · pen 55% · vida 4229
+      melhor SEM Ímpeto: 3175~B, 3089~B, 3135~B, 3100~B, 6653~B = 1341 dps
+      melhor COM Ímpeto: 3175~B, 3089~B, 3100~B, 6653~B, 4629~B = 1300 dps   (Ímpeto vs melhor-sem-Ímpeto: -41 dps)
+      melhor COM o Ímpeto +3~A do dono: 3175~B, 3089~B, 3135~B, 3100~B, 4629+3~A = 1449 dps
+        AP 952 · cdr 23,5% = atrib 0,0% + itens 23,5% · pen 55% · vida 4476   <- é a build recomendada se o Ímpeto for o +3 de qualidade A do dono
+      build actual do dono: 3175~B, 3089~B, 3135~B, 3100~B, 6653~B = 1341 dps   (a melhor dá 0 dps a mais)
+      PREMISSA ANTIGA (Foco 57,5, REFUTADA) para o mesmo cenário: melhor build 3175~B, 3089~B, 3135~B, 3100~B, 4629~B = 1843 dps · build actual 1749 dps
+      -> da build actual para a melhor COM Ímpeto: SAI Cajado do Vazio · ENTRA Ímpeto Cósmico
+      -> da build actual para a melhor SEM Ímpeto: SAI nada · ENTRA nada
+
+NAO VERIFICADO: nada — todos os números saíram de docs/game-src/ ou dos snapshots medidos

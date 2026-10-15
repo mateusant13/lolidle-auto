@@ -1,0 +1,95 @@
+/* LoL Idle — Auto-play · popup.css
+   Popup do botão da extensão: estado + ligar/desligar + configuração rápida.
+   O painel completo vive dentro do jogo (gui.js): F8 ou hover no teu nome. */
+
+:root {
+  --bg: #100e0c;
+  --pnl: #191614;
+  --pnl2: #141110;
+  --lin: #332c24;
+  --lin2: #231e19;
+  --txt: #e9e0cf;
+  --dim: #9d9280;
+  --ouro: #ffd070;
+  --verde: #4ce06a;
+  --ambar: #ffb020;
+  --verm: #ff6a4a;
+  --azul: #7cc4ff;
+}
+* { box-sizing: border-box; }
+body {
+  width: 344px; margin: 0; padding: 10px;
+  background: var(--bg); color: var(--txt);
+  font: 12px/1.45 system-ui, "Segoe UI", Roboto, sans-serif;
+}
+h1 { font-size: 14px; margin: 0; font-weight: 800; }
+h1 .sub { font-size: 10.5px; color: var(--dim); font-weight: 400; }
+h2 { font-size: 11.5px; margin: 0 0 6px; color: var(--ouro); font-weight: 800; display: flex; gap: 8px; align-items: baseline; }
+h2 .obs { color: var(--dim); font-weight: 400; font-size: 9.5px; margin-left: auto; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+
+/* estado no topo */
+.pill { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--lin); border-radius: 20px; padding: 2px 9px; font-size: 10.5px; font-weight: 700; }
+.pill i { width: 8px; height: 8px; border-radius: 50%; background: #5a5145; display: block; }
+.pill.on { color: var(--verde); border-color: #2b5c33; }
+.pill.on i { background: var(--verde); box-shadow: 0 0 7px #4ce06a99; }
+.pill.off { color: var(--dim); }
+.pill.err { color: var(--verm); border-color: #6d2a20; }
+.pill.err i { background: var(--verm); }
+
+section.bloco { background: var(--pnl); border: 1px solid var(--lin2); border-radius: 8px; padding: 8px 9px; margin-bottom: 8px; }
+
+/* estado ao vivo */
+.fase { font-size: 11px; color: var(--txt); background: var(--pnl2); border: 1px solid var(--lin2); border-left: 3px solid #33505f; border-radius: 0 6px 6px 0; padding: 5px 7px; margin-bottom: 7px; }
+.hp-row { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; margin-bottom: 3px; font-size: 11.5px; }
+#hp-txt { font-weight: 700; }
+#hp-pct { color: var(--dim); }
+.hp-bar { height: 12px; background: #241f19; border: 1px solid var(--lin); border-radius: 6px; overflow: hidden; margin-bottom: 7px; }
+.hp-bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #2f6b38, #4ce06a); transition: width .25s; }
+.hp-bar i.low { background: linear-gradient(90deg, #7a3a10, #ff9a5a); }
+.hp-bar i.crit { background: linear-gradient(90deg, #7a1010, #ff4040); }
+.minis { display: flex; gap: 5px; margin-bottom: 6px; }
+.mini { flex: 1; background: var(--pnl2); border: 1px solid var(--lin2); border-radius: 6px; padding: 3px 7px; }
+.mini b { display: block; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.mini small { color: var(--dim); font-size: 9.5px; }
+.mini.wide { flex: 1.6; }
+.linha-combate { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.alvo { font-size: 11px; margin-top: 3px; }
+
+/* poções */
+.pots { display: flex; gap: 6px; }
+.pot { flex: 1; text-align: center; background: var(--pnl2); border: 1px solid var(--lin2); border-radius: 6px; padding: 4px 2px; }
+.pot b { display: block; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--verde); }
+.pot small { color: var(--dim); font-size: 9.5px; }
+.pot.baixo { border-color: #7a3a10; background: #1c1108; }
+.pot.baixo b { color: #ff9a5a; }
+.ultima { font-size: 10.5px; color: var(--dim); margin-top: 6px; }
+
+/* controlo */
+.ligar { display: flex; align-items: center; gap: 8px; background: var(--pnl2); border: 1px solid var(--lin); border-radius: 8px; padding: 6px 8px; cursor: pointer; margin-bottom: 7px; }
+.ligar input { display: none; }
+.ligar-t { display: flex; flex-direction: column; }
+.ligar-t b { font-size: 12px; }
+.ligar-t small { color: var(--dim); font-size: 9.5px; }
+.sw { position: relative; width: 40px; height: 21px; flex: none; display: inline-block; }
+.sw::before { content: ""; position: absolute; inset: 0; background: #3a332a; border-radius: 21px; transition: .15s; }
+.sw::after { content: ""; position: absolute; width: 15px; height: 15px; left: 3px; top: 3px; background: #8a7f6c; border-radius: 50%; transition: .15s; }
+.ligar input:checked + .sw::before { background: #245c2c; }
+.ligar input:checked + .sw::after { transform: translateX(19px); background: var(--verde); }
+
+.btn { width: 100%; border: 0; border-radius: 7px; padding: 8px; font: inherit; font-weight: 800; cursor: pointer; }
+.btn.danger { background: #7a1f14; color: #ffd9d2; border: 1px solid #a33a28; }
+.btn.ok { background: #2f6b38; color: #eafff0; }
+.btn:hover { filter: brightness(1.15); }
+.ajuda { color: var(--dim); font-size: 9.5px; margin: 6px 0 0; }
+
+/* configuração */
+.campo { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.campo > span { font-size: 11px; color: var(--txt); }
+.campo select { flex: 1; max-width: 190px; background: #0d0b0a; color: var(--txt); border: 1px solid var(--lin); border-radius: 6px; padding: 4px 6px; font: inherit; }
+.campo.escondido { display: none; }
+
+footer { font-size: 10.5px; color: var(--dim); line-height: 1.5; }
+footer b { color: var(--txt); }
+.aviso { display: block; color: var(--ambar); margin-top: 4px; }
+.aviso.err { color: var(--verm); }

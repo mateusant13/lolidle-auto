@@ -1,0 +1,165 @@
+================================================================================================
+SIMULADOR DE BUILDS — LoL Idle. Matemática do motor do JOGO (docs/game-src/motor.js).
+================================================================================================
+Constantes extraídas (cada uma com o file:linha de onde saiu):
+  RM_MONSTRO      0.6 [motor.js:1179]
+  TETO_VIDA_ITEM  3 [motor.js:1190]
+  VEL_ATAQUE_MAX  3 [motor.js:344]
+  ESPACOS_ITENS   4 [motor.js:29]
+  BARRA           4 [motor.js:900]
+  DANO_CRIT_BASE  1.75 [motor.js:499]
+  GUME_CRIT       0.4 [motor.js:515]
+  RABADON_MULT    1.35 [motor.js:522]
+  ARCANJO_PCT     0.03 [motor.js:521]
+  TIRANIA_PCT     0.02 [motor.js:514]
+  VOID_PEN        0.6 [motor.js:529]
+  VOID_PEN_3135   0.4 [motor.js:529]
+  CDR_CAP         0.4 [motor.js:537]
+  CDR_CAP_ATRIB   0.3 [motor.js:537]
+  PEN_ARM_3036    0.7 [motor.js:539]
+  CHEFE_3036      1.15 [motor.js:1214]
+  LICH_PROC       0.75 [motor.js:1688]
+  LUDEN_BASE      100 [motor.js:1948]
+  LUDEN_AP        0.1 [motor.js:1948]
+  LUDEN_CD        6 [motor.js:1945]
+  LUDEN_ALVOS     3 [motor.js:1946]
+  LIANDRY_PCT     0.015 [motor.js:1207]
+  CHAMA_4645      1.2 [motor.js:1205]
+  MORELO_3165     1.12 [motor.js:1206]
+  SHUNPO_PEGA     1 [motor.js:2162]
+  BONUS_REFINO    0.12 [motor.js:55]
+  QUALIDADES mult  C=0.9 B=1 A=1.15 S=1.35 SS=1.7 [motor.js:173]
+  patches de cdr   2022{cdr: 0.05, resumo: 'Reduz a recarga das habilidades'} [motor.js:16] | 1006{regen: 3} [motor.js:17] | 3057{efeito: 'Lâmina Encantada: depois de usar uma habilidade, o próximo ataque (ou o Disparo Místico do Ezreal) causa +100% do Dano de Ataque base.'} [motor.js:18] | 4629{cdr: 0.15} [motor.js:24] | 3108{cdr: 0.05} [motor.js:25] | 3802{cdr: 0.05} [motor.js:26]
+  P.giro Katarina  30 + 19*nivel + 1*ap + 0.4*max(0,ad-adBase) [motor.js:737]
+  voracidadeChefe  5 [motor.js:736]   pegaCada 0.35 [motor.js:736]
+  papel.dano       katarina 1.2 [motor.js:883]   lux 1.59 [motor.js:876]
+
+PERSONAGEM CALIBRADO (medido ao vivo): katarina nível 29 — docs/snapshots/player.json + docs/snapshots/katarina.json
+  medido: AD 161 · AP 1104 · VA 1.16 · vida 4476 · armadura 164 · RM 134
+  build da medição: 3175~A, 3089+2~B, 3100+3~A, 3135~A, 4629+3~A
+  base derivada (nível+atributos, sem itens): AD 161,0 · AP 200,9 · VA_base 1,160 · vida 3928,6
+  luta medida vs Dragão Infernal: 35.6s, outDps 1360, por fonte {"A":114,"Q":195,"item":203,"ataque":119,"P":598,"R":131}
+
+CONFERÊNCIA DO MODELO contra a MEDIÇÃO — barra MEDIDA na luta (W/Q/R/A)
+  modelo  : 1605 dps (hab 615 + passiva 576 + ataque 110 + lich 304 + queima 0) · habilidades/s 0,392 · procs Lich/s 0,392
+  medido  : 1360 dps (por fonte: {"A":114,"Q":195,"item":203,"ataque":119,"P":598,"R":131})
+  -> passiva (giro) medida 598 dps vs 576 do modelo; item (Lich) medido 203 dps vs 304 do modelo;
+     ataques medidos 119 dps vs 110 do modelo. O modelo assume "em recarga, sempre": é TETO.
+CONFERÊNCIA DO MODELO contra a MEDIÇÃO — barra da sim (top-4 por dano/recarga)
+  modelo  : 1864 dps (hab 676 + passiva 576 + ataque 110 + lich 502 + queima 0) · habilidades/s 0,647 · procs Lich/s 0,647
+  medido  : 1360 dps (por fonte: {"A":114,"Q":195,"item":203,"ataque":119,"P":598,"R":131})
+  -> passiva (giro) medida 598 dps vs 576 do modelo; item (Lich) medido 203 dps vs 502 do modelo;
+     ataques medidos 119 dps vs 110 do modelo. O modelo assume "em recarga, sempre": é TETO.
+
+------------------------------------------------------------------------------------------------
+Q1) BOTA DE CDR + outro item de dano  VS  BOTA DE PEN + ÍMPETO CÓSMICO
+    dono: "nao sei se bota de cdr sem IMPETO e outro item de dano no lugar e melhor que bota de pen com impeto".
+    fixos: 3089~B, 3135~B, 3100~B (Rabadon + Cajado do Vazio + Perdição de Lich)
+    A) 3089~B, 3135~B, 3100~B, 3158~B, 4645~B -> AP 859 · cdr 8,0% · pen 40%
+    B) 3089~B, 3135~B, 3100~B, 3175~B, 4629~B -> AP 899 · cdr 15,0% · pen 55%
+    C) 3089~B, 3135~B, 3100~B, 3020~B, 4629~B -> AP 852 · cdr 15,0% · pen 48%
+    D) 3089~B, 3135~B, 3100~B, 3158~B, 4629~B -> AP 805 · cdr 23,0% · pen 40%
+    fórmula: dano mágico = mitigar(1, armadura×0.6×(1−penMagica)) [motor.js:1202,1179];
+             recarga efectiva = recarga×(1−cdr) [motor.js:1581]; caps pen 0.6 e cdr 0.4 [motor.js:529,537]
+    (a bota de CDR 3158 é ÉPICA: 150 de mana e 8% de cdr, SEM AP; a de pen 3175 é LENDÁRIA: 70 de AP e 15% de pen — a comparação de 5 espaços é esta)
+    armadura |  A) bota CDR+Chama | B) bota pen+Ímpeto | C) bota pen épica+Ímpeto | D) bota CDR+Ímpeto | vencedor
+           0 |                1775 |               1960 |                      1893 |             1994 | B (+184)
+          20 |                1634 |               1833 |                      1758 |             1838 | B (+200)
+          40 |                1516 |               1726 |                      1644 |             1707 | B (+211)
+          60 |                1416 |               1634 |                      1546 |             1595 | B (+218)
+          80 |                1329 |               1552 |                      1460 |             1498 | B (+223)
+         100 |                1253 |               1479 |                      1384 |             1413 | B (+226)
+         104 |                1238 |               1465 |                      1370 |             1397 | B (+227)
+         120 |                1185 |               1413 |                      1316 |             1338 | B (+228)
+         150 |                1097 |               1325 |                      1227 |             1239 | B (+228)
+         200 |                 976 |               1202 |                      1103 |             1104 | B (+225)
+         250 |                 880 |               1100 |                      1002 |              995 | B (+220)
+         300 |                 802 |               1015 |                       918 |              907 | B (+213)
+         400 |                 681 |                879 |                       787 |              770 | B (+199)
+    RESPOSTA: B (bota de pen + Ímpeto) ganha em TODA a faixa testada — 184 dps a mais com armadura 0 e 199 a mais com armadura 400.
+    NÃO há inversão entre 0 e 400 de armadura (B ganha desde a armadura 0). A razão é dupla:
+      (1) a bota de pen é LENDÁRIA e traz 70 de AP (×1.35 do Rabadon) enquanto a de CDR é ÉPICA e traz 8% de cdr;
+      (2) o Ímpeto Cósmico traz 70 AP + 15% de cdr, e o CDR acelera habilidades E o giro da Katarina (motor.js:1581 e motor.js:2162).
+    ONDE A RESPOSTA INVERTE (bota de pen ÉPICA 3020 + Ímpeto  vs  bota de CDR 3158 + Ímpeto):
+      armadura < 206 -> D (CDR) ganha; armadura > 206 -> C (pen épica) ganha  [C 1090 vs D 1090 dps]
+    O CDR só compensa se a bota de CDR tivesse o MESMO AP: o teste isolado abaixo mostra quanto é da bota e quanto é do item.
+    só a bota (Ímpeto nos dois)      1397 -> 1465  (d 67 dps, 4,8%)
+    só a bota (Chama nos dois)       1238 -> 1312  (d 73 dps, 5,9%)
+    só a flex (bota CDR nos dois)    1238 -> 1397  (d 159 dps, 12,8%)
+
+------------------------------------------------------------------------------------------------
+Q2) DOIS CAJADOS DO VAZIO (3135) + bota de CDR, com um cajado no lugar do Ímpeto
+    REGRA DURA DO MOTOR: "cada lendário uma vez" — motor.js:2879 (equipar) e motor.js:2891 (cabeNoEquip).
+    A linha do motor: if (ITENS[baseId(id)].lendario && estado.itens.some((x) => baseId(x) === baseId(id))) return false;
+    E a penetração não empilharia de qualquer forma: motor.js:529 usa tem(3135) ? 0.4 : 0 (booleano), com teto 0.6.
+    hipótese (se fosse permitido):
+      normal   3158~B, 3135~B, 4629~B, 3089~B, 3100~B -> AP 805 cdr 23,0% pen 40%  = 1397 dps
+      dois 3135 3158~B, 3135~B, 3135~B, 3089~B, 3100~B -> AP 838 cdr 8,0% pen 40%  = 1219 dps
+    dAP 33,8 · dcdr -15,0 pontos · dpen 0 pontos (NÃO empilha) · dvida -350
+    dDPS -178 (-12,7%).
+    RESPOSTA: NÃO FUNCIONA — o motor recusa o 2.º lendário igual (motor.js:2879/2891) e a pen não empilha
+    (motor.js:529). Mesmo ignorando a regra, o 2.º Cajado troca 15% de CDR por 25 de AP.
+
+------------------------------------------------------------------------------------------------
+Q3) LICH (3100 Perdição de Lich): o proc depende da FREQUÊNCIA DE SKILLS, não de um multiplicador fixo
+    motor.js:1944 arma d.lich = true em CADA habilidade (aoUsarHabilidade, chamado por usar() em motor.js:1584);
+    motor.js:1688 gasta no próximo ATAQUE BÁSICO: 0,75×AP como dano mágico.
+    Logo procs/s = min(habilidades/s, ataques/s) — o proc NÃO é "1 por habilidade" nem "por ataque".
+    A extensão (automation.js:1243) soma lich*ap a CADA habilidade e divide pela recarga dela: isso é 1 proc/habilidade.
+    Katarina, barra MEDIDA na luta (W/Q/R/A)
+      barra W/Q/R/A · habilidades/s 0,326 · ataques/s 1,16 · giros/s 0,304 · giro 1291 de dano
+      procs do Lich/s 0,326 (limitado por HABILIDADES) × 0,75×AP(710) mitigado = 152 dps
+      total COM Lich 956 dps (15,9% do total) | SEM Lich (4645 no lugar) 812 dps | d(Lich−Chama) 144 dps
+      modelo da EXTENSÃO (1 proc/habilidade) daria 152 dps -> 1,00x o modelo do motor
+    Katarina, barra da sim (top-4 por dano/recarga)
+      barra Q/A/E/T · habilidades/s 0,538 · ataques/s 1,16 · giros/s 0,304 · giro 1291 de dano
+      procs do Lich/s 0,538 (limitado por HABILIDADES) × 0,75×AP(710) mitigado = 250 dps
+      total COM Lich 1099 dps (22,8% do total) | SEM Lich (4645 no lugar) 856 dps | d(Lich−Chama) 242 dps
+      modelo da EXTENSÃO (1 proc/habilidade) daria 250 dps -> 1,00x o modelo do motor
+    Maga (Lux, recargas do motor.js:633-668; barra top-4 Q/E/T/A)
+      habilidades/s 0,750 · procs do Lich/s 0,750 (limitado por HABILIDADES)
+      Lich = 462 dps em 1721 dps (26,8% do total)
+      (AP/AD de base da Katarina por falta de snapshot da Lux — o que decide o proc é a RECARGA, que é do motor.)
+    O PROC EM FUNÇÃO DA FREQUÊNCIA (AP fixo, mesmo alvo) — é a resposta ao "modela em função da frequência":
+      habilidades/s  0,10 -> procs/s 0,10 -> Lich    46 dps
+      habilidades/s  0,20 -> procs/s 0,20 -> Lich    93 dps
+      habilidades/s  0,33 -> procs/s 0,33 -> Lich   153 dps
+      habilidades/s  0,54 -> procs/s 0,54 -> Lich   251 dps
+      habilidades/s  0,75 -> procs/s 0,75 -> Lich   349 dps
+      habilidades/s  1,16 -> procs/s 1,16 -> Lich   539 dps
+      habilidades/s  1,50 -> procs/s 1,16 -> Lich   539 dps  <- aqui o TECTO é o ATAQUE (1,16/s)
+      habilidades/s  2,00 -> procs/s 1,16 -> Lich   539 dps  <- aqui o TECTO é o ATAQUE (1,16/s)
+    RESPOSTA: para a Katarina (ataques/s 1,16 > habilidades/s) quem manda é a RECARGA do kit,
+    logo "usar muita skill" NÃO eleva o Lich acima do ritmo real das recargas — e o modelo da extensão (1 proc/habilidade)
+    acerta nela por acidente. O multiplicador fixo 2,2 do valorPassiva (automation.js:3809) é que achata a diferença
+    entre campeões: o valor real é proporcional a 1/recarga (sai do kit), não a uma constante.
+    RANKING DO 5.º ESPAÇO (quem entra no lugar do Lich, mesma build e alvo) — responde "deveria fazer entrar nas builds":
+      Perdição de Lich               AP   710 ->  1099 dps
+      Tormento de Liandry            AP   656 ->  1075 dps
+      Chama Sombria                  AP   724 ->   856 dps
+      Criafendas                     AP   717 ->   853 dps
+      Coroa da Rainha Despedaçada    AP   710 ->   848 dps
+      Morellonomicon                 AP   676 ->   828 dps
+      Cajado do Arcanjo              AP   670 ->   824 dps
+      Cetro de Cristal de Rylai      AP   663 ->   820 dps
+
+------------------------------------------------------------------------------------------------
+Q4) DOIS RABADONS (3089)
+    motor.js:522  if (tem('3089')) ap *= 1.35;                              // Rabadon: +35% do poder total
+    É tem(3089) (booleano) -> o ×1.35 aplica-se UMA vez, por muitos Rabadons que existam.
+    E motor.js:2879/2891 recusa um 2.º lendário igual no equipamento.
+    1 Rabadon : AP 859 -> 1238 dps
+    2 Rabadons: AP 906 -> 1103 dps
+    (o 2.º Rabadon ocupa o espaço do Cajado do Vazio, 95 AP -> 130 AP: dAP 47,3 = (130 − 95) × 1.35 — o multiplicador NÃO duplica)
+    dDPS -136 (-11,0%) — é o AP flat do 2.º Rabadon, não 1,35² = 1,82x.
+    RESPOSTA: NÃO empilha e NÃO pode ser equipado (lendário único). O 2.º Rabadon só vale o AP flat.
+
+------------------------------------------------------------------------------------------------
+EXTRA) sensibilidade das passivas CONDICIONAIS (a fracção da luta não sai de ficheiro nenhum)
+    Chama Sombria com 0% da luta abaixo de 40% de vida: 1238 dps
+    Chama Sombria com 25% da luta abaixo de 40% de vida: 1280 dps
+    Chama Sombria com 50% da luta abaixo de 40% de vida: 1321 dps
+    Chama Sombria com 100% da luta abaixo de 40% de vida: 1404 dps
+    (motor.js:1205 aplica x1.2 só quando f < 0,4; a fracção é parâmetro, não constante do jogo.)
+
+NAO VERIFICADO: nada — todos os números saíram de docs/game-src/ ou dos snapshots medidos

@@ -1,0 +1,50 @@
+================================================================================================
+SIMULADOR DE BUILDS — LoL Idle. Matemática do motor do JOGO (docs/game-src/motor.js).
+================================================================================================
+Constantes extraídas (cada uma com o file:linha de onde saiu):
+  RM_MONSTRO      0.6 [motor.js:1179]
+  TETO_VIDA_ITEM  3 [motor.js:1190]
+  VEL_ATAQUE_MAX  3 [motor.js:344]
+  ESPACOS_ITENS   4 [motor.js:29]
+  BARRA           4 [motor.js:900]
+  DANO_CRIT_BASE  1.75 [motor.js:499]
+  GUME_CRIT       0.4 [motor.js:515]
+  RABADON_MULT    1.35 [motor.js:522]
+  ARCANJO_PCT     0.03 [motor.js:521]
+  TIRANIA_PCT     0.02 [motor.js:514]
+  VOID_PEN        0.6 [motor.js:529]
+  VOID_PEN_3135   0.4 [motor.js:529]
+  CDR_CAP         0.4 [motor.js:537]
+  CDR_CAP_ATRIB   0.3 [motor.js:537]
+  PEN_ARM_3036    0.7 [motor.js:539]
+  CHEFE_3036      1.15 [motor.js:1214]
+  LICH_PROC       0.75 [motor.js:1688]
+  LUDEN_BASE      100 [motor.js:1948]
+  LUDEN_AP        0.1 [motor.js:1948]
+  LUDEN_CD        6 [motor.js:1945]
+  LUDEN_ALVOS     3 [motor.js:1946]
+  LIANDRY_PCT     0.015 [motor.js:1207]
+  CHAMA_4645      1.2 [motor.js:1205]
+  MORELO_3165     1.12 [motor.js:1206]
+  SHUNPO_PEGA     1 [motor.js:2162]
+  BONUS_REFINO    0.12 [motor.js:55]
+  QUALIDADES mult  C=0.9 B=1 A=1.15 S=1.35 SS=1.7 [motor.js:173]
+  patches de cdr   2022{cdr: 0.05, resumo: 'Reduz a recarga das habilidades'} [motor.js:16] | 1006{regen: 3} [motor.js:17] | 3057{efeito: 'Lâmina Encantada: depois de usar uma habilidade, o próximo ataque (ou o Disparo Místico do Ezreal) causa +100% do Dano de Ataque base.'} [motor.js:18] | 4629{cdr: 0.15} [motor.js:24] | 3108{cdr: 0.05} [motor.js:25] | 3802{cdr: 0.05} [motor.js:26]
+  P.giro Katarina  30 + 19*nivel + 1*ap + 0.4*max(0,ad-adBase) [motor.js:737]
+  voracidadeChefe  5 [motor.js:736]   pegaCada 0.35 [motor.js:736]
+  papel.dano       katarina 1.2 [motor.js:883]   lux 1.59 [motor.js:876]
+  cdr por Foco     0.004 [motor.js:537]   teto dos atributos 30% · teto total 40%  [motor.js:537]
+  Foco -> dano hab 0.002 [motor.js:457]   (Katarina/Zac/Yasuo, motor.js:531,1218)
+
+417 |   console.log('  voracidadeChefe  ' + cit(GIRO_CHEFE) + '   pegaCada ' + cit(PEGA_CADA));
+418 |   console.log('  papel.dano       katarina ' + cit(papelDano('katarina')) + '   lux ' + cit(papelDano('lux')));
+419 |   console.log('  cdr por Foco     ' + cit(CDR_ATRIB_POR_FOCO) + '   teto dos atributos ' + fmt(CDR_ATRIB.capAtrib * 100, 0) + '% · teto total ' + fmt(CDR_ATRIB.cap * 100, 0) + '%  [' + CDR_ATRIB.onde + ']');
+420 |   console.log('  Foco -> dano hab ' + cit(FOCO_DANO_HAB) + '   (Katarina/Zac/Yasuo, motor.js:531,1218)');
+421 |   console.log('');
+422 |   console.log('MODELO CORRIGIDO: inclui o CDR dos ATRIBUTOS medido ao vivo (Foco ' + fmt(FOCO_MEDIDO, 1) + ' pontos = ' + fmt(CDR_MEDIDO_ATRIB * 100, 0) + '%)');
+                                                                                               ^
+ReferenceError: FOCO_MEDIDO is not defined
+      at cabecalho (I:\!lolidle.com\tools\sim-build.mjs:422:90)
+      at I:\!lolidle.com\tools\sim-build.mjs:869:1
+
+Bun v1.4.2 (Windows x64)

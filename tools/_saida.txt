@@ -1,0 +1,316 @@
+
+################ TROCAR ITENS E HABILIDADES EM COMBATE — DRAGAO INFERNAL ################
+
+FONTE: docs/game-src/motor.js + docs/game-src/itens.js. Cada numero com file:linha.
+
+--- O BOSS (o 2.o mais forte) ---
+  Dragao Infernal: MONSTROS hp=12 ad=3 as=0.55 armadura=1.6 chefe=true magico=true   [motor.js:296]
+  Arauto hp=10 [motor.js:295]  |  Barao hp=16 [motor.js:297]  -> 12 fica no meio: 2.o
+  Fosso do Dragao: faixa [30,40], nm=[30,38], tier 6, SEM a flag arena   [motor.js:369]
+  Nivel do chefe: max(nm0+2, min(nm1+2, nivel+4)) = max(32, min(40, 33)) = 33   [motor.js:1121]
+  Jogador nv29 -> difNivel = 0 (<= 4: sem ajuste)   [motor.js:1184-1185]
+  hpMax = CURVA.hp(33)*12 = 54 468   [motor.js:274+296]
+  ad    = CURVA.ad(33)*3   = 927   [motor.js:275+296]
+  armadura = CURVA.armadura(33)*1.6 = 87.2   [motor.js:276+296]
+  fatorDanoMonstro=1.00  fatorDanoJogador=1.00   [motor.js:1186-1187]
+  Rodizio: sopro(1.0s de aviso, 9s, mag 2.2x + queima 4s de 3% da vidaMax/s)   [motor.js:3073/3080/3105]
+           chuva(1.1s de aviso, 9s, mag 1.8x + queima 3s de 2,5%/s)             [motor.js:3074/3106]
+           rugido(0.8s de aviso, 7s, SEM dano: +50% de vel. de ataque por 5s)   [motor.js:3075/3107]
+  ataque basico a cada 1/as = 1.82s, MAGICO (mitiga na RM)   [motor.js:296+1725-1737]
+  a queimadura NAO leva o fator de nivel nem a esquiva   [motor.js:1360 receberDano(...,true)]
+
+--- O JOGADOR ---
+  Katarina nv29, atributos MEDIDOS: {"forca":81,"vitalidade":3,"resistencia":0,"agilidade":0,"foco":0}
+  Katarina: magia=true, semMana=true, papel {dano:1.2, recebido:0.75}   [motor.js:884-885]
+  NAO e arena -> recebido=0.75 (nao o recebidoArena=1)   [motor.js:2697 + 885]
+  Forca -> AP: 2 por ponto   [motor.js:503]
+  Trocas modeladas com custo de 1s por troca (cliques do jogador).
+
+--- 0) DEFEITO ENCONTRADO NO CAMINHO (a procurar a build, nao a resposta) ---
+  Com a build AD/crit Grevas Bélicas + Espada do Rei Destruído + Gume do Infinito + Lembranças do Lorde Dominik + Dançarina Fantasma:
+    auto (MODELO SIM-CHEFES, proc x critico) = 2701 dps
+    auto (MODELO CORRIGIDO, proc sem critico) = 1647 dps
+    total: 3052 -> 1998 dps  (o proc do 3153 vale 1054 dps dos 2701)
+  Causa: motor.js:1702 mete o proc do 3153 no bruto do golpe basico e motor.js:1700 aplica-lhe
+  o critico; tools/sim-chefes.mjs:570/572 reproduzem-no. NAO corrigi o sim-chefes (outro
+  escritor) — reporto-o. Os quadros abaixo correm com o MODELO CORRIGIDO.
+  >>> PRECISA DE REGRA DO DONO: o proc do 3153 DEVE levar critico? Se deve, e exploit de
+      AD/crit na Katarina; se nao deve, motor.js:1700/1702 tem de separar o proc do bruto.
+
+--- 1) A BUILD DO DONO (docs/snapshots/dps.json) ---
+  MEDIDO no jogo: estT=28.9s | realT=35.6s | realPot=0 | estPot=32
+  SIMULADO aqui:  MATA  31.6s             | pocoes  14 =    630g | ouro total   15930g | dps  1722 | vida min  54.7%
+  (o modelo do sim-chefes nao usa crit nesta build, logo os 2 modelos coincidem aqui: SIM)
+  >>> O SIMULADOR ERRA O TEMPO EM -11% para a build do dono.
+      E o mesmo erro de sempre (docs/sim-baron.md): o modelo e mais generoso que o jogo real.
+      Uso-o para COMPARAR builds entre si, nao para prometer segundos absolutos.
+
+--- 2) A MELHOR BUILD (busca exaustiva do sim-chefes, avaliada pela TUPLA do dono) ---
+  MATA  26.35s            | pocoes   0 =      0g | ouro total   15483g | dps  2065 | vida min  80.3%
+        Grevas Bélicas + Espada do Rei Destruído + Força da Trindade + Lembranças do Lorde Dominik + Dançarina Fantasma
+  MATA  27.25s            | pocoes   0 =      0g | ouro total   15650g | dps  1998 | vida min  79.8%
+        Grevas Bélicas + Espada do Rei Destruído + Gume do Infinito + Lembranças do Lorde Dominik + Dançarina Fantasma
+  MATA  27.35s            | pocoes   0 =      0g | ouro total   16333g | dps  1991 | vida min  80.4%
+        Grevas Bélicas + Espada do Rei Destruído + Força da Trindade + Gume do Infinito + Lembranças do Lorde Dominik
+  MATA  27.8s             | pocoes   0 =      0g | ouro total   15450g | dps  1958 | vida min  80.5%
+        Grevas Bélicas + Espada do Rei Destruído + Lembranças do Lorde Dominik + Quebrapassos + Dançarina Fantasma
+  MATA  29s               | pocoes   0 =      0g | ouro total   15250g | dps  1876 | vida min  79.9%
+        Grevas Bélicas + Espada do Rei Destruído + Lembranças do Lorde Dominik + Arco-escudo Imortal + Dançarina Fantasma
+
+  >>> a melhor build do catalogo usa AD/crit na Katarina, e o motor PERMITE: para os campeoes de
+      magia o golpe de habilidade e forcado a magico (motor.js:1201) e a defesa que ele usa e
+      armadura * 0.6 (motor.js:1202 RM_MONSTRO), nao a RM do jogador — logo o AP e o AD batem na
+      MESMA defesa e o AD/crit ganha pelo auto-ataque (crit x2,15 com o 3031, motor.js:515).
+
+--- 3) A LUTA SEM TROCAS (baseline) ---
+  melhor build (catalogo): MATA  26.35s            | pocoes   0 =      0g | ouro total   15483g | dps  2065 | vida min  80.3%
+  build do dono:           MATA  31.6s             | pocoes  14 =    630g | ouro total   15930g | dps  1722 | vida min  54.7%
+
+--- 4) A MELHOR BUILD QUE O DONO JA TEM NA MOCHILA (familia de mago, ranks REAIS) ---
+  MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%
+        Lucidez Escarlate [3171+2~B] + Capuz da Morte de Rabadon [3089+2~B] + Perdição de Lich [3100+3~A] + Cajado do Vazio [3135~A] + Ímpeto Cósmico [4629+3~A]
+  ranks usados: {"Q":10,"W":1,"E":3,"R":3,"G":1,"A":5,"F":1,"T":0,"B":0,"M":0,"N":0,"D":0}   [docs/snapshots/skills.json]
+  pontos de habilidade LIVRES: 5   [motor.js:1048: pontos = nivel - ranks gastos = 29-24]
+  barra actual: ["W","Q","R","A"]   [docs/snapshots/skills.json]
+  >>> T, B, M e N estao com rank 0 (nao aprendidas). Trocar a barra para elas EXIGE 1 ponto
+      (motor.js:2813 subirHabilidade -> motor.js:2817 mete-a na barra se houver espaco).
+      O dono tem 5 pontos livres: da para aprender 3.
+
+--- 4b) "A MESMA BUILD, SO A BOTA TROCADA" — a resposta directa a pergunta do dono ---
+  O dono joga hoje com:      Sapatos Enfeitiçados [3175~A] + Capuz da Morte de Rabadon [3089+2~B] + Perdição de Lich [3100+3~A] + Cajado do Vazio [3135~A] + Ímpeto Cósmico [4629+3~A]
+  A melhor mochila dele e:   Lucidez Escarlate [3171+2~B] + Capuz da Morte de Rabadon [3089+2~B] + Perdição de Lich [3100+3~A] + Cajado do Vazio [3135~A] + Ímpeto Cósmico [4629+3~A]
+  >>> OS 4 ITENS SAO OS MESMOS (4/5 iguais). A UNICA diferenca e a BOTA:
+      Sapatos Enfeitiçados (3175~A)  ->  Lucidez Escarlate (3171+2~B)
+  Numeros da bota (itens.js, com qualidade/refino, motor.js:251-255):
+      3175~A: ap=80.5, penMag=0.15, cdr=0.000, vida=0, mana=0
+      3171+2~B: ap=74.4, penMag=NaN, cdr=0.186, vida=0, mana=496
+  Efeito no jogador:
+      com Sapatos Enfeitiçados: AP=1051, reducaoRecarga=23.5%, penMagica=55% -> dps 1956
+      com Lucidez Escarlate: AP=1043, reducaoRecarga=40.0%, penMagica=40% -> dps 2269
+  LUTA (mesmo set de habilidades, mesmos 4 itens):
+      MATA  27.8s             | pocoes   8 =    320g | ouro total   15620g | dps  1956 | vida min  61.2%   <- o que o dono joga
+      MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%   <- so com a outra bota
+  >>> GANHO SO POR TROCAR A BOTA: 3.80s e 2 pocoes.
+      E a mesma coisa na MEDIDA do jogo: o dono levou 35.6s com esta bota (docs/snapshots/dps.json).
+      Repare: o CDR do Lucidez Escarlate (19% x qualidade B x refino +2 = 18.6%) vale MAIS que os 15% de penMag da outra, porque a Katarina
+      e de MAGIA e o unico AP da bota e menor (ap=81 vs 74) (motor.js:864-885).
+
+--- 5) TODOS OS CASOS DE USO DE TROCA (a luta corrida, uma a uma, ranks REAIS) ---
+  [arranque] bota: penMag -> CDR no arranque
+     com troca: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%   (disparou: NAO, custo 0s)
+     alternativa desde o inicio: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%
+     vs BASE: 0.00s | pocoes 0 | ouro 0g   | vs alternativa desde o inicio: 0.00s
+
+  [arranque] bota: CDR -> penMag no arranque
+     com troca: MATA  27.8s             | pocoes   8 =    320g | ouro total   15620g | dps  1956 | vida min  61.2%   (disparou: SIM, custo 1s)
+        troca em t=0s -> dps 1955.8, rv=0, penMag=0.55
+     alternativa desde o inicio: MATA  27.8s             | pocoes   8 =    320g | ouro total   15620g | dps  1956 | vida min  61.2%
+     vs BASE: -3.80s | pocoes +2 | ouro +180g   | vs alternativa desde o inicio: 0.00s
+
+  [mecanica (carrega)] bota: dano -> RM quando o Dragao carrega o sopro
+     com troca: MATA  30.25s            | pocoes   6 =    240g | ouro total   15440g | dps  1703 | vida min    65%   (disparou: SIM, custo 1s)
+        troca em t=5.05s -> dps 1703.4, rv=0, penMag=0.4
+     alternativa desde o inicio: MATA  31.95s            | pocoes   5 =    200g | ouro total   15400g | dps  1703 | vida min  63.2%
+     vs BASE: -6.25s | pocoes 0 | ouro 0g   | vs alternativa desde o inicio: +1.70s
+
+  [mecanica (carrega)] bota: dano -> RM quando o Dragao carrega a chuva
+     com troca: MATA  26.95s            | pocoes   5 =    270g | ouro total   15470g | dps  1703 | vida min    60%   (disparou: SIM, custo 1s)
+        troca em t=15.1s -> dps 1703.4, rv=0, penMag=0.4
+     alternativa desde o inicio: MATA  31.95s            | pocoes   5 =    200g | ouro total   15400g | dps  1703 | vida min  63.2%
+     vs BASE: -2.95s | pocoes -1 | ouro +30g   | vs alternativa desde o inicio: +5.00s
+
+  [mecanica (rugido)] bota: dano -> RM quando o Rugido soa (+50% as)
+     com troca: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%   (disparou: NAO, custo 0s)
+     alternativa desde o inicio: MATA  31.95s            | pocoes   5 =    200g | ouro total   15400g | dps  1703 | vida min  63.2%
+     vs BASE: 0.00s | pocoes 0 | ouro 0g   | vs alternativa desde o inicio: +7.95s
+
+  [queimadura] bota: dano -> RM na 1.a queimadura
+     com troca: MATA  29.95s            | pocoes   7 =    280g | ouro total   15480g | dps  1703 | vida min    63%   (disparou: SIM, custo 1s)
+        troca em t=6.05s -> dps 1703.4, rv=0, penMag=0.4
+     alternativa desde o inicio: MATA  31.95s            | pocoes   5 =    200g | ouro total   15400g | dps  1703 | vida min  63.2%
+     vs BASE: -5.95s | pocoes +1 | ouro +40g   | vs alternativa desde o inicio: +2.00s
+
+  [vida < 60%] bota: dano -> RM abaixo de 60% de vida
+     com troca: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%   (disparou: NAO, custo 0s)
+     alternativa desde o inicio: MATA  31.95s            | pocoes   5 =    200g | ouro total   15400g | dps  1703 | vida min  63.2%
+     vs BASE: 0.00s | pocoes 0 | ouro 0g   | vs alternativa desde o inicio: +7.95s
+
+  [vida < 40%] bota: dano -> RM abaixo de 40% de vida
+     com troca: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%   (disparou: NAO, custo 0s)
+     alternativa desde o inicio: MATA  31.95s            | pocoes   5 =    200g | ouro total   15400g | dps  1703 | vida min  63.2%
+     vs BASE: 0.00s | pocoes 0 | ouro 0g   | vs alternativa desde o inicio: +7.95s
+
+  [vida do chefe < 50%] bota: dano -> RM a meio do chefe (boss < 50%)
+     com troca: MATA  27.95s            | pocoes   7 =    280g | ouro total   15480g | dps  1703 | vida min    60%   (disparou: SIM, custo 1s)
+        troca em t=12.05s -> dps 1703.4, rv=0, penMag=0.4
+     alternativa desde o inicio: MATA  31.95s            | pocoes   5 =    200g | ouro total   15400g | dps  1703 | vida min  63.2%
+     vs BASE: -3.95s | pocoes +1 | ouro +40g   | vs alternativa desde o inicio: +4.00s
+
+  [vida < 70%] item: dano -> roubo de vida abaixo de 70% de vida
+     com troca: MATA  25.2s             | pocoes   3 =    120g | ouro total   15520g | dps  2106 | vida min  61.8%   (disparou: SIM, custo 1s)
+        troca em t=8.4s -> dps 2105.7, rv=0.1, penMag=0.4
+     alternativa desde o inicio: MATA  25.85s            | pocoes   4 =    160g | ouro total   15560g | dps  2106 | vida min  63.4%
+     vs BASE: -1.20s | pocoes -3 | ouro +80g   | vs alternativa desde o inicio: +0.65s
+
+  [vida < 50%] item: dano -> roubo de vida abaixo de 50% de vida
+     com troca: MATA  24s               | pocoes   6 =    240g | ouro total   15640g | dps  2269 | vida min  60.2%   (disparou: NAO, custo 0s)
+     alternativa desde o inicio: MATA  25.85s            | pocoes   4 =    160g | ouro total   15560g | dps  2106 | vida min  63.4%
+     vs BASE: 0.00s | pocoes 0 | ouro +200g   | vs alternativa desde o inicio: +1.85s
+
+  [vida < 85%] item: dano -> roubo de vida abaixo de 85% de vida
+     com troca: MATA  25.35s            | pocoes   3 =    120g | ouro total   15520g | dps  2106 | vida min    64%   (disparou: SIM, custo 1s)
+        troca em t=6.05s -> dps 2105.7, rv=0.1, penMag=0.4
+     alternativa desde o inicio: MATA  25.85s            | pocoes   4 =    160g | ouro total   15560g | dps  2106 | vida min  63.4%
+     vs BASE: -1.35s | pocoes -3 | ouro +80g   | vs alternativa desde o inicio: +0.50s
+
+  [vida do chefe < 50%] item: dano -> roubo de vida quando o chefe passa de 50%
+     com troca: MATA  24.9s             | pocoes   4 =    160g | ouro total   15560g | dps  2106 | vida min  65.2%   (disparou: SIM, custo 1s)
+        troca em t=12.05s -> dps 2105.7, rv=0.1, penMag=0.4
+     alternativa desde o inicio: MATA  25.85s            | pocoes   4 =    160g | ouro total   15560g | dps  2106 | vida min  63.4%
+     vs BASE: -0.90s | pocoes -2 | ouro +120g   | vs alternativa desde o inicio: +0.95s
+
+  [vida do chefe < 25%] item: dano -> roubo de vida quando o chefe passa de 25%
+     com troca: MATA  24.45s            | pocoes   5 =    200g | ouro total   15600g | dps  2106 | vida min  65.2%   (disparou: SIM, custo 1s)
+        troca em t=18.05s -> dps 2105.7, rv=0.1, penMag=0.4
+     alternativa desde o inicio: MATA  25.85s            | pocoes   4 =    160g | ouro total   15560g | dps  2106 | vida min  63.4%
+     vs BASE: -0.45s | pocoes -1 | ouro +160g   | vs alternativa desde o inicio: +1.40s
+
+  [vida < 70%] item: dano -> Semblante (cura x1,25) abaixo de 70%
+     com troca: MATA  31.2s             | pocoes   6 =    240g | ouro total   15140g | dps  1550 | vida min  62.9%   (disparou: SIM, custo 1s)
+        troca em t=8.4s -> dps 1550.1, rv=0, penMag=0.4
+     alternativa desde o inicio: MATA  35.1s             | pocoes   7 =    280g | ouro total   15180g | dps  1550 | vida min  60.8%
+     vs BASE: -7.20s | pocoes 0 | ouro -300g   | vs alternativa desde o inicio: +3.90s
+
+  [vida < 70%] item: dano -> escudo 3072 abaixo de 70%
+     com troca: MATA  30.2s             | pocoes   7 =    280g | ouro total   15880g | dps  1623 | vida min  59.1%   (disparou: SIM, custo 1s)
+        troca em t=8.4s -> dps 1622.5, rv=0.15, penMag=0.4
+     alternativa desde o inicio: MATA  33.55s            | pocoes  10 =    400g | ouro total   16000g | dps  1623 | vida min  57.4%
+     vs BASE: -6.20s | pocoes +1 | ouro +440g   | vs alternativa desde o inicio: +3.35s
+
+  [vida < 40%] item: dano -> Warmog abaixo de 40%
+     com troca: MATA  24s               | pocoes   6 =    240g | ouro total   15540g | dps  2269 | vida min  60.2%   (disparou: NAO, custo 0s)
+     alternativa desde o inicio: MATA  35.1s             | pocoes  14 =    630g | ouro total   15930g | dps  1550 | vida min  53.6%
+     vs BASE: 0.00s | pocoes 0 | ouro +100g   | vs alternativa desde o inicio: +11.10s
+
+  [vida < 30%] item: dano -> Zhonya abaixo de 30%
+     com troca: MATA  24s               | pocoes   6 =    240g | ouro total   15690g | dps  2269 | vida min  60.2%   (disparou: NAO, custo 0s)
+     alternativa desde o inicio: MATA  31.9s             | pocoes  12 =    480g | ouro total   15930g | dps  1707 | vida min  60.9%
+     vs BASE: 0.00s | pocoes 0 | ouro +250g   | vs alternativa desde o inicio: +7.90s
+
+  [vida do chefe < 60%] item: dano -> penMag (3135) quando o chefe passa de 60%
+     com troca: MATA  28.45s            | pocoes   8 =    320g | ouro total   15520g | dps  1732 | vida min  56.1%   (disparou: SIM, custo 1s)
+        troca em t=9.65s -> dps 1731.9, rv=0, penMag=0.4
+     alternativa desde o inicio: MATA  31.45s            | pocoes  11 =    440g | ouro total   15640g | dps  1732 | vida min  61.3%
+     vs BASE: -4.45s | pocoes +2 | ouro +80g   | vs alternativa desde o inicio: +3.00s
+
+  [mecanica (carrega)] item: dano -> RM (3173 nao-bota) quando carrega o sopro
+     com troca: MATA  32.75s            | pocoes   6 =    240g | ouro total   15240g | dps  1550 | vida min    65%   (disparou: SIM, custo 1s)
+        troca em t=5.05s -> dps 1550.1, rv=0, penMag=0.4
+     alternativa desde o inicio: MATA  35.1s             | pocoes   8 =    320g | ouro total   15320g | dps  1550 | vida min  59.4%
+     vs BASE: -8.75s | pocoes 0 | ouro -200g   | vs alternativa desde o inicio: +2.35s
+
+  [mecanica (carrega)] item: dano -> RM quando carrega a chuva
+     com troca: MATA  28.1s             | pocoes   6 =    240g | ouro total   15240g | dps  1550 | vida min    65%   (disparou: SIM, custo 1s)
+        troca em t=15.1s -> dps 1550.1, rv=0, penMag=0.4
+     alternativa desde o inicio: MATA  35.1s             | pocoes   8 =    320g | ouro total   15320g | dps  1550 | vida min  59.4%
+     vs BASE: -4.10s | pocoes 0 | ouro -200g   | vs alternativa desde o inicio: +7.00s
+
+  [mecanica (rugido)] item: dano -> dano quando o Dragao ruge
+     com troca: MATA  24s               | pocoes   6 =    240g | ouro total   15940g | dps  2269 | vida min  60.2%   (disparou: NAO, custo 0s)
+     alternativa desde o inicio: MATA  29.95s            | pocoes  10 =    400g | ouro total   16100g | dps  1818 | vida min  55.5%
+     vs BASE: 0.00s | pocoes 0 | ouro +500g   | vs alternativa desde o inicio: +5.95s
+
+  [arranque] barra: ["W","Q","R","A"] -> ["Q","E","R","A"]
+     com troca: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%   (disparou: SIM, custo 1s)
+        troca em t=0s -> dps 2269.3, rv=, penMag=, barra=Q,E,R,A
+     alternativa desde o inicio: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%
+     vs BASE: 0.00s | pocoes 0 | ouro 0g   | vs alternativa desde o inicio: 0.00s
+
+  [arranque] barra: ["W","Q","R","A"] -> ["W","E","R","A"]
+     com troca: MATA  27s               | pocoes   7 =    280g | ouro total   15480g | dps  2015 | vida min  60.2%   (disparou: SIM, custo 1s)
+        troca em t=0s -> dps 2014.6, rv=, penMag=, barra=W,E,R,A
+     alternativa desde o inicio: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%
+     vs BASE: -3.00s | pocoes +1 | ouro +40g   | vs alternativa desde o inicio: -3.00s
+
+  [arranque] barra: ["W","Q","R","A"] -> ["E","G","R","A"]
+     com troca: MATA  27s               | pocoes   7 =    280g | ouro total   15480g | dps  2015 | vida min  60.2%   (disparou: SIM, custo 1s)
+        troca em t=0s -> dps 2014.6, rv=, penMag=, barra=E,G,R,A
+     alternativa desde o inicio: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%
+     vs BASE: -3.00s | pocoes +1 | ouro +40g   | vs alternativa desde o inicio: -3.00s
+
+  [arranque] barra: ["W","Q","R","A"] -> ["G","F","R","A"]
+     com troca: MATA  28.15s            | pocoes   7 =    280g | ouro total   15480g | dps  1933 | vida min  60.2%   (disparou: SIM, custo 1s)
+        troca em t=0s -> dps 1932.6, rv=, penMag=, barra=G,F,R,A
+     alternativa desde o inicio: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%
+     vs BASE: -4.15s | pocoes +1 | ouro +40g   | vs alternativa desde o inicio: -4.15s
+
+  [arranque] barra: ["W","Q","R","A"] -> ["Q","F","R","A"]
+     com troca: MATA  24.9s             | pocoes   7 =    280g | ouro total   15480g | dps  2187 | vida min  60.2%   (disparou: SIM, custo 1s)
+        troca em t=0s -> dps 2187.3, rv=, penMag=, barra=Q,F,R,A
+     alternativa desde o inicio: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%
+     vs BASE: -0.90s | pocoes +1 | ouro +40g   | vs alternativa desde o inicio: -0.90s
+
+  [arranque] barra -> [Q,F,R,M] (M = Execucao Noxiana, rank 0)   [PRECISA 1 PUNTO DE HABILIDADE]
+     com troca: MATA  26.75s            | pocoes   7 =    280g | ouro total   15480g | dps  2035 | vida min  60.2%   (disparou: SIM, custo 1s)
+        troca em t=0s -> dps 2034.7, rv=, penMag=, barra=Q,F,R,M
+     alternativa desde o inicio: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%
+     vs BASE: -2.75s | pocoes +1 | ouro +40g   | vs alternativa desde o inicio: -2.75s
+
+  [arranque] barra -> [Q,F,R,T] (T = Chuva de Adagas, area, rank 0)   [PRECISA 1 PUNTO DE HABILIDADE]
+     com troca: MATA  26.75s            | pocoes   7 =    280g | ouro total   15480g | dps  2035 | vida min  60.2%   (disparou: SIM, custo 1s)
+        troca em t=0s -> dps 2034.7, rv=, penMag=, barra=Q,F,R,T
+     alternativa desde o inicio: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%
+     vs BASE: -2.75s | pocoes +1 | ouro +40g   | vs alternativa desde o inicio: -2.75s
+
+  [vida < 55%] barra -> [Q,F,R,B] (B = Passo das Sombras, rank 0)   [PRECISA 1 PUNTO DE HABILIDADE]
+     com troca: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%   (disparou: NAO, custo 0s)
+     alternativa desde o inicio: MATA  24s               | pocoes   6 =    240g | ouro total   15440g | dps  2269 | vida min  60.2%
+     vs BASE: 0.00s | pocoes 0 | ouro 0g   | vs alternativa desde o inicio: 0.00s
+
+--- 6) TABELA FINAL (ordenada por ganho vs a BASE; quem nao dispara / nao ganha fica no fim) ---
+  CASO DE USO | GATILHO | TROCA | GANHO (seg/poc/ouro) | CUSTO | VALE A PENA?
+  barra: ["W","Q","R","A"] -> ["Q","E","R","A"]          | arranque           | [Q,E,R,A]              | +0.00s / +0 poc / +0g          | 1s (1x)    | NAO
+  item: dano -> roubo de vida quando o chefe passa de 25 | vida do chefe < 25 | Espada do Rei Destruíd | -0.45s / -1 poc / +160g        | 1s (1x)    | TALVEZ (poupanca)
+  item: dano -> roubo de vida quando o chefe passa de 50 | vida do chefe < 50 | Espada do Rei Destruíd | -0.90s / -2 poc / +120g        | 1s (1x)    | TALVEZ (poupanca)
+  barra: ["W","Q","R","A"] -> ["Q","F","R","A"]          | arranque           | [Q,F,R,A]              | -0.90s / +1 poc / +40g         | 1s (1x)    | NAO
+  item: dano -> roubo de vida abaixo de 70% de vida      | vida < 70%         | Espada do Rei Destruíd | -1.20s / -3 poc / +80g         | 1s (1x)    | TALVEZ (poupanca)
+  item: dano -> roubo de vida abaixo de 85% de vida      | vida < 85%         | Espada do Rei Destruíd | -1.35s / -3 poc / +80g         | 1s (1x)    | TALVEZ (poupanca)
+  barra -> [Q,F,R,M] (M = Execucao Noxiana, rank 0)      | arranque           | [Q,F,R,M]              | -2.75s / +1 poc / +40g         | 1s (1x)    | NAO
+  barra -> [Q,F,R,T] (T = Chuva de Adagas, area, rank 0) | arranque           | [Q,F,R,T]              | -2.75s / +1 poc / +40g         | 1s (1x)    | NAO
+  bota: dano -> RM quando o Dragao carrega a chuva       | mecanica (carrega) | Esmagadores Acorrentad | -2.95s / -1 poc / +30g         | 1s (1x)    | TALVEZ (poupanca)
+  barra: ["W","Q","R","A"] -> ["W","E","R","A"]          | arranque           | [W,E,R,A]              | -3.00s / +1 poc / +40g         | 1s (1x)    | NAO
+  barra: ["W","Q","R","A"] -> ["E","G","R","A"]          | arranque           | [E,G,R,A]              | -3.00s / +1 poc / +40g         | 1s (1x)    | NAO
+  bota: CDR -> penMag no arranque                        | arranque           | Sapatos Enfeitiçados   | -3.80s / +2 poc / +180g        | 1s (1x)    | NAO
+  bota: dano -> RM a meio do chefe (boss < 50%)          | vida do chefe < 50 | Esmagadores Acorrentad | -3.95s / +1 poc / +40g         | 1s (1x)    | NAO
+  item: dano -> RM quando carrega a chuva                | mecanica (carrega) | Esmagadores Acorrentad | -4.10s / +0 poc / -200g        | 1s (1x)    | TALVEZ (poupanca)
+  barra: ["W","Q","R","A"] -> ["G","F","R","A"]          | arranque           | [G,F,R,A]              | -4.15s / +1 poc / +40g         | 1s (1x)    | NAO
+  item: dano -> penMag (3135) quando o chefe passa de 60 | vida do chefe < 60 | Cajado do Vazio        | -4.45s / +2 poc / +80g         | 1s (1x)    | NAO
+  bota: dano -> RM na 1.a queimadura                     | queimadura         | Esmagadores Acorrentad | -5.95s / +1 poc / +40g         | 1s (1x)    | NAO
+  item: dano -> escudo 3072 abaixo de 70%                | vida < 70%         | Sedenta por Sangue     | -6.20s / +1 poc / +440g        | 1s (1x)    | NAO
+  bota: dano -> RM quando o Dragao carrega o sopro       | mecanica (carrega) | Esmagadores Acorrentad | -6.25s / +0 poc / +0g          | 1s (1x)    | NAO
+  item: dano -> Semblante (cura x1,25) abaixo de 70%     | vida < 70%         | Semblante Espiritual   | -7.20s / +0 poc / -300g        | 1s (1x)    | TALVEZ (poupanca)
+  item: dano -> RM (3173 nao-bota) quando carrega o sopr | mecanica (carrega) | Esmagadores Acorrentad | -8.75s / +0 poc / -200g        | 1s (1x)    | TALVEZ (poupanca)
+  bota: penMag -> CDR no arranque                        | arranque           | Lucidez Escarlate      | +0.00s / +0 poc / +0g          | 0s (0x)    | NAO (o gatilho nao dispara)
+  bota: dano -> RM quando o Rugido soa (+50% as)         | mecanica (rugido)  | Esmagadores Acorrentad | +0.00s / +0 poc / +0g          | 0s (0x)    | NAO (o gatilho nao dispara)
+  bota: dano -> RM abaixo de 60% de vida                 | vida < 60%         | Esmagadores Acorrentad | +0.00s / +0 poc / +0g          | 0s (0x)    | NAO (o gatilho nao dispara)
+  bota: dano -> RM abaixo de 40% de vida                 | vida < 40%         | Esmagadores Acorrentad | +0.00s / +0 poc / +0g          | 0s (0x)    | NAO (o gatilho nao dispara)
+  item: dano -> roubo de vida abaixo de 50% de vida      | vida < 50%         | Espada do Rei Destruíd | +0.00s / +0 poc / +200g        | 0s (0x)    | NAO (o gatilho nao dispara)
+  item: dano -> Warmog abaixo de 40%                     | vida < 40%         | Armadura de Warmog     | +0.00s / +0 poc / +100g        | 0s (0x)    | NAO (o gatilho nao dispara)
+  item: dano -> Zhonya abaixo de 30%                     | vida < 30%         | Ampulheta de Zhonya    | +0.00s / +0 poc / +250g        | 0s (0x)    | NAO (o gatilho nao dispara)
+  item: dano -> dano quando o Dragao ruge                | mecanica (rugido)  | Capuz da Morte de Raba | +0.00s / +0 poc / +500g        | 0s (0x)    | NAO (o gatilho nao dispara)
+  barra -> [Q,F,R,B] (B = Passo das Sombras, rank 0)     | vida < 55%         | [Q,F,R,B]              | +0.00s / +0 poc / +0g          | 0s (0x)    | NAO (o gatilho nao dispara)
+
+--- 7) A TROCA EM COMBATE COMPENSA? ---
+  Onde COMPENSA (ganha mais segundos do que o custo da troca):
+    NENHUM caso. Nesta luta o custo de 1s por troca e maior que o ganho.
+  Onde POUPA ouro/pocoes (mesmo sem ganhar segundos):
+    - item: dano -> roubo de vida quando o chefe passa de 25%  ->  -1 pocoes, +160g
+    - item: dano -> roubo de vida quando o chefe passa de 50%  ->  -2 pocoes, +120g
+    - item: dano -> roubo de vida abaixo de 70% de vida  ->  -3 pocoes, +80g
+    - item: dano -> roubo de vida abaixo de 85% de vida  ->  -3 pocoes, +80g
+    - bota: dano -> RM quando o Dragao carrega a chuva  ->  -1 pocoes, +30g
+    - item: dano -> RM quando carrega a chuva  ->  0 pocoes, -200g
+    - item: dano -> Semblante (cura x1,25) abaixo de 70%  ->  0 pocoes, -300g
+    - item: dano -> RM (3173 nao-bota) quando carrega o sopro  ->  0 pocoes, -200g
+
+  REGRA QUE SAI DESTA LUTA: o Dragao Infernal nao tem fase que just

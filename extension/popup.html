@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LoL Idle — Auto-play</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>Auto-play <span class="sub">LoL Idle</span></h1>
+    <span class="pill off" id="pill"><i></i><b id="pill-txt">a ler…</b></span>
+  </header>
+
+  <!-- 1. O QUE ESTÁ A ACONTECER -->
+  <section class="bloco">
+    <h2>O que está a acontecer <span class="obs">lido do jogo</span></h2>
+    <div id="fase" class="fase">a ler o jogo…</div>
+    <div class="hp-row"><span id="hp-txt">— / —</span><span id="hp-pct"></span></div>
+    <div class="hp-bar"><i id="hp-fill"></i></div>
+    <div class="minis">
+      <div class="mini"><b id="mini-nivel">—</b><small>nível</small></div>
+      <div class="mini"><b id="mini-ouro">—</b><small>ouro</small></div>
+      <div class="mini wide"><b id="mini-local">—</b><small>onde estás</small></div>
+    </div>
+    <div class="linha-combate" id="combate">—</div>
+    <div class="alvo" id="alvo">sem alvo</div>
+  </section>
+
+  <!-- 2. POÇÕES -->
+  <section class="bloco">
+    <h2>Poções <span class="obs">a auto-poção usa a mais fraca que chega</span></h2>
+    <div class="pots" id="pots">
+      <div class="pot" data-k="vidaS"><b>—</b><small>Suprema</small></div>
+      <div class="pot" data-k="vidaF"><b>—</b><small>Forte</small></div>
+      <div class="pot" data-k="vida"><b>—</b><small>Normal</small></div>
+    </div>
+    <div class="ultima" id="ultima">sem acção ainda</div>
+  </section>
+
+  <!-- 3. CONTROLO -->
+  <section class="bloco">
+    <h2>Controlo</h2>
+    <label class="ligar" title="Liga/desliga o auto-play E a auto-poção">
+      <input type="checkbox" id="on"><span class="sw"></span>
+      <span class="ligar-t"><b id="on-txt">desligado</b><small>auto-play + auto-poção (farmar, chefes, base e poções)</small></span>
+    </label>
+    <button id="panic" class="btn danger">⛔ PARAR TUDO</button>
+    <p class="ajuda" id="panic-ajuda">Desliga o auto-play e a auto-poção imediatamente. O motor fica só a observar — nada é clicado no jogo.</p>
+  </section>
+
+  <!-- 4. CONFIGURAÇÃO RÁPIDA -->
+  <section class="bloco">
+    <h2>Configuração rápida</h2>
+    <label class="campo">
+      <span>O que queres ganhar</span>
+      <select id="obj">
+        <option value="xp">Experiência (subir de nível)</option>
+        <option value="ouro">Ouro (comprar itens)</option>
+        <option value="runas">Runas</option>
+      </select>
+    </label>
+    <label class="campo">
+      <span>Onde farmar</span>
+      <select id="reg-modo">
+        <option value="auto">Automática (o motor escolhe)</option>
+        <option value="fixa">Fixa (escolho eu)</option>
+      </select>
+    </label>
+    <label class="campo" id="reg-campo">
+      <span>Região fixa</span>
+      <select id="reg-id"></select>
+    </label>
+    <p class="ajuda">Estas duas escolhas mudam a região que o motor procura. Tudo o resto (poções, itens, atributos, Ornn) está no painel completo, dentro do jogo.</p>
+  </section>
+
+  <footer>
+    <b>Painel completo:</b> passa o rato no <b>teu nome</b> no jogo, ou prime <b>F8</b>.
+    <span id="rodape-aviso" class="aviso"></span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
