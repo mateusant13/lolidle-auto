@@ -409,3 +409,13 @@ Tentei (a) so `(d)` -> 18->19; (b) compativel com as DUAS assinaturas `(d, nivel
 passa a falhar. Proximo passo: `grep fatorDanoMonstroMotor|fatorDanoJogadorMotor` nos DOIS ficheiros
 (automation.js e os testes) e ver TODOS os pontos de chamada ANTES de mudar a assinatura.
 Estado mantido: 18 (o melhor medido).
+## ADENDA 11:50 - H12c: killsMinTeorico/kAbates no estimarRegiao (18->20 mas 20/25 suites verdes)
+O teste H12c pede `eLobos.killsMinTeorico > 0 && eLobos.kAbates === 1` no retorno do `estimarRegiao`.
+Acrescentei os dois campos no ULTIMO `return {` do corpo (1400) -> sintaxe OK, **20/25 suites verdes**
+(uma a MAIS), mas o total foi 18 -> 20: usei `killsMin` no `killsMinTeorico`, e essa variavel nao existe
+naquele escopo (o teorico tem outro nome dentro do `estimarRegiao`).
+
+**Proximo passo:** ler as linhas 1300-1400 do `estimarRegiao` e ver **como o teorico se chama la dentro**
+(provavelmente `dpsKillsMin`/`spawnKillsMin`, como no `estimarRegiao` antigo: `let killsMin = spawnKillsMin;
+modo='spawn'`). Depois expor `killsMinTeorico: <esse>` + `kAbates: cfg.kAbates || 1`.
+NOTA: o sinal de que **uma suite ficou verde** mostra que a direccao esta certa - falta o nome certo.
