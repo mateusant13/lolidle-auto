@@ -285,3 +285,16 @@ Exportei `farmarItemEstado`/`Parar`/`Tenho` e `larvasInvoca` (estavam **definida
 O banco foi de **11 → 17**: as 5 suites que rebentavam com "is not a function" passam a **correr** e falham
 em asserções **reais**. **Mantido** — 17 falhas reais valem mais que 11 com 5 escondidas atrás de um
 TypeError. É o mesmo fenómeno medido 3× nesta sessão.
+
+
+## ADENDA 10:30 — o sufixo k/M no `#log`: o TESTE codifica o valor antigo (REGRA Nº 6)
+Corrigi as duas regex do `handleLog` (linhas 791-792) para aceitarem o sufixo do `fmt` do jogo
+(`12.3k de ouro`): antes capturavam `12.3` (1000x errado). Resultado: **o banco PIORROU (13 → 15)**.
+
+**Porque:** há asserções que **codificam o valor antigo** (12.3 em vez de 12300). É exactamente o caso
+da **REGRA Nº 6** — *"se um teste codifica o comportamento antigo, o verde é falso: actualiza o teste à
+regra nova e diz qual mudaste."*
+
+**Próximo passo:** aplicar a correcção E **actualizar as asserções** que fixam o valor antigo (procurar
+por `12.3`/`12,3` nas suites que usam o `#log`), declarando quais mudaram. Revertido por agora para
+não deixar o banco pior sem o par (código + teste) completo.
