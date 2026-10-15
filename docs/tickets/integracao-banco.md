@@ -747,3 +747,18 @@ Com o `medido` a vir do RANK (rodadas de teste salvas, `mob.goldMin`) e `diverge
 **Leitura:** o `refinarMelhores` do master difere do do ramo w2 em COMO escolhe `essenciais`
 (`fonteEssenciais`/rank). Nao e o `medido`: e a semantica da lista. E o PAR completo (medido + lista).
 **w1-regioes D (2)**: decisao de desenho (o `seen` do ranking vem das rodadas salvas, nao do `farm.cycles`).
+## ADENDA 19:00 - CONTRADICAO RESOLVIDA PELO LEDGER: TK-02-93 SUPERa o TK-02-06
+**As duas suites pedem regras OPOSTAS** e cada uma cita um ticket P1 diferente:
+  - `refinar` (TK-02-06, fila-W2): *'o TEORICO manda; o medido (n>=3) e so VALIDACAO'*;
+  - `w10` M1 (TK-02-93, fila-W10): *'a MEDIDA manda sobre a lista teorica'* com n>=3.
+**Desempate pelo corpo do TK-02-93** (mais especifico e posterior):
+  *'cumprir a ordem (TK-02-89 -> acumular >=2 assinaturas de build -> SO ENTAO retirar a muleta)'*
+  *'Aceitacao: a muleta sai SO QUANDO HA EM QUE APOIAR'*
+  e ainda: *'a muleta esta INERTE e o que a substituiria tem ERRO CONHECIDO'*.
+**A 'muleta' e o recurso TEORICO.** Logo: a teorica e a BASE (fallback sem medicao) e o MEDIDO passa a
+mandar quando ha apoio (n>=3) -> **o comportamento actual esta CERTO** e o TK-02-06 esta superado.
+**Consequencia:** o teste do `refinar` (R1/R3) codifica a regra ANTIGA. Pela REGRA N.o 6 do AGENTS.md
+(*'se um teste codifica o comportamento antigo, o verde e falso: actualiza o teste a regra nova e diz
+qual mudaste'*), o caminho e ACTUALIZAR esse teste - mas isso e uma decisao de politica, e fica
+REGISTADA para o dono confirmar (nao a tomo sozinho).
+**Estado mantido: 10 falhas, 23/25 suites verdes (o estado em que o TK-02-93 passa).**
