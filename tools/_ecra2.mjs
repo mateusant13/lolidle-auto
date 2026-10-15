@@ -1,0 +1,14 @@
+const list = await (await fetch('http://127.0.0.1:9224/json/list')).json();
+const pg = list.find(t => t.type === 'page' && /lolidle/.test(t.url));
+const ws = new WebSocket(pg.webSocketDebuggerUrl);
+let id = 0; const pend = new Map(); const ctxs = [];
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } else if (m.method === 'Runtime.executionContextCreated') ctxs.push(m.params.context); });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method: m, params: p || {} })); setTimeout(() => r({ __t: true }), 15000); });
+await send('Runtime.enable'); await new Promise(r => setTimeout(r, 2500));
+console.log('ctxs: ' + ctxs.map(c => c.id + ':' + (c.origin||'?').slice(0,26)).join(' | '));
+const main = ctxs.find(c => c.origin === 'https://lolidle.com') || ctxs[0];
+const ev = (expr) => send('Runtime.evaluate', { contextId: main.id, returnByValue: true, expression: expr });
+const r = await ev("(() => { const t = document.body ? (document.body.innerText||'') : ''; const limpo = t.replace(/\\n+/g, ' | ').slice(0, 650); const janelas = [...document.querySelectorAll('[id^=janela-]')].filter(e => e.offsetParent !== null).map(e => e.id); return JSON.stringify({ texto: limpo, janelasVisiveis: janelas }); })()");
+console.log('ECRA: ' + (r.__t ? 'sem resposta' : String(r.result?.result?.value).slice(0, 900)));
+ws.close(); process.exit(0);

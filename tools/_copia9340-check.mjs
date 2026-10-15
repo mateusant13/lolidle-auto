@@ -1,0 +1,27 @@
+const v = await (await fetch('http://127.0.0.1:9340/json/version')).json();
+const ws = new WebSocket(v.webSocketDebuggerUrl);
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method: m, params: p || {} })); setTimeout(() => r({ __t: true }), 15000); });
+const r = await send('Extensions.loadUnpacked', { path: 'I:\\!lolidle.com\\extension' });
+console.log('extensao: ' + JSON.stringify(r.result || r.error).slice(0, 80));
+await new Promise(x => setTimeout(x, 3000));
+const list = await (await fetch('http://127.0.0.1:9340/json/list')).json();
+const pg = list.find(t => t.type === 'page' && /lolidle/.test(t.url));
+console.log('aba do jogo: ' + (pg ? 'SIM' : 'NAO'));
+if (!pg || !pg.webSocketDebuggerUrl) process.exit(0);
+const w2 = new WebSocket(pg.webSocketDebuggerUrl);
+let id2 = 0; const p2 = new Map(); const ctxs = [];
+w2.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && p2.has(m.id)) { p2.get(m.id)(m); p2.delete(m.id); } else if (m.method === 'Runtime.executionContextCreated') ctxs.push(m.params.context); });
+await new Promise(r2 => w2.addEventListener('open', r2, { once: true }));
+const s2 = (m, p, sid) => new Promise(r => { const i = ++id2; p2.set(i, r); w2.send(JSON.stringify(sid ? { id: i, method: m, params: p||{}, sessionId: sid } : { id: i, method: m, params: p || {} })); setTimeout(() => r({ __t: true }), 12000); });
+await s2('Runtime.enable'); await s2('Page.enable');
+await s2('Page.reload', { ignoreCache: true });
+await new Promise(x => setTimeout(x, 12000));
+const main = ctxs.find(c => c.origin === 'https://lolidle.com');
+const ext = ctxs.find(c => /^chrome-extension:/.test(c.origin || ''));
+console.log('ctxs: ' + ctxs.map(c => c.id + ':' + (c.origin||'?').slice(0,24)).join(' | '));
+if (main) { const r1 = await s2('Runtime.evaluate', { contextId: main.id, returnByValue: true, expression: "JSON.stringify({ login: /Bem-vindo de volta|Senha/i.test(document.body ? document.body.innerText : ''), local: (document.querySelector('#local-nome')||{}).textContent||null, vida: (document.querySelector('#hud-vida-txt')||{}).textContent||null })" }); console.log('JOGO: ' + (r1.__t ? 'sem resposta' : String(r1.result?.result?.value))); }
+console.log('extensao injectou: ' + (ext ? 'SIM' : 'NAO'));
+w2.close(); process.exit(0);

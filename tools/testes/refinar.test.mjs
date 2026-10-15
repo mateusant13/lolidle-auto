@@ -56,14 +56,20 @@ export const suite = {
     t.check('R0: e a fonte é "teorico"', r0.fonteEssenciais === 'teorico');
     t.check('R0: e não há medição a validar', r0.medido === null);
 
-    /* ----R1: com histórico medido (n>=3) a muleta já não substitui a lista ---- */
+    /* ----R1: com histórico medido (n>=3) a MU-LETA SAI (TK-02-93) ----
+     * TESTE ACTUALIZADO (REGRA N.o 6 do AGENTS.md): a versão anterior exigia a lista TEÓRICA
+     * mesmo com n=4 (regra do TK-02-06, fila-W2). O TK-02-93 (fila-W10, posterior e mais
+     * específico) decide o contrário: *"a muleta sai só quando há em que apoiar"* (TK-02-89 ->
+     * acumular >=2 assinaturas -> SÓ ENTÃO retirar a muleta), e o `w10` M1 prova o mesmo.
+     * Com n=4 a medir 9999 ouro/min HÁ em que apoiar -> os essenciais passam a ser os MEDIDOS. */
     semearMedido(auto, ['3089', '3001', '3002', '3003', '3004']);
     const r1 = await auto.refinarMelhores();
-    t.check('R1: com n=4 medido a 9999 ouro/min, a lista CONTINUA teórica',
-      JSON.stringify(r1.essenciais) === JSON.stringify(teorica));
-    t.check('R1: e a fonte continua "teorico"', r1.fonteEssenciais === 'teorico');
-    t.check('R1: a build medida (9999 ouro/min) NÃO entrou na lista',
-      (r1.essenciais || []).indexOf('3089') < 0 && (r1.essenciais || []).indexOf('3001') < 0);
+    t.check('R1: com n=4 medido a 9999 ouro/min a lista passa a MEDIDA (TK-02-93)',
+      JSON.stringify(r1.essenciais) === JSON.stringify(['3089', '3001', '3002', '3003', '3004']));
+    t.check('R1: e a fonte fica NOMEADA com a medicao (n e ouro/min)',
+      /^medido\(n=4, 9999 ouro\/min\)$/.test(String(r1.fonteEssenciais)));
+    t.check('R1: a build medida (9999 ouro/min) ENTROU na lista',
+      (r1.essenciais || []).indexOf('3089') >= 0 && (r1.essenciais || []).indexOf('3001') >= 0);
 
     /* ----R2: o medido é devolvido como VALIDAÇÃO, não aplicado ---- */
     t.check('R2: o medido é devolvido (n=4, 9999 ouro/min)',
@@ -80,11 +86,13 @@ export const suite = {
 
     montarEquip(m, [sl('2001~A', 'lendario'), sl('3089~A', 'lendario'), sl('2004~A', 'lendario')]);
     const r3 = await auto.refinarMelhores();
-    // 2001 e 2004 são da build teórica do AD (buildIdeal = 2007,2001,2004,2005,2006); o 3089 não é.
-    t.check('R3: o 3089 (medido, fora da build) NUNCA é alvo do refino',
-      (r3.essenciais || []).indexOf('3089') < 0);
-    t.check('R3: e os itens da build teórica são os essenciais',
-      ['2001', '2004'].every((b) => (r3.essenciais || []).indexOf(b) >= 0));
+    // TESTE ACTUALIZADO (REGRA N.o 6): com medicao (n=4) os essenciais sao os MEDIDOS (TK-02-93),
+    // logo o 3089 -- que esta na lista medida -- PASSA a poder ser alvo; os itens da teorica que
+    // nao foram medidos (2001/2004) deixam de ser essenciais.
+    t.check('R3: com medicao, o 3089 (medido) E alvo do refino (TK-02-93)',
+      (r3.essenciais || []).indexOf('3089') >= 0);
+    t.check('R3: e os itens NAO medidos da teorica deixam de ser essenciais',
+      ['2001', '2004'].every((b) => (r3.essenciais || []).indexOf(b) < 0));
     t.check('R3: o refino corre na Fonte e devolve o que fez', r3.ok === true && Array.isArray(r3.refinados));
 
     t.check('Z: nenhum seletor desconhecido foi usado (stub honesto)', m.unstubbed().length === 0);
