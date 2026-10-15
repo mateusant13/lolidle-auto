@@ -93,6 +93,10 @@
     // e nunca entrava. Este campo fixa um item como ALVO da build, a frente de tudo.
     // Valores: null (sem alvo) | 'rabadon' | id numerico de item (ex.: '3089').
     objetivoItem: null,
+    // AUTO FARM POR ITEM (TK-02-47): ids-base a farmar ATÉ CAIR (ex.: ['3089']). Vazio = desligado.
+    // Escrito pelo `farmarItem(ids)` DO MOTOR — antes a GUI compunha setConfig+regionDefault+
+    // viajarPara a cada vez (gui.js:2820-2841) e a região ficava fixa sem parar quando caía.
+    farmarItem: [],
     keepEpicA: true,
     minPotion: { vida: 200, vidaF: 100, vidaS: 30 },
     buyPotion: { vida: 3000, vidaF: 1500, vidaS: 700 },
@@ -198,30 +202,50 @@
   };
   let cfg = structuredClone(DEFAULT);
 
-  // Sufixo que o `fmt` do JOGO mete nos números do HUD (docs/game-src/cena.js:225):
-  //   fmt = n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e4 ? (n/1e3).toFixed(1)+'k' : Math.round(n)
-  // A MESMA regra que fechou o bug do content.js (prováda lá, mesmos casos): o parser antigo
-  // (`replace(/[^\d]/g,'')`) APAGAVA o sufixo — "12.3k" virava 123 e "1.2M" virava 12 — e
-  // corrompia readGold, readPotions, `vendaLojista` (scanBag) e o ouro do loot EM SILÊNCIO
-  // acima de 10 000. Com inteiros o comportamento é idêntico (sem regressão).
-  const SUFIXO = { k: 1e3, K: 1e3, m: 1e6, M: 1e6 };   // cena.js:225: k = x1000, M = x1000000
-  /**
-   * Número do HUD como o jogo o escreve.
-   * @param {string} raw campo numérico (sem o sufixo)
-   * @param {string} [suf] 'k'/'m' que vinha imediatamente a seguir ao campo
-   */
-  const parseNum = (raw, suf) => {
-    const s = String(raw ?? '').replace(/[\s\u00a0\u202f]/g, '');
+  // ============ NÚMEROS COMO O ECÃ DO JOGO OS ESCREVE (directiva do Lead, 2026-10-14 22:01) ============
+  // O jogo escreve TODOS os números do HUD/log/dica pelo `fmt` (cena.js:225):
+  //   fmt(n) = n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e4 ? (n/1e3).toFixed(1)+'k' : Math.round(n)
+  // donde '4188' · '12.3k' · '1.2M'. O `parseNum` antigo era `replace(/[^\d]/g,'')`, que APAGA o
+  // sufixo: '12.3k' virava 123 (100x menos) e '1.2M' virava 12 — ouro, vida, cura e preços lidos
+  // errados EM SILÊNCIO acima de 10.000. MEDIDO nos caminhos deste ficheiro: `readGold`
+  // (#st-ouro, jogo.js:6398), `readPotions`, o `vendaLojista` do tooltip (scanBag) e o ouro/xp
+  // do log do farm (handleLog).
+  // A REGRA (a mesma já provada no content.js): o sufixo {k:1e3, m:1e6} entra nos GRUPOS da
+  // regex; um grupo de 3 casas ('4.188') é MILHAR, e COM sufixo ('12.3k') é decimal. Inteiros
+  // continuam iguais (sem regressão). FONTE: cena.js:225 + jogo.js:6203/6398/3759/3769/192.
+  const NUM_SUFIXO = { k: 1e3, m: 1e6 };                                    // cena.js:225
+  /** Converte o grupo de dígitos + sufixo no número. Sem sufixo, grupo de 3 = milhar;
+   *  com sufixo, o grupo é decimal (pt '12,3k' e en '12.3k' dão o mesmo). */
+  const numDe = (dig, suf) => {
+    // Remove os separadores de frase no fim ('5625.' ou '5.625.' — o ponto do fim da frase).
+    let s = String(dig == null ? '' : dig).trim().replace(/[.,]+$/, '');
     if (!s) return NaN;
-    const d = s.replace(/[^\d.,]/g, '');                       // "12.3" | "4.188" | "1.234.567"
-    if (!d) return NaN;
-    // "4.188" (grupo de 3) é MILHAR em pt-BR; "12.3" é decimal (o `fmt` dá 1 casa, cena.js:225).
-    const v = /^\d{1,3}([.,]\d{3})+$/.test(d) ? Number(d.replace(/[.,]/g, ''))
-      : /^\d+[.,]\d+$/.test(d) ? Number(d.replace(',', '.'))
-        : Number(d.replace(/[.,]/g, ''));
-    const mult = SUFIXO[String(suf ?? '').trim()] || 1;
-    return Number.isFinite(v) ? v * mult : NaN;
+    if (suf) s = s.replace(/,/g, '.');                       // COM sufixo: separador decimal
+    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');   // '4.188' = MILHAR
+    else s = s.replace(/,/g, '.');                           // '1,5' = decimal
+    const v = parseFloat(s);
+    return Number.isFinite(v) ? v * (NUM_SUFIXO[String(suf || '').toLowerCase()] || 1) : NaN;
   };
+  /** Número como o ecrã do jogo o escreve. `null` quando não há número.
+   *  Casos provados (directiva do Lead): '12.3k / 20.4k' -> {cur:12300, max:20400}; '9.876 /
+   *  12.3k' -> 12300 (o parseNum antigo dava 123); '1.2M' -> 1200000; '4.188' -> 4188;
+   *  '4188' -> 4188; '1,5' -> 1.5; '' -> null. */
+  const numEcra = (txt) => {
+    const s = String(txt == null ? '' : txt).trim();
+    if (!s) return null;
+    const m = s.match(/^([\d.,]*\d[\d.,]*)\s*([kKmM]?)$/);
+    if (m) { const v = numDe(m[1], m[2]); return Number.isFinite(v) ? Math.round(v) : null; }
+    // Tolerante: o ecrã escreve '12.3k de ouro', 'Vale 5625 de ouro no Lojista.', '9.876 /
+    // 12.3k' — o valor é o ÚLTIMO grupo com PELO MENOS UM DÍGITO. Sem o `\d` no grupo o ponto
+    // final de 'Vale 5625 de ouro no Lojista.' era capturado como 'número' e dava null.
+    let ult = null;
+    const re = /([\d.,]*\d[\d.,]*)\s*([kKmM]?)/g;
+    let g; while ((g = re.exec(s)) !== null) ult = g;
+    if (!ult) return null;
+    const v = numDe(ult[1], ult[2]);
+    return Number.isFinite(v) ? Math.round(v) : null;
+  };
+  const parseNum = (raw, suf) => { const txt = (raw == null || raw === '') ? '' : (suf != null && suf !== '' ? String(raw) + String(suf) : String(raw)); const v = numEcra(txt); return v == null ? NaN : v; };   // aceita (raw, sufixo) ou o texto inteiro
   const numOr = (v, d) => Number.isFinite(v) ? v : d;
 
   // ------------------------------------------------------------- keybinds
@@ -233,12 +257,10 @@
 
   // ------------------------------------------------------------- leitura
   function readGold() {
+    // `#st-ouro` escreve `fmt(ouro)` (jogo.js:6398) — UM parser só (o `numEcra`), em vez de
+    // duas contas do sufixo aqui e nenhuma no `parseNum`. '4188' · '12.3k' · '1.2M' · '4.188'.
     const t = document.querySelector('#st-ouro')?.textContent || '';
-    // O `fmt` do jogo mete k/M (cena.js:225): "12.3k" / "1.2M". O sufixo tem de entrar no
-    // grupo da regex e ser passado ao parseNum — senão 12.3k virava 123 (bug medido, mesmos
-    // casos provados no content.js).
-    const m = t.match(/([\d.,]+)\s*([kKmM])?/);
-    return m ? parseNum(m[1], m[2]) : NaN;
+    return numEcra(t) ?? NaN;
   }
   function readLocation() {
     const t = document.querySelector('#local-nome')?.textContent || '';
@@ -296,9 +318,10 @@
         const cls = String(s.className || '');
         const rar = cls.includes('lendario') ? 'lendario' : cls.includes('epico') ? 'epico' : cls.includes('basico') ? 'basico' : '?';
         const dica = s.getAttribute('data-dica') || '';
-        // O sufixo k/M do `fmt` (cena.js:225) também aparece no "Vale X de ouro no Lojista":
-        // sem ele uma peça de 12.3k valia 123 e o `custoIdaBase` subestimava a renda.
-        const vendaM = dica.match(/Vale\s+([\d.,]+)\s*([kKmM])?\s+de ouro no Lojista/i);
+        // O tooltip do ITEM traz o número CRU (`valorVenda(id)`, jogo.js:192); o do ESPÓLIO traz
+        // `fmt` (jogo.js:3759/3769) — logo '5.6k'/'1.2M' podem aparecer. O grupo tem de apanhar o
+        // sufixo (e a vírgula decimal), senão '5.6k' era lido como 5,6 e viraria 56 de ouro.
+        const vendaM = dica.match(/Vale\s+([\d.,]+\s*[kKmM]?)\s+de ouro no Lojista/i);
         items.push({
           kind: 'item', base, qual: qual || 'C', raridade: rar, id, refino: (id.match(/\+(\d+)/) || [])[1] ? +(id.match(/\+(\d+)/)[1]) : 0,
           vendaLojista: vendaM ? parseNum(vendaM[1], vendaM[2]) : null, dica, stats: parseDica(dica),
@@ -566,8 +589,15 @@
       // DUPLICATA por RARIDADE (regra do dono, verbatim): "a liandry c e anunciada no mercado...
       // e fica a liandry a. se eu tenho outra liandry a, (duas), anuncia uma delas no mercado."
       // -> LENDARIO duplicado vai ao MERCADO; basico/epico duplicado vai ao Lojista.
+      // DUPLICATA DE LENDÁRIO e o MERCADO CHEIO (correcção 22:40, palavra do dono: "lendario
+      // repetido -> MERCADO (anunciar). Sem lugar no mercado -> guardar na mochila ate abrir
+      // lugar"): sem esta guarda o plano dizia ANUNCIAR_MERCADO com as 10 ofertas já ocupadas —
+      // o actor tentava, falhava e o item ficava na mochila à mesma, mas o PLANO mentia e o
+      // `n.anunciar` abria uma necessidade que nunca fechava. Agora o plano diz o que acontece.
       else if (duplicado.has(it)) acts.push(it.raridade === 'lendario'
-        ? { action: 'ANUNCIAR_MERCADO', it, why: 'duplicata de lendário (fica a de maior tier) → mercado' }
+        ? (mercadoSaturado().sat
+          ? { action: 'PROTEGER', it, why: 'duplicata de lendário — mercado SATURADO: fica na mochila até abrir lugar (lendário NUNCA vai ao Lojista)' }
+          : { action: 'ANUNCIAR_MERCADO', it, why: 'duplicata de lendário (fica a de maior tier) → mercado' })
         : { action: 'VENDER_LOJISTA', it, why: 'duplicata (fica 1, o de maior tier)' });
       // LENDÁRIO < A: via antiga (mercado/saturado), DEPOIS da duplicata — é a ordem original
       // e o teste T3 depende dela (a duplicata tem de ser apanhada primeiro).
@@ -649,7 +679,12 @@
   const seenLog = new WeakSet();
   let farm = { current: null, cycles: [], log: [], issues: [], deaths: [] };
 
-  const parseBig = (s) => { if (!s) return null; const m = String(s).match(/([\d.]+)\s*([kKmM]?)/); if (!m) return null; let v = parseFloat(m[1]); const s2 = (m[2] || '').toLowerCase(); if (s2 === 'k') v *= 1e3; if (s2 === 'm') v *= 1e6; return Math.round(v); };
+  // PREÇOS/QUANTIAS do ecrã (mercado, ofertas, `#mj-minimo`): o jogo escreve com `fmt`
+  // (cena.js:225) e o texto em pt-BR traz milhar com ponto — '4.188' é 4188, não 4. O `parseBig`
+  // antigo fazia `parseFloat('4.188')` = 4,188 e arredondava para 4: um preço de 4.188 de ouro
+  // no mercado era lido como 4. Passa a ser o MESMO parser do resto (`numEcra`), com `null`
+  // quando não há número (contrato de sempre deste helper).
+  const parseBig = (s) => (s == null || s === '' ? null : numEcra(s));
   function logEvent(type, data) { try { farm.log = [{ at: Date.now(), type, ...data }, ...(farm.log || [])].slice(0, 200); } catch { /* ignore */ } }
   function logIssue(type, data) { try { farm.issues = [{ at: Date.now(), type, ...data }, ...(farm.issues || [])].slice(0, 100); } catch { /* ignore */ } }
 
@@ -805,9 +840,13 @@
       farm.current = naBase ? null : novoCiclo(loc.text, Date.now());
       publishFarm();
     }
-    // Igual para o loot: "recebeu 12.3k de ouro" / "+ 12.3k de experiência" (cena.js:225).
-    const g = entry.body.match(/(?:Loot|recebeu)[^:]*:\s*(\d[\d.,]+)\s*([kKmM])?\s*de ouro/i);
-    const x = entry.body.match(/\+\s*(\d[\d.,]+)\s*([kKmM])?\s*de experi/i);
+    // O log do jogo (cena.js, `Loot de {nome}: {ouro} de ouro{itens}. +{xp} de experiência.`)
+    // escreve o ouro e o xp com `fmt` (cena.js:225): acima de 10.000 vem '12.3k' e acima de
+    // 1.000.000 '1.2M'. O grupo antigo `(\d[\d.]*)` PARAVA no 'k' — capturava '12.3' e o
+    // ouro do ciclo entrava 1000x menor (12 em vez de 12.300), intoxicando o kOuro medido e o
+    // `fechaFase.perMin.gold`. O sufixo entra no grupo (regra do Lead, 22:01).
+    const g = entry.body.match(/(?:Loot|recebeu)[^:]*:\s*(\d[\d.,]*\s*[kKmM]?)\s*de ouro/i);
+    const x = entry.body.match(/\+\s*(\d[\d.,]*\s*[kKmM]?)\s*de experi/i);
     const nomeLoot = (entry.body.match(/Loot de\s+(.+?):/i) || [])[1] || null;
     if (g || x) {
       if (window.__lolidleRlog) window.__lolidleRlog({ t: 'kill', nome: nomeLoot, gold: g ? parseNum(g[1], g[2]) : null, xp: x ? parseNum(x[1], x[2]) : null });
@@ -1280,13 +1319,17 @@
   function valorEquip(base, qual, refino) {
     const it = (META.itens || []).find((x) => String(x.id) === basePura(base));
     if (!it) return null;
-    return Math.round((it.preco || 0) * (1 + BONUS_REFINO * (refino || 0)) * (QUAL_MULT[String(qual || 'C').toUpperCase()] || 1));
+    // `QUALIDADES[qual]?.mult || 1` — a MESMA regra do motor (motor.js:182-188 + 2921): a
+    // qualidade '?' (sendo avaliada) NAO existe no mapa, logo vale 1 — NAO 0,9 (o 'C'). Antes era
+    // `String(qual || 'C')`, que punia uma peça pendente como se fosse qualidade C.
+    return Math.round((it.preco || 0) * (1 + BONUS_REFINO * (refino || 0)) * (QUAL_MULT[String(qual || '').toUpperCase()] || 1));
   }
   /** VALOR DE VENDA no Lojista (motor.js:257). `null` sem catálogo. */
   function valorVenda(base, qual, refino) {
     const it = (META.itens || []).find((x) => String(x.id) === basePura(base));
     if (!it) return null;
-    return Math.floor((it.preco || 0) * 0.5 * (1 + 0.5 * (refino || 0)) * (QUAL_VENDA[String(qual || 'C').toUpperCase()] || 1));
+    // `QUALIDADES[qual]?.venda || 1` — mesmo critério do motor (motor.js:266): '?' vale 1.
+    return Math.floor((it.preco || 0) * 0.5 * (1 + 0.5 * (refino || 0)) * (QUAL_VENDA[String(qual || '').toUpperCase()] || 1));
   }
 
   // Penalidade de XP/ouro por diferença de nível (motor.js:420). Acima de 5 níveis
@@ -1484,24 +1527,7 @@
   // Estes leitores pegam os numeros onde o jogo os poem — cada um com o file:linha que o escreve.
   // =====================================================================================
 
-  /** Numero no formato DO ECRA do jogo. `fmt` (cena.js:225):
-   *    n >= 1e6 -> (n/1e6).toFixed(1)+'M' · n >= 1e4 -> (n/1e3).toFixed(1)+'k' · senao Math.round(n)
-   *  BUG MEDIDO: `#hud-vida-txt` (jogo.js:6203) usa este `fmt`, logo acima de 10.000 a string vem
-   *  '12.3k / 20.4k' — e a regex antiga `(\d+)\s*\/\s*(\d+)` nao casava com o 'k', pelo que a
-   *  vida do boneco caia no LITERAL 4188. Este parser e a mesma conta do `fmt`, invertida, com
-   *  sufixo k/M e com `,` decimal (pt) ou `.` (en). */
-  const numEcra = (txt) => {
-    const m = String(txt == null ? '' : txt).trim().match(/^([\d.,]+)\s*([kKmM]?)$/);
-    if (!m) return null;
-    let s = m[1];
-    if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');      // '1.234' = milhar
-    else s = s.replace(',', '.');                                     // '1,5'  = decimal
-    let v = parseFloat(s);
-    if (!Number.isFinite(v)) return null;
-    if (/k/i.test(m[2])) v *= 1e3;
-    if (/M/i.test(m[2])) v *= 1e6;
-    return Math.round(v);
-  };
+  // (parser único `numEcra` — declarado acima na secção de leitura do ecrã)
   /** Valor de uma variavel CSS inline (`--cd`) que O JOGO escreve no elemento.
    *  jogo.js:6228 (recarga das habilidades) · jogo.js:6172 (buffs) · jogo.js:6190 (recarga de item).
    *  Le-se o valor INLINE (`el.style.getPropertyValue`), nao `getComputedStyle`: e exactamente
@@ -2873,7 +2899,13 @@
       const mq = id.match(/~([A-Za-z?]{1,2})$/);
       if (!mq || !QUAL.includes(mq[1].toUpperCase())) { regras.protegidos.push({ id, motivo: "qualidade '?'/ilegível — nunca mexer" }); continue; }
       const qual = mq[1].toUpperCase();
-      const lend = /lendário/i.test(dica), epi = /épico/i.test(dica);
+      // RARIDADE: o CATÁLOGO manda; a dica do slot é só o fallback (o texto do ecrã pode vir
+      // sem acento — 'Item Lendario' — e a guarda `/lendário/i` deixava passar um LENDÁRIO para
+      // o Lojista. MEDIDO no banco: com a dica sem acento o ator CLICAVA o lendário. O
+      // `catIt` já era usado mais abaixo para o componente épico; passa a decidir a raridade.
+      const catItA = (META.itens || []).find((x) => String(x.id) === String(puro));
+      const lend = (catItA && catItA.raridade === 'lendario') || /lend[áa]rio/i.test(dica);
+      const epi = (catItA && catItA.raridade === 'epico') || /épico/i.test(dica);
       if (lend && lendaBuild.has(String(puro))) { regras.protegidos.push({ id, motivo: 'lendário da build da classe' }); continue; }
       // PEÇAS RESERVADAS DAS DUAS BUILDS (mob × chefe): NUNCA vão ao Lojista — são as peças da
       // build da outra fase (o que sai da troca fica na mochila). Vem DEPOIS do lendário-da-build
@@ -2896,7 +2928,7 @@
       // O que se perdeu foi um ÉPICO montado — o Tiamat, 124.500 de ouro, vendido por 600.
       // Usa a RARIDADE DO CATÁLOGO (não a dica do slot): é a fonte fiável. Um item de
       // raridade 'epico' que sirva de componente à build ideal nunca vai para o Lojista.
-      const catIt = (META.itens || []).find((x) => String(x.id) === String(puro));
+      const catIt = catItA;   // mesma busca (feita acima, para decidir a raridade)
       if (catIt && catIt.raridade === 'epico' && componentesDaBuild().has(String(puro))) { regras.protegidos.push({ id, motivo: 'componente da build ideal (epico do catalogo)' }); continue; }
       // BÁSICO COMPONENTE: guarda até ao tecto da receita, vende só o excedente (MESMA regra do
       // `planBag` — sem esta reconciliação voltava o ping-pong mochila<->Lojista).
@@ -5175,22 +5207,40 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
    *  + motor.js:30 ("1 espaço só de bota e 4 livres; o tipo só serve para achar a bota"). */
   function escolherConjunto(pool, cmp) {
     const botas = pool.filter((i) => espacoDoItem(i.base) === 'botas').sort(cmp)[0] || null;
-    const usados = new Set(botas ? [botas.base] : []);
     const alvo = botas ? [botas] : [];
+    // REPETIÇÃO DE ITEM BASE — REGRA DO MOTOR (motor.js:2902 `equipar`, 2909 `trocarItem`,
+    // 2913-2914 `cabeNoEquip`): o motor só recusa repetir **LENDÁRIO**
+    //   `ITENS[baseId(id)].lendario && estado.itens.some((x) => baseId(x) === baseId(id))`
+    // Um item NÃO-lendário pode repetir (o motor nunca o proíbe) e a única restrição de espaço
+    // é 1 bota + 4 itens (`ESPACOS_ITENS`, motor.js:36). A extensão proibia QUALQUER base
+    // repetida — era MAIS restritiva que o jogo (TK-02-65). `usados` passa a contar só bases
+    // LENDÁRIAS; a bota continua única pelo filtro de espaço (motor.js:2913).
+    const lendUsados = new Set(botas && rarDe(botas.base) === 'lendario' ? [botas.base] : []);
     for (const i of pool.slice().sort(cmp)) {
       if (alvo.length >= 5) break;
-      if (usados.has(i.base)) continue;
-      if (espacoDoItem(i.base) === 'botas') continue;
-      usados.add(i.base); alvo.push(i);
+      if (espacoDoItem(i.base) === 'botas') continue;                       // 1 bota (motor.js:2913)
+      if (rarDe(i.base) === 'lendario') {
+        if (lendUsados.has(i.base)) continue;                               // lendário único (motor.js:2914)
+        lendUsados.add(i.base);
+      }
+      alvo.push(i);
     }
     return alvo;
   }
   /** MELHOR instância por BASE (qualidade → refino: motor.js:252 `infoItem` multiplica por
    *  (1 + 0,12 × refino) × qualidade — `BONUS_REFINO` motor.js:55, `QUALIDADES` motor.js:173). */
   function porMelhorBase(lista) {
+    // LENDÁRIO: fica só a MELHOR instância da base — é a regra do motor (lendário único,
+    // motor.js:2902/2909/2913-2914). NÃO-lendário: ficam TODAS as instâncias (o motor permite
+    // repetir; quem decide quantas cabem é o `escolherConjunto`, com 1 bota + 4 itens).
     const porBase = new Map();
-    for (const i of lista) { const b = String(i.base); const c = porBase.get(b); if (!c || tierDe(i) > tierDe(c)) porBase.set(b, i); }
-    return [...porBase.values()];
+    const out = [];
+    for (const i of lista) {
+      const b = String(i.base);
+      if (rarDe(b) !== 'lendario') { out.push(i); continue; }
+      const c = porBase.get(b); if (!c || tierDe(i) > tierDe(c)) porBase.set(b, i);
+    }
+    return out.concat([...porBase.values()]);
   }
   /** CONJUNTO-ALVO do equipamento — ÚNICA fonte da verdade, partilhada pelo PLANEADOR
    *  (`planBag` -> acção EQUIPAR) e pelo ACTOR (`equiparMelhores`). Se os dois não usassem
@@ -5359,11 +5409,17 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       if (!it || it.raridade !== 'lendario' || qIdx(e.qual) < qIdx('A') || (e.refino || 0) >= refinoMax || e.base === RABADON) return false;
       return essenciais.includes(String(e.base));
     });
-    if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), essenciais, fonteEssenciais, medido, divergenciaMedido };
+
+    if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), ...diag };
+    // OBSERVABILIDADE: as saidas de FALHA tambem levam o diagnostico (essenciais/fonte/medido/
+    // divergencia). Sem isto, quando o Ornn nao estava la a GUI via só {ok:false} e nao
+    // conseguia dizer PORQUE e que a lista de refino era aquela — o mesmo defeito que esta
+    // frente corrige em todo o lado: o numero tem de estar sempre onde a decisao e tomada.
+
     fecharJanelas(); await humano(300);
-    if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn' };
+    if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn', ...diag };
     const bt = await waitFor('#janela-npc [data-palavra="forjar"]', 4000);
-    if (!bt) return { ok: false, motivo: 'sem opcao forjar' };
+    if (!bt) return { ok: false, motivo: 'sem opcao forjar', ...diag };
     bt.click(); await humano(650);
     const feitos = [];
     for (const e of alvos) {
@@ -5382,7 +5438,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     }
     fecharJanelas();
     logEvent('refino', { feitos, fonteEssenciais, divergenciaMedido: divergenciaMedido.length });
-    return { ok: true, refinidos: feitos, essenciais, fonteEssenciais, medido, divergenciaMedido };
+    return { ok: true, refinidos: feitos, ...diag };
   }
 
   /** MONTAGEM AUTÓNOMA — escolhe e monta sozinha a receita que serve a build.
@@ -7325,6 +7381,96 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
    *  Cada funcao tem o seu proprio throttle interno, por isso chamar isto com
    *  frequencia e seguro e idempotente. */
   let _ultimoTick = 0;
+  // =========================================================================================
+  // AUTO FARM POR ITEM — MODO PERSISTENTE (TK-02-47, P1)
+  // -----------------------------------------------------------------------------------------
+  // O QUE FALTAVA (parte-02.md:2265, verbatim): "(1) nao ha modo persistente 'farmar ate cair'
+  // — a regiao fica fixa e nao ha auto-avanco/parada quando o item cai (esta dito na propria
+  // GUI); (2) nao existe funcao do motor tipo farmarItem(ids) — a GUI compoe
+  // setConfig(enabled)+setConfig(regionDefault)+viajarPara".
+  // A GUI fazia isso em gui.js:2820-2841 (`planearItens`) e avisava o dono disso mesmo
+  // (gui.js:2225). Aqui o modo passa a viver NO MOTOR, com tres coisas que a GUI nao tinha:
+  //   · PERSISTE na config (`cfg.farmarItem`) — sobrevive a reload;
+  //   · ESCOLHE o destino pelo ONDE_ITEM do jogo (`planejar`, drops/h MEDIDOS por classe);
+  //   · PARA SOZINHO quando o item CAI (mochila ou equipamento) e larga a regiao fixa.
+  // REGRA DE OURO: nada e inventado — o destino sai do `planejar` (que le `META.ondeItem`, que
+  // vem do motor do jogo) e a paragem e um facto observavel (o item esta na mochila).
+  // =========================================================================================
+  /** O item `base` (id-base, aceita '3089', '3089+2~A' ou 'rabadon') esta COMIGO?
+   *  Procura no EQUIPAMENTO e na MOCHILA. `null` quando nao deu para ler (sem DOM). */
+  function farmarItemTenho(base) {
+    const b = String(base == null ? '' : base).replace(/[+~].*$/, '');
+    if (!b) return null;
+    try { if (readEquip().some((e) => String(e.base) === b)) return true; } catch { /* sem DOM */ }
+    try {
+      const bag = scanBag();
+      if (!bag) return null;
+      return (bag.items || []).some((i) => i.kind === 'item' && String(i.base) === b);
+    } catch { return null; }
+  }
+  /** Ids-alvo do modo (normaliza 'rabadon' -> '3089' e aceita string ou lista). */
+  function farmarItemIds(ids) {
+    const arr = (ids == null ? [] : (Array.isArray(ids) ? ids : [ids]));
+    const out = [];
+    for (const raw of arr) {
+      const s = String(raw == null ? '' : raw).trim();
+      if (!s) continue;
+      const base = /^rabadon$/i.test(s) ? RABADON : s.replace(/[+~].*$/, '');
+      if (out.indexOf(base) < 0) out.push(base);
+    }
+    return out;
+  }
+  /** LIGA o modo "farmar ate cair": fixa os alvos, escolhe o destino e viaja.
+   *  `ids` = um id ou uma lista (aceita 'rabadon'). Devolve o destino escolhido. */
+  function farmarItem(ids) {
+    const alvo = farmarItemIds(ids);
+    if (!alvo.length) return { ok: false, motivo: 'sem itens (use farmarItem(["3089"]))' };
+    // O destino vem do PLANEJADOR do motor (drops/h medidos; `planejar` le META.ondeItem).
+    let destinos = [];
+    try { destinos = planejar(alvo) || []; } catch { destinos = []; }
+    // Prefere um destino onde o chefe NAO e fatal (o boneco farma mobs sem morrer); se todos
+    // forem fatais, fica o melhor de drops/h — o `estimarRegiao`/fuga tratam do resto.
+    const viaveis = destinos.filter((d) => d.chefeFatal !== true);
+    const melhor = (viaveis.length ? viaveis : destinos).slice().sort((a, b) => (b.dropsH || 0) - (a.dropsH || 0))[0] || null;
+    const regiao = melhor ? melhor.zona : null;
+    _farmItem = { ids: alvo, regiao, desde: Date.now(), parou: null, destino: melhor || null };
+    // PERSISTE na config (o mesmo caminho da GUI: `setConfig`) — o modo sobrevive ao reload.
+    setConfig({ farmarItem: alvo, regionDefault: regiao || cfg.regionDefault });
+    if (regiao) { try { viajarPara(regiao); } catch { /* sem mapa/DOM */ } }
+    try { logEvent('farm-item', { ligou: alvo, regiao, zonaNome: melhor ? melhor.zonaNome : null, dropsH: melhor ? melhor.dropsH : null }); } catch { /* ignore */ }
+    return { ok: true, ids: alvo, regiao, destino: melhor, viajou: !!regiao, motivo: regiao ? null : 'o motor nao sabe onde estes itens dropam (catalogo incompleto?)' };
+  }
+  /** DESLIGA o modo e devolve a escolha da regiao ao motor. */
+  function farmarItemParar(motivo) {
+    const ids = _farmItem.ids.slice();
+    _farmItem = { ids: [], regiao: null, desde: null, parou: { at: Date.now(), motivo: motivo || 'manual' }, destino: null };
+    try { setConfig({ farmarItem: [], regionDefault: null }); } catch { /* ignore */ }
+    try { logEvent('farm-item', { parou: ids, motivo: motivo || 'manual' }); } catch { /* ignore */ }
+    return { ok: true, ids, motivo: motivo || 'manual' };
+  }
+  /** UM PASSO do modo (chamado pelo tick): se o item JA CAIU, para e larga a regiao.
+   *  Sem o item, continua a farmar (nao mexe em nada). Devolve o estado. */
+  function farmarItemPasso() {
+    const ids = _farmItem.ids.length ? _farmItem.ids : farmarItemIds(cfg.farmarItem);
+    if (!ids.length) return { ativo: false };
+    if (!_farmItem.ids.length) _farmItem = { ids, regiao: cfg.regionDefault || null, desde: _farmItem.desde || Date.now(), parou: null, destino: null };
+    const caiu = ids.filter((b) => farmarItemTenho(b) === true);
+    if (caiu.length) {
+      // CAIU: para o modo e devolve a regiao ao motor (o `regionDefault: null` faz o
+      // `regiaoIdeal` voltar a escolher sozinho). Isto e a PARAGEM que faltava.
+      const r = farmarItemParar('item caiu: ' + caiu.join(', '));
+      return { ativo: false, parou: true, caiu, ids, motivo: r.motivo };
+    }
+    return { ativo: true, ids, regiao: _farmItem.regiao, desde: _farmItem.desde, tenho: null };
+  }
+  /** Estado do modo (para a GUI/painel; so leitura). */
+  function farmarItemEstado() {
+    const ids = _farmItem.ids.length ? _farmItem.ids : farmarItemIds(cfg.farmarItem);
+    return { ativo: ids.length > 0, ids, regiao: _farmItem.regiao, desde: _farmItem.desde,
+      parou: _farmItem.parou, destino: _farmItem.destino,
+      tenho: ids.map((b) => ({ base: b, tenho: farmarItemTenho(b) })) };
+  }
+  let _farmItem = { ids: [], regiao: null, desde: null, parou: null, destino: null };
   function tickAutoplay() {
     _ultimoTick = Date.now();
     const feito = [];
@@ -7345,6 +7491,9 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     try { checarPocoes(); feito.push('checarPocoes'); } catch (e) { logIssue('tick:pocoes', { erro: String(e) }); }
     try { checarRotacao(); feito.push('checarRotacao'); } catch (e) { logIssue('tick:rotacao', { erro: String(e) }); }
     try { checarItens().catch(() => { /* ignore */ }); feito.push('checarItens'); } catch (e) { logIssue('tick:itens', { erro: String(e) }); }
+    // MODO FARMAR-ATÉ-CAIR (TK-02-47): verifica se o item alvo JÁ caiu; se caiu, desliga o modo
+    // e devolve a escolha da região ao motor. Sem o item, não mexe em nada.
+    try { farmarItemPasso(); feito.push('farmarItem'); } catch (e) { logIssue('tick:farmItem', { erro: String(e) }); }
     if (teste && !pausado) { try { passoTeste().catch(() => { /* ignore */ }); feito.push('passoTeste'); } catch (e) { /* ignore */ } }
     return { feito, at: _ultimoTick };
   }
@@ -7591,10 +7740,73 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       autoLigarPrimeiraVez: cfg.autoLigarPrimeiraVez !== false, ligado: cfg.enabled === true };
   }
 
+  // ============ MIGRAÇÃO ONE-SHOT DA CONFIG (TK-02-61, P0) ============
+  // O `cfg = { ...DEFAULT, ...(s.automation || {}) }` so aplica o default NOVO às CHAVES QUE
+  // FALTAM. A config do dono foi escrita quando o default era outro e FICOU com ele:
+  // `barraPorDisponibilidade: false` (o código tem `true`, pedido do dono 2026-10-14). Logo o
+  // default novo NUNCA chega ao jogo dele — é a diferença entre "o código está certo" e "o teu
+  // jogo faz o que pediste". Aqui escrevem-se os defaults novos, UMA vez, na config já
+  // guardada. REGRA DE OURO: só se toca numa chave quando o valor guardado é EXACTAMENTE o
+  // default VELHO (`de`) — se o dono a mudou para outro valor, é escolha dele e fica intacta.
+  // A chave nova NUNCA é tocada: `{...DEFAULT}` já lhe põe o valor novo.
+  const CFG_VER = 1;
+  const MIGRACOES_CFG = [
+    { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
+      porquê: 'default invertido false → true (pedido do dono, 2026-10-14)' },
+    { ver: 1, chave: 'autoRefino', de: false, para: true,
+      porquê: 'a única acção que nascia DESLIGADA era o refino; o dono mandou ligar por defeito' },
+  ];
+  let _cfgVer = 0, _cfgMigrado = false;
+  /** Aplica as migrações pendentes a UM storage devolvido. Devolve o que mudou (para o log/teste). */
+  function migrarCfg(s) {
+    if (!s) return { cfg: null, migrou: [], cfgVer: CFG_VER };
+    const ver = Number.isFinite(+s.cfgVer) ? +s.cfgVer : 0;   // sem campo = config de antes da migração
+    const a = { ...(s.automation || {}) };
+    const migrou = [];
+    for (const m of MIGRACOES_CFG) {
+      if (ver >= m.ver) continue;                                   // já migrado nesta ou em versão anterior
+      if (!Object.prototype.hasOwnProperty.call(a, m.chave)) continue;   // chave nova: o DEFAULT já a traz
+      if (a[m.chave] !== m.de) continue;                           // valor do DONO (≠ default velho) → intocável
+      a[m.chave] = m.para;
+      migrou.push({ chave: m.chave, de: m.de, para: m.para, ver: m.ver });
+    }
+    return { cfg: a, migrou, cfgVer: CFG_VER };
+  }
   function loadConfig() {
-    const ler = (s) => { if (!s) return; cfg = { ...DEFAULT, ...(s.automation || {}), enabled: !!(s.enabled ?? s.automation?.enabled) }; };
+    const ler = (s) => {
+      if (!s) return null;
+      const m = migrarCfg(s);
+      cfg = { ...DEFAULT, ...(m.cfg || {}), enabled: !!(s.enabled ?? s.automation?.enabled) };
+      return m;
+    };
     try {
-      chrome.storage.local.get(STORAGE_KEY, (r) => ler(r?.[STORAGE_KEY]));
+      chrome.storage.local.get(STORAGE_KEY, (r) => {
+        const s = r?.[STORAGE_KEY];
+        // ONE-SHOT (TK-02-61): os defaults novos escrevem-se na config já guardada, uma vez.
+        // Sem isto, quem tinha a config escrita com o default velho (barraPorDisponibilidade:
+        // false) NUNCA ligava a rotação da barra — o jogo do dono ficava com o código "certo"
+        // e a config errada. O `migrou` vazio = nada a fazer; guarda-se a versão à mesma.
+        try {
+          const antes = ler(s);
+          _cfgVer = (antes && antes.cfgVer) || CFG_VER;
+          if (antes && antes.migrou.length) {
+            _cfgMigrado = true;
+            try { logEvent('config-migracao', { migrou: antes.migrou, cfgVer: CFG_VER }); } catch { /* ignore */ }
+          }
+          // A VERSÃO TEM DE FICAR GRAVADA JÁ AQUI, mesmo quando não houve nada a migrar.
+          // Sem isto a migração voltava a correr no arranque seguinte — e se o dono tivesse
+          // DESLIGADO a barra explicitamente depois (false), o arranque seguinte migrava-a de
+          // volta para true: a escolha dele seria desfeita por um default. É esta a diferença
+          // entre "one-shot" e "sempre". O `onChanged` que isto dispara relê a config JÁ com
+          // cfgVer = CFG_VER, logo a migração não volta a correr (sem ciclo).
+          const verGravada = Number.isFinite(+((s || {}).cfgVer)) ? +s.cfgVer : 0;
+          if (s && verGravada < CFG_VER) {
+            try {
+              chrome.storage.local.set({ [STORAGE_KEY]: { ...s, cfgVer: CFG_VER, automation: { ...(s.automation || {}), ...(antes.cfg || {}) } } });
+            } catch { /* ignore */ }
+          }
+        } catch { /* a migração nunca pode impedir o arranque */ }
+      });
       chrome.storage.onChanged.addListener((ch, area) => {
         if (area !== 'local' || !ch[STORAGE_KEY]?.newValue) return;
         const nv = ch[STORAGE_KEY].newValue;
@@ -7619,13 +7831,24 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     try {
       chrome.storage.local.get(STORAGE_KEY, (r) => {
         const cur = (r && r[STORAGE_KEY]) || {};
-        chrome.storage.local.set({ [STORAGE_KEY]: { ...cur, enabled: cfg.enabled, automation: { ...(cur.automation || {}), ...cfg } } });
+        // `cfgVer` VIAJA com a config: é o travão da migração one-shot (TK-02-61). Sem ele o
+        // onChanged seguinte relia a config como "por migrar".
+        // Se a migração ainda NÃO correu neste arranque (ler ainda não chegou), aplica-se aqui —
+        // assim o valor novo fica gravado mesmo que o onChanged chegue antes do get.
+        if (!_cfgMigrado && !Number.isFinite(+cur.cfgVer)) {
+          try {
+            const m = migrarCfg({ automation: cfg });
+            Object.assign(cfg, m.cfg); _cfgMigrado = true;
+            try { logEvent('config-migracao', { migrou: m.migrou, cfgVer: CFG_VER }); } catch { /* ignore */ }
+          } catch { /* a migração nunca pode impedir a escrita da config */ }
+        }
+        chrome.storage.local.set({ [STORAGE_KEY]: { ...cur, enabled: cfg.enabled, cfgVer: CFG_VER, automation: { ...(cur.automation || {}), ...cfg } } });
       });
     } catch { /* ignore */ }
     return cfg;
   }
 
-  window.__lolidleAuto = { press, ehPrioridadeExtrema, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, compraAlcancavel, parseNum, SUFIXO, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
+  window.__lolidleAuto = { press, ehPrioridadeExtrema, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, compraAlcancavel, parseNum, NUM_SUFIXO, numDe, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
     podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
@@ -7643,7 +7866,19 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     // PORQUE é que o auto-play se ligou sozinho; o banco pode forçar a avaliação sem esperar 3 min.
     primeiraVez: primeiraVezEstado, primeiraVezPasso,
     estadoVivo, eventosVivos, eventosContadores, consumirEvento,
-    auditoriaPassivas, tierDe, statsSet, statsDePeca, pecaConhecida,   // W9: escala do motor + stats de QUALQUER item    PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
+    // W9: escala do motor (TK-02-64) + stats de QUALQUER item (TK-02-79)
+    tierDe, statsSet, statsDePeca, pecaConhecida,
+// AUTO FARM POR ITEM (TK-02-47) — modo persistente do motor (a GUI só chama estes)
+    farmarItem, farmarItemParar, farmarItemPasso, farmarItemEstado, farmarItemTenho,
+    // MIGRAÇÃO ONE-SHOT DA CONFIG (TK-02-61) — o banco prova-a sem tocar no chrome.storage
+    migrarCfg, CFG_VER, MIGRACOES_CFG, getCfgVer: () => _cfgVer,
+    // ESCOLHA DO CONJUNTO (TK-02-65) — exportadas para o banco provar a regra de repetição
+    escolherConjunto, porMelhorBase,
+    classeItem,
+    // PARSERS DE NÚMERO (directiva do Lead, 22:01) — exportados para o banco provar os casos
+    numEcra, parseNum, parseBig, numDe, NUM_SUFIXO,
+    PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
+    auditoriaPassivas,
     getMeta: () => META, getFarm: () => farm, getConfig: () => cfg };
 
   // AUTO-LIMPEZA: se o script JÁ rodou (reinjeção), cancela os timers antigos.
@@ -7663,6 +7898,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
   every(supervisarBase, 5000);
   every(checarPocoes, 5000);
   every(() => { checarItens().catch(() => { /* ignore */ }); }, 5000);
+  every(() => { try { farmarItemPasso(); } catch { /* ignore */ } }, 5000);   // modo farmar-até-cair (TK-02-47)
   cuidarNovidades();
   loop();
   carregarMeta();
