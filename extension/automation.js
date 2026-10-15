@@ -5495,6 +5495,12 @@
     return { cfg: a, migrou, cfgVer: CFG_VER };
   }
 
+  // Estado do consumidor de eventos do inject.js (TK-INT-01) — estavam USADOS e nunca
+  // declarados: a suite `integracao` rebentava com `_eventosCont is not defined`.
+  let _estadoVivo = null;
+  let _eventosVivos = [];
+  let _eventosCont = {};
+
   function consumirEvento(d) {
     try {
       const tipo = String((d && d.tipo) || '').trim();
