@@ -331,3 +331,15 @@ Tentei o `ritmoMobs` devolver `{ perWave, killsMin: null, segPorWave: null }` qu
 MEDÍVEL) e o B2 quer o `perWave` nesse caso — **os dois não cabem no mesmo retorno** sem desenhar melhor
 (provavelmente expor `perWave` por OUTRA via, ex.: `mediaWaveDe(META.grupoSpawn)` directamente no
 `valeUlt`/`estimarRegiao`). Ler o B2 e o controlo lado a lado antes de mexer.
+
+
+## ADENDA 11:00 — C (caça offline): o `return` no `handleLog` PIORA (20→23)
+Tratei a linha da caça offline antes das regex de abate, com `logEvent('caca-offline', …); return;` →
+**banco 20 → 23**: o `return` **salta o resto do `handleLog`** (aparecimento de chefe, outras linhas).
+
+**Caminho certo (a fazer):** NÃO usar `return` — envolver só o bloco do abate num `else`:
+```js
+if (/Enquanto voce estava fora/i.test(entry.body)) { logEvent('caca-offline', {...}); }
+else { const g = …; const x = …; if (g || x) { … } }
+```
+O `handleLog` tem **várias secções independentes** (abate, chefe, etc.) — um `return` corta as seguintes.
