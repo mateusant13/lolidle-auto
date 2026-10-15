@@ -658,3 +658,15 @@ Revertido (regra: sem ganho medido, nao fica).
 **O que sobra no D:** o fixture (`regiao.test.mjs`) tem de trazer as `janela` nos ciclos E o teste tem
 de ler por onde as janelas passam (agregar -> ranking). Duas assercoes, ambas de FIXTURE/leitura.
 **Estado: 5 falhas, 21/25 verdes.**
+## ADENDA 16:45 - sobrevivenciaSet: o que a leitura do statsSet/player revelou (muda o plano)
+  `statsSet` (4113-4180) devolve: `{ ap, ad, cdr, pen, penArmadura, rv, penArmaduraItens, penKit,
+    lich, chama, liandry, crit, infinito, det }` — **NAO devolve `vida`**.
+  `player()` (1697) devolve: `{ nivel, vida, vidaCur, vidaAtual, escudo, vidaEff, ... }` — tem o
+    **`vidaEff`** (a piscina de vida + escudo, que e o que a sobrevivencia tem de usar).
+**Consequencia para o `sobrevivenciaSet`:** a vida dos ITENS nao sai do `statsSet` como ele esta hoje.
+  Ou (a) o `statsSet` ganha o campo `vida` (somar o `vida` dos itens do catalogo), ou (b) a conta usa
+  o `vidaEff` do painel + uma soma propria dos itens - e o F2 (`vida === 4476` com 4 itens SEM vida)
+  diz que o numero base NAO e o 4188 do HUD, logo ha um termo a mais a identificar.
+**Proximo passo exacto:** ler o `lerVidaHud()` e o `vidaEff` (1697-1712) para saber de onde vem o 4476;
+  so depois escrever o `sobrevivenciaSet` (contrato F1-F7 em chefe.test.mjs:205-222).
+**Estado mantido: 5 falhas, 21/25 verdes.**
