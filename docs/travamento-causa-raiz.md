@@ -62,3 +62,38 @@ Wayback Machine                            [fpnmgdkabnmadcjpehmlllkndpkmiak]    
 `Network.enable` + `Page.reload` + ler `Network.responseReceived.response.headers['content-security-policy']`
 — **não usa `eval`**, logo funciona mesmo com a CSP bloqueada. Foi isto que separou
 «servidor» de «reescrita por extensão». Ferramenta: `tools/_csp-dono.mjs` / `tools/_csp-teste.mjs`.
+## CORRECÇÃO (2026-10-15, tarde) — A HIPÓTESE DA CSP FOI REFUTADA POR EXPERIMENTO
+
+Eu tinha proposto: «a CSP reescrita bloqueia algo que o jogo precisa (a Cloudflare) -> o jogo não
+arranca». **Testei e está ERRADO.** Duas medições derrubam-no:
+
+1. **O jogo NÃO carrega o desafio da Cloudflare.** No Chrome onde ele funciona (9337):
+   `pedidos: 163 | falhados: 0`, e o ÚNICO pedido Cloudflare é o *beacon* de analytics
+   (`static.cloudflareinsights.com/beacon.min.js`). Não há `challenges.cloudflare.com`. Logo
+   retirar a permissão da Cloudflare da CSP não pode travar o arranque.
+
+2. **O EXPERIMENTO DECISIVO:** interceptei o documento com `Fetch.enable` + `Fetch.fulfillRequest`
+   e servi o `https://lolidle.com/jogar` com a CSP **exactamente igual à do dono**
+   (`script-src 'self' 'wasm-unsafe-eval' 'inline-speculation-rules' http://localhost:* http://127.0.0.1:*
+   chrome-extension://d167b952-.../`). Resultado: **o jogo NÃO travou** — `complete`, `4588 / 4588`
+   durante 17,5 s. Ferramenta: `tools/_teste-csp.mjs`.
+
+**Portanto: a CSP reescrita é um FACTO (a política do dono difere da do servidor) mas NÃO é a causa
+do travamento.** Fica registado para ninguém repetir este caminho.
+
+### O que continua eliminado (com medição)
+| Hipótese | Como foi eliminada |
+|---|---|
+| A extensão do projeto | 0 `eval`/`Function`/timers-string nos 5 ficheiros; 2 bisectos com stubs; corre em 3 Chromes meus |
+| As 58 extensões do dono | perfil copiado com TODAS activas -> não trava |
+| Abas pesadas | fechadas 15 -> continua a travar |
+| Caches de GPU/shader | apagados 8 -> continua |
+| Debugger CDP | ligado num Chrome que funciona -> não trava |
+| Relay | derrubado -> continua (e a CSP reescrita também não é) |
+| Perfil (IndexedDB/SW, 682 MB) | cópia completa -> não trava |
+| **CSP reescrita** | **reescrita por mim, igual à do dono -> não trava** (esta correcção) |
+
+### O que sobra, honestamente
+O que distingue o Chrome VIVO do dono das 5 cópias que testei ainda **não está isolado**. O próximo
+passo é o que o subagente `fef32ba9` leva: tracing a sério (chrome://tracing / Perfetto / ETW-WPA) no
+Chrome do dono, a apanhar o que a thread principal está à espera — em vez de mais uma hipótese.
