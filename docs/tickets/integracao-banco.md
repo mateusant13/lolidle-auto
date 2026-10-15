@@ -419,3 +419,13 @@ naquele escopo (o teorico tem outro nome dentro do `estimarRegiao`).
 (provavelmente `dpsKillsMin`/`spawnKillsMin`, como no `estimarRegiao` antigo: `let killsMin = spawnKillsMin;
 modo='spawn'`). Depois expor `killsMinTeorico: <esse>` + `kAbates: cfg.kAbates || 1`.
 NOTA: o sinal de que **uma suite ficou verde** mostra que a direccao esta certa - falta o nome certo.
+## ADENDA 12:00 - H12c: o patch FECHA o hud (suite verde) mas abre 3 no w1-regioes
+Com `killsMinTeorico`+`kAbates` no retorno do `estimarRegiao` (ultimo `return {`, ~1400):
+  - **hud fica VERDE** (o H12c passa) - a suite inteira;
+  - **w1-regioes vai de 5 -> 8** (+3), total 18 -> 20.
+**O que isso PROVA:** o H12c esta a UM campo de distancia e o campo esta no sitio certo; o que falta e
+perceber porque o `w1-regioes` reage - as 3 novas falhas dele devem ser as mesmas do B2/C/D a mudar de
+forma com o objecto maior (ou uma comparacao do objecto inteiro).
+**Proximo passo:** aplicar o patch e LISTAR as 8 do `w1-regioes` (nao so o total) - comparar com as 5
+conhecidas e ver as 3 novas pelo nome. E o mesmo metodo que fechou o `larvasInvoca` e o `classeItem`.
+Estado mantido: 18 (hud vermelho, w1 com 5).
