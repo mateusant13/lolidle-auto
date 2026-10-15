@@ -51,7 +51,9 @@ import { suite as suiteRegrasMotor } from './regras-motor.test.mjs';
 import { suite as suiteSnapshots } from './snapshots.test.mjs'
 import { suite as suiteFuga } from './fuga.test.mjs';
 // W3 (w3-barra) — integração com o inject.js (TK-INT-01).
-if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
+import { suite as suiteChefe } from './chefe.test.mjs';
+
+const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
   console.log('  --verbose       imprime todas as assercoes (ok/FALHOU)');
   console.log('  --filter <nome> so CONTABILIZA/reporta assercoes cujo "suite/rotulo" contenha <nome>.');
@@ -65,10 +67,9 @@ let filtro = null;
 const iF = argv.indexOf('--filter');
 if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 
-const SUITES = [suiteregras, suiteator, suitebarra, suitebarrafase, suiteobjetivo, suiteequip, suiteregiao, suitepontos, suiteinterruptores, suitecofre, suitehud, suiteintegracao, suitenumeros, suitew5Itens, suitescore, suiteplanejar, suitepassivas, suiterefinar, suitew10, suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteW1, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteHud, suiteIntegracao, suiteW5, suiteScore];const checks = [];
+const SUITES = [suiteregras, suiteator, suitebarra, suitebarrafase, suiteobjetivo, suiteequip, suiteregiao, suitepontos, suiteinterruptores, suitecofre, suitehud, suiteintegracao, suitenumeros, suitew5Itens, suitescore, suiteplanejar, suitepassivas, suiterefinar, suitew10, suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteW1, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteHud, suiteIntegracao, suiteW5, suiteScore];const checks = [, suiteChefe];const checks = [];
   suiteIntegracao, suiteNumeros, suiteBarraFase, suitePassivas, suiteAtributos];const checks = [];
 const checks = [];const notas = [];
-const checks = [];
 const notas = [];let populacaoExecutada = 0;
 const notas = [];
 let populacaoExecutada = 0;

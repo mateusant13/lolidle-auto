@@ -1498,6 +1498,7 @@
   /** RM_MONSTRO do motor (motor.js:1179). Vem do META se o `inject.js` o expuser; o fallback é o
    *  valor do motor, com o file:linha (nunca um 0.6 solto). */
   const rmMonstro = () => numOr(META.rmMonstro, 0.6);   // motor.js:1179
+<<<<<<< HEAD
   /** O campeão actual é de MAGIA? (motor.js:22 `classeItem` / `kit(estado).magia`.) Fica numa funcao
    *  so para nao repetir `(META.champAtual && META.champAtual.magia)` em 12 sitios. */
   const magiaChamp = () => !!(META.champAtual && META.champAtual.magia);
@@ -1511,6 +1512,65 @@
     return 100 / (100 + Math.max(0, arm));
   }
 
+=======
+
+  // ===================== TOLERÂNCIA DE NÍVEL (correcção W11 / TK-02-83) =====================
+  // O motor PUBLICA a tolerância inteira. Os números abaixo são LIDOS de lá, não inventados:
+  //   motor.js:1196 "Monstro mais de NIVEL_DIF.livre níveis acima do jogador bate mais forte e
+  //                       aguenta mais, por nível a mais (com teto e piso)."
+  //   motor.js:1199 `export const NIVEL_DIF = { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5,
+  //                     danoJogador: 0.12, minDanoJogador: 0.25 }`
+  //   motor.js:1200 `difNivel(estado, m) = Math.max(0, m.nivel - estado.nivel - livre)`
+  //   motor.js:1201 `fatorDanoMonstro(estado, m) = Math.min(maxDanoMonstro, 1 + danoMonstro * d)`
+  //   motor.js:1202 `fatorDanoJogador(estado, m) = Math.max(minDanoJogador, 1 - danoJogador * d)`
+  // ONDE O MOTOR OS APLICA (a lista, não o valor — Regra Nº 1):
+  //   motor.js:2719 e motor.js:3122 -> dano que o MONSTRO dá (fatorDanoMonstro)
+  //   motor.js:1236                 -> dano que o JOGADOR dá (fatorDanoJogador; salto na
+  //                                     dungeon, `if (!c.dg)`, porque lá o nível dos monstros é
+  //                                     o do grupo)
+  // PORQUE ESTA CORRECÇÃO EXISTE: os dois fallbacks da extensão tinham os valores do motor
+  // ATÉ 13/10/2026 (0,15 / ×3 / 0,07). O próprio motor.js:1199 regista a mudança — "0,15 / 3 /
+  // 0,07 até 13/10/2026 (p647: o Yasuo 30 solava o Vazio)". Com os números velhos a
+  // sobrevivência saía OTIMISTA: a +9 níveis de diferença dizia ×2,35 quando o motor bate ×4,15.
+  // FONTE PRIMÁRIA: o `META.nivelDif` que o inject.js:149 reencaminha do motor VIVO. O literal
+  // abaixo é a fotografia do motor.js:1199 e só vale enquanto o relay não respondeu.
+  const NIVEL_DIF_FB = { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5, danoJogador: 0.12, minDanoJogador: 0.25 };   // motor.js:1199
+  /** Tolerância de nível do motor: o que o relay trouxe, completado pela fotografia acima. */
+  const nivelDifMotor = () => Object.assign({}, NIVEL_DIF_FB, META.nivelDif || {});
+  /** Diferença de níveis acima do jogador, já descontada a faixa LIVRE (motor.js:1200). */
+  const difNivelMotor = (nivelMonstro, nivelJogador) => {
+    const ND = nivelDifMotor();
+    return Math.max(0, (Number(nivelMonstro) || 0) - (Number(nivelJogador) || 1) - ND.livre);
+  };
+  /** Fator do dano que o MONSTRO dá (motor.js:1201). */
+  const fatorDanoMonstroMotor = (dif) => {
+    const ND = nivelDifMotor();
+    return dif ? Math.min(ND.maxDanoMonstro, 1 + ND.danoMonstro * dif) : 1;
+  };
+  /** Fator do dano que o JOGADOR dá (motor.js:1202). */
+  const fatorDanoJogadorMotor = (dif) => {
+    const ND = nivelDifMotor();
+    return dif ? Math.max(ND.minDanoJogador, 1 - ND.danoJogador * dif) : 1;
+  };
+  // ===================== NÍVEL DO CHEFE (motor.js:1129-1134, lido) =====================
+  // O chefe de um local nasce no nível do jogador + 4, nunca abaixo do início da faixa + 2 nem
+  // acima do topo + 2. A fórmula é do motor, não minha:
+  //   motor.js:1134 `criarMonstro(local.chefe[0], nivelJogador == null ? n1 + 2 :
+  //                       Math.max(n0 + 2, Math.min(n1 + 2, nivelJogador + 4)))`
+  // e motor.js:1133 comenta a regra: "o chefe nasce no nível do jogador + 4, entre o começo da
+  // zona + 2 e o topo + 2".
+  // CONSEQUÊNCIA MEDIDA (e é o que o ticket TK-02-83 pede): abaixo do nível 38 o Barão fica
+  // PRESO em 42 — `nm` do Covil do Barão é [40,48] (motor.js:384-385), logo n0+2 = 42 manda até
+  // o jogador chegar a 38. Aí a tolerância de nível (motor.js:1200) entra a sério: com o jogador
+  // a 29, `dif = 42 - 29 - 4 = 9` -> o monstro bate ×4,15 (motor.js:1201) e o jogador bate ×0,25
+  // (motor.js:1202, no PISO). É por isso que o nível 29 é o limite no Barão.
+  const nivelDoChefe = (local, nivelJogador) => {
+    const nm = (local && (local.nm || local.faixa)) || [1, 1];
+    const pj = Number(nivelJogador);
+    if (!Number.isFinite(pj) || pj <= 0) return nm[1] + 2;      // sem nível conhecido: topo da faixa
+    return Math.max(nm[0] + 2, Math.min(nm[1] + 2, pj + 4));
+  };
+>>>>>>> w11-boss
   /** Armadura EFECTIVA do alvo contra dano MÁGICO (motor.js:1202). */
   const armMagicaEfetiva = (armadura, penMag) => Math.max(0, (armadura || 0) * rmMonstro() * (1 - (penMag || 0)));
 
@@ -2585,9 +2645,12 @@
     const p = player();
     const s = statsMonstro(target.name, target.level);
     if (!s || !p) return 0;
-    const ND = META.nivelDif || { livre: 4, danoMonstro: 0.15, maxDanoMonstro: 3 };
-    const dif = Math.max(0, target.level - (p.nivel || 1) - ND.livre);
-    const fM = dif ? Math.min(ND.maxDanoMonstro || 3, 1 + ND.danoMonstro * dif) : 1;
+    // TOLERÂNCIA DE NÍVEL do motor (`NIVEL_DIF` + `fatorDanoMonstro`, motor.js:1196-1201). O
+    // fallback que aqui estava (0,15 / ×3) era a versão do motor ATÉ 13/10/2026 e fazia o dano
+    // previsto sair 1,77x BAIXO demais a +9 de diferença (2,35 contra os 4,15 do motor) — ver o
+    // bloco `NIVEL_DIF_FB` mais acima (TK-02-83).
+    const dif = difNivelMotor(target.level, p.nivel);
+    const fM = fatorDanoMonstroMotor(dif);
     const def = m.magico ? (p.rm || 0) : (p.armadura || 0);
     return s.ad * m.mult * fM * (100 / (100 + def));
   }
@@ -2702,6 +2765,7 @@
   function avaliar(monstro, nivel, player, cura, dps) {
     const s = statsMonstro(monstro, nivel);
     if (!s || !player) return null;
+<<<<<<< HEAD
     const dif = Math.max(0, nivel - (player.nivel || 1) - (META.nivelDif?.livre ?? 4));
     // FALLBACK do NIVEL_DIF do motor -- ACTUALIZADO ao motor vivo (motor.js:1199):
         //   { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5, danoJogador: 0.12, minDanoJogador: 0.25 }
@@ -2712,6 +2776,17 @@
         const ND = META.nivelDif || { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5, danoJogador: 0.12, minDanoJogador: 0.25 };
     const fM = dif ? Math.min(ND.maxDanoMonstro || 3, 1 + ND.danoMonstro * dif) : 1;
     const fJ = dif ? Math.max(ND.minDanoJogador ?? 0.25, 1 - ND.danoJogador * dif) : 1;
+=======
+    // TOLERÂNCIA DE NÍVEL (TK-02-83): a tolerância INTEIRA do motor, lida —
+    //   motor.js:1200 `difNivel(estado,m) = max(0, m.nivel - estado.nivel - livre)`
+    //   motor.js:1201 `fatorDanoMonstro` — o dano que o MONSTRO dá
+    //   motor.js:1202 `fatorDanoJogador` — o dano que o JOGADOR dá (é ele que o
+    //     `estimarLuta`/`tKill` consome: sem isto o tempo de matar o chefe saía 2,7x optimista)
+    // O fallback antigo (0,15/×3/0,07) era a versão do motor até 13/10/2026.
+    const dif = difNivelMotor(nivel, player.nivel);
+    const fM = fatorDanoMonstroMotor(dif);
+    const fJ = fatorDanoJogadorMotor(dif);
+>>>>>>> w11-boss
     const def = s.magico ? (player.rm || 0) : (player.armadura || 0);
     const mit = 100 / (100 + def);
     // PAPEL DO CAMPEAO (motor.js:2720): `dano *= (LOCAL[...]?.arena && pp?.recebidoArena != null
@@ -2873,6 +2948,156 @@
       const ganho = dpsAtual > 0 ? dpsNovo / dpsAtual - 1 : 0;
       return { id: it.id, nome: it.nome, raridade: it.raridade, espaco: it.espaco, ap, penMag: pen, apPct, cdr, efeito: it.efeito || null, ganho };
     }).sort((a, b) => b.ganho - a.ganho);
+  }
+
+  // =====================================================================================
+  // CRITÉRIO DE SOBREVIVÊNCIA NA ESCOLHA DE ITEM (TK-02-75 / TK-02-74)
+  //
+  // REGRA DO DONO (verbatim, AGENTS.md): a build ideal NÃO é DPS — é
+  //   "(sobrevive? , mata em quantos segundos? , quantas poções e quanto custam em ouro?)"
+  // O `rankItens` acima respondia SÓ à primeira parte da segunda pergunta (quanto DPS a mais).
+  // DEFEITO MEDIDO (parte-02.md:4215-4227): "o ranking do 5.º espaço é só DPS … é uma comparação
+  // de DPS puro — e a vida não entra nela … Num sítio onde o que decide é sobreviver, 350 de
+  // vida pode valer mais que 200 de DPS — e o ranking, por construção, nunca o verá".
+  //
+  // AQUI: o MESMO critério de sobrevivência que o filtro de `morte` usa (`avaliar`,
+  // automation.js, com a tolerância de nível do motor em motor.js:1196-1202). Nada é inventado:
+  // vida efectiva = vida do painel + a vida dos itens; dano recebido/s = `avaliar().dpsTomado`
+  // (já com `fatorDanoMonstro` e a mitigação do motor, motor.js:1167); cura = a das skills
+  // medida na fase do chefe + a das poções.
+  // =====================================================================================
+  /** CURA/s assumida na comparação: a MEDIDA das skills no chefe (histórico) com fallback
+   *  conservador — o mesmo critério do `estimarLuta`, para os dois números serem comparáveis. */
+  function curaDeSobrevivencia(regiaoId) {
+    let chefe = 0, mob = 0;
+    try {
+      const reg = (agregar() || []).find((r) => {
+        const l = (META.locais || []).find((x) => x.id === regiaoId);
+        return l && r.region && String(r.region).startsWith(String(l.nome));
+      }) || null;
+      if (reg) { chefe = reg.healSkillChefeS || 0; mob = reg.healSkillS || 0; }
+    } catch { /* ignore */ }
+    let live = 0;
+    try { live = ((typeof window !== 'undefined' && window.__lolidleLive) || {}).rates?.healRate || 0; } catch { /* ignore */ }
+    const skill = chefe > 1 ? chefe : (live > 1 ? live : mob * 0.5);
+    // Cura e PRECO da melhor pocao que a LOJA vende ao nivel dele, lidos do MOTOR
+    // (META.pocoes, motor.js:261-267) e nao do stock: o stock muda a cada compra, a cura e o
+    // preco sao do jogo e servem para comparar duas builds em qualquer conta. A Suprema so
+    // existe no nivel 30 (motor.js:264) - sem este filtro um nivel 15 comparava com uma cura
+    // que nao pode comprar.
+    let k = 'vida', pocao = POCAO_FB.vida.cura, preco = POCAO_FB.vida.preco;
+    try {
+      for (const cand of ['vidaS', 'vidaF', 'vida']) {
+        if (!pocaoCompravel(cand)) continue;
+        const info = pocaoInfo(cand);
+        if ((info.cura || 0) > pocao) { k = cand; pocao = info.cura || 0; preco = info.preco || 0; }
+      }
+    } catch { /* ignore */ }
+    return { skill, pocao, pocaoKey: k, precoPocao: preco };
+  }
+  /** SOBREVIVÊNCIA de um CONJUNTO de itens contra um alvo — o critério do dono, item a item.
+   *  `ids` = os itens a comparar (null = o equipado de agora). Devolve, para cada um:
+   *    vidaEfetiva  = vida do painel + a vida do item (+ RM/armadura contados como vida efetiva
+   *                    contra o dano do alvo, pela mitigação do motor motor.js:1167)
+   *    dpsRecebido  = dano/s que o alvo dá (com a tolerância de nível, motor.js:1201)
+   *    tMorrer      = segundos que aguenta sem poção (Infinity = não morre)
+   *    morre        = o MESMO boolean do filtro de `morte` (`avaliar`)
+   *    tKill        = segundos para matar (DPS do conjunto × fatorDanoJogador motor.js:1202)
+   *    pocoes       = quantas poções a luta pede; ouroPocao = o que custam
+   *  Só o que o painel/um conjunto dão: sem catálogo, devolve null (não se inventa vida). */
+  function sobrevivenciaSet(ids, alvo, regiaoId) {
+    const p = player();
+    if (!p || !alvo) return null;
+    const lista = (ids || (readEquip() || []).map((e) => e.base)).filter(Boolean).map(String);
+    const statsItem = (id) => {
+      const it = (META.itens || []).find((x) => String(x.id) === id) || {};
+      return { vida: it.vida || 0, armadura: it.armadura || 0, rm: it.rm || 0, nome: it.nome || id };
+    };
+    let vidaItens = 0, armItens = 0, rmItens = 0;
+    for (const id of lista) { const s = statsItem(id); vidaItens += s.vida; armItens += s.armadura; rmItens += s.rm; }
+    const vida = (p.vida || 0) + vidaItens;
+    const armadura = (p.armadura || 0) + armItens;
+    const rm = (p.rm || 0) + rmItens;
+    const magia = !!((META.champAtual || {}).magia);
+    const monstro = alvo.nome || null;
+    const nivel = alvo.nivel || 1;
+    // dano recebido: o MESMO `avaliar` do filtro de morte (com a tolerância de nível). A cura das
+    // poções entra a 60% — o MESMO factor que o `estimarRegiao` usa no filtro `morte`, para os dois
+    // números serem comparáveis (não inventar um critério novo para a mesma pergunta).
+    const cura = curaDeSobrevivencia(regiaoId);
+    const curaPocaoEfetiva = cura.pocao * 0.6;
+    const av = monstro ? avaliar(monstro, nivel, { nivel: p.nivel, vida, armadura, rm }, { skill: cura.skill, pocao: curaPocaoEfetiva }) : null;
+    if (!av) return null;
+    const dpsRecebido = av.dpsTomado;
+    const liquido = Math.max(0, dpsRecebido - cura.skill);
+    const tMorrer = liquido > 0 ? vida / liquido : Infinity;              // sem poção: quanto aguenta
+    // DPS do conjunto contra o alvo, com a tolerância de nível do lado do jogador (motor.js:1202)
+    let dps = 0;
+    try { dps = estimarSet(lista, alvo).dps; } catch { dps = 0; }
+    const dpsEfetivo = dps * (av.fJ != null ? av.fJ : 1);
+    const tKill = dpsEfetivo > 0 ? (alvo.hp || 0) / dpsEfetivo : Infinity;
+    // POÇÕES: duas coisas diferentes, e as duas contam (Regra Nº 1: ler a LISTA, não o valor) —
+    //   (a) quanto DANO há cobrir: (dpsRecebido − cura) × tKill ÷ cura por poção;
+    //   (b) quantas se conseguem BEBER: o motor dá 1 poção por `EXAUSTAO` (motor.js:41), logo o
+    //       tecto é `tKill ÷ EXAUSTAO`. Se (a) passa (b), a luta NÃO se ganha com poções — e isso
+    //       é informação, não um número a esconder.
+    const exaust = (() => { try { return Math.max(0.001, EXAUSTAO()); } catch { return 1; } })();
+    const porDano = (Number.isFinite(tKill) && dpsRecebido > 0 && cura.pocao > 0)
+      ? Math.ceil(Math.max(0, (dpsRecebido - cura.skill) * tKill) / cura.pocao) : null;
+    const porTempo = Number.isFinite(tKill) ? Math.floor(tKill / exaust) : null;
+    const nPocoes = porDano == null ? null : (porTempo == null ? porDano : Math.min(porDano, porTempo));
+    // PREÇO da poção que efectivamente cura: o do MOTOR (motor.js:262-264), não o stock.
+    const precoPocao = cura.precoPocao || 0;
+    return {
+      itens: lista, alvo: { nome: monstro, nivel, hp: alvo.hp || null, armadura: alvo.armadura || null, chefe: !!alvo.chefe },
+      vida, vidaItens, armadura, rm,
+      dpsRecebido: Math.round(dpsRecebido), curaSkill: Math.round(cura.skill), curaPocao: Math.round(cura.pocao),
+      tMorrer: tMorrer === Infinity ? null : +tMorrer.toFixed(1), tMorrerInfinito: tMorrer === Infinity,
+      dps: Math.round(dps), dpsEfetivo: Math.round(dpsEfetivo),
+      tKill: tKill === Infinity ? null : +tKill.toFixed(1), tKillInfinito: tKill === Infinity,
+      pocoesPorDano: porDano, pocoesPorTempo: porTempo, nPocoes,
+      pocoesBastam: porDano == null || porTempo == null ? null : porDano <= porTempo,
+      ouroPocao: nPocoes != null ? Math.round(nPocoes * precoPocao) : null,
+      fM: av.fM, fJ: av.fJ, dif: av.dif,
+      morre: !!av.morre, mortal: !!av.mortal, piorMec: av.piorMec || null,
+      // SOBREVIVE? = o MESMO critério do filtro `morte` do `estimarRegiao`, com as TRÊS provas que
+      // ele usa: morre por cura insuficiente (`avaliar().morre`), OU por mecânica que mata de um
+      // golpe (`mortal`), OU morre antes de matar o alvo (margem de 50% do `estimarRegiao`).
+      sobrevive: !av.morre && !av.mortal
+        && !(Number.isFinite(tKill) && Number.isFinite(tMorrer) && tMorrer < tKill * 1.5),
+      ganha: !av.morre && Number.isFinite(tKill) && Number.isFinite(tMorrer) ? tKill <= tMorrer : !av.morre,
+    };
+  }
+  /** RANKING DE ITENS PELO CRITÉRIO DE SOBREVIVÊNCIA DO DONO (TK-02-75).
+   *  A ordem é a das três perguntas do dono, nesta sequência:
+   *    1) SOBREVIVE?  -> `morre` false primeiro (um item que mata o boneco nunca é recomendado);
+   *    2) MATA EM QUANTOS SEGUNDOS? -> `tKill` menor primeiro;
+   *    3) QUANTAS POÇÕES / QUANTO CUSTAM? -> menos poções primeiro;
+   *    4) desempate: maior ganho de DPS.
+   *  `candidatos` = ids a comparar (por omissão, todo o catálogo épico/lendário). */
+  function rankItensSobrevivencia(alvo, opts) {
+    opts = opts || {};
+    const p = player();
+    if (!p || !alvo) return [];
+    const base = (opts.base || (readEquip() || []).map((e) => e.base)).filter(Boolean).map(String);
+    const pool = opts.candidatos
+      || (META.itens || []).filter((i) => (i.raridade === 'lendario' || i.raridade === 'epico') && String(i.id) !== RABADON).map((i) => String(i.id));
+    const dpsBase = (() => { try { return estimarSet(base, alvo).dps; } catch { return 0; } })();
+    const out = [];
+    for (const id of pool) {
+      const conj = base.filter((x) => x !== id).concat([id]).slice(-5);
+      const s = sobrevivenciaSet(conj, alvo, opts.regiaoId);
+      if (!s) continue;
+      out.push({ id, nome: ((META.itens || []).find((x) => String(x.id) === String(id)) || {}).nome || id, ...s,
+        ganho: dpsBase > 0 ? +(s.dps / dpsBase - 1).toFixed(4) : null });
+    }
+    const num = (v, inf) => (v == null ? (inf ? Infinity : -Infinity) : v);
+    out.sort((a, b) =>
+      (Number(b.sobrevive === true) - Number(a.sobrevive === true)) ||  // 1) SOBREVIVE?
+      (num(a.tKill, false) - num(b.tKill, false)) ||                    // 2) mata mais rápido
+      (num(a.nPocoes, false) - num(b.nPocoes, false)) ||                // 3) menos poções
+      (num(b.ganho, true) - num(a.ganho, true)));                       // 4) mais DPS
+    return out;
   }
 
   /** Planner: pra cada item-alvo, onde farmar, mobs/chefe e eficiência (drops/h). */
@@ -5359,6 +5584,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       if (!nome) return null;
 <<<<<<< HEAD
       const base = l.nm || l.faixa || [1, 1];
+<<<<<<< HEAD
       // motor.js:1121: o chefe nasce em max(n0+2, min(n1+2, nivel+4)) — nao no topo da faixa.
       const nivel = chefe ? nivelChefeDe({ nm: base }) : base[0];
 <<<<<<< HEAD
@@ -5369,6 +5595,13 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
 >>>>>>> w1-regioes
 =======
 >>>>>>> w4-fuga
+=======
+      // NÍVEL DO CHEFE pela regra do MOTOR (motor.js:1134): `max(n0+2, min(n1+2, jogador+4))`.
+      // Antes era sempre `topo da faixa + 2` (no Barão, 50) — o nível do chefe só quando o jogador
+      // está no topo. Com o jogador a 29 o chefe real é 42 e a vida de referência saía 2,3x acima
+      // (16×CURVA(50) = 122.400 contra 16×CURVA(42) = 52.560), inflando o valor da passiva.
+      const nivel = chefe ? nivelDoChefe(l, (player() || {}).nivel) : base[0];
+>>>>>>> w11-boss
       const s = statsMonstro(nome, nivel);
       return s ? { nome, nivel, hp: s.hp } : null;
     };
@@ -6549,16 +6782,22 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     const pesos = fase ? pesosItemFase(perfil, fase) : pesosItem(perfil);
     const bonusDe = (id) => (fase ? bonusItemFase(id, fase) : 1);
     // ALVO DE REFERÊNCIA para as passivas que escalam com a VIDA DO ALVO (ver `valorPctVida`).
-    // REGRA DO LEAD (2026-10-14): a `3153` NÃO é promovida no FARM DE MOBS — contra mob comum a
-    // vida é baixa e o teto morde, e a build de farm tem de ficar como estava (é a que os testes
-    // do banco fixam). O termo só entra nas builds que enfrentam VIDA ALTA: a de CHEFE e a IDEAL
-    // (que pontua contra o chefe de maior tier — ver `alvoDeReferencia`). Sem alvo, o termo é 0
-    // e a pontuação fica exactamente como era.
-    // A passiva que escala com o alvo (3153) SO ENTRA NA BUILD DE CHEFE (regra do Lead, 2026-10-14):
-    // contra mobs a vida e baixa e o simulador mede-a como a PIOR candidata (488, ultimo de 11);
-    // contra o chefe e a melhor (4055-6351). A build IDEAL (fase null) tambem NAO a promove — era
-    // estar a vestir a peca de chefe no farm. Com fase 'chefe' o alvo de referencia e o chefe.
-    const alvoRef = fase === 'chefe' ? alvoDeReferencia('chefe') : null;
+    // REGRA (TK-02-81, P0): a `3153` Espada do Rei Destruído é a peça que DECIDE a luta contra
+    // o Barão — MEDIDO (`tools/sim-chefes.mjs`, docs/sim-baron.md): Yasuo IDEAL 7025 dps contra
+    // 2041 da build do motor (3,4x), Katarina 2757 contra 993 (2,8x), e NENHUMA build do motor
+    // a tinha. A causa era o scoring ser CEGO AO ALVO: `valorPassiva` dava-lhe 25 (Yasuo) / 15
+    // (Katarina) pontos do TEXTO e nunca entrava. Agora o valor vem da FÓRMULA do motor
+    // (motor.js:1702 `bruto += 0.05 * vidaRefItem(alvo, alvo.hp)`, com o tecto de motor.js:1191).
+    //
+    // ONDE O TERMO ENTRA (a lista, não o valor — Regra Nº 1):
+    //   · fase 'chefe'  -> alvo = o chefe da região (ou o de maior tier);
+    //   · fase null     -> a build IDEAL, que é a que enfrenta o conteúdo mais duro do jogo
+    //                      (o mesmo alvo de referência do `alvoDeReferencia`);
+    //   · fase 'mobs'   -> NÃO entra. Contra mob comum a vida é baixa, o tecto de 3x a curva
+    //                      morde e o simulador mede a `3153` como a PIOR candidata (488, último
+    //                      de 11). A build de farm tem de ficar como estava (é a que o banco fixa).
+    // Sem alvo conhecido o termo é 0 e a pontuação fica exactamente como era.
+    const alvoRef = fase === 'mobs' ? null : alvoDeReferencia('chefe');
     // ---- PEÇAS REAIS vs CATÁLOGO (correcção do Lead, 2026-10-14) --------------------------------
     // O dono tem `4629+3~A` (94,5 AP, 23,46% cdr) e o motor comparava o `4629` BASE (70 AP, 15% cdr)
     // -> recomendava o `6653` Liandry. Não era divergência de modelo: era FALTA DE DADOS (a peça
@@ -7765,13 +8004,27 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     } catch { /* ignore */ } finally { _rotBusy = false; }
   }
 
-  /** Estima a LUTA contra o chefe de uma região: tempo p/ matar, tempo p/ morrer e nº de poções. */
+  /** Estima a LUTA contra o chefe de uma região: tempo p/ matar, tempo p/ morrer e nº de poções.
+   *
+   *  NÍVEL DO CHEFE (TK-02-83): usava o TOPO da faixa + 2 (no Barão, 50), que é o nível do chefe
+   *  só quando o jogador está no topo. O motor não faz isso: motor.js:1134 prende o chefe em
+   *  `max(n0+2, min(n1+2, jogador+4))` — com o jogador a 29 o Barão é 42, não 50. Com o nível
+   *  errado a luta era estimada contra um chefe que não existe: o HP saía 16×CURVA(50) em vez de
+   *  16×CURVA(42). Agora usa a regra do motor (ver `nivelDoChefe`).
+   *
+   *  DANO DO JOGADOR (TK-02-83): o `tKill` agora leva o `fatorDanoJogador` (motor.js:1202),
+   *  aplicado pelo motor em motor.js:1236 — sem ele o tempo de matar saía 2,7x optimista
+   *  exactamente no caso que decide: o jogador muito abaixo do chefe. */
   function estimarLuta(id) {
     const loc = (META.locais || []).find((l) => l.id === id);
     if (!loc || !loc.chefe) return null;
     const boss = loc.chefe[0];
+<<<<<<< HEAD
     const nivel = nivelChefeDe(loc);
+=======
+>>>>>>> w11-boss
     const p = player();
+    const nivel = nivelDoChefe(loc, p && p.nivel);
     const s = statsMonstro(boss, nivel);
     if (!s) return null;
     const reg = agregar().find((r) => (loc.nome && r.region.startsWith(loc.nome)));
@@ -7792,6 +8045,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     const meDps = meuDps() || 0;
     // `armEf` JÁ levava a penetração mágica dos itens (tooltip c/ refino) mas FALTAVA o RM_MONSTRO: o dano medido do campeão contra o chefe é MÁGICO (a penetração usada é a mágica) -> motor.js:1202.
     const mitBoss = 100 / (100 + armMagicaEfetiva(s.armadura, efEq.penMag));
+<<<<<<< HEAD
     // FATOR DE DANO DO JOGADOR (motor.js:1236, em `golpear`): TODO o dano que o jogador causa
     // num monstro mais de 4 niveis acima e multiplicado por `fJ = max(0,25; 1 - 0,12 x dif)`
     // (motor.js:1199-1202). Era CALCULADO pelo `avaliar()` e NUNCA consumido: o `tKill` saia
@@ -7800,6 +8054,14 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     // O fator aplica-se ao DPS do jogador, que e o que o `tKill` usa.
     const fJBoss = av && av.fJ ? av.fJ : 1;
     const meuDpsBoss = meDps * mitBoss * fJBoss;
+=======
+    // TOLERÂNCIA DE NÍVEL DO LADO DO JOGADOR (motor.js:1202, aplicado em motor.js:1236): contra
+    // um monstro MUITO acima do nível o jogador bate menos — e no Barão ao nível 29 chega ao PISO
+    // (×0,25). Sem este factor o `tKill` saía 2,7x optimista e a decisão de enfrentar o chefe
+    // dizia GANHA quando a luta está perdida (TK-02-83).
+    const fJ = av.fJ != null ? av.fJ : fatorDanoJogadorMotor(difNivelMotor(nivel, p.nivel));
+    const meuDpsBoss = meDps * fJ * mitBoss;
+>>>>>>> w11-boss
     const tKill = meuDpsBoss > 0 ? s.hp / meuDpsBoss : Infinity;
     // ROUBO DE VIDA (motor.js:1226-1228) + CURA DO GIRO (motor.js:2169) ja entraram no
     // `curaTotal` do `avaliar`; aqui a conta liquida usa essa cura total.
@@ -8858,6 +9120,10 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     alvoQuatroFontes, fontesDeItens, minhasOfertas, cofreConhecido, pecasDaFaseNoCofre,
     basesReservadas, ehReservado, fasesDoItem, trocarBuildDaFase, buscarPecasDaFase, lerCofreBase,
     valorDeFase, cmpEquipFase, pesosItemFase, bonusItemFase, motivoFase, NOME_FASE, PESO_FASE, alvoDeReferencia, valorPctVida, PASSIVA_POR_ALVO,
+    // ---- CRITÉRIO DE SOBREVIVÊNCIA NA ESCOLHA DE ITEM (TK-02-75 / TK-02-74) ----
+    sobrevivenciaSet, rankItensSobrevivencia, curaDeSobrevivencia,
+    // ---- TOLERÂNCIA DE NÍVEL (TK-02-83): constantes lidas do motor, expostas p/ o banco ----
+    nivelDifMotor, difNivelMotor, fatorDanoMonstroMotor, fatorDanoJogadorMotor, nivelDoChefe, NIVEL_DIF_FB,
     // PRIMEIRA VEZ DO SCRIPT/CONTA: estado (só leitura) e o passo da decisão — a GUI pode mostrar
     // PORQUE é que o auto-play se ligou sozinho; o banco pode forçar a avaliação sem esperar 3 min.
     primeiraVez: primeiraVezEstado, primeiraVezPasso,

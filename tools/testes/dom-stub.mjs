@@ -553,6 +553,28 @@ export const CATALOGO = [
   { id: '3089', nome: 'Rabadon', raridade: 'lendario', espaco: 'arma', ap: 120, efeito: 'Poder de Habilidade total em 35%.', preco: 3600, de: ['1002'] },
   // lendario fraco (nunca entra em build nenhuma) - o "fora da build" dos testes
   { id: '9500', nome: 'Lendario Fraco', raridade: 'lendario', espaco: 'arma', vida: 10, armadura: 5, preco: 3000, de: ['1001'] },
+  // ---- ITENS REAIS DO JOGO (W11 / TK-02-81, TK-02-74, TK-02-75) ---------------------------
+  // A 3153 Espada do Rei Destruido e a peca que DECIDE a luta contra o Barao
+  // (motor.js:1702 `bruto += 0.05 * vidaRefItem(alvo, alvo.hp)`, com tecto motor.js:1191). Sem
+  // ela no catalogo controlado, o banco nao tem como provar que a build de chefe a inclui -
+  // o ticket P0 da fila W11 ficaria sem assercao nenhuma.
+  // Os numeros (ad/ap/vida/cdr/pen) sao os do catalogo do jogo (docs/game-src/itens.js); o
+  // catalogo do banco e CONTROLADO, e estes ids mantem as propriedades que os tickets medem.
+  { id: '3153', nome: 'Espada do Rei Destruido', raridade: 'lendario', espaco: 'arma', ad: 55, preco: 3400, de: ['2002'],
+    efeito: 'Ataques basicos causam 5% da vida atual do alvo como dano fisico adicional.' },
+  { id: '3036', nome: 'Lembrancas do Lorde Dominik', raridade: 'lendario', espaco: 'arma', ad: 35, critico: 0.25, penArmadura: 0.3, preco: 3400, de: ['2002'],
+    efeito: '30% de penetracao de armadura.' },
+  { id: '3031', nome: 'Gume do Infinito', raridade: 'lendario', espaco: 'arma', ad: 70, critico: 0.25, preco: 3400, de: ['2002'],
+    efeito: 'Acertos criticos causam +40% de dano.' },
+  { id: '6653', nome: 'Tormento de Liandry', raridade: 'lendario', espaco: 'arma', ap: 80, preco: 3200, de: ['2003'],
+    efeito: 'Queimam o alvo, causando dano por segundo.' },
+  { id: '3171', nome: 'Impeto Cosmico', raridade: 'lendario', espaco: 'arma', cdr: 0.15, vida: 350, preco: 3200, de: ['2003'],
+    efeito: 'Reduz o tempo de recarga das habilidades.' },
+  { id: '3100', nome: 'Perdicao de Lich', raridade: 'lendario', espaco: 'arma', ap: 80, preco: 3200, de: ['2003'],
+    efeito: 'Depois de usar uma habilidade, o proximo ataque causa +75% do Poder de Habilidade.' },
+  { id: '3135', nome: 'Cajado do Vazio', raridade: 'lendario', espaco: 'arma', ap: 70, penMag: 0.4, preco: 3200, de: ['2003'],
+    efeito: '40% de penetracao magica.' },
+  { id: '3168', nome: ' Couraca do Espirito', raridade: 'lendario', espaco: 'arma', vida: 500, rm: 40, preco: 3200, de: ['2002'] },
 ];
 
 export const CHAMPS = {
