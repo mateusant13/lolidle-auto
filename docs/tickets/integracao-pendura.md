@@ -74,3 +74,20 @@ sem adivinhar.
 Nota: as minhas 3 tentativas anteriores falharam por **strings que não casavam** (a linha real tem o
 `_viagemAgendada = false` dentro). Lição: **procurar a linha por regex e imprimi-la antes de editar** —
 foi o que destravou este experimento.
+
+
+## ADENDA 08:10 — nem antes do `estimarLuta` o pendura passa
+Cortei o `checarChefeFatal` com `if (true) return;` **antes** da linha do `estimarLuta` e exportei →
+**o banco continua a pendurar**. Logo o ciclo (se for ciclo) está nas primeiras linhas:
+`podeFazer('fugir')` (hierarquia de interruptores, `while (n && INTERRUPTORES[n] && guarda++ < 16)`),
+`readLocation()`, `localId()`, `agregar()` — ou **não é ciclo nenhum** e é outra coisa (ex.: o teste
+`fuga` a fazer `await new Promise(setTimeout)` contra um stub cujo `setTimeout` é síncrono, ou uma
+excepção engolida que deixa a promise pendurada).
+
+**Próximo passo recomendado (muda de estratégia):** em vez de cortar o código, instrumentar o
+**stub** — `dom-stub.mjs:393` já apanha excepções em `estado.erros`; pôr lá um contador de chamadas
+ao `setTimeout` e um `throw` acima de 2000, para o pendura virar **erro com stack**. Se o erro
+apontar para o teste (e não para o `automation.js`), o problema é do harness, não da extensão.
+
+**Lição de método (3 tentativas perdidas):** editar por string exacta falha quando o ficheiro tem a
+versão com guarda; **procurar a linha por regex, imprimir, e só depois editar**.
