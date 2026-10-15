@@ -1,0 +1,36 @@
+
+# Integração automática (hill-climbing) — 2026-10-15T09:40:22.527Z
+
+BASE: 48 falhas
+
+- carregarMeta (_w3): revertido (48 -> 53)
+- curva (_w3): revertido (48 -> 48)
+- barraIdeal (_w3): revertido (48 -> 49)
+- readStats (_w3): revertido (48 -> 48)
+- parseBig (_w3): revertido (48 -> 48)
+- infoItem (_w9score): revertido (48 -> 48)
+- valorPassiva (_w9score): revertido (48 -> 48)
+- scoreSet (_w9score): revertido (48 -> 50)
+- estimarSet (_w9score): revertido (48 -> 49)
+- statsSet (_w12): revertido (48 -> 48)
+- statsDePeca (_w9score): revertido (48 -> 48)
+- pecaConhecida (_w9score): revertido (48 -> 48)
+- farmarItem (_w10config): revertido (48 -> 48)
+- farmarItemPasso (_w10config): revertido (48 -> 48)
+- escolherConjunto (_w10config): revertido (48 -> 48)
+- porMelhorBase (_w10config): revertido (48 -> 48)
+- nivelMobDe (_w1): revertido (48 -> 48)
+- mediaWaveDe (_w1): revertido (48 -> 48)
+- estimarRegiao (_w1): revertido (48 -> 44)
+- viajarPara (_w4): revertido (48 -> 48)
+- proximoGiro (_w4): revertido (48 -> 48)
+- localId (_w4): revertido (48 -> 48)
+- consumirEvento (_w3): revertido (48 -> 48)
+- estadoVivo (_w3): revertido (48 -> 48)
+- eventosVivos (_w3): revertido (48 -> 48)
+- eventosContadores (_w3): revertido (48 -> 48)
+- recomendarAtributos (_w3): revertido (48 -> 48)
+- checarChefeFatal (_w4): revertido (48 -> 48)
+- nivelAlvo (_w1): revertido (48 -> 48)
+
+FINAL: 48 falhas (base 48)
