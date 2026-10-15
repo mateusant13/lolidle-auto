@@ -535,3 +535,17 @@ ronda (o `medido` + o que o R3 exige: `r3.ok === true`), senao o numero sobe sem
 **8 tentativas medidas:** null 24 · agregar 23 · tirar do diag 20/23 · modulo 23 · por-funcao 21 ·
 so-rank 20 · duas-fontes 20/23 · duas-fontes+naBase 22.
 **Estado: 16 falhas (com o `naBase` corrigido), 21/25 suites verdes.**
+## ADENDA 14:00 - C: TRACO EM EXECUCAO (o valor ESTA CERTO - o problema e a ORDEM do teste)
+Instrumentei o fim do `scanLog` com `console.log('DBG-C kills=' + killTimes.length + ' n=' + analisarWaves().n)`
+e corri o banco. Saida:
+  DBG-C kills=12 n=12   (outra suite)
+  DBG-C kills=3  n=3    <-- ESTE e o mundo do C (3 linhas de loot, a caca offline NAO conta)
+  DBG-C kills=1  n=1
+**Conclusao:** o `killTimes` e o `analisarWaves().n` estao CERTOS (3, nao 4) - a extensao faz o que o
+teste pede. A assercao `waves.n === 3` falha por ORDEM/TEMPO: o `scanLog` que produz os 3 abates corre
+DEPOIS de o teste ler o `analisarWaves()` (ou o teste le um objecto de outro momento).
+**Proximo passo (do lado do TESTE, nao da extensao):** no `regiao.test.mjs` (provaLog), ver se o
+`const waves = auto.analisarWaves()` esta DEPOIS do `carregarAutomation` (que corre o `scanLog`) - se
+estiver antes, e preciso forcar um `scanLog`/esperar o observer antes de ler.
+**Licao:** o traco em execucao (1 linha, 1 corrida) resolveu o que 3 rondas de leitura estatica nao
+resolveram - e mostrou que o defeito NAO esta na extensao.
