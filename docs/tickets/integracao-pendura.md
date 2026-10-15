@@ -1,27 +1,26 @@
-# O PENDURA DO BANCO — causa isolada (2026-10-15 07:30)
+# PENDURA DO BANCO — CULPADO ISOLADO: `checarChefeFatal` (2026-10-15 07:35)
 
-## Experimento
-Adicionei os 16 exports em falta ao `window.__lolidleAuto` (as funções já existem no ficheiro) e
-corri o banco com **limite rígido** (`Start-Process` + `Kill` aos 80 s, a única medição fiável —
-stdout por pipe é promovido a job e perde-se).
+## Bissect completo (medição rígida: Start-Process + Kill aos 75 s + ler ficheiro)
 
-| Export adicionado | Resultado |
+| Estado | Resultado |
 |---|---|
-| 16 exports (todos) | **PENDURA** — 0 linhas em 80 s (nem a 1.ª suite imprime) |
-| 14 "seguros" (sem `farmarItemPasso`, `recomendarAtributos`, `estimarRegiao`, `mediaWaveDe`) | **PENDURA igual** — 0 linhas em 80 s |
+| HEAD (sem exports) | **termina** — 48 falhas, 14/25 suites verdes, 10 245 B |
+| + 16 exports (todos) | **pendura** — 0 B em 80 s |
+| + 14 "seguros" (sem funções de timers) | **pendura** — 0 B em 80 s |
+| **+ 13 exports (sem `checarChefeFatal`)** | **termina** — 59 falhas, 14/25 suites verdes, 10 989 B |
 
-## Conclusão
-O pendura **não** está nas funções que mexem em timers/recursão que eu suspeitava. Está nos
-**exports do consumidor de eventos**: `consumirEvento` / `estadoVivo` / `eventosVivos` /
-`eventosContadores` (do ramo **w3-barra**). Enquanto não estavam exportados, os handlers de
-`estado`/`evento` do `carregarMeta` **rebentavam** (ReferenceError) e o banco seguia; agora que
-existem, o consumidor **corre e entra em ciclo** no mundo do stub (o stub não tem o
-`Cena.prototype.evento`/`sincronizar` reais que o inject.js envolve).
+**Conclusão:** o pendura é `checarChefeFatal` (ramo **w4-fuga**), que a suite `fuga` chama
+(`auto.checarChefeFatal()`). Sozinho, ele trava o banco; sem ele o banco corre até ao fim.
 
-## Próximo passo exacto
-1. Ler `consumirEvento` (w3-barra, ~46 linhas) e o handler `estado`/`evento` do `carregarMeta`.
-2. Procurar o ciclo: provavelmente um `for/while` sobre `_eventosVivos`/`_eventosCont` ou uma
-   re-emissão de evento que se realimenta (no jogo real o `inject.js` é quem emite; no stub nada
-   emite — logo um ciclo aí é código a assumir que há sempre eventos novos).
-3. Guardar com um tecto (ex.: `_eventosVivos.length = Math.min(200, ...)`) e voltar a exportar.
-4. Medir SEMPRE com o limite rígido + ficheiro (`tools/_b.txt`), nunca por stdout.
+## O que os exports revelaram (e é bom saber)
+Com os 13 exports, o banco **corre** e passa de 48 para **59 falhas** — porque as suites deixam de
+rebentar com "is not a function" (1 falha cada) e passam a **correr de verdade**, expondo as
+divergências reais de comportamento entre o que os ramos implementaram e o que os testes esperam.
+Ou seja: **a dívida de integração não era só exports** — era exports + comportamento. O número subir
+é o sintoma de estar finalmente a medir o que interessa.
+
+## Próximos passos (por ordem)
+1. `checarChefeFatal` (w4): ler a função e achar o ciclo (provavelmente um `while` de tentativas sem
+   tecto quando o stub não tem estado de chefe). Meter tecto → exportar → o banco volta a terminar.
+2. Com os 14 exports no sítio, atacar as 59 falhas **por suite** (são asserções reais agora).
+3. Medir SEMPRE com o método rígido + ficheiro (stdout por pipe perde-se).
