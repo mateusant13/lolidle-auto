@@ -388,3 +388,16 @@ o `precisaRefino` ja o declara em 3261.
 
 **Licao repetida (3.a vez):** sonda por regex engana (comentarios, chaves aninhadas, duplicados).
 Ler o alvo ANTES de escrever e a regra que mais poupa tempo.
+## ADENDA 11:30 - medido (3.a tentativa, revertida): declarar no refinarMelhores -> 18->27
+Usos REAIS (filtrados: so o que esta ANTES de qualquer // e nao e linha de comentario):
+  3261 let medido = null, divergenciaMedido = [];   (dentro do precisaRefino)
+  5759 const diag = { essenciais, fonteEssenciais, medido, divergenciaMedido };   (refinarMelhores)
+  7378 function scoreRegiao(e, obj, medido)   <- PARAMETRO, nao e o bug
+Declarei `let medido` no `refinarMelhores` -> **banco 18 -> 27**: essa funcao deve usar o `medido` do
+ESCopo de cima (ou o valor que o `precisaRefino` deixa), e a declaracao local muda o comportamento.
+
+**Conclusao:** o `medido` NAO e um simples "falta declarar" - e um valor de ESTADO partilhado entre
+duas funcoes, e a forma como e partilhado (modulo? argumento? reposicao?) e uma DECISAO DE DESENHO.
+As tres tentativas (modulo 16->23, por-funcao 18->21, refinarMelhores 18->27) estao registadas.
+Proximo passo: ler o `precisaRefino` (3259-3290) e o `refinarMelhores` (5722-5770) lado a lado e
+decidir QUEM produz e QUEM consome, antes de escrever uma linha.
