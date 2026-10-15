@@ -1633,6 +1633,10 @@
       // e o `player()/dpsPorHabilidade` inteiro trabalha com esse número.
       if (m) { const v = m[2].match(/([\d.,]+)\s*([kKmM])?/); out[m[1]] = v ? parseNum(v[1], v[2]) : 0; }
     }
+    const sid = lerStatsId();
+    if (sid.cdr != null) out.cdr = sid.cdr / 100;
+    if (sid.critico != null) out.critChance = sid.critico / 100;
+    if (sid.critDano != null) out.critMult = sid.critDano;
     return out;
   }
 
