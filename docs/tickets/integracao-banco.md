@@ -429,3 +429,16 @@ forma com o objecto maior (ou uma comparacao do objecto inteiro).
 **Proximo passo:** aplicar o patch e LISTAR as 8 do `w1-regioes` (nao so o total) - comparar com as 5
 conhecidas e ver as 3 novas pelo nome. E o mesmo metodo que fechou o `larvasInvoca` e o `classeItem`.
 Estado mantido: 18 (hud vermelho, w1 com 5).
+## ADENDA 12:10 - FLAKINESS CONFIRMADA (corrige a conclusao anterior)
+Duas corridas seguidas, **o MESMO ficheiro**: **15 falhas** e **18 falhas** (20/25 suites verdes nas duas).
+Logo o banco **TEM flakiness** (~3 assercoes). A minha conclusao anterior ('3 corridas identicas ->
+deterministico') estava errada - as 3 corridas calharam no mesmo estado.
+
+**Regra:** medir SEMPRE 2x quando a decisao depender do numero; e comparar as LISTAS (por nome), nao
+so o total. Foi o que fez fechar o H12c e o fatorDano*Motor (ambos tinham sido revertidos por uma
+medicao unica e enganadora).
+
+## fatorDano*Motor: assinatura certa = (d)
+Mapeados TODOS os pontos de chamada: os testes usam `(0)`, `(1)`, `(99)` (a DIFICULDADE) e nao ha
+outras chamadas no `automation.js`. Trocar para `(d)` -> **20/25 suites verdes** (era 19-20).
+A tentativa anterior (18->19) foi medida em estado intermedio.
