@@ -401,3 +401,11 @@ duas funcoes, e a forma como e partilhado (modulo? argumento? reposicao?) e uma 
 As tres tentativas (modulo 16->23, por-funcao 18->21, refinarMelhores 18->27) estao registadas.
 Proximo passo: ler o `precisaRefino` (3259-3290) e o `refinarMelhores` (5722-5770) lado a lado e
 decidir QUEM produz e QUEM consome, antes de escrever uma linha.
+## ADENDA 11:40 - chefe D10/D11: a assinatura certa e (d), mas trocar QUEBRA outra suite (18->19)
+O teste chama `auto.fatorDanoMonstroMotor(1)` com UM argumento (a DIFICULDADE d, motor.js:1201).
+As minhas versoes eram `(nivelAlvo, nivelJogador)` -> com (1) davam 1 em vez de 1,35 (D10/D11 falhavam).
+Tentei (a) so `(d)` -> 18->19; (b) compativel com as DUAS assinaturas `(d, nivelJogador)` -> 18->19.
+**Conclusao:** alguem chama com 2 argumentos a espera do comportamento ANTIGO e a suite que o faz
+passa a falhar. Proximo passo: `grep fatorDanoMonstroMotor|fatorDanoJogadorMotor` nos DOIS ficheiros
+(automation.js e os testes) e ver TODOS os pontos de chamada ANTES de mudar a assinatura.
+Estado mantido: 18 (o melhor medido).
