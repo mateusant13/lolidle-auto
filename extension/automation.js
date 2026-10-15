@@ -6988,7 +6988,14 @@
     // `armEf` JÁ levava a penetração mágica dos itens (tooltip c/ refino) mas FALTAVA o RM_MONSTRO: o dano medido do campeão contra o chefe é MÁGICO (a penetração usada é a mágica) -> motor.js:1202.
     const mitBoss = 100 / (100 + armMagicaEfetiva(s.armadura, efEq.penMag));
     const meuDpsBoss = meDps * mitBoss;
-    const tKill = meuDpsBoss > 0 ? s.hp / meuDpsBoss : Infinity;
+    // motor.js:1200-1202 — monstro BEM ACIMA do nível do jogador aguenta mais (d = nivelAlvo - nivelJogador - livre;
+    // fJ = max(minDanoJogador, 1 - danoJogador*d), com piso 0,25). Sem isto o tempo de matar saía optimista.
+    const _nd = META.nivelDif || {};
+    const _livre = _nd.livre != null ? _nd.livre : 4;
+    const _dNiv = Math.max(0, (Number(nivel) || 0) - (Number(p.nivel) || 1) - _livre);
+    const fJ = _dNiv ? Math.max(_nd.minDanoJogador != null ? _nd.minDanoJogador : 0.25, 1 - (_nd.danoJogador != null ? _nd.danoJogador : 0.12) * _dNiv) : 1;
+    const meuDpsBossFJ = meuDpsBoss * fJ;
+    const tKill = meuDpsBossFJ > 0 ? s.hp / meuDpsBossFJ : Infinity;
     // ROUBO DE VIDA (motor.js:1226-1228) + CURA DO GIRO (motor.js:2169) ja entraram no
     // `curaTotal` do `avaliar`; aqui a conta liquida usa essa cura total.
     const net = av.dpsTomado - av.curaTotal;                                 // perda líquida/s sem poção
@@ -7001,7 +7008,7 @@
     const potReal = (reg && reg.potChefe != null) ? Math.round(reg.potChefe) : null;
     const ganha = tKill <= tMorrer;
     const potS = net > 0 ? net / curaPocaoS : 0;                            // poções/s necessárias p/ cobrir o líquido
-    return {
+    return { fJ,
       regiao: loc.nome.replace(/ nível.*/, ''), boss, nivel, hpBoss: Math.round(s.hp), armadura: Math.round(s.armadura),
       dpsChefe: Math.round(av.dpsTomado), curaSkill: Math.round(curaSkill), danoGolpe: Math.round(av.danoGolpe), intervalo: +av.intervalo.toFixed(1),
       meuDpsBoss: Math.round(meuDpsBoss), tKillS: realMs ? +(realMs / 1000).toFixed(1) : +tKill.toFixed(1), tMorrerS: tMorrer === Infinity ? null : +tMorrer.toFixed(1),
