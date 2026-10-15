@@ -24,3 +24,34 @@ Ou seja: **a dívida de integração não era só exports** — era exports + co
    tecto quando o stub não tem estado de chefe). Meter tecto → exportar → o banco volta a terminar.
 2. Com os 14 exports no sítio, atacar as 59 falhas **por suite** (são asserções reais agora).
 3. Medir SEMPRE com o método rígido + ficheiro (stdout por pipe perde-se).
+
+
+## ADENDA (07:40) — segunda causa de pendura encontrada e o estado final
+O `checarChefeFatal` **não tem ciclos** (lido: 39 linhas, zero `while`/`for`). O que ele faz é
+chamar `viajarPara(id)` por `setTimeout`. E o `viajarPara` (w4) tinha:
+
+```js
+if (!naBase()) {
+  if (_viagemTent >= 3) { ...; _viagemTent = 0; return; }
+  _viagemTent++;
+  press('b');
+  setTimeout(() => viajarPara(id), esperaRecallMs());   // ~9-10 s
+  return;
+}
+_viagemTent = 0;          // <-- repunha o contador A CADA passagem
+press('m');
+```
+
+No banco de testes os `setTimeout` resolvem-se como **microtask**: a recursão dispara imediatamente,
+o contador repõe-se a cada volta e cria-se uma **cadeia infinita de timers** — o banco nunca termina.
+Corrigi (repôr o contador só quando a viagem é de facto lançada, no clique do marcador) mas **o banco
+continuou a pendurar**, logo há uma segunda cadeia (o `viajarPara` não é o único a reagendar-se por
+`setTimeout` a partir de um caminho chamado pelos testes).
+
+**Estado final desta ronda (commitado, `f1b0393`, medido com o método rígido):**
+- **O banco TERMINA**: 59 falhas · 14/25 suites verdes · 10 988 B.
+- Os 13 exports estão no sítio (`checarChefeFatal` NÃO está — é ele que faz pendurar).
+- As 59 falhas são **asserções reais** (já não são "is not a function"): é o comportamento dos ramos a
+  divergir do que os testes esperam. É o terreno certo para atacar a seguir, suite a suite.
+- **Armadilha nova:** matar o processo `pwsh` **não mata o `bun` filho** — ele fica a correr e segura
+  o ficheiro. Matar sempre `Get-Process bun | Kill` depois de cada medição.
