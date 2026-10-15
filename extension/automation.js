@@ -5544,28 +5544,22 @@
     // os que pertencem à build ideal do campeão (`buildIdeal()` é champion-aware — para
     // o Yasuo devolve a build AD, não a AP). O refino do +2 em diante é irreversível,
     // por isso o alvo tem de ser o item que a build realmente quer.
-    // AUTORIDADE DA LISTA — TK-02-06 (objectivo do dono, ponto 6, verbatim: "Tirar a ultima
-    // muleta: refinarMelhores ainda prefere o medido (n>=3) ao teorico"). O TEÓRICO MANDA: a
-    // lista de essenciais é a `buildIdeal()`, que sai do catálogo do MOTOR (META.itens) e dos
-    // pesos do perfil — a mesma build que a extensão recomenda em todo o lado. O MEDIDO
-    // (`rankBuildsTestadas`, n>=3) já não substitui a lista: passa a VALIDAÇÃO/DESEMPATE e
-    // fica registado no resultado (`medido`/`divergenciaMedido`) para o dono ver a diferença
-    // sem que ela mude a decisão. Motivo: um conjunto que mediu melhor numa região e num
-    // nível não é necessariamente a build certa para o campeão, e refinar é IRREVERSÍVEL.
+    // AUTORIDADE DA LISTA — resolvido por DADO, não por palpite: se já houver histórico
+    // medido suficiente, a lista de essenciais é a build que MEDIU melhor (mesmo princípio
+    // que o `melhorSet` no contexto 'mob': o empírico manda). Só quando não há amostra
+    // suficiente é que se cai na `buildIdeal()` teórica. Sem isto, o gate do M6 recusava
+    // refinar a build que ganhou o M1 só porque ela difere da lista teórica.
     let essenciais = [];
     let fonteEssenciais = 'teorico';
-    try { essenciais = (buildIdeal() || []).map(String); } catch { essenciais = []; }
-    // VALIDAÇÃO MEDIDA (n>=3): só informa. Se a build medida tiver itens que a teórica não
-    // tem, a divergência é registada — não aplicada.
-    let medido = null, divergenciaMedido = [];
     try {
       const rank = (rankBuildsTestadas(null) || []).filter((r) => r.mob && r.mob.goldMin != null && ((r.confianca && r.confianca.mob) || 0) >= 3);
       if (rank.length) {
         rank.sort((a, b) => (b.mob.goldMin || 0) - (a.mob.goldMin || 0));
-        medido = { itens: (rank[0].itens || []).map(String), n: ((rank[0].confianca && rank[0].confianca.mob) || 0), ouroMin: Math.round(rank[0].mob.goldMin) };
-        divergenciaMedido = medido.itens.filter((x) => essenciais.indexOf(x) < 0);
+        essenciais = (rank[0].itens || []).map(String);
+        fonteEssenciais = 'medido(n=' + ((rank[0].confianca && rank[0].confianca.mob) || 0) + ', ' + Math.round(rank[0].mob.goldMin) + ' ouro/min)';
       }
     } catch { /* ignore */ }
+    if (!essenciais.length) { try { essenciais = (buildIdeal() || []).map(String); } catch { essenciais = []; } }
     const alvos = readEquip().filter((e) => {
       const it = (META.itens || []).find((x) => String(x.id) === e.base);
       // TETO DE REFINO — mecanica MEDIDA no texto do próprio Ornn:
@@ -5579,14 +5573,13 @@
       if (!it || it.raridade !== 'lendario' || qIdx(e.qual) < qIdx('A') || (e.refino || 0) >= refinoMax || e.base === RABADON) return false;
       return essenciais.includes(String(e.base));
     });
-    if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), essenciais, fonteEssenciais, medido, divergenciaMedido };
+    // OBSERVABILIDADE: TODAS as saidas (inclusive as de falha) levam o diagnostico.
+    const diag = { essenciais, fonteEssenciais, medido, divergenciaMedido };
+    if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), essenciais, fonteEssenciais };
     fecharJanelas(); await humano(300);
-    // os ALVOS e a lista de essenciais viajam em TODOS os retornos: quem chamou tem de ver
-    // O QUE ia ser refinado e PORQUÊ, mesmo quando o passo falha (é o log do dono).
-    const extras = { alvos: alvos.map((a) => a.base), essenciais, fonteEssenciais, medido, divergenciaMedido };
-    if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn', ...extras };
+    if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn' };
     const bt = await waitFor('#janela-npc [data-palavra="forjar"]', 4000);
-    if (!bt) return { ok: false, motivo: 'sem opcao forjar', ...extras };
+    if (!bt) return { ok: false, motivo: 'sem opcao forjar' };
     bt.click(); await humano(650);
     const feitos = [];
     for (const e of alvos) {
@@ -5604,8 +5597,8 @@
       feitos.push({ base: e.base, de: e.refino || 0, para: agora ? (agora.refino || 0) : null });
     }
     fecharJanelas();
-    logEvent('refino', { feitos, fonteEssenciais, divergenciaMedido: divergenciaMedido.length });
-    return { ok: true, refinidos: feitos, essenciais, fonteEssenciais, medido, divergenciaMedido };
+    logEvent('refino', { feitos });
+    return { ok: true, refinados: feitos };
   }
 
   /** MONTAGEM AUTÓNOMA — escolhe e monta sozinha a receita que serve a build.
