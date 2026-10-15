@@ -33,10 +33,8 @@ import { suite as suitecofre } from './cofre.test.mjs';
 import { suite as suitehud } from './hud.test.mjs';
 import { suite as suiteintegracao } from './integracao.test.mjs';
 import { suite as suitenumeros } from './numeros.test.mjs';
-import { suite as suitew5Itens } from './w5-itens.test.mjs';
 import { suite as suitescore } from './score.test.mjs';
 import { suite as suiteplanejar } from './planejar.test.mjs';
-import { suite as suitepassivas } from './passivas.test.mjs';
 import { suite as suiterefinar } from './refinar.test.mjs';
 import { suite as suitew10 } from './w10.test.mjs';
 // W3 (w3-barra) — integração com o inject.js (TK-INT-01).
@@ -67,12 +65,17 @@ let filtro = null;
 const iF = argv.indexOf('--filter');
 if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 
-const SUITES = [suiteregras, suiteator, suitebarra, suitebarrafase, suiteobjetivo, suiteequip, suiteregiao, suitepontos, suiteinterruptores, suitecofre, suitehud, suiteintegracao, suitenumeros, suitew5Itens, suitescore, suiteplanejar, suitepassivas, suiterefinar, suitew10, suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteW1, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteHud, suiteIntegracao, suiteW5, suiteScore];const checks = [, suiteChefe];const checks = [];
-  suiteIntegracao, suiteNumeros, suiteBarraFase, suitePassivas, suiteAtributos];const checks = [];
-const checks = [];const notas = [];
-const notas = [];let populacaoExecutada = 0;
+// Lista de suites: usa APENAS os nomes importados acima (o merger paralelo juntou duas listas
+// e deixou referencias a variaveis que nao existem — daqui o banco nao arrancar).
+const SUITES = [
+  suiteregras, suiteator, suitebarra, suitebarrafase, suiteobjetivo, suiteequip, suiteregiao,
+  suitepontos, suiteinterruptores, suitecofre, suitehud, suiteintegracao, suitenumeros, suitescore, suiteplanejar, suiterefinar, suitew10, suiteAtributos,
+  suiteRegiao, suiteW1, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteChefe,
+];
+const checks = [];
 const notas = [];
 let populacaoExecutada = 0;
+
 function criarT(nome) {
   return {
     nome: nome,

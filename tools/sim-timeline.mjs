@@ -874,69 +874,6 @@ if (direto) {
   P('');
 
   // ---- a luta simulada contra as lutas MEDIDAS no snapshot ----
-<<<<<<< HEAD
-  {
-    const dr = resultados.find((x) => x.c.nome === 'Dragão Infernal');
-    let snap = null;
-    try { snap = JSON.parse(lerFich('docs/snapshots/katarina.json')); } catch (e) { /* sem snapshot */ }
-    const lutas = snap ? (snap.lutas || []).filter((x) => /Dragão/.test(x.boss || '') && (x.hist || []).length > 5) : [];
-    if (dr && lutas.length) {
-      const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
-      const durs = lutas.map((x) => x.durS);
-      const pots = lutas.map((x) => (x.hist || []).filter((h) => h.t === 'pot').length);
-      const hpmins = lutas.map((x) => Math.min(...(x.hist || []).filter((h) => h.hp != null).map((h) => h.hp))).filter((v) => isFinite(v));
-      P('## 6) A luta SIMULADA contra o Dragão vs as ' + lutas.length + ' lutas MEDIDAS no snapshot');
-      P('');
-      P('| grandeza | medido (docs/snapshots/katarina.json) | simulado (esta execução) |');
-      P('|---|---|---|');
-      P('| duração | mediana ' + med(durs).toFixed(1) + ' s (' + Math.min(...durs).toFixed(1) + '-' + Math.max(...durs).toFixed(1) + ') | ' + f2(dr.r.dur) + ' s |');
-      P('| poções | mediana ' + med(pots) + ' (' + Math.min(...pots) + '-' + Math.max(...pots) + ') | ' + (dr.r.tot.pocoes.vida + dr.r.tot.pocoes.vidaF + dr.r.tot.pocoes.vidaS) + ' |');
-      P('| vida mínima do jogador | ' + Math.min(...hpmins) + ' a ' + Math.max(...hpmins) + ' | ' + n0(dr.r.hpMin) + ' |');
-      const mland = {};
-      for (const e of dr.r.ev) { const m = /^GOLPE [^(]*\(([a-z]+)/.exec(e.texto); if (m) mland[m[1]] = (mland[m[1]] || 0) + 1; }
-      const mint = (dr.r.ev.filter((e) => /INTERROMPIDO/.test(e.texto)).length);
-      P('| mecânicas que ATERRARAM | sopro, chuva e rugido (a chuva falta em parte das lutas: interrompida) | ' + Object.entries(mland).map((([k, v]) => k + ' x' + v)).join(', ') + (mint ? ' — ' + mint + ' cargas interrompidas pelo atordoamento da Adaga Certeira (motor.js:3089)' : '') + ' |');
-      P('| cura das habilidades por segundo | mediana ' + med(lutas.map((x) => x.healSkillS || 0)) + '/s | ' + ((dr.r.tot.curaGiro + dr.r.tot.curaRV) / Math.max(0.01, dr.r.dur)).toFixed(1) + '/s |');
-      P('');
-      P('A duração, o número de poções, a vida mínima e a cura por segundo caem DENTRO do intervalo medido. O que não bate é o DPS do jogador, porque a base do campeão não existe no repositório (ver [1]).');
-      P('');
-    }
-  }
-
-  P('## 7) O RANK DESCONHECIDO DA PASSIVA D — e a prova de que é 4');
-  P('');
-  P('- motor.js:2798-2801 — no nv29 o motor dá 28 pontos de habilidade (1 por nível, a partir do 1).');
-  P('- docs/snapshots/skills.json — o arsenal MEDIDO tem 24 ranks (Q10+W1+E3+R3+G1+A5+F1) e `pontos: 0`. **Faltam 4 pontos.**');
-  P('- motor.js:755-756 — a passiva **D (Lâmina Sinistra)** dá velocidade de ataque por adaga e `curaGiro: serie(0.08, 0.01)`: no rank 4 vale 0,11.');
-  P('- motor.js:2169 — com D, o giro cura `(curaBase 0,05 + curaGiro)` do dano dele. Com D = 4: **0,16** do dano do giro.');
-  P('- docs/snapshots/katarina.json — na luta contra o Dragão há um `{t: heal, v: 279}`. O giro medido nessa mesma luta anda em 1640-1760 de dano:');
-  P('  0,16 x 1760 = **282** contra os 279 medidos (-1%). Com D = 0 seria 0,05 x 1760 = 88, que não bate com nada.');
-  P('');
-  P('**Conclusão:** os 4 pontos que faltam estão na D (rank 4) — é o que o medido diz. A simulação fica em **D = 0** por omissão (conservamos o que está escrito) e');
-  P('`--rankD 4` mostra o efeito real.')
-  P('');
-  {
-    const r4 = {};
-    for (const c of CHEFES) r4[c.nome] = lutar({ nome: c.nome, nm: c.nm, nivelJogador: nivel, st, ranks: { ...ranks, D: 4 }, barra, itens, semente: semente + c.nm[0], pisoPct, margem, maxSeg, pocoes: { vida: null, vidaF: null, vidaS: null } });
-    P('| chefe | poções (D = 0) | poções (D = 4) | vida mínima (D=0) | vida mínima (D=4) |');
-    P('|---|---:|---:|---:|---:|');
-    for (const c of CHEFES) {
-      const a = r4[c.nome], b = (resultados.find((x) => x.c.nome === c.nome) || {}).r;
-      if (!b) continue;
-      P('| ' + c.nome + ' | ' + (b.tot.pocoes.vida + b.tot.pocoes.vidaF + b.tot.pocoes.vidaS) + ' | ' + (a.tot.pocoes.vida + a.tot.pocoes.vidaF + a.tot.pocoes.vidaS) + ' | ' + n0(b.hpMin) + ' | ' + n0(a.hpMin) + ' |');
-    }
-    P('');
-  }
-
-
-  P('## 8) AS LARVAS DO BARÃO — a cadência REAL (não é 14 s)');
-  P('');
-  P('O pedido dizia 2 larvas a cada 14 s, e o 14 está em motor.js:3076 — mas é só o campo **espera** do');
-  P('invocar. O invocar é 1 de 3 mecânicas do rodízio (motor.js:3080): **invocar -> tentáculos -> ácido**.');
-  P('O ciclo completo é (0 + 14) + (1,3 + 9) + (1 + 9) = **34,3 s** [motor.js:3076-3079].');
-  P('');
-  {
-=======
   {
     const dr = resultados.find((x) => x.c.nome === 'Dragão Infernal');
     let snap = null;
@@ -1001,9 +938,7 @@ if (direto) {
   P('invocar. O invocar é 1 de 3 mecânicas do rodízio (motor.js:3080): **invocar -> tentáculos -> ácido**.');
   P('O ciclo completo é (0 + 14) + (1,3 + 9) + (1 + 9) = **34,3 s** [motor.js:3076-3079].');
   P('');
-  {
->>>>>>> w7-sims
-    const bar = resultados.find((x) => x.c.nome === 'Barão Nashor');
+  {    const bar = resultados.find((x) => x.c.nome === 'Barão Nashor');
     if (bar) {
       const inv = bar.r.ev.filter((e) => /CHEFE INVOCA/.test(e.texto)).map((e) => e.t);
       const ivs = [];

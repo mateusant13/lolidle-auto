@@ -15,18 +15,11 @@
 
 import {
   criarMundo, carregarAutomation, CATALOGO, alimentarCatalogo, definirCampeao,
-<<<<<<< HEAD
   montarMochila, montarOrnn,
 } from './dom-stub.mjs';
 
 /** Poe o boneco na Fonte (o `naBase()` exige o texto 'Fonte' no #local-nome). */
 function montarLocal(m, texto) { m.montar('#local-nome', [m.el({ tag: 'span', label: 'local', textContent: texto })]); }
-
-=======
-  montarMochila,
-} from './dom-stub.mjs';
-
->>>>>>> w4-fuga
 function novoMundo(opts) {
   const m = criarMundo(opts);
   const auto = carregarAutomation(m);
@@ -239,7 +232,6 @@ export const suite = {
       }
     }
 
-<<<<<<< HEAD
     /* ===== W5.7 - TK-01-45: receita do Ornn escolhida POR DADO (custo esperado) ===== */
     {
       const w = novoMundo();
@@ -433,53 +425,6 @@ export const suite = {
       const eq = auto.planBag(bag2).acts.filter((a) => a.action === 'EQUIPAR').map((a) => a.it.id);
       t.check('W5.10: epico com basico no slot -> EQUIPAR', eq.indexOf('2002~C') >= 0);
     }
-
-=======
->>>>>>> w4-fuga
-    /* ===== W5.6 - parseNum: o sufixo k/M do fmt do jogo (cena.js:225) ===== */
-    {
-      const w = novoMundo();
-      const p = w.auto.parseNum;
-      t.check('W5.6: parseNum existe', typeof p === 'function');
-      // Casos EXACTOS pedidos pelo Lead (o bug corrompia em silencio acima de 10 000).
-      const casos = [
-        ['12.3k', 'k', 12300], ['20.4k', 'k', 20400], ['9.876', null, 9876],
-        ['12.3M', 'M', 12300000], ['1.2M', 'M', 1200000],
-        ['4.188', null, 4188],          // grupo de 3 = MILHAR em pt-BR
-        ['1.234.567', null, 1234567],   // milhar com separador
-        ['350', null, 350],             // inteiro: comportamento identico ao antigo
-        ['0', null, 0], ['', null, NaN],
-      ];
-      for (const [txt, suf, esp] of casos) {
-        const v = p(txt, suf);
-        t.check('W5.6: parseNum("' + txt + '", ' + JSON.stringify(suf) + ') === ' + esp,
-          Number.isNaN(esp) ? Number.isNaN(v) : v === esp);
-      }
-      // O sufixo tambem tem de ser reconhecido quando vem no grupo da regex (o `fmt` nao mete espaco).
-      t.check('W5.6: sufixo no grupo ("12.3" + "k") da 12300', p('12.3', 'k') === 12300);
-<<<<<<< HEAD
-      // parseBig (precos do MERCADO/recompensas): o MESMO defeito, o MESMO conserto.
-      const big = w.auto.parseBig;
-      t.check('W5.6: parseBig existe', typeof big === 'function');
-      if (typeof big === 'function') {
-        t.check('W5.6: parseBig("4.188 ouro") = 4188 (grupo de 3 = milhar)', big('4.188 ouro') === 4188);
-        t.check('W5.6: parseBig("12.3k ouro") = 12300', big('12.3k ouro') === 12300);
-        t.check('W5.6: parseBig("12,3k") = 12300 (decimal com virgula)', big('12,3k') === 12300);
-        t.check('W5.6: parseBig("1.234.567") = 1234567', big('1.234.567') === 1234567);
-        t.check('W5.6: parseBig("1.2M") = 1200000', big('1.2M') === 1200000);
-        t.check('W5.6: parseBig("350.000") = 350000 (preco real do 3172)', big('350.000') === 350000);
-        t.check('W5.6: parseBig sem numero devolve null', big('sem preço') === null);
-        // O CASO REAL (precos MEDIDOS ao vivo no mercado do jogo, parte-01.md L1748-1749):
-        // "3172 = 350.000 / 3085 = 180.000". Com o `parseFloat` antigo davam 350 e 180 — e o
-        // `comprarNoMercado` comparava o preco contra um valor 1000x menor.
-        const rePreco = /([\d.,]+\s*[kKmM]?)\s*ouro/i;
-        const m1 = 'Gume do Infinito [S] 350.000 ouro'.match(rePreco);
-        const m2 = 'Eco de Luden [A] 180.000 ouro'.match(rePreco);
-        t.check('W5.6: mercado real "350.000 ouro" = 350000 (era 350)', big(m1[1]) === 350000);
-        t.check('W5.6: mercado real "180.000 ouro" = 180000 (era 180)', big(m2[1]) === 180000);
-      }
-=======
->>>>>>> w4-fuga
       // REGRESSAO: sem sufixo, o parser novo tem de dar o MESMO que o antigo dava.
       t.check('W5.6: regressao - inteiro simples inalterado', p('318') === 318);
       t.check('W5.6: regressao - texto sem numero da NaN', Number.isNaN(p('lendario')));

@@ -124,7 +124,6 @@
   const meta = { monstros: null, locais: null, balanco: null, itens: null, ondeItem: null,
     pocoes: null, exaustao: null, pocaoPvp: null, noturno: null, furioso: null, gemas: null,
     recall: null, grupo: null, nivelMax: null, espacos: null, curva: null, curvaPorNivel: null,
-<<<<<<< HEAD
     rmMonstro: null, kit: null, champ: null,
     rodizio: null, mecanicas: null, chefeHook: null, chefeHookErro: null, combateHook: null,
     kits: null, mochila: null, ciclo: null, fuso: null, grupoSpawn: null, respawn: null,
@@ -141,13 +140,6 @@
   // aplica (motor.js:516 -> 539 -> 1202), o `ratioVida` do Zac (motor.js:825) e a
   // `voracidade` da Katarina (motor.js:736 -> 1789). Agora passam TODOS os campos
   // primitivos; funcoes e objectos continuam de fora.
-=======
-    curvaErro: null, rmMonstro: null, kit: null, champ: null,
-    rodizio: null, mecanicas: null, chefeHook: null, chefeHookErro: null, combateHook: null,
-    kits: null, mochila: null, ciclo: null, fuso: null, grupoSpawn: null, respawn: null,
-    spawnHook: null, spawnHookErro: null };
-  // Kit do campeão: só os campos serializáveis (funções não passam por postMessage).
->>>>>>> w8-obs
   const serialKit = (K) => {
     if (!K) return null;
     const out = {};
@@ -164,26 +156,6 @@
     }
     return out;
   };
-<<<<<<< HEAD
-  // CURVA são FUNÇÕES (motor.js:273-279) e não passam por postMessage: avalio por
-  // nível e mando os NÚMEROS. Assim um buff/nerf na curva chega sozinho (REGRA Nº 3).
-  // Diferente da cópia de coeficientes que havia aqui, o `ajuste` da planilha
-  // (motor.js:272, balanco) já entra DENTRO de cada valor — a curva real do jogo.
-  const avaliarCurva = (M) => {
-    try {
-      const C = M.CURVA, max = Number(M.NIVEL_MAX) || 1, out = {};
-      for (let n = 1; n <= max; n++) {
-        const f = typeof M.ajuste === 'function' ? M.ajuste(n) : null;
-        out[n] = {
-          hp: +C.hp(n).toFixed(2), ad: +C.ad(n).toFixed(2), armadura: +C.armadura(n).toFixed(2),
-          xp: +C.xp(n).toFixed(2), ouro: +C.ouro(n).toFixed(2),
-          ajuste: f ? { de: f.de, ate: f.ate, vida: f.vida, dano: f.dano, xp: f.xp, ouro: f.ouro } : null,
-        };
-      }
-      return out;
-    } catch { return null; }   // sem curva: quem consome fica com o seu fallback
-  };
-=======
   // ---- CURVA: numeros LIDOS do motor, nunca copiados a mao (REGRA N.o 3) ----
   // A CURVA sao FUNCOES (motor.js:282-288) e nao passam por postMessage. Avalio por
   // nivel e mando os NUMEROS: um buff/nerf na curva do jogo chega sozinho ao meta,
@@ -246,8 +218,6 @@
     }
     return null;
   }
-
->>>>>>> w8-obs
   const enviarMeta = () => window.postMessage({ __lolidleAuto: 'meta', ...meta }, '*');
   import('https://lolidle.com/js/motor.js').then((M) => {
     meta.monstros = M.MONSTROS; meta.locais = M.LOCAIS;
@@ -256,11 +226,6 @@
     meta.noturno = M.NOTURNO; meta.furioso = M.FURIOSO; meta.gemas = M.GEMAS;
     meta.recall = M.RECALL; meta.grupo = M.GRUPO; meta.nivelMax = M.NIVEL_MAX; meta.espacos = M.ESPACOS;
     meta.rodizio = M.RODIZIO_CHEFE || null; meta.mecanicas = M.MECANICAS || null;
-<<<<<<< HEAD
-    // CURVA: avaliada por nível em vez de coeficientes copiados à mão (inject.js:133)
-    meta.curvaPorNivel = avaliarCurva(M);
-    meta.rmMonstro = M.RM_MONSTRO;               // motor.js:1179 — RM dos monstros = 60% da armadura
-=======
     // CURVA: avaliada por nivel — numeros LIDOS, nao copiados (REGRA N.o 3)
     const av = avaliarCurva(M);
     if (av && !av.erro) {
@@ -278,26 +243,16 @@
       meta.curvaPorNivel = null;
       meta.curva = CURVA_FALLBACK;   // chaves actuais como fallback, com o motivo no log
       meta.curvaErro = 'CURVA nao avaliada: ' + ((av && av.erro) || 'motor indisponivel') + ' — fallback congelado';
-    }
->>>>>>> w8-obs
-    meta.mochila = { inicio: M.MOCHILA_INICIO, niveis: M.MOCHILA_GANHO.niveis, espacos: M.MOCHILA_GANHO.espacos };
+    }    meta.mochila = { inicio: M.MOCHILA_INICIO, niveis: M.MOCHILA_GANHO.niveis, espacos: M.MOCHILA_GANHO.espacos };
     meta.ciclo = M.CICLO; meta.fuso = M.FUSO;
     meta.nivelDif = M.NIVEL_DIF || null;        // fator de nível (livre/+dano/cap/piso) — direto do motor
     meta.rmMonstro = M.RM_MONSTRO != null ? M.RM_MONSTRO : null;   // motor.js:1194 — RM dos monstros = 60% da armadura (lido, nao copiado)
     meta.habChefe = M.HAB_CHEFE || null;         // carrega/espera de cada mecânica do chefe
-<<<<<<< HEAD
-    // grupoSpawn e respawn são LITERAIS INLINE no motor (motor.js:1124, :1625, :3046)
-    // e não são exportados: a única forma de os LER (e não copiar) é MEDIR no estado
-    // vivo. O wrap de `sincronizar` recebe o `combate` a cada tick e mede os dois;
-    // quando mede, reenvia o meta. Até lá ficam null (quem consome usa o fallback).
-=======
     // grupoSpawn (motor.js:1137) e respawn (motor.js:1646 wave limpa / :3069 troca de
     // local) sao LITERAIS INLINE no motor e nao sao exportados: a unica forma de os
     // LER — em vez de os copiar a mao, o que fazia este ficheiro e o que a REGRA N.o 3
     // proibe — e MEDIR no estado vivo (wrap de `sincronizar`, mais abaixo). Ate la
-    // ficam null: quem consome usa o fallback dele. Nada inventado.
->>>>>>> w8-obs
-    meta.grupoSpawn = null; meta.respawn = null;
+    // ficam null: quem consome usa o fallback dele. Nada inventado.    meta.grupoSpawn = null; meta.respawn = null;
     meta.modelos = M.MODELOS || null;            // pesos de distribuição de atributos (tanque/equilibrado/dano/conjurador)
     meta.dicaAtributos = M.DICA_ATRIBUTOS || null;   // modelo sugerido por campeão
     // TODOS os campeões (kit serializado + stats). O atual é detectado pelo ícone da skill.
@@ -395,7 +350,6 @@
       meta.combateHook = true;
     } catch (e) { meta.combateHook = false; }
 
-<<<<<<< HEAD
     // ---- ESTADO VIVO DO COMBATE (motor.js:1053) ----
     // jogo.js:668-669 chama sincronizar/sincronizarArena com o `combate` INTEIRO a cada
     // tick do motor. É o ÚNICO canal que dá os números exactos do motor antes de
@@ -561,82 +515,6 @@
       wrapSync('sincronizar', false);        // Rift
       wrapSync('sincronizarArena', true);    // Runeterra e Arena
     } catch (e) { meta.syncHook = false; meta.syncHookErro = String(e); }
-=======
-    // ---- MEDICAO das constantes inline do spawn (REGRA N.o 3) ----
-    // O motor tem como LITERAIS inline — e nao exporta — o tamanho do grupo
-    // (motor.js:1137: qtd = 2 + floor(r()*3)), o respawn de wave limpa
-    // (motor.js:1646: c.respawn = 1.5) e o de troca de local (motor.js:3069: = 1.2).
-    // A unica forma de os LER e medir no estado vivo: `sincronizar` (jogo.js:669)
-    // recebe o combate inteiro a cada tick do motor (20 Hz), DEPOIS do passo — por
-    // isso o tick da limpeza ja traz o respawn exacto. O relogio e o do proprio
-    // motor (combate.tempo, motor.js:1356), nao o do rAF: a medida nao depende de
-    // quantos quadros o navegador deu. So no RIFT: em Runeterra/Arena
-    // (sincronizarArena, jogo.js:668) o respawn tem outra semantica.
-    const med = { claro: null, local: null, min: null, max: null, n: 0,
-      vazioDesde: null, troca: false, localAntes: null, antes: -1 };
-    function medirSpawn(combate, localId) {
-      const n = combate.inimigos ? combate.inimigos.length : 0, t = Number(combate.tempo) || 0;
-      let trocou = false;
-      if (med.localAntes == null) med.localAntes = localId;                     // 1.o tick: so registar onde estamos
-      else if (localId !== med.localAntes) {                                    // viajar(): motor.js:3069
-        trocou = true; med.localAntes = localId;
-        if (med.vazioDesde != null) { med.vazioDesde = t; med.troca = true; }   // o respawn reiniciou em 1,2
-      }
-      if (n > 0) {
-        if (med.vazioDesde != null) {                                           // o grupo acabou de nascer (motor.js:1418-1421)
-          const dur = t - med.vazioDesde;
-          if (dur > 0 && dur < 20) {
-            if (med.troca) { if (med.local == null || dur > med.local) med.local = dur; }
-            else if (med.claro == null || dur > med.claro) med.claro = dur;
-          }
-          med.vazioDesde = null; med.troca = false;
-        }
-        // um grupo NOVO e o salto 0 -> N. A onda de CHEFE tem 1 inimigo
-        // (motor.js:1134) e nao conta: se contasse, o "rand" medido sairia 0.
-        if (med.antes === 0 && !combate.inimigos.some((i) => i.chefe)) {
-          med.min = med.min == null ? n : Math.min(med.min, n);
-          med.max = med.max == null ? n : Math.max(med.max, n);
-          med.n++;
-        }
-      } else if (med.vazioDesde == null && (med.antes > 0 || trocou)) {
-        med.vazioDesde = t; med.troca = trocou;
-        if (!trocou && combate.respawn != null) med.claro = combate.respawn;    // literal EXACTO no tick da limpeza (motor.js:1646)
-      }
-      med.antes = n;
-    }
-    function publicarMedidas() {
-      // 20 grupos vistos: um grupo 2..4 que em 20 ondas ainda nao mostrou os dois
-      // extremos tem menos de 0,1% de hipotese. Antes disso a medida daria um
-      // "rand" curto a mais e quem a usasse subestimaria os mobs por onda.
-      if (med.n >= 20 && med.min != null) {
-        const gs = { base: med.min, rand: (med.max - med.min + 1), min: med.min, max: med.max, n: med.n };
-        if (!meta.grupoSpawn || meta.grupoSpawn.base !== gs.base || meta.grupoSpawn.rand !== gs.rand) {
-          meta.grupoSpawn = gs; try { enviarMeta(); } catch { /* ignore */ }
-        }
-      }
-      if (med.claro != null && med.local != null) {
-        const rp = { clear: +med.claro.toFixed(2), local: +med.local.toFixed(2) };
-        if (!meta.respawn || meta.respawn.clear !== rp.clear || meta.respawn.local !== rp.local) {
-          meta.respawn = rp; try { enviarMeta(); } catch { /* ignore */ }
-        }
-      }
-    }
-    const origSinc = P.sincronizar;
-    if (typeof origSinc === 'function' && !origSinc.__lolidleSpawn) {
-      P.sincronizar = function (combate, vida, mana) {
-        try {
-          if (combate && combate.inimigos && !this.arena) {
-            medirSpawn(combate, this.local && this.local.id);
-            publicarMedidas();
-          }
-        } catch { /* nunca quebra o jogo */ }
-        return origSinc.apply(this, arguments);
-      };
-      P.sincronizar.__lolidleSpawn = true;
-      meta.spawnHook = true;
-    } else { meta.spawnHook = false; meta.spawnHookErro = 'sem metodo sincronizar'; }
->>>>>>> w8-obs
-
     P.__lolidleChefe = true;
     meta.chefeHook = true; enviarMeta();
   }).catch((e) => { meta.chefeHook = false; meta.chefeHookErro = String(e); enviarMeta(); });
