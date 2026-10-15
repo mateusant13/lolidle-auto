@@ -96,3 +96,25 @@ uma grande melhoria e é um ficheiro inválido. **Regra:** um patch de UMA linha
 2. `parseNum` com sufixo → ataca `numeros` (12). **Não** substituir o bloco inteiro por regex:
    trocar apenas a linha do `return` do `parseNum` para multiplicar pelo sufixo.
 3. Ler a asserção A4 exacta do `w1-regioes` antes de mexer (o fix "óbvio" não pegou).
+
+
+## PROGRESSO 2026-10-15 08:35 — 65 → 47 falhas (5 correcções reais)
+| # | Correcção | Efeito |
+|---|---|---|
+| 1 | `proximoGiro` com tecto de 5 voltas (reagendava-se a cada 9 s SEM LIMITE) | tirou o **pendura** do CI (e bug real de fuga presa) |
+| 2 | `parseNum` lia `"12.3k"` como 123 (ignorava o sufixo k/M do `cena.js:225`) | 65 → 53 (cluster `numeros` zerado) |
+| 3 | `readStats` sem `cdr/critChance/critMult` | 53 → 52 |
+| 4 | `nivelChefeDe`: `null` explícito = sem jogador (`motor.js:1134`) | 52 → 50 · **A4 zerado** |
+| 5 | `estimarLuta` sem o fator de nível (`motor.js:1200-1202`, `fJ=max(0,25,1−0,12·d)`) | **50 → 47 · A5 zerado** |
+
+Commits: `7c6f941`, `71fc8c2`, `42ec3aa`, `d646beb`, `099fc92`.
+
+### `w10` — levantamento (11 falhas)
+`farmarItemPasso`, `valorEquip`, `valorVenda` **existem mas não estavam exportados** → exportei-os e o
+banco **não mudou** (47→47): os testes que os chamam falham por comportamento, não por falta de export.
+E `farmarItemEstado`/`farmarItemParar`/`farmarItemTenho` **não existem** no master (estão em
+`tools/_w10config.js` — transplantar). Revertido o export neutro.
+
+### Próximos alvos
+`hud` (10 — conta de kills-min H12a/H12c) · `w10` (11 — transplantar os 3 `farmarItem*` em falta) ·
+`fuga` (7) · `barrafase`/`chefe` (3 cada) · `integracao` (1).
