@@ -187,7 +187,13 @@
     //    `enabled` (interruptor-mestre, modo observacao ate o dono ligar), `ultEmMobs` (o dono
     //    proibiu a ultimate em mobs), `testeForcar` (so para testes) e `trocaItens` (caminho
     //    ANTIGO, substituido pelo buildPorFase — ligar os dois punha-os a lutar entre si).
-    autoRefino: true,         // refina no Ornn itens LENDÁRIOS A+ até +3 (PADRAO LIGADO)
+    autoRefino: true,         // refina no Ornn itens LENDÁRIOS A+ da build (PADRAO LIGADO)
+    // TK-01-27 — LIMITE DE RISCO (lido do motor, nao inventado): motor.js:69
+    // `REGRESSAO_REFINO = [0, 0, 0.04, 0.015, 0.006]`. O +1 e o +2 NUNCA rebaixam; a partir
+    // do +3 ha 4% de o item VOLTAR UM NIVEL, e a falha e IRREVERSIVEL. O default e FALSE:
+    // o refino arriscado (que pode rebaixar) so corre se o dono ligar de proposito.
+    // `refinoMax` (2 por omissao) e outro travao: acima dele nem o seguro se tenta.
+    refinoArriscado: false,
     // REGRA DO DONO (inviolável): "Equipar SEMPRE o melhor item disponível em cada slot".
     // Logo o default é LIGADO; `false` explícito desliga.
     autoEquip: true,
@@ -2436,15 +2442,12 @@
    *  Teto e alvo são os MESMOS de `refinarMelhores` (motor.js:258 `precoRefino`, e a regra do
    *  dono "ao conseguir um dos itens ESSENCIAIS, tier A ou mais, pode refinar"). */
   function precisaRefino() {
-    const teto = (cfg.refinoMax != null ? cfg.refinoMax : 2);
     let essenciais = [];
     try { essenciais = (buildIdeal() || []).map(String); } catch { essenciais = []; }
-    try {
-      return readEquip().some((e) => {
-        const it = (META.itens || []).find((x) => String(x.id) === e.base);
-        return !!(it && it.raridade === 'lendario' && qIdx(e.qual) >= qIdx('A') && (e.refino || 0) < teto && essenciais.indexOf(String(e.base)) >= 0);
-      });
-    } catch { return false; }
+    // MESMA regra do actor (`refinarMelhores`/`escolherRefinoAlvo`) — necessidade e passo nao
+    // podem discordar, senao a necessidade fica presa em `true` (a classe de bug do TK-01-68).
+    try { return escolherRefinoAlvo(readEquip(), essenciais, cfg.refinoMax, !!cfg.refinoArriscado).base !== null; }
+    catch { return false; }
   }
   /** CUSTO de uma ida à base, em OURO-EQUIVALENTE. Derivado, não inventado:
    *   - VIAGEM: `esperaRecallMs()` (o recall do motor + folga) + ~8 s da volta pelo mapa;
@@ -4603,20 +4606,21 @@
       }
     } catch { /* ignore */ }
     if (!essenciais.length) { try { essenciais = (buildIdeal() || []).map(String); } catch { essenciais = []; } }
-    const alvos = readEquip().filter((e) => {
-      const it = (META.itens || []).find((x) => String(x.id) === e.base);
-      // TETO DE REFINO — mecanica MEDIDA no texto do próprio Ornn:
-      //   "O +1 e o +2 saem fácil e nunca dão errado de verdade; da tentativa de +3 em
-      //    diante, a chance cai e falhar pode fazer o item VOLTAR UM NÍVEL."
-      // Logo tentar o +3 é o primeiro passo com risco de REBAIXAR. O dono autorizou
-      // "até mais 2 ou mais 3", mas como a falha é irreversível e pode perder refino,
-      // o padrão é PARAR NO +2 (seguro) e o +3 fica disponível por config explícita
-      // (`cfg.refinoMax`), nunca por omissão.
-      const refinoMax = (cfg.refinoMax != null ? cfg.refinoMax : 2);
-      if (!it || it.raridade !== 'lendario' || qIdx(e.qual) < qIdx('A') || (e.refino || 0) >= refinoMax || e.base === RABADON) return false;
-      return essenciais.includes(String(e.base));
-    });
-    if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), essenciais, fonteEssenciais };
+    // TETO E RISCO — mecanica MEDIDA no motor (não inventada, Regra N.o 3):
+    //   motor.js:67 CHANCE_REFINO = [0.30, 0.12, 0.02, 0.008, 0.003]
+    //   motor.js:69 REGRESSAO_REFINO = [0, 0, 0.04, 0.015, 0.006]  (falhar REBAIXA)
+    // O texto do Ornn diz o mesmo em palavras: "O +1 e o +2 saem fácil e nunca dão errado de
+    // verdade; da tentativa de +3 em diante, a chance cai e falhar pode fazer o item VOLTAR UM
+    // NÍVEL." Logo o +3 é o primeiro passo com risco de REBAIXAR. O dono autorizou "até mais 2
+    // ou mais 3", mas como a falha é irreversível, o padrão é PARAR NO +2 (seguro) e o +3 fica
+    // disponível por config explícita (`cfg.refinoMax`, e `cfg.refinoArriscado` para o risco).
+    // A ESCOLHA passa a ser por dado (TK-01-27): `escolherRefinoAlvo` filtra essenciais e aplica
+    // o limite de risco — e devolve o PORQUÊ, que vai para o log.
+    const eqAgora = readEquip();
+    const escolha = escolherRefinoAlvo(eqAgora, essenciais, cfg.refinoMax, !!cfg.refinoArriscado);
+    if (!escolha.base) { logEvent('refino', { refinados: [], porquê: escolha.porquê, essenciais, fonteEssenciais }); return { ok: true, refinados: [], motivo: escolha.porquê, essenciais, fonteEssenciais }; }
+    const alvos = eqAgora.filter((e) => String(e.base) === escolha.base);
+    logEvent('refino', { alvo: escolha.base, porquê: escolha.porquê, chance: escolha.chance, regressao: escolha.regressao });
     fecharJanelas(); await humano(300);
     if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn' };
     const bt = await waitFor('#janela-npc [data-palavra="forjar"]', 4000);
@@ -4650,6 +4654,100 @@
    *    - só receitas cujos componentes EXISTEM (`pode`) e que sirvam a build ideal;
    *    - escolhe a mais BARATA (custo esperado = ouro/tentativa x tentativas médias). */
   let _ultimaMontagem = 0, _ultimoRefino = 0;
+  /** TK-01-27 — RISCO DE REFINO, LIDO DO MOTOR (nao inventado, Regra N.o 3).
+   *  motor.js:67  `CHANCE_REFINO   = [0.30, 0.12, 0.02, 0.008, 0.003]`  (+1..+5)
+   *  motor.js:69  `REGRESSAO_REFINO = [0, 0, 0.04, 0.015, 0.006]`       (falhar REBAIXA)
+   *  motor.js:68  `PRECO_REFINO_ALTO = 2`  (da tentativa de +3 em diante custa o DOBRO)
+   *  motor.js:61  `REFINO_MAX = 5` · motor.js:62 `BONUS_REFINO = 0.12`
+   *  O dono autorizou "refinar ate mais 2 ou mais 3" — mas a falha e IRREVERSIVEL (o item
+   *  volta um nivel). Logo o padrao tem de ser PARAR ONDE A CONTA FECHA:
+   *    risco esperado = P(rebaixar) x valor perdido   vs   ganho do proximo nivel
+   *  Com os numeros do motor: +1 e +2 tem regressao 0 (nunca rebaixam) -> sempre seguros;
+   *  +3 tem 4% de rebaixar e cada tentativa custa o dobro. Funcao PURA para o banco testar. */
+  const RISCO_REFINO = {
+    chance: [0.30, 0.12, 0.02, 0.008, 0.003],   // motor.js:67 CHANCE_REFINO
+    regressao: [0, 0, 0.04, 0.015, 0.006],      // motor.js:69 REGRESSAO_REFINO
+    precoAlto: 2,                                // motor.js:68 PRECO_REFINO_ALTO
+    tetoMotor: 5,                                // motor.js:61 REFINO_MAX
+    bonus: 0.12,                                 // motor.js:62 BONUS_REFINO
+    // DOIS LIMITES, com naturezas diferentes:
+    //  - `regressaoMax`: o risco de REBAIXAR (motor.js:69). E o limite que o dono pode
+    //    levantar com `cfg.refinoArriscado` — e a decisao dele, e irreversivel.
+    //  - `chanceMin`: piso ECONOMICO, nao de gosto. Tentar um passo com 0,8% de chance
+    //    (motor.js:67, +4) custa ~125 tentativas de ouro por +12% de bonus numa peca so.
+    //    Nenhum interruptor o deve levantar: queimar ouro nao e "risco", e desperdicio.
+    regressaoMax: 0.04,     // o proprio +3 do motor (motor.js:69)
+    chanceMin: 0.02,        // o +3 do motor (motor.js:67); +4 e +5 ficam de fora por desperdicio
+  };
+  /** Vale a pena refinar `ref` -> `ref+1`? Devolve o porque (para o log). */
+  function valeRefino(ref, refinoMax, arriscado) {
+    const teto = Math.min(refinoMax == null ? 2 : refinoMax, RISCO_REFINO.tetoMotor);
+    const r = Math.max(0, Math.min(RISCO_REFINO.tetoMotor - 1, Number(ref) || 0));
+    const alvo = r + 1;
+    if (alvo > teto) return { ok: false, motivo: 'ja esta no teto de refino (+' + teto + ')' };
+    const chance = RISCO_REFINO.chance[r];
+    const regressao = RISCO_REFINO.regressao[r];
+    // PISO ECONOMICO: nao se queima ouro num passo quase impossivel (nenhum interruptor levanta).
+    if (chance < RISCO_REFINO.chanceMin) return { ok: false, motivo: 'chance de acertar ' + Math.round(chance * 1000) / 10 + '% abaixo do piso (' + Math.round(RISCO_REFINO.chanceMin * 1000) / 10 + '%) — queimar ouro nao e risco, e desperdicio' };
+    // RISCO DE REBAIXAR: so o dono levanta, com `cfg.refinoArriscado` (a falha e irreversivel).
+    // `>=`: o limite e o MAIOR valor aceitavel sem o dono dizer nada. O +3 do motor
+    // (4%, motor.js:69) esta exactamente no limite, logo precisa de `cfg.refinoArriscado`.
+    if (regressao >= RISCO_REFINO.regressaoMax && !arriscado) {
+      return { ok: false, motivo: 'risco de rebaixar ' + Math.round(regressao * 1000) / 10 + '% acima do limite (' + Math.round(RISCO_REFINO.regressaoMax * 1000) / 10 + '%) — liga refinoArriscado se quiseres assumir' };
+    }
+    return { ok: true, alvo, chance, regressao, rebaixa: regressao > 0, precoDobra: r >= 2 };
+  }
+  /** TK-01-27 — escolhe POR DADO o item essencial a refinar: so o ESSENCIAL da build,
+   *  lendario A+, abaixo do teto, e so quando o risco do proximo passo e aceitavel. */
+  function escolherRefinoAlvo(equip, essenciais, refinoMax, arriscado) {
+    const ess = new Set((essenciais || []).map(String));
+    const teto = Math.min(refinoMax == null ? 2 : refinoMax, RISCO_REFINO.tetoMotor);
+    const cands = (equip || []).filter((e) => {
+      const it = (META.itens || []).find((x) => String(x.id) === e.base);
+      if (!it || it.raridade !== 'lendario' || qIdx(e.qual) < qIdx('A')) return false;
+      if (String(e.base) === RABADON) return false;          // o dono nao quer o Rabadon no refino
+      if ((e.refino || 0) >= teto) return false;
+      return ess.has(String(e.base));
+    });
+    // quem tem MENOS refino primeiro (o mais atrasado da build), e entre iguais o de maior tier.
+    cands.sort((a, b) => (a.refino || 0) - (b.refino || 0) || qIdx(b.qual) - qIdx(a.qual));
+    for (const e of cands) {
+      const v = valeRefino(e.refino || 0, teto, arriscado);
+      if (v.ok) return { base: String(e.base), qual: e.qual, refino: e.refino || 0, alvo: v.alvo, chance: v.chance, regressao: v.regressao, rebaixa: v.rebaixa, porquê: 'essencial da build, lendario ' + e.qual + ' +' + (e.refino || 0) + ' -> +' + v.alvo + ' (chance ' + Math.round(v.chance * 1000) / 10 + '%, rebaixa ' + Math.round(v.regressao * 1000) / 10 + '%)' };
+    }
+    return { base: null, porquê: cands.length
+      ? 'nenhum essencial abaixo do teto passa o limite de risco'
+      : 'nenhum item ESSENCIAL da build, lendario A+ abaixo de +' + teto };
+  }
+
+  /** TK-01-45 — ranking das receitas do Ornn POR DADO (nao ao acaso).
+   *  `custo esperado = ouro/tentativa x tentativasMedias` — a bancada e uma APOSTA
+   *  (ver HANDOFF sec. 9.6f e as gemas do motor, motor.js:114-121 GEMAS: a Runa Arcana
+   *  DOBRA a chance da tentativa, motor.js:117-118), logo o preco da peca nao e o ouro da
+   *  receita: e o ouro GASTO POR TENTATIVA vezes o numero medio de tentativas. Uma receita
+   *  de 49.077 com 60,9 tentativas medias custa ~2,99 M; uma de 16.358 com 30 custa ~490 k.
+   *  A ordem e: (serve a build) x (tem componentes) x (menor custo esperado) x (cabe no ouro).
+   *  Funcao PURA (sem DOM, sem await) para o banco de regressao a poder testa-la. */
+  function escolherReceitaOrnn(receitas, ideal, comps, disponivel) {
+    const idealSet = new Set((ideal || []).map(String));
+    const compSet = comps || new Set();
+    const num = (s) => {
+      // o `span.ouro` da bancada tb passa pelo `fmt` do jogo (k/M, cena.js:225)
+      const m = String(s == null ? '' : s).match(/([\d.,]+)\s*([kKmM])?/);
+      return m ? parseNum(m[1], m[2]) : NaN;
+    };
+    const TENT_PADRAO = 83;               // medido ao vivo na bancada real (parte-01.md L3486)
+    const cands = (receitas || [])
+      .filter((r) => r && r.pode && (compSet.has(String(r.id)) || idealSet.has(String(r.id))))
+      .map((r) => {
+        const ouro = num(r.ouro);
+        const tent = Number(r.tentativasMedias) > 0 ? Number(r.tentativasMedias) : TENT_PADRAO;
+        return { id: String(r.id), nome: r.nome, ouro, tent, custo: ouro * tent };
+      })
+      .filter((r) => r.custo > 0 && r.custo <= disponivel)
+      .sort((a, b) => a.custo - b.custo);
+    return cands;
+  }
   async function montarMelhorReceita() {
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     const disponivel = readGold() - 20000;
@@ -4658,24 +4756,36 @@
     if (!rec || !rec.ok) return { ok: false, motivo: (rec && rec.motivo) || 'sem receitas' };
     let ideal = []; try { ideal = (buildIdeal() || []).map(String); } catch { ideal = []; }
     const comps = componentesDaBuild();
-    const num = (s) => parseInt(String(s || '').replace(/\D/g, ''), 10) || 0;
-    const cands = (rec.receitas || [])
-      .filter((r) => r.pode && (comps.has(String(r.id)) || ideal.indexOf(String(r.id)) >= 0))
-      .map((r) => ({ id: r.id, nome: r.nome, ouro: num(r.ouro), tent: r.tentativasMedias || 83, custo: num(r.ouro) * (r.tentativasMedias || 83) }))
-      .filter((r) => r.custo > 0 && r.custo <= disponivel)
-      .sort((a, b) => a.custo - b.custo);
-    if (!cands.length) return { ok: true, motivo: 'nada montavel dentro do ouro', disponivel };
+    const cands = escolherReceitaOrnn(rec.receitas, ideal, comps, disponivel);
+    if (!cands.length) { logEvent('ornn', { acao: 'sem receita', disponivel, porquê: 'nenhuma receita serve a build com componentes e cabe no ouro' }); return { ok: true, motivo: 'nada montavel dentro do ouro', disponivel }; }
     const alvo = cands[0];
+    // tentativas = 1,2x a media medida (folga para o azar sem queimar a reserva).
     const vezes = Math.max(10, Math.min(1000, Math.ceil((alvo.tent * 1.2) / 10) * 10));
     _ultimaMontagem = Date.now();
-    logEvent('montagem', { alvo: alvo.id, nome: alvo.nome, custoPrevisto: alvo.custo, vezes, disponivel });
     const res = await montarItem(alvo.id, vezes, 'arcana');
-    return { ok: !!(res && res.ok), alvo: alvo.id, nome: alvo.nome, custoPrevisto: alvo.custo, vezes, ...(res || {}) };
+    // TK-01-39: CONTABILIDADE COMPLETA no log — tentativas pedidas/usadas, ouro gasto, e se o
+    // item AFINAL entrou na mochila. Sem estes numeros nao ha como provar ao vivo que o ciclo
+    // escolheu -> montou -> contou (e o aceite do ticket pede exactamente este registo).
+    const conta = {
+      alvo: alvo.id, nome: alvo.nome, custoPrevisto: alvo.custo, vezesPedidas: vezes,
+      vezesUsadas: res ? res.vezesUsadas : null, ouroGasto: res ? res.ouroGasto : null,
+      temAgora: res ? res.temAgora : null, sucesso: !!(res && res.ok),
+    };
+    logEvent('montagem', conta);
+    if (!res || !res.ok) {
+      // PARAR EM FALHA: uma montagem que nao correu (sem pecas na bancada, botao desactivado,
+      // sem Ornn) nao se repete a cada visita — o passo falhou, e o `marcarIndisponivel` do
+      // `acaoBase` silencia-a por INDISPONIVEL_MS como qualquer outra necessidade.
+      logEvent('ornn', { acao: 'falhou', ...conta, motivo: (res && res.motivo) || 'sem resposta' });
+      return { ok: false, motivo: (res && res.motivo) || 'montagem falhou', ...conta };
+    }
+    return { ok: true, ...conta, ...(res || {}) };
   }
 
   /** RECEITAS DO ORNN (LEITURA, não gasta ouro). Lista o que ele pode montar e se
    *  há componentes na mochila — é o que permite decidir a montagem por DADO em vez
-   *  de tentar às cegas (a bancada é uma aposta a 1,2%/tentativa; ver HANDOFF §9.6f).
+   *  de tentar às cegas (a bancada é uma APOSTA: ver HANDOFF sec. 9.6f e as gemas do
+   *  motor, motor.js:114-121 — a Runa Arcana DOBRA a chance da tentativa, motor.js:117-118).
    *  Seletores MEDIDOS na bancada real:
    *    .troca-linha.montagem · button[data-receita] · img.comp (dica traz "Você tem")
    *    span.ouro (custo) · span.chance-montar (chance + "Em média: N tentativas") */
@@ -4704,8 +4814,9 @@
     return { ok: true, total: out.length, receitas: res };
   }
 
-  /** MONTA um item na bancada do Ornn. E uma APOSTA (1,2%/tentativa; com a Runa
-   *  Arcana 2,4%): as pecas so sao consumidas no SUCESSO, o custo e o ouro por tentativa.
+  /** MONTA um item na bancada do Ornn. E uma APOSTA (ver HANDOFF sec. 9.6f; com a Runa
+   *  Arcana a chance DOBRA, motor.js:117-118): as pecas so sao consumidas no SUCESSO, o
+   *  custo e o ouro por tentativa.
    *  Todos os seletores foram MEDIDOS na bancada real (HANDOFF 9.6l/9.6m):
    *    button[data-receita] - SPAN.forja-pegar (sem .nao-serve) - [data-usarGema] -
    *    [data-montar="<id>"][data-vezes] (1/10/100/1000).
@@ -6718,7 +6829,7 @@
     return cfg;
   }
 
-  window.__lolidleAuto = { press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, compraAlcancavel, parseNum, SUFIXO, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
+  window.__lolidleAuto = { press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, escolherReceitaOrnn, escolherRefinoAlvo, valeRefino, compraAlcancavel, parseNum, SUFIXO, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
     podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- BUILD POR FASE (mob × chefe) e AS QUATRO FONTES ----
     buildParaMob, buildParaChefe, buildDaFase, buildIdealParaFase, faseBuild, planoBuildFase,

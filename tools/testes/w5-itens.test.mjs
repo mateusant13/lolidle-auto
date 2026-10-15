@@ -15,8 +15,11 @@
 
 import {
   criarMundo, carregarAutomation, CATALOGO, alimentarCatalogo, definirCampeao,
-  montarMochila,
+  montarMochila, montarOrnn,
 } from './dom-stub.mjs';
+
+/** Poe o boneco na Fonte (o `naBase()` exige o texto 'Fonte' no #local-nome). */
+function montarLocal(m, texto) { m.montar('#local-nome', [m.el({ tag: 'span', label: 'local', textContent: texto })]); }
 
 function novoMundo(opts) {
   const m = criarMundo(opts);
@@ -228,6 +231,200 @@ export const suite = {
             n2.comprar === true || (n2._comprar && n2._comprar.alcancaveis > 0));
         } catch (e) { t.check('W5.5: cenario positivo correu sem excepcao (' + String(e) + ')', false); }
       }
+    }
+
+    /* ===== W5.7 - TK-01-45: receita do Ornn escolhida POR DADO (custo esperado) ===== */
+    {
+      const w = novoMundo();
+      const f = w.auto.escolherReceitaOrnn;
+      t.check('W5.7: escolherReceitaOrnn existe (funcao pura, testavel)', typeof f === 'function');
+      if (typeof f === 'function') {
+        // 3 receitas que SERVEM a build, com componentes, e custos diferentes.
+        // custo esperado = ouro/tentativa x tentativasMedias.
+        const recs = [
+          { id: '3006', nome: 'Grevas do Berserker', ouro: '49.077', tentativasMedias: '61', pode: true },
+          { id: '3086', nome: 'Zelo', ouro: '57.257', tentativasMedias: '61', pode: true },
+          { id: '3144', nome: 'Estilingue', ouro: '16.358', tentativasMedias: '30', pode: true },
+        ];
+        const ideal = ['3006', '3086', '3144'];
+        const comps = new Set(['3006', '3086', '3144']);
+        const ordem = f(recs, ideal, comps, 5000000).map((r) => r.id);
+        t.check('W5.7: com 3 receitas serve-build, a escolhida e a de MENOR custo esperado',
+          ordem[0] === '3144');
+        t.check('W5.7: o custo esperado e ouro x tentativas (nao o ouro da receita)',
+          f(recs, ideal, comps, 5e6)[0].custo === 16358 * 30);
+        t.check('W5.7: ...e a mais caro fica em ultimo', ordem[ordem.length - 1] === '3086');
+        // Sem componentes nao serve (a bancada vazia nao monta nada).
+        const semComp = f(recs.map((r) => ({ ...r, pode: false })), ideal, comps, 5e6);
+        t.check('W5.7: receita sem componentes na mochila nao entra', semComp.length === 0);
+        // Receita que NAO serve a build nao entra, mesmo com componentes.
+        const foraDaBuild = f([{ id: '9999', nome: 'Fora', ouro: '1.000', tentativasMedias: '1', pode: true }], ideal, comps, 5e6);
+        t.check('W5.7: receita fora da build nao entra', foraDaBuild.length === 0);
+        // Teto de ouro: o que nao cabe fica de fora. 3144 custa 16.358 x 30 = 490.740;
+        // com tecto de 500.000 so ele cabe (3006 = 2.993.697 e 3086 = 3.492.677 ficam fora).
+        const apertado = f(recs, ideal, comps, 500000);
+        t.check('W5.7: respeita o teto de ouro da reserva', apertado.length === 1 && apertado[0].id === '3144');
+        // E com tecto abaixo do custo da MAIS BARATA, nao monta nada (melhor guardar o ouro).
+        const semTeto = f(recs, ideal, comps, 400000);
+        t.check('W5.7: sem tecto para a mais barata, nao ha escolha', semTeto.length === 0);
+        // O ouro da bancada tambem passa pelo fmt do jogo (k/M, cena.js:225).
+        const comSufixo = f([{ id: '3006', nome: 'Grevas', ouro: '49.1k', tentativasMedias: '61', pode: true }], ideal, comps, 5e6);
+        t.check('W5.7: o ouro com sufixo k/M e lido certo (49.1k -> 49100)',
+          comSufixo.length === 1 && comSufixo[0].ouro === 49100);
+      }
+    }
+
+    /* ===== W5.8 - TK-01-27: refinar o ESSENCIAL da build, com limite de risco ===== */
+    {
+      const w = novoMundo();
+      alimentarCatalogo(w.m);          // a escolha le META.itens (raridade do item)
+      definirCampeao(w.m, 'adtest');
+      const f = w.auto.escolherRefinoAlvo;
+      t.check('W5.8: escolherRefinoAlvo existe (funcao pura, testavel)', typeof f === 'function');
+      const vale = w.auto.valeRefino;
+      t.check('W5.8: valeRefino existe', typeof vale === 'function');
+      if (typeof f !== 'function' || typeof vale !== 'function') return;
+
+      // RISCO LIDO DO MOTOR (motor.js:67 e :69): +1/+2 nunca rebaixam; +3 rebaixa 4%.
+      t.check('W5.8: +1 nunca rebaixa (regressao 0, motor.js:69)', vale(0, 2, false).ok === true);
+      t.check('W5.8: +2 nunca rebaixa (regressao 0, motor.js:69)', vale(1, 2, false).ok === true);
+      t.check('W5.8: +3 rebaixa 4% -> so passa com refinoArriscado ligado',
+        vale(2, 3, false).ok === false && vale(2, 3, true).ok === true);
+      t.check('W5.8: +4 (chance 0,8%) abaixo do minimo de 2% -> recusado',
+        vale(3, 5, true).ok === false);
+      t.check('W5.8: acima do teto nao tenta', vale(2, 2, true).ok === false);
+
+      // CENARIO DO TICKET: 3 itens refinaveis; so o ESSENCIAL da build e escolhido.
+      const equip = [
+        { base: '9500', qual: 'A', refino: 0 },   // lendario A+, NAO essencial
+        { base: '2001', qual: 'S', refino: 1 },   // ESSENCIAL (build AD), lendario S+
+        { base: '4001', qual: 'A', refino: 0 },    // EPICO, nunca se refina
+        { base: '1005', qual: 'S', refino: 0 },    // BASICO, nunca se refina
+        { base: '3089', qual: 'A', refino: 0 },    // Rabadon: excluido de proposito
+      ];
+      const essenciais = ['2001', '2004', '2005', '2006', '2007'];
+      const r = f(equip, essenciais, 2, false);
+      t.check('W5.8: com 3 itens refinaveis, o escolhido e o ESSENCIAL da build', r.base === '2001');
+      t.check('W5.8: ...e o motivo diz que e essencial', /essencial da build/.test(String(r.porquê)) === true);
+      t.check('W5.8: epico/basico nunca sao alvo de refino',
+        f(equip.filter((e) => ['4001', '1005'].indexOf(e.base) >= 0), essenciais, 2, false).base === null);
+      t.check('W5.8: sem essencial na mochila, nenhum alvo',
+        f([{ base: '9500', qual: 'A', refino: 0 }], essenciais, 2, false).base === null);
+      // Ja no teto (+2) -> nao escolhe (parar no seguro).
+      t.check('W5.8: essencial ja no teto +2 nao e escolhido',
+        f([{ base: '2001', qual: 'A', refino: 2 }], essenciais, 2, false).base === null);
+      // O mais atrasado (menos refino) sai primeiro.
+      const dois = f([{ base: '2001', qual: 'A', refino: 1 }, { base: '2004', qual: 'A', refino: 0 }], essenciais, 2, false);
+      t.check('W5.8: entre dois essenciais, o mais atrasado (+0) vem primeiro', dois.base === '2004');
+    }
+    /* ===== W5.9 - TK-01-39: a cadeia completa receitas -> escolha -> montar -> contabilidade ===== */
+    {
+      const w = novoMundo();
+      alimentarCatalogo(w.m);
+      definirCampeao(w.m, 'adtest');
+      w.m.montar('#st-ouro', [w.m.el({ label: 'ouro', textContent: '1.5M' })]);
+      const auto = w.auto;
+
+      // (0) CONTROLO DO CENARIO: fora da Fonte a montagem tem de RECUSAR (o `naBase()` do
+      // automation.js:6232 exige /fonte/i no #local-nome). Prova que o cenario seguinte
+      // realmente passa pelo porteiro da base, e nao que o teste corre as cegas.
+      const semBase = await auto.montarItem('2001', 10, 'arcana');
+      t.check('W5.9: fora da Fonte a montagem recusa (controlo)',
+        semBase.ok === false && /Fonte/.test(String(semBase.motivo || '')));
+
+      // Agora sim: o boneco esta na base.
+      montarLocal(w.m, 'Fonte — praca');
+      // Uma mochila com um componente da receita (o `temAgora` da montagem conta o que ha la).
+      montarMochila(w.m, [{ id: '1001~C', raridade: 'basico' }]);
+
+      // Bancada com 3 receitas que servem a build DO CAMPEAO (a build do AD no catalogo do
+      // stub e [2007,2001,2004,2005,2006] e os componentes sao 1001 e 2002), com componentes
+      // presentes e custos diferentes. custo = ouro x tentativasMedias:
+      //   2001: 3000 x 10 = 30.000 · 2004: 3000 x 61 = 183.000 · 2005: 3000 x 200 = 600.000
+      montarOrnn(w.m, [
+        { id: '2001', nome: 'Lendario AD 1', ouro: '3.000', chance: '8%', tentativasMedias: 10,
+          comps: [{ nome: 'Espada Longa', tem: true }, { nome: 'Lamina Epica', tem: true }] },
+        { id: '2004', nome: 'Lendario AD 2', ouro: '3.000', chance: '1,2%', tentativasMedias: 61,
+          comps: [{ nome: 'Espada Longa', tem: true }] },
+        { id: '2005', nome: 'Lendario AD 3', ouro: '3.000', chance: '0,4%', tentativasMedias: 200,
+          comps: [{ nome: 'Espada Longa', tem: true }] },
+      ], 2);
+
+      // (1) LEITURA: receitasOrnn le a bancada (medido ao vivo: 40 receitas, custo zero).
+      const rec = await auto.receitasOrnn();
+      t.check('W5.9: receitasOrnn() le a bancada', rec.ok === true && rec.receitas.length === 3);
+      t.check('W5.9: ...e marca quais tem componentes na mochila',
+        rec.receitas.filter((r) => r.pode).length === 3);
+
+      // (2) ESCOLHA: a mais barata que serve a build e tem componentes (2001 = 30.000).
+      const cands = auto.escolherReceitaOrnn(rec.receitas, auto.buildDaClasse(), auto.componentesDaBuild(), 1480000);
+      t.check('W5.9: a escolhida e a de menor custo esperado (2001)', cands.length > 0 && cands[0].id === '2001');
+      t.check('W5.9: ...com o custo esperado = ouro x tentativas', cands[0].custo === 3000 * 10);
+      t.check('W5.9: ...e as outras duas ficam ordenadas atras', cands.length === 3 && cands[1].id === '2004' && cands[2].id === '2005');
+
+      // (3) MONTAGEM: montarItem corre na bancada e devolve a contabilidade.
+      const antes = auto.readGold();
+      const res = await auto.montarItem('2001', 100, 'arcana');
+      t.check('W5.9: montarItem() correu na bancada', res.ok === true);
+      t.check('W5.9: ...e devolve vezesUsadas (o lote clicado)', Number(res.vezesUsadas) === 100);
+      t.check('W5.9: ...e devolve ouroAntes/ouroDepois', res.ouroAntes === antes && res.ouroDepois === antes);
+      t.check('W5.9: ...e devolve temAgora (itens na mochila)', typeof res.temAgora === 'number');
+      t.check('W5.9: os cliques foram na receita certa e no lote pedido',
+        w.m.cliqueDe('receita:2001') && w.m.cliqueDe('montar:2001:100'));
+
+      // (4) A CADEIA COMPLETA: escolherReceitaOrnn -> montarMelhorReceita -> montarItem.
+      const r2 = await auto.montarMelhorReceita();
+      t.check('W5.9: montarMelhorReceita() fecha o ciclo escolha->montar', r2.ok === true);
+      t.check('W5.9: ...e devolve a contabilidade para o log', r2.vezesUsadas != null && r2.ouroGasto != null && r2.temAgora != null);
+      t.check('W5.9: ...e o alvo foi o de menor custo', String(r2.alvo) === '2001');
+
+      // (5) PARAR EM FALHA: bancada sem pecas que sirvam -> nao monta, com motivo.
+      montarOrnn(w.m, [{ id: '2001', nome: 'Lendario AD 1', ouro: '3.000', tentativasMedias: 10, comps: [{ nome: 'Espada Longa', tem: false }] }], 2);
+      const r3 = await auto.montarMelhorReceita();
+      t.check('W5.9: sem componentes a montagem nao corre (para, nao insiste)',
+        r3.ok === true && /nada montavel/.test(String(r3.motivo || '')));
+    }
+
+
+    /* ===== W5.10 - TK-01-40 (lado do codigo): a escada lendaria e guiada por DADO ===== */
+    {
+      const w = novoMundo();
+      alimentarCatalogo(w.m);
+      definirCampeao(w.m, 'adtest');
+      const auto = w.auto;
+      // Um slot com um BASICO fraco equipado: a build da classe AD pede lendarios.
+      w.m.montar('#equip > button.slot[data-id]', [
+        w.m.el({ tag: 'button', label: 'eq0', className: 'slot basico', attrs: { 'data-id': '1005~C' } }),
+      ]);
+
+      // (a) O objectivo (a build ideal) e LIDO do campeao, nao uma lista fixa.
+      const ideal = auto.buildDaClasse();
+      t.check('W5.10: a build ideal da classe tem 5 pecas (a escada)', ideal.length === 5);
+
+      // (b) O "alvo de 4 fontes" diz de ONDE vem cada peca (equipado/mochila/mercado/cofre)
+      //     e o que FALTA — e isso que guia `buscar` (cofre) e `comprar` (mercado).
+      montarMochila(w.m, [{ id: '2001~C', raridade: 'lendario' }]);
+      const q = auto.alvoQuatroFontes(null);
+      t.check('W5.10: a peca da mochila entra no alvo com a fonte certa',
+        (q.alvoTotal || []).some((i) => i.base === '2001' && i.fonte === 'mochila'));
+      t.check('W5.10: o que nao existe em lado nenhum fica em faltamTotal',
+        (q.faltamTotal || []).length > 0 && (q.faltamTotal || []).every((f) => f.nome));
+
+      // (c) CONSISTENCIA planeador <-> actor (a regra do comentario automation.js:275-282): o que
+      //     o actor vai vestir tem de estar no alvo, e o `planBag` nao pode manda-lo vender.
+      const bag = auto.scanBag(true);
+      const pl = auto.planoEquipar(bag);
+      t.check('W5.10: o actor quer vestir o que esta na mochila (planoEquipar mexe)', pl.mexe === true);
+      const naoVende = auto.planBag(bag).acts.filter((a) => a.action === 'VENDER_LOJISTA' && pl.bases.has(String(a.it.base)));
+      t.check('W5.10: o planeador NAO vende o que o actor vai vestir (sem ping-pong)', naoVende.length === 0);
+      t.check('W5.10: a necessidade equip acende (ha troca real a fazer)', auto.necessidadesBase().equip === true);
+
+      // (d) CONTROLO: um EPICO na mochila com um basico no slot tem de sair EQUIPAR (regra do dono:
+      //     "um epico equipavel NUNCA pode ficar na mochila com um basico equipado").
+      montarMochila(w.m, [{ id: '2002~C', raridade: 'epico' }]);
+      const bag2 = auto.scanBag(true);
+      const eq = auto.planBag(bag2).acts.filter((a) => a.action === 'EQUIPAR').map((a) => a.it.id);
+      t.check('W5.10: epico com basico no slot -> EQUIPAR', eq.indexOf('2002~C') >= 0);
     }
 
     /* ===== W5.6 - parseNum: o sufixo k/M do fmt do jogo (cena.js:225) ===== */
