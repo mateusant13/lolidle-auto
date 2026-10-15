@@ -640,3 +640,13 @@ e 0 -> **8 -> 11 falhas e 21 -> 20 suites verdes**: ha MUNDOS em que o `ritmoMob
 **O que fica:** a causa esta identificada e e do FIXTURE (abates no mesmo instante). O par certo e
 corrigir o fixture para dar instantes distintos (1 por segundo) - assim a MEDIDA existe e o `null`
 continua a significar 'sem medida'. Estado mantido: 8 falhas / 21 verdes.
+## ADENDA 16:20 - B2 FECHADO (8 -> 5 falhas): abates no mesmo ms espacados 1 s
+O `scanLog` do ARRANQUE le o #log inteiro no MESMO milissegundo -> todos os `killTimes` iguais ->
+`span = 0` -> `analisarWaves().killsMin = 0` -> `ritmoMobs()` devolvia `null` e a medida do ritmo
+desaparecia (o B2 esperava o `perWave` medio = 3).
+**Correccao:** no `handleLog`, se o carimbo novo for <= o ultimo (`_ultimoKillMs`), usa
+`_ultimoKillMs + 1000`. No jogo REAL os abates sao segundos apart, logo o caminho nao muda - so o
+lote inicial (que nao tem tempo real) ganha uma medida coerente.
+**Resultado: 8 -> 5 falhas, 21/25 verdes (2 corridas iguais).**
+**Nota:** a 1.a tentativa (recurso TEORICO quando a medida era 0) piorou 8->11 porque ha mundos em que
+o `null` e o certo. A diferenca: aqui a MEDIDA passa a existir; la, inventava-se uma medida.
