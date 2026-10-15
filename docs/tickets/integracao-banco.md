@@ -278,3 +278,10 @@ Tentei a regra sem a condição de duplicado (`lend && mercadoSaturado().sat`) �
 `w10.test.mjs`), ou as três asserções medem o **ACTOR** (a função que clica), não o `planBag`.
 Próximo passo exacto: **ler `saturarMercado`** e a asserção completa (que objecto expõe
 `epicosVendidos`) — é 1 leitura, não um bisect.
+
+
+## DECISÃO 10:30 — API alcançável > número baixo
+Exportei `farmarItemEstado`/`Parar`/`Tenho` e `larvasInvoca` (estavam **definidas e inalcançáveis**).
+O banco foi de **11 → 17**: as 5 suites que rebentavam com "is not a function" passam a **correr** e falham
+em asserções **reais**. **Mantido** — 17 falhas reais valem mais que 11 com 5 escondidas atrás de um
+TypeError. É o mesmo fenómeno medido 3× nesta sessão.
