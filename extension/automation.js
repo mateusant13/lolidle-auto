@@ -6583,7 +6583,13 @@
       if (dh + da > 0) fracHabs = dh / (dh + da);
     } catch { /* sem arsenal */ }
     const fatorCdr = fracHabs / (1 - S.cdr) + (1 - fracHabs);   // só a parcela das habilidades acelera
-    let d = (base * mit) * fatorCdr * (1 + (magia ? S.lich * 0.15 : 0));   // Lich: +75%AP/skill ≈ +15% no dano total
+      // H12a (motor.js:1199/1226): o CRÍTICO do painel entra SÓ na parcela dos AUTOS — a skill pura não critica.
+      const _stC = readStats();
+      const _cChance = Number.isFinite(_stC.critChance) ? _stC.critChance : 0;
+      const _cMult = Number.isFinite(_stC.critMult) ? _stC.critMult : 1.75;
+      const _fracAuto = 1 - fracHabs;
+      const fCrit = 1 + _fracAuto * (_cChance * (_cMult - 1));
+      let d = (base * mit) * fatorCdr * fCrit * (1 + (magia ? S.lich * 0.15 : 0)); // Lich: +75%AP/skill ≈ +15% no dano total
     if (S.chama) d *= 1 + (alvo?.chefe ? 0.066 : 0.033);        // finisher <40% HP
     if (S.liandry && alvo?.hp) {                                 // queima da Liandry
       const cv = (META.curva && META.curva.hp) || [150, 100, 1];
