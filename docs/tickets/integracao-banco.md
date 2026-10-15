@@ -650,3 +650,11 @@ lote inicial (que nao tem tempo real) ganha uma medida coerente.
 **Resultado: 8 -> 5 falhas, 21/25 verdes (2 corridas iguais).**
 **Nota:** a 1.a tentativa (recurso TEORICO quando a medida era 0) piorou 8->11 porque ha mundos em que
 o `null` e o certo. A diferenca: aqui a MEDIDA passa a existir; la, inventava-se uma medida.
+## ADENDA 16:30 - D: linha 4314 esta COMPLETA; ligar as janelas ao `seen` do ranking e NEUTRO
+Verifiquei a linha 4314 inteira (287 chars): o `.map()` DEVOLVE `{ ...s, ...p, janelas: jan,
+avisoJanela: ... }` - nao faltava o `return` (a suspeita estava errada).
+O `seen` (4309) nao trazia `janelas`; liguei-as ao `agregar()` -> **5 falhas nas DUAS corridas (neutro)**.
+Revertido (regra: sem ganho medido, nao fica).
+**O que sobra no D:** o fixture (`regiao.test.mjs`) tem de trazer as `janela` nos ciclos E o teste tem
+de ler por onde as janelas passam (agregar -> ranking). Duas assercoes, ambas de FIXTURE/leitura.
+**Estado: 5 falhas, 21/25 verdes.**
