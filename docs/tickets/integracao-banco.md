@@ -70,3 +70,29 @@ mercado saturado → PROTEGER, raridade do actor pelo catálogo, `CAMPOS_MULT`+`
 **FALHAS RESTANTES (16 quando o banco foi medido no melhor ponto):** H12a/H12c (crítico medido),
 H15 (hemorragia), T142a (rv com V maiúsculo), R3 (fluxo do Ornn no stub), P1 (qualidade ausente),
 A4/A5/A6 (w1), B1 (3153 na build ideal), e os 3 símbolos de export.
+
+
+---
+
+## CLUSTERS MEDIDOS (2026-10-15 08:25) — estado `099fc92`: 65 falhas · 14/25 verdes
+
+| Suite | Falhas | Padrão observado |
+|---|---|---|
+| `w1-regioes` | 14 | `nivelChefeDe` chamado com **string** em vez de objecto (A4: `nivelChefeDe('dragao')`) — **tentei o fix (aceitar string) e o banco NÃO mudou (65→65)**, logo a causa é outra; ver a asserção exacta |
+| `numeros` | 12 | `parseNum('12.3k')` → 12300; `numDoTexto` para grupos de loot |
+| `hud` | 11 | `readStats` sem `cdr/critChance/critMult`; `H12a` crit no score; `H14` chefeInvoca |
+| `w10` | 11 | `farmarItem*`, `migrarCfg`, `escolherConjunto`, duplicata saturada |
+| `fuga` | 7 | motivo da fuga / `localId` |
+| `barrafase` | 3 · `chefe` 3 · `integracao` 1 | `alvos` do kit; `NIVEL_DIF_FB`; exports |
+
+### ARMADILHA GRAVE (3× hoje)
+Substituições **multi-linha por regex/string** no `automation.js` **partem a sintaxe** (cortam blocos
+aninhados). Sintoma no banco: **as falhas DESPEM** (65 → 24) e as suites verdes caem para 3 — parece
+uma grande melhoria e é um ficheiro inválido. **Regra:** um patch de UMA linha de cada vez, com
+`node --check` imediatamente a seguir, e **desconfiar sempre que o número desce de repente**.
+
+### Ordem recomendada para a próxima ronda
+1. `readStats` + `cdr/crit` (1 linha bem ancorada) → ataca `hud` (11).
+2. `parseNum` com sufixo → ataca `numeros` (12). **Não** substituir o bloco inteiro por regex:
+   trocar apenas a linha do `return` do `parseNum` para multiplicar pelo sufixo.
+3. Ler a asserção A4 exacta do `w1-regioes` antes de mexer (o fix "óbvio" não pegou).
