@@ -7211,7 +7211,7 @@ const CFG_VER = 1;
     const tKill = (luta && luta.tKillS) ? luta.tKillS : Infinity;
     const potS = (luta && luta.potS) || 0;
     const nPocoes = (potS > 0 && isFinite(tMorrer)) ? Math.ceil(potS * tMorrer) : 0;
-    return { vida, tMorrer, morre: tMorrer < tKill, dps: (() => { try { const e = estimarSet(base, alvo); return (e && e.dps) || (luta && luta.meuDpsBoss) || 0; } catch { return (luta && luta.meuDpsBoss) || 0; } })(), tKill: (luta && luta.tKillS) != null ? luta.tKillS : null, nPocoes, ouroPocao: nPocoes * 110 };
+    return { vida, tMorrer, morre: tMorrer < tKill, dps: (() => { try { const e = estimarSet(base, alvo); return (e && e.dps) || (luta && luta.meuDpsBoss) || 0; } catch { return (luta && luta.meuDpsBoss) || 0; } })(), tKill: (() => { try { const e = estimarSet(base, alvo); const d = (e && e.dps) || 0; const hp = (luta && luta.hpBoss) || 0; if (d > 0 && hp > 0) return +(hp / d).toFixed(1); } catch { /* ignore */ } return (luta && luta.tKillS) != null ? luta.tKillS : null; })(), nPocoes, ouroPocao: nPocoes * 110 };
   };
   /** Ranking por SOBREVIVENCIA (F5-F9): cada candidato entra no conjunto base; ordena por `tMorrer`
    *  (o que da uma ordem DIFERENTE do `rankItens`, que e so DPS - o criterio novo do dono). */
