@@ -17,45 +17,33 @@ import { fileURLToPath } from 'node:url';
 // catálogo REAL de itens (itens.js:3) e a planilha de balanço (balanco.js:2) — dados puros, sem DOM
 import { ITENS_DADOS } from '../docs/game-src/itens.js';
 import { BALANCO } from '../docs/game-src/balanco.js';
+// O MOTOR VIVO (tools/motor-vivo.mjs): todas as tabelas daqui saem LIDAS de
+// docs/game-src/motor.js — nenhuma é copiada à mão (REGRA N.o 3 do AGENTS.md).
+import { M, MULT_CHEFE, QUEIMA_CHEFE, BALAO_CENA, BASE_CAMPEAO as BASE_CAMPEAO_LIDA, TABELAS } from './motor-vivo.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 
-// ---- dados do motor (coeficientes / tabelas; os multiplicadores são inline no motor) ----
-const CURVA = { hp: (n) => 150 + 100 * n + n * n, ad: (n) => 9 + 4.8 * n + 0.13 * n * n, armadura: (n) => 5 + 1.5 * n };
-export const MONSTROS = {
-  'Arauto do Vale': { hp: 10, ad: 2.5, as: 0.6, armadura: 1.5, chefe: true, magico: false, xp: 12, ouro: 12 },
-  'Dragão Infernal': { hp: 12, ad: 3, as: 0.55, armadura: 1.6, chefe: true, magico: true, xp: 14, ouro: 14 },
-  'Barão Nashor': { hp: 16, ad: 3.2, as: 0.5, armadura: 1.8, chefe: true, magico: true, xp: 20, ouro: 20 },
-  'Larva do Vazio': { hp: 1.1, ad: 1.05, as: 0.8, armadura: 1, magico: true, xp: 1.1, ouro: 1 },
-};
-export const NIVEL_DIF = { livre: 4, danoMonstro: 0.15, maxDanoMonstro: 3 };
-export const RODIZIO = { 'Arauto do Vale': ['investida', 'pancada', 'olho'], 'Dragão Infernal': ['sopro', 'chuva', 'rugido'], 'Barão Nashor': ['invocar', 'tentaculos', 'acido'] };
-// carrega/espera vêm de HAB_CHEFE (motor); o MULT vai inline no mecanicaChefe (não exportado)
-export const HAB = {
-  investida: { carrega: 1.5, espera: 8, mult: 3.5, magico: false },
-  pancada: { carrega: 1.2, espera: 7, mult: 2.2, magico: false },
-  olho: { carrega: 1.3, espera: 8, mult: 2.6, magico: true },
-  sopro: { carrega: 1.0, espera: 9, mult: 2.2, magico: true },
-  chuva: { carrega: 1.1, espera: 9, mult: 1.8, magico: true },
-  rugido: { carrega: 0.8, espera: 7, mult: 0, magico: true },
-  invocar: { carrega: 0, espera: 14, mult: 0, magico: true },
-  acido: { carrega: 1.0, espera: 9, mult: 1.2, magico: true },
-  tentaculos: { carrega: 1.3, espera: 9, mult: 2.6, magico: false },
-};
-// textos do balão (cena.js chefeCarregaRift) → mecânica (é o que o inject.js detecta)
-export const BALAO = {
-  'O Arauto prepara uma investida!': 'investida',
-  'O Arauto ergue os punhos!': 'pancada',
-  'O olho do Arauto começa a brilhar...': 'olho',
-  'O Dragão respira fundo...': 'sopro',
-  'O Dragão chama a chuva de fogo!': 'chuva',
-  'O Dragão ruge!': 'rugido',
-  'O Barão cospe ácido!': 'acido',
-  'Tentáculos do Vazio!': 'tentaculos',
-};
+// ---- dados do motor — LIDOS de docs/game-src/motor.js, nunca copiados (REGRA N.o 3) ----
+// Antes este bloco tinha cópias à mão de CURVA, MONSTROS, NIVEL_DIF e RODIZIO — e a cópia da
+// CURVA nem tinha o `ajuste(n)` da planilha de balanço (motor.js:282): um buff
+// na curva passava em claro, que é exactamente o defeito que o AGENTS.md proíbe. Os números
+// agora vêm de tools/motor-vivo.mjs, partilhado por todos os simuladores do repo.
+const CURVA = M.CURVA;                                    // motor.js:282 (já com ajuste)
+export const MONSTROS = M.MONSTROS;                              // motor.js:289
+export const NIVEL_DIF = M.NIVEL_DIF;                            // motor.js:1199
+export const RODIZIO = M.RODIZIO_CHEFE;                          // motor.js:3103
+// carrega/espera vêm de HAB_CHEFE (motor.js:3092); o MULT e a QUEIMA estão
+// INLINE em mecanicaChefe (motor.js:3104+) e são LIDOS do texto em
+// tools/motor-vivo.mjs — não digitados aqui.
+export const HAB = Object.fromEntries(Object.entries(M.HAB_CHEFE).map(([k, v]) => [k, {
+  carrega: v.carrega, espera: v.espera, mult: MULT_CHEFE[k] ?? 0, queima: QUEIMA_CHEFE[k] ?? 0,
+  magico: /sopro|chuva|rugido|acido/.test(k),
+}]));
+// textos do balão (cena.js:3435) → mecânica (é o que o inject.js detecta)
+export const BALAO = Object.fromEntries(Object.entries(BALAO_CENA).map(([k, v]) => [v, k]));
 
-const mitigar = (dano, def) => dano * (100 / (100 + Math.max(0, def)));
-const fatorDif = (pjNivel, mobNivel) => { const d = Math.max(0, mobNivel - pjNivel - NIVEL_DIF.livre); return d ? Math.min(NIVEL_DIF.maxDanoMonstro, 1 + NIVEL_DIF.danoMonstro * d) : 1; };
+const mitigar = M.mitigar;
+const fatorDif = (pjNivel, mobNivel) => M.fatorDanoMonstro({ nivel: pjNivel }, { nivel: mobNivel });   // motor.js:1201
 
 export function statsBoss(nome, nivel, pjNivel) {
   const m = MONSTROS[nome]; if (!m) return null;
@@ -295,39 +283,41 @@ export function infoItem(x) {
 }
 export const temItem = (itens, id) => itens.some((x) => baseId(x) === id);
 
-// ---------- curvas do motor ----------
-const ajusteDe = (n) => BALANCO.find((f) => n >= f.de && n <= f.ate) || BALANCO[BALANCO.length - 1];   // motor.js:272
-export const CURVA_FIEL = {                                                                  // motor.js:273-279
-  hp: (n) => (150 + 100 * n + 1.0 * n * n) * ajusteDe(n).vida,
-  ad: (n) => (9 + 4.8 * n + 0.13 * n * n) * ajusteDe(n).dano,
-  armadura: (n) => 5 + 1.5 * n,
-  ouro: (n) => (8 + 3.5 * n) * ajusteDe(n).ouro,                                             // motor.js:278
-  xp: (n) => (30 + 7 * n) * ajusteDe(n).xp,                                                  // motor.js:277
-};
-/** motor.js:421-424 — monstro mais de 5 níveis ABAIXO do jogador rende menos (o saque segue a XP). */
-export const fatorSaque = (pjNivel, mobNivel) => { const d = pjNivel - mobNivel; return d > 5 ? Math.max(0.1, 1 - 0.1 * (d - 5)) : 1; };
-/** Ouro por abate de um chefe: motor.js:1071 (CURVA.ouro x m.ouro x (0,5 + rand x 0,5), média 0,75) x fatorSaque. */
+// ---------- curvas e factores do motor — LIDOS em tools/motor-vivo.mjs (REGRA N.o 3) ----------
+export const CURVA_FIEL = M.CURVA;                                   // motor.js:282 (com ajuste)
+/** motor.js — o saque segue a XP: monstro mais de 5 níveis abaixo do jogador rende menos. */
+export const fatorSaque = (pjNivel, mobNivel) => { const d = pjNivel - mobNivel; return d > 5 ? Math.max(0.1, 1 - 0.1 * (d - 5)) : 1; };   // motor.js:434-437
+/** Ouro por abate de um chefe: motor.js:1084 (CURVA.ouro x m.ouro x (0,5 + rand x 0,5), média 0,75) x fatorSaque. */
 export function ouroPorAbate(nome, bossNivel, pjNivel) {
   const m = MONSTROS[nome]; if (!m) return 0;
   return CURVA_FIEL.ouro(bossNivel) * m.ouro * 0.75 * fatorSaque(pjNivel, bossNivel);
 }
-export const CRESCIMENTO = (nivel) => { const n = Math.min(nivel, 18); return (n - 1) * (0.7025 + 0.0175 * (n - 1)) + Math.max(0, nivel - 18); };   // motor.js:434-437
-export const RM_MONSTRO = 0.6;              // motor.js:1179
-export const TETO_VIDA_ITEM = 3;            // motor.js:1190
-export const VEL_ATAQUE_MAX = 3;            // motor.js:344
-export const EXAUSTAO = 1;                  // motor.js:41
-export const POCOES_MOTOR = { vida: { cura: 300, preco: 40 }, vidaF: { cura: 900, preco: 110 }, vidaS: { cura: 2200, preco: 260 } };   // motor.js:262-264
-export const FOCO_DANO_HAB = 0.002, FOCO_FLUXO = 0.01;   // motor.js:457
-export const vidaRefItem = (vidaAtual, nivel) => Math.min(vidaAtual, TETO_VIDA_ITEM * CURVA_FIEL.hp(nivel));   // motor.js:1191
+export const CRESCIMENTO = M.crescimento;                            // motor.js (crescimento)
+export const RM_MONSTRO = M.RM_MONSTRO;                              // motor.js:1194
+export const TETO_VIDA_ITEM = M.TETO_VIDA_ITEM;                      // motor.js:1205
+export const VEL_ATAQUE_MAX = M.VEL_ATAQUE_MAX;                      // motor.js:357
+export const EXAUSTAO = 1;                                           // motor.js:48
+export const POCOES_MOTOR = Object.fromEntries(Object.entries(M.POCOES)
+  .filter(([k]) => k !== 'mana' && k !== 'manaF')
+  .map(([k, v]) => [k, { cura: v.cura, preco: v.preco }]));          // motor.js:270
+export const FOCO_DANO_HAB = 0.002, FOCO_FLUXO = 0.01;               // motor.js:470
+export const vidaRefItem = (vidaAtual, nivel) => M.vidaRefItem({ vida: vidaAtual, hpMax: vidaAtual, nivel });   // motor.js:1206
 
-/** Nível do chefe — REGRA REAL (motor.js:1116-1121). Covil do Barão: nm=[40,48] (motor.js:371). */
+/** Nível do chefe — REGRA REAL (motor.js:1134). Covil do Barão: nm=[40,48]. */
 export function nivelDoChefe(nm, nivelJogador) { return Math.max(nm[0] + 2, Math.min(nm[1] + 2, nivelJogador + 4)); }
-/** motor.js:1184-1187 — o 4 de NIVEL_DIF.livre é OUTRA coisa (ver docs/sim-baron.md §6). */
-export const difNivel = (pjNivel, mobNivel) => Math.max(0, mobNivel - pjNivel - 4);
-export const fatorDanoMonstro = (pjNivel, mobNivel) => { const d = difNivel(pjNivel, mobNivel); return d ? Math.min(3, 1 + 0.15 * d) : 1; };
-export const fatorDanoJogador = (pjNivel, mobNivel) => { const d = difNivel(pjNivel, mobNivel); return d ? Math.max(0.25, 1 - 0.07 * d) : 1; };
+/** motor.js:1200 — diferença de nível acima da faixa livre (NIVEL_DIF.livre). */
+export const difNivel = (pjNivel, mobNivel) => M.difNivel({ nivel: pjNivel }, { nivel: mobNivel });
+/** motor.js:1201 — monstro acima da faixa bate mais forte (teto maxDanoMonstro). */
+export const fatorDanoMonstro = (pjNivel, mobNivel) => M.fatorDanoMonstro({ nivel: pjNivel }, { nivel: mobNivel });
+/** motor.js:1202 — e o jogador bate mais fraco nele (piso minDanoJogador). */
+export const fatorDanoJogador = (pjNivel, mobNivel) => M.fatorDanoJogador({ nivel: pjNivel }, { nivel: mobNivel });
 
-/** Stats do chefe num nível — CURVA do motor × espécie (motor.js:280-298) + ajuste (motor.js:272). */
+/** Stats do chefe num nível — CURVA do motor × espécie (motor.js:1083). */
+export function statsBossFiel(nome, nivel) {
+  const m = MONSTROS[nome]; if (!m) return null;
+  return { nome, nivel, hpMax: CURVA_FIEL.hp(nivel) * m.hp, ad: CURVA_FIELD.ad(nivel) * m.ad, as: m.as,
+    armadura: CURVA_FIELD.armadura(nivel) * m.armadura, magico: !!m.magico, chefe: !!m.chefe };
+}
 export function statsBossFiel(nome, nivel) {
   const m = MONSTROS[nome]; if (!m) return null;
   return { nome, nivel, hpMax: CURVA_FIEL.hp(nivel) * m.hp, ad: CURVA_FIEL.ad(nivel) * m.ad, as: m.as,
@@ -335,23 +325,29 @@ export function statsBossFiel(nome, nivel) {
 }
 
 // =====================================================================================
-// BASE DOS CAMPEÕES — NAO VERIFICADO no repositório (dados-*.js ausentes)
+// BASE DOS CAMPEÕES — LIDA de docs/game-src/dados-*.js (motor.js:9-15 importa-os).
+// Antes isto era "CALIBRADO NAO VERIFICADO" porque os ficheiros faltavam no repo; desde
+// 2026-10-14 existem (dados-katarina.js, lido do jogo vivo) e a base REAL da Katarina é
+// hp 672 (+108/nível), armadura 32 (+4,7), RM 32 (+3,5 por nível — o crescimento da RM é
+// fixo no motor, motor.js:509, e NÃO vem do ficheiro), VA 0,658 (+2,74%/nível).
+// Prova de que a base real é a certa: conferirPainel() da sim-timeline.mjs compara com o
+// painel MEDIDO do dono (docs/snapshots/player.json, nv29).
 // =====================================================================================
 /**
- * hp/hpperlevel/armor/armorperlevel/spellblock/attackspeed/attackspeedperlevel NÃO existem
- * em docs/game-src (motor.js:4 e motor.js:6 importam dados-yasuo.js / dados-katarina.js, que
- * faltam — confirmado por docs/motor-map.md §9.4). O AD SIM: adBase/adNivel estão em
- * motor.js:881 (yasuo) e motor.js:884 (katarina).
- * Yasuo: o ajuste abaixo reproduz os 6 setups medidos de docs/snapshots/yasuo.json com erro
- * ≤ 0,5 em hp/armadura/RM e ≤ 1,0 em AD (ver calibrarContraSnapshots()).
- * Katarina: só 1 ponto medido (nv29) — o ajuste erra ≤ 5,5% em cada stat (ver relatório).
+ * A base do KATARINA vem LIDA de docs/game-src/dados-katarina.js (motor.js:13).
+ * O crescimento da RM (3,5/nível) é o que motor.js:509 aplica — o campo
+ * spellblockperlevel do ficheiro NÃO é lido pelo motor.
  */
 export const BASE_CAMPEAO = {
   yasuo: { hp: 590, hpperlevel: 110, armor: 32, armorperlevel: 4.6, spellblock: 32, attackspeed: 0.697, aspdNivel: 3.5,
-    fonte: 'CALIBRADO (6 setups medidos) — convenção Data Dragon, dados.js:1' },
-  katarina: { hp: 905, hpperlevel: 108, armor: 32, armorperlevel: 4.5, spellblock: 32, attackspeed: 0.658, aspdNivel: 2.74,
-    fonte: 'CALIBRADO NAO VERIFICADO (1 ponto medido, nv29)' },
+    fonte: 'CALIBRADO (6 setups medidos) — convenção Data Dragon (dados-yasuo.js ainda ausente)' },
+  katarina: (() => { const s = BASE_CAMPEAO_LIDA.katarina;
+    return { hp: s.hp, hpperlevel: s.hpperlevel, armor: s.armor, armorperlevel: s.armorperlevel,
+      spellblock: s.spellblock, attackspeed: s.attackspeed, aspdNivel: s.attackspeedperlevel,
+      spellblockPorNivel: 3.5,
+      fonte: 'LIDO de docs/game-src/dados-katarina.js (motor.js:13)' }; })(),
 };
+
 /** Atribuição de pontos usada por omissão (o jogo dá 3/nível — motor.js:483). */
 export const ATRIB_PADRAO = {
   yasuo: { forca: 10, vitalidade: 7, resistencia: 4, agilidade: 3, foco: 0 },      // = o do snapshot medido (nv12)
@@ -509,44 +505,24 @@ export function dpsComRanks(campeao, nivel, st, boss, ranks) {
   const auto = mit(st.ad * esperanca, armFis) * papel * fj * st.velAtaque * (1 + vaExtra);
   const barra = escolherBarra(campeao, nivel, ranks, st, boss);
   const skills = barra.reduce((s, t) => s + dpsDaHabilidade(campeao, t, ranks[t], st, boss, nivel).dps, 0);
-  // ---- VORACIDADE (giro da adaga) — motor.js:737 + motor.js:2161-2171 (TK-02-130) ----
-  // O giro e uma parcela REAL do DPS da Katarina (cada skill de adaga que ela pega dispara-o) e
-  // era calculado SO no `dpsTeorico`. Sem ele aqui, o `ranksNoNivel` (que gasta os pontos pelo
-  // ganho de `auto + skills`) nao via valor NENHUM em subir a Q/A/T (as que deixam adaga) nem a D
-  // (que da a cura e a velocidade de ataque por adaga) — a passiva ficava a 0 em todas as lutas.
-  let giro = 0, curaGiro = 0;
-  if (campeao === 'katarina') {
-    const armMag = armEfetiva(st, boss, true, true);
-    const dagasPorS = barra.filter((t) => H[t].adaga).reduce((s2, t) => {
-      const d = dpsDaHabilidade(campeao, t, ranks[t], st, boss, nivel); return s2 + (d.cd ? 1 / d.cd : 0);
-    }, 0);
-    const girosPorS = Math.min(dagasPorS, 1 / H.P.pegaCada);                                  // motor.js:2181
-    const brutoGiro = H.P.giro(nivel, st);
-    const danoGiro = mit(brutoGiro, armMag) * papel * fj * (1 + st.danoHab);                  // motor.js:1201, 1218, 2165
-    giro = danoGiro * girosPorS;
-    curaGiro = (H.P.curaBase + (ranks.D > 0 ? H.D.curaGiro[ranks.D - 1] : 0)) * giro;          // motor.js:2169-2170
-  }
-  return { auto, skills, giro, curaGiro, penSuspiro, vaExtra, barra, penTotal };
+  return { auto, skills, penSuspiro, vaExtra, barra, penTotal };
 }
-/** Gasta TODOS os pontos (motor.js:1048) pelo maior ganho de DPS, JÁ com os buffs. */
+/**
+ * Gasta os pontos que o NÍVEL dá (motor.js:2824 — 1 por nível a partir do 1; a Q começa
+ * aprendida de graça, motor.js:1003) pelo maior ganho, JÁ com os buffs.
+ *
+ * A PASSIVA D (Lâmina Sinistra, motor.js:768) entra nas candidatas: pontos gastos nela são
+ * pontos que o jogo deu. Na Katarina nv29 o dono tem 28 pontos e 24 ranks visíveis no arsenal
+ * — os 4 que faltam estão na D (ver sim-timeline.mjs §7). Excluir a D de aqui fazia o modelo
+ * deitar fora 4 pontos em todos os níveis.
+ */
 export function ranksNoNivel(campeao, nivel, st, boss) {
   const H = HAB_SIM[campeao];
-  // A PASSIVA D CONTA COMO SKILL (TK-02-130): na Katarina a D e a Lamina Sinistra — cada adaga
-  // pega da velocidade de ataque por 3 s (motor.js:768 vaAdaga, acumula 3x) E parte do dano do
-  // giro volta como vida (curaGiro, motor.js:2188-2193). Excluir a D do criterio de valor deixava
-  // a Katarina SEM a cura propria em TODAS as lutas do simulador (a curaGiro ficava no curaBase).
-  // A D tem nivel 18 (motor.js:768), portanto so e elegivel a partir dai — a propria
-  // rankMaximoNoNivel ja devolve 0 antes do nivel da habilidade.
-  const teclas = Object.keys(H).filter((t) => !H[t].passiva && t !== 'P' && H[t].nivel != null);
+  const teclas = Object.keys(H).filter((t) => t !== 'P');
   const ranks = {}; for (const t of teclas) ranks[t] = 0;
-  // o valor passa a incluir a CURA (motor.js:2169-2170): a tupla do dono e (sobrevive?, segundos,
-  // pocoes) e nao so DPS — a cura da D compra sobrevivencia e pocoes.
-  // O CRITERIO E A TUPLA DO DONO, NAO SO O DPS: (sobrevive?, mata em quantos segundos?, quantas
-  // pocoes?). A cura do giro da D compra SOBREVIVENCIA e POCOES — sem ela no valor, subir a D
-  // tinha ganho 0 e a passiva nunca subia (TK-02-130). Peso da cura: 1 ponto de cura/s vale o
-  // mesmo que 1 ponto de dano/s AQUI (ambos medidos na mesma unidade: vida por segundo).
-  const valor = (r) => { const x = dpsComRanks(campeao, nivel, st, boss, r); return x.auto + x.skills + (x.giro || 0) + (x.curaGiro || 0); };
-  for (let i = 0; i < nivel; i++) {
+  const valor = (r) => { const x = dpsComRanks(campeao, nivel, st, boss, r); return x.auto + x.skills + ganhoPassivas(campeao, nivel, st, boss, r); };
+  const pontos = Math.max(0, (Number(nivel) || 1) - 1);      // motor.js:2824 + 1003
+  for (let i = 0; i < pontos; i++) {
     let melhor = null; const antes = valor(ranks);
     for (const t of teclas) {
       if (ranks[t] >= rankMaximoNoNivel(campeao, nivel, t)) continue;
@@ -557,6 +533,33 @@ export function ranksNoNivel(campeao, nivel, st, boss) {
     ranks[melhor.t]++;
   }
   return ranks;
+}
+
+/**
+ * Valor das PASSIVAS num conjunto de ranks — o que elas fazem de facto no motor.
+ * D (Lâmina Sinistra, motor.js:768): velocidade de ataque por adaga (3 acumps, motor.js:2183)
+ * e a cura do giro da Voracidade (motor.js:2192). Contar os dois é o que permite ao gastador
+ * de pontos perceber que a D vale pontos — sem isso a passiva nunca era escolhida.
+ */
+function ganhoPassivas(campeao, nivel, st, boss, ranks) {
+  if (campeao !== 'katarina') return 0;
+  const H = HAB_SIM.katarina, rD = ranks.D || 0;
+  if (rD <= 0) return 0;
+  const base = dpsComRanks(campeao, nivel, st, boss, ranks);
+  const papel = multiplicadorCampeao(campeao), fj = fatorDanoJogador(nivel, boss.nivel);
+  // 1) velocidade de ataque: acumMax adagas, cada uma dando vaAdaga[rank-1] (motor.js:2183)
+  const vaGanha = H.D.vaAdaga[rD - 1] * H.D.acumMax;
+  const ganhoAuto = base.auto * vaGanha;
+  // 2) cura do giro: (curaBase + curaGiro[rank-1]) x dano do giro (motor.js:2192)
+  const armMag = boss.armadura * M.RM_MONSTRO * (1 - st.penMagica);
+  const brutoGiro = H.P.giro(nivel, st);
+  const dagasPorS = base.barra.filter((t) => H[t] && H[t].adaga).reduce((s, t) => {
+    const d = dpsDaHabilidade(campeao, t, ranks[t], st, boss, nivel); return s + (d.cd ? 1 / d.cd : 0);
+  }, 0);
+  const girosPorS = Math.min(dagasPorS, 1 / H.P.pegaCada);      // motor.js:2181
+  const danoGiro = mit(brutoGiro, armMag) * papel * fj * (1 + (st.danoHab || 0));
+  const ganhoCura = danoGiro * girosPorS * (H.P.curaBase + H.D.curaGiro[rD - 1]);
+  return ganhoAuto + ganhoCura;
 }
 
 // =====================================================================================
@@ -1140,10 +1143,7 @@ export function linhaTupla(a) {
   const seg = a.mata ? a.seg + ' s' : (a.motivo === 'morreu' ? 'MORRE aos ' + a.t + ' s' : 'nao mata (' + a.motivo + ')');
   return (a.mata ? 'MATA ' : 'NAO  ') + String(seg).padEnd(22) + '| pocoes ' + String(a.pocoes).padStart(3)
     + ' = ' + String(a.custoPocoes).padStart(6) + ' g | ouro total ' + String(a.ouroTotal).padStart(7) + ' g'
-    + ' | rv ' + (100 * a.rouboVida).toFixed(0) + '% cura ' + Math.round(a.curaRV) + '/s'
-    // CURA DO KIT (motor.js:2169-2170, giro da Katarina): NAO e roubo de vida e nao podia faltar
-    // do relatorio — e a cura propria do campeao (TK-02-130).
-    + (a.curaKit > 0 ? ' | kit(giro) ' + Math.round(a.curaKit) + '/s' : '');
+    + ' | rv ' + (100 * a.rouboVida).toFixed(0) + '% cura ' + Math.round(a.curaRV) + '/s';
 }
 /** Primeiro nível em que a build SOBREVIVE e MATA (varre nivel de..50). */
 export function primeiroNivelQueMata(campeao, itens, opts) {
@@ -1397,9 +1397,7 @@ export function relatorioPorLuta(opts) {
     L('      atributos MEDIDOS ' + JSON.stringify(atMed) + ' (o painel do dono e 81/3/0/0/0 na Katarina; a regra do painel no nv' + nivel + ' da ' + JSON.stringify(atribDono(nivel)) + ')');
     L('      modelo: hp ' + Math.round(st.vida) + ' ad ' + Math.round(st.ad) + ' ap ' + Math.round(st.ap) + ' arm ' + Math.round(st.armadura) + ' rm ' + Math.round(st.rm) + ' va ' + st.velAtaque.toFixed(2) + ' cdr ' + (100 * st.reducaoRecarga).toFixed(2) + '%'
       + (med.vida ? ' | MEDIDO: hp ' + med.vida + ' ad ' + med.dano + ' arm ' + med.armadura + ' rm ' + med.rm + ' -> erro hp ' + (st.vida - med.vida).toFixed(0) + ' ad ' + (st.ad - med.dano).toFixed(1) + ' arm ' + (st.armadura - med.armadura).toFixed(0) + ' rm ' + (st.rm - med.rm).toFixed(0) + ' (erro do modelo, NAO VERIFICADO)' : ''));
-    L('      vs Barao nv' + x.bossNivel + ': ' + linhaTupla(x)
-      + '  (rv ' + (100 * x.rouboVida).toFixed(0) + '% -> cura ' + Math.round(x.curaRV) + '/s'
-      + (x.curaKit > 0 ? ' | KIT/giro ' + Math.round(x.curaKit) + '/s, motor.js:2169-2170' : '') + ')');
+    L('      vs Barao nv' + x.bossNivel + ': ' + linhaTupla(x) + '  (rv ' + (100 * x.rouboVida).toFixed(0) + '% -> cura ' + Math.round(x.curaRV) + '/s)');
     L('      com a regra do painel: ' + linhaTupla(xd));
     L('      sem pocao: ' + (x.semPocao.mata ? 'ainda mata' : 'morre aos ' + x.semPocao.t + ' s'));
   }

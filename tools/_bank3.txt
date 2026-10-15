@@ -1,0 +1,112 @@
+LoL Idle - banco de regressao: automation.js REAL em vm com DOM stubado (sem browser/CDP)
+FONTE extension/automation.js  bytes=545961  sha256=307a26aa2a6153829976abe2d1a6960950bb08ab600f55ab525a5beceeb803e3
+POPULATION 875  (assercoes das suites=850 + 25 checagens de integridade do harness)
+
+SUITE regras - Regras do planejador (planBag/identidade/dedupe/memo/mercado)
+  checks=90 falhas=0  mundos=15  ms=84  UNSTUBBED=0  errosAsync=0  intervals=150
+
+SUITE ator - Regras do ator (venderBase real no Lojista, com controlos)
+  checks=44 falhas=0  mundos=8  ms=52  UNSTUBBED=0  errosAsync=0  intervals=80
+
+SUITE barra - Barra de habilidades (a ultimate nunca sai)
+  checks=14 falhas=0  mundos=1  ms=10  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE barrafase - Barra por fase: o conjunto muda com a fase (alvos do kit do motor)
+  checks=14 falhas=0  mundos=1  ms=4  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE objetivo - Objetivo de item (cfg.objetivoItem fixa o alvo na build)
+  checks=11 falhas=0  mundos=1  ms=5  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE equip - Equipamento (epico vence basico; o melhor do slot; sem downgrade)
+  checks=9 falhas=0  mundos=1  ms=13  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE regiao - Regiao e objetivo (abaixo do nivel; score por ouro+xp)
+  checks=26 falhas=0  mundos=1  ms=3  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE pontos - Gastar pontos (skill e atributo) - nada a gastar = nada a fazer)
+  checks=11 falhas=0  mundos=1  ms=4  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE interruptores - Hierarquia de interruptores (mestre -> sub -> sub)
+  checks=42 falhas=0  mundos=1  ms=5  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE cofre - Cofre na Fonte (Tesoureira em CY-5: subir ate ela, verificando #npcs a cada tile)
+  checks=26 falhas=0  mundos=8  ms=22  UNSTUBBED=0  errosAsync=0  intervals=80
+
+SUITE hud - HUD do jogo como fonte (vida k/M e escudo, recarga exacta, medidor, Voracidade, rv, critico)
+  checks=227 falhas=6  mundos=59  ms=177  UNSTUBBED=0  errosAsync=0  intervals=590
+  FALHOU: H12a: e sobe na medida do motor: 1 + fracAuto x (1,2625 - 1) -> valor=false
+  FALHOU: H12c: o killsMin teorico continua visivel ao lado do aplicado -> valor=false
+  FALHOU: H12: o 3036 (+0,3 de pen) SUBE o DPS fisico (antes nao mexia) -> valor=false
+  FALHOU: H12: e a subida e PELO MENOS a da mitigacao do motor (a hemorragia soma por cima) -> valor=false
+  FALHOU: H12: e o ganho fica ACIMA da mitigacao pura (o DOT tambem leva a pen) -> valor=false
+  FALHOU: H12: no mago a pen de armadura do kit nao se aplica (dano magico) -> valor=false
+
+SUITE integracao - Integracao com o inject.js: estado vivo, eventos do motor e curva lida
+  checks=20 falhas=0  mundos=1  ms=4  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE numeros - Leitura de numeros (sufixo k/M do fmt do jogo: cena.js:225)
+  checks=29 falhas=0  mundos=4  ms=10  UNSTUBBED=0  errosAsync=0  intervals=40
+
+SUITE score - Pontuacao e matematica de builds (tierDe, CAMPOS_MULT, infoItem, pen, mit, CDR, rv)
+  checks=58 falhas=0  mundos=1  ms=6  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE planejar - Planejador class-aware: a tabela de drops segue a classe do campeão (motor.js:383/397/407)
+  checks=10 falhas=0  mundos=1  ms=5  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE refinar - refinarMelhores: o teórico manda; o medido (n>=3) é só validação (TK-02-06)
+  checks=13 falhas=1  mundos=1  ms=12  UNSTUBBED=0  errosAsync=0  intervals=10
+  FALHOU: R3: o refino corre na Fonte e devolve o que fez -> valor=false
+
+SUITE w10 - W10 - config guardada, precos, Lojista, repeticao de base e farm por item
+  checks=69 falhas=1  mundos=10  ms=58  UNSTUBBED=0  errosAsync=0  intervals=100
+  FALHOU: suite w10: executou sem excecao -> ReferenceError: _farmItem is not defined
+    at farmarItem (extension/automation.js:5591:14)
+    at run (I:\!lolidle.com\tools\testes\w10.test.mjs:248:24)
+
+SUITE atributos - Recomendação de pontos de atributo pelo dano medido (por classe)
+  checks=11 falhas=0  mundos=1  ms=3  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE regiao - Regiao e objetivo (abaixo do nivel; score por ouro+xp)
+  checks=26 falhas=0  mundos=1  ms=2  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE w1-regioes - Fila W1: regioes, avaliacao de luta e ritmo (morte fail-closed, nivel do alvo, fator de dano, papel, ritmo, janela)
+  checks=13 falhas=3  mundos=4  ms=11  UNSTUBBED=0  errosAsync=0  intervals=40
+  FALHOU: A4: nivelChefeDe(dragao) sem jogador = n1+2 = 40 (motor.js:1134) -> valor=false
+  FALHOU: A4: nivelChefeDe(barao) sem jogador = 48+2 = 50 -> valor=false
+  FALHOU: suite w1-regioes: executou sem excecao -> TypeError: auto.nivelMobDe is not a function. (In 'auto.nivelMobDe(d, 29)', 'auto.nivelMobDe' is undefined)
+    at rodaW1 (I:\!lolidle.com\tools\testes\regiao.test.mjs:445:103)
+    at run (I:\!lolidle.com\tools\testes\regiao.test.mjs:550:11)
+    at I:\!lolidle.com\tools\testes\run.mjs:106:13
+
+SUITE motor-tabelas - Tabelas do simulador conferidas contra o motor vivo (nada copiado a mao)
+  checks=54 falhas=0  mundos=0  ms=1  UNSTUBBED=0  errosAsync=0  intervals=0
+
+SUITE regras-motor - Regras do motor provadas pelo proprio motor (rank da passiva D; reset da ultimate)
+  checks=24 falhas=0  mundos=0  ms=8  UNSTUBBED=0  errosAsync=0  intervals=0
+
+SUITE snapshots - Leitura do snapshot: JSON duplo, stderr no meio, DPS real e deaths[]
+  checks=18 falhas=0  mundos=0  ms=27  UNSTUBBED=0  errosAsync=0  intervals=0
+
+SUITE fuga - Fila W4: fuga, memoria da regiao, viagem, trava de pocao e giro
+  checks=20 falhas=4  mundos=7  ms=21  UNSTUBBED=0  errosAsync=0  intervals=70
+  FALHOU: W2: com a regiao a matar, a fuga dispara e REGISTRA o motivo -> valor=false
+  FALHOU: W5: ...e DIZ PORQUE no log (o sintoma "parado na base" deixa de ser mudo) -> valor=false
+  FALHOU: W6: localId("fonte com acento") -> fonte (caixa) -> valor=false
+  FALHOU: suite fuga: executou sem excecao -> ReferenceError: _giroTent is not defined
+    at proximoGiro (extension/automation.js:6801:16)
+    at iniciarGiro (extension/automation.js:6826:16)
+    at run (I:\!lolidle.com\tools\testes\fuga.test.mjs:167:12)
+    at I:\!lolidle.com\tools\testes\run.mjs:106:13
+
+SUITE chefe - Build de chefe (3153), tolerancia de nivel e criterio de sobrevivencia
+  checks=22 falhas=3  mundos=5  ms=22  UNSTUBBED=0  errosAsync=0  intervals=50
+  FALHOU: B1[AD]: a build IDEAL contem a 3153 contra chefes de vida alta -> valor=false
+  FALHOU: B1[AP]: a build IDEAL contem a 3153 contra chefes de vida alta -> valor=false
+  FALHOU: suite chefe: executou sem excecao -> TypeError: undefined is not an object (evaluating 'auto.NIVEL_DIF_FB.livre')
+    at run (I:\!lolidle.com\tools\testes\chefe.test.mjs:131:57)
+    at I:\!lolidle.com\tools\testes\run.mjs:106:13
+
+UNSTUBBED 0  (nenhum buraco: todos os seletores procurados estao no vocabulario do stub)
+INTERVALS 1330 registados e NAO disparados (limitacao declarada: o loop de fundo do jogo fica fora do banco)
+NOTA [snapshots] yasuo.json ainda vem no formato antigo (duplo); o backtest converte-o na primeira leitura.
+rc=1

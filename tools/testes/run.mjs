@@ -98,6 +98,7 @@ function criarT(nome) {
 /* ------------------------------- execucao ------------------------------- */
 const porSuite = [];
 for (const s of SUITES) {
+  fs.appendFileSync('tools/_suites.log', 'SUITE-INICIO ' + s.nome + '\n');
   const antes = mundosCriados().length;
   const t = criarT(s.nome);
   const t0 = Date.now();
