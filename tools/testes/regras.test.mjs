@@ -172,7 +172,15 @@ export const suite = {
       alimentarCatalogo(w.m);
       definirCampeao(w.m, 'adtest');
       t.check('T6: antes do catalogo tardio, 2009 nao existe', w.auto.ehLendarioDaBuild('2009') === false);
-      t.check('T6: fixture: 2006 esta na build antes', w.auto.buildDaClasse().indexOf('2006') >= 0);
+      // ACTUALIZADO 2026-10-14 (fila W11): o catalogo do banco passou a ter os itens REAIS
+      // do jogo (3153 Espada do Rei Destruido, 3031 Gume do Infinito, 6653 Liandry, 3171 Impeto,
+      // 3100 Lich, 3135 Cajado do Vazio, 3036 Lembrancas, 3168 Couraca) para o ticket P0 da fila
+      // W11 (a build de chefe tem de conter a 3153) ter onde se provar. Com isso a composicao das
+      // builds mudou: no perfil 'dano' o 3031 (+40% no critico, motor.js:515) passou a ganhar o
+      // 4. espaco ao 2006. A assercao agora fixa o 3031 no lugar do 2006 - o que se prova e que o
+      // lendario da build esta blindado, e a linha seguinte (T6: 2009 tardio) prova a invalidacao
+      // do memo pelo caminho que interessa.
+      t.check('T6: fixture: 3031 esta na build antes', w.auto.buildDaClasse().indexOf('3031') >= 0);
       const novo = { id: '2009', nome: 'Lendario Tardio', raridade: 'lendario', espaco: 'arma', ad: 900, preco: 3000, de: ['2002'] };
       alimentarCatalogo(w.m, CATALOGO.concat([novo]));
       t.check('T6: catalogo tardio invalida o memo (memo por tamanho do catalogo)',
@@ -196,7 +204,10 @@ export const suite = {
       t.check('T7: a bota AD sai da build no tanque', depois.indexOf('2007') < 0);
       t.check('T7: a bota AP entra na build no tanque', depois.indexOf('3005') >= 0);
       t.check('T7: 2007 deixa de ser blindado', w.auto.ehLendarioDaBuild('2007') === false);
-      t.check('T7: 2001 continua blindado', w.auto.ehLendarioDaBuild('2001') === true);
+      // ACTUALIZADO 2026-10-14 (fila W11): no perfil TANQUE a build passou a ser
+      // 3005,3031,3168,4002,3171 - o 3168 (500 de vida, o item defensivo REAL) e o 3171 (350 de
+      // vida) entraram no lugar do 2001. A assercao fixa agora o que a build do tanque blinda.
+      t.check('T7: 3168 continua blindado (o defensivo real da build do tanque)', w.auto.ehLendarioDaBuild('3168') === true);
     }
 
     /* ================= T8 - memo invalida quando a DISTANCIA muda ================= */

@@ -35,8 +35,10 @@ const CURVA = { hp: coefArr('hp'), ad: coefArr('ad'), armadura: coefArr('armadur
 const KIT_AP = { Q: { max: 10, base: [80, 395], ratio: [0.45, 0.72], recarga: [10, 6.85], alvos: 3, mult: 3 } };
 const KIT_AD = { Q: { max: 10, base: [40, 200], ratio: [0.55, 0.55], recarga: [4, 3.9], alvos: 1, mult: 1 } };
 
-/** Monta um mundo com o meta do jogo (monstros/locais/kit) e o campeao pedido. */
-function mundo(champId, nivel) {
+/** Monta um mundo com o meta do jogo (monstros/locais/kit) e o campeao pedido.
+ *  `arsenal` (opcional) monta #hab-ativas/.hab[data-t] para o DPS deixar de ser 0 -
+ *  `estimarSet()` (que o criterio de sobrevivencia usa) le o arsenal do HUD. */
+function mundo(champId, nivel, arsenal) {
   const m = criarMundo();
   const auto = carregarAutomation(m);
   alimentarCatalogo(m);
@@ -52,6 +54,11 @@ function mundo(champId, nivel) {
     m.montar('#st-nivel', [m.el({ label: 'st-nivel', textContent: String(nivel) })]);
     m.montar('#hud-nivel', [m.el({ label: 'hud-nivel', textContent: String(nivel) })]);
     m.montar('#hud-vida-txt', [m.el({ label: 'hud-vida-txt', textContent: '4476 / 4476' })]);
+  }
+  if (arsenal) {
+    const habs = arsenal.map((h) => m.el({ tag: 'div', label: 'hab-' + h.t, className: 'hab',
+      dataset: { t: h.t, dica: h.t + ' - teste' }, textContent: h.txt || '1 / 1' }));
+    m.montar('#hab-ativas .hab[data-t]', habs);
   }
   return { m, auto };
 }
@@ -142,14 +149,20 @@ export const suite = {
       t.check('D13: o fator do jogador tem PISO (minDanoJogador)',
         auto.fatorDanoJogadorMotor(99) === ND.minDanoJogador);
       // o RELAY tem prioridade sobre o fallback (Regra N.o 3: numero LIDO)
+      const outro = { livre: 2, danoMonstro: 0.5, maxDanoMonstro: 4, danoJogador: 0.2, minDanoJogador: 0.4 };
+      // (a) COM relay: o valor do relay manda (Regra N.o 3: numero LIDO)
       const m2 = criarMundo();
       const a2 = carregarAutomation(m2);
-      const outro = { livre: 2, danoMonstro: 0.5, maxDanoMonstro: 4, danoJogador: 0.2, minDanoJogador: 0.4 };
       alimentarMeta(m2, { nivelDif: outro });
       t.check('D14: com o relay a responder, o valor e o do RELAY (nao o fallback)',
         a2.nivelDifMotor().danoMonstro === 0.5 && a2.nivelDifMotor().livre === 2);
-      t.check('D15: sem relay, vale a fotografia do motor.js:1199',
-        a2.fatorDanoMonstroMotor(1) === Math.min(ND.maxDanoMonstro, 1 + ND.danoMonstro));
+      // (b) SEM relay: vale a fotografia do motor.js:1199 (e ela tem de estar actualizada)
+      const m3 = criarMundo();
+      const a3 = carregarAutomation(m3);
+      t.check('D15: sem relay, o fallback e a fotografia do motor.js:1199',
+        a3.nivelDifMotor().danoMonstro === ND.danoMonstro
+          && a3.fatorDanoMonstroMotor(1) === Math.min(ND.maxDanoMonstro, 1 + ND.danoMonstro)
+          && a3.fatorDanoJogadorMotor(1) === Math.max(ND.minDanoJogador, 1 - ND.danoJogador));
     }
 
     /* =====================================================================
@@ -187,13 +200,16 @@ export const suite = {
      * F. TK-02-75: o ranking de itens deixa de ser SO DPS
      * ===================================================================== */
     {
-      const { auto } = mundo('aptest', 29);
+      const { auto } = mundo('aptest', 29, [{ t: 'Q', txt: '10 / 10' }, { t: 'R', txt: '3 / 5' }]);
       const alvo = { nome: BARAO_NOME, nivel: 42, hp: hpMonstro(BARAO.hp, 42), armadura: 122, chefe: true };
       const base = ['3005', '3089', '3100', '3135'];
       const s = auto.sobrevivenciaSet(base, alvo, 'barao');
       t.check('F1: sobrevivenciaSet() devolve o criterio completo do dono',
         !!s && Number.isFinite(s.vida) && Number.isFinite(s.tMorrer) && typeof s.morre === 'boolean');
-      t.check('F2: a vida efectiva = a do painel + a dos itens', s.vida > 4476);
+      // a vida efectiva tem de ser a do painel + a dos itens do conjunto: a base nao tem
+      // nenhum item de vida, logo fica na do painel. O CONTROLE (logo abaixo, com o 3168 de 500
+      // de vida) e que prova que o calculo soma de verdade.
+      t.check('F2: a vida efectiva = a do painel quando nenhum item da vida', s.vida === 4476);
       t.check('F3: contra o Barao ao nivel 29 o boneco MORRE (o criterio diz morre)', s.morre === true);
       const sVida = auto.sobrevivenciaSet(['3005', '3089', '3100', '3168'], alvo, 'barao');
       t.check('F4: um item de vida aumenta o tempo que se aguenta (numero, nao opiniao)',
@@ -221,7 +237,7 @@ export const suite = {
      * G. TK-02-74: Liandry vs Impeto no 5. espaco, com sobrevivencia
      * ===================================================================== */
     {
-      const { auto } = mundo('aptest', 29);
+      const { auto } = mundo('aptest', 29, [{ t: 'Q', txt: '10 / 10' }, { t: 'R', txt: '3 / 5' }]);
       const alvo = { nome: BARAO_NOME, nivel: 42, hp: hpMonstro(BARAO.hp, 42), armadura: 122, chefe: true };
       const base = ['3005', '3089', '3100', '3135'];
       const comLiandry = auto.sobrevivenciaSet(base.concat(['6653']), alvo, 'barao');
@@ -261,9 +277,12 @@ export const suite = {
       t.check('H2: a barra desejada tem exactamente 4 slots', desejadas.length === 4);
       t.check('H3: a ULTIMATE fica SEMPRE dentro (regra inviolavel do dono)', desejadas.indexOf('R') >= 0);
       t.check('H4: a ULTIMATE e a primeira (nunca cai pelo corte dos 4)', desejadas[0] === 'R');
-      // prontas primeiro: Q (na barra) e W (fora da barra, logo disponivel) antes das em recarga
-      t.check('H5: as PRONTAS vem antes das em recarga (usar tudo disponivel)',
-        desejadas.indexOf('Q') < desejadas.indexOf('A') && desejadas.indexOf('W') < desejadas.indexOf('F'));
+      // prontas primeiro: Q e W estao PRONTAS (cd 0) e A/F estao em recarga. W (fora da
+      // barra, cd 0 = disponivel) entrou justamente por isso: "usava tudo disponivel".
+      t.check('H5: as PRONTAS (Q, W) vem antes das em recarga (A) - usar tudo disponivel',
+        desejadas.indexOf('Q') < desejadas.indexOf('A') && desejadas.indexOf('W') < desejadas.indexOf('A'));
+      t.check('H5b: a skill disponivel FORA da barra (W) entrou no lugar da mais atrasadas',
+        desejadas.indexOf('W') >= 0 && desejadas.indexOf('F') < 0);
       // anti-oscilacao: repetir a conta com a barra JA no alvo nao muda nada
       const bar2 = desejadas.map((tt) => ({ t: tt, cd: 0 }));
       const repetido = auto.barraIdeal({ arsenal: arsenal.map((h) => Object.assign({}, h)), bar: bar2 }, 'mobs');
