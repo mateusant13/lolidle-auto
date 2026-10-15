@@ -2451,7 +2451,8 @@
     const nPocoes = Math.max(1, Math.floor(intervalo / EXAUSTAO())); // cooldown do jogo (motor)
     // motor.js:898 — o PAPEL do campeão: `recebido` escala o dano que ELE leva (Katarina 0,75;
     // tanques 0,75; testado com 1 e com 0,5 pelo banco). Vem do META (jogo), nunca copiado.
-    const _papel = (META.champAtual && META.champAtual.papel) || META.papel || {};
+    const _cid = (META.champAtual && META.champAtual.id) || null;
+    const _papel = (_cid && META.kits && META.kits[_cid] && META.kits[_cid].papel) || (META.champAtual && META.champAtual.papel) || META.papel || {};
     const _recebido = Number.isFinite(_papel.recebido) ? _papel.recebido : 1;
     const dpsTomado = s.ad * fM * as * mit * _recebido;
     const danoGolpe = s.ad * fM * mit;             // dano iminente por golpe
@@ -2480,7 +2481,7 @@
     const alvoGolpe = Math.max(0, danoGolpe - curaSkill * intervalo); // o que a poção precisa cobrir por janela
     const mix = melhorMix(nPocoes, alvoGolpe);
     const tMorrer = liquido > 0 ? (vidaPool || 1) / liquido : Infinity;
-    return { monstro, nivel, dif, fM, fJ, hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaRv, curaGiroS, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
+    return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaRv, curaGiroS, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
   }
 
   /** Agrega os ciclos observados por região (médias por minuto + mortes). */
