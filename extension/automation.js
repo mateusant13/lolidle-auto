@@ -1943,7 +1943,7 @@
       // `curaBase`, `curaGiro`, `vaAdaga` e `voracidade`/`voracidadeChefe` chegam AQUI.
       // O `aplicarKit` é que os deitava fora: nao estavam nesta lista (defeito medido — ver
       // `penKitDe`, `curaGiroDe` e `voracidadeDe`).
-      out[t] = { max: h.max, mult: h.mult, alvo: h.alvo, adaga: !!h.adaga, auto: !!h.auto, dot: !!h.dot, passiva: !!h.passiva, util: !!h.util, adRatio: h.adRatio,
+      out[t] = { alvos: h.alvos != null ? h.alvos : null, max: h.max, mult: h.mult, alvo: h.alvo, adaga: !!h.adaga, auto: !!h.auto, dot: !!h.dot, passiva: !!h.passiva, util: !!h.util, adRatio: h.adRatio,
         base: serie(h.base), ratio: serie(h.ratio), rec: serie(h.recarga), nivel: h.nivel,
         duracao: h.duracao, duracaoPen: h.duracaoPen, penSuspiro: h.penSuspiro,
         va: serie(h.va), bonus: serie(h.bonus), bonusHab: serie(h.bonusHab),
