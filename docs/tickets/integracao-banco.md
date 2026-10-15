@@ -549,3 +549,17 @@ DEPOIS de o teste ler o `analisarWaves()` (ou o teste le um objecto de outro mom
 estiver antes, e preciso forcar um `scanLog`/esperar o observer antes de ler.
 **Licao:** o traco em execucao (1 linha, 1 corrida) resolveu o que 3 rondas de leitura estatica nao
 resolveram - e mostrou que o defeito NAO esta na extensao.
+## ADENDA 14:10 - C: TRACO COM LOCAL — o mundo do C tem n=3 (a extensao esta CERTA)
+Trace no fim do `scanLog` com o LOCAL:
+  DBG2 local="Toca dos Lobos nivel 1-8"        kills=12 n=12   (mundoW1ComLog)
+  DBG2 local="Fosso do Dragao nivel 30-38"     kills=3  n=3    <-- ESTE e o mundo do C (provaLog)
+  DBG2 local="Toca dos Lobos nivel 1-8"        kills=1  n=1
+O `provaLog` (regiao.test.mjs:278) monta `#local-nome` = 'Fosso do Dragao nivel 30-38' -> **e a 2.a linha**.
+**Conclusao DEFINITIVA: no mundo do C o `killTimes` tem 3 e o `analisarWaves().n` e 3** - exactamente
+o que a assercao pede. A extensao esta CERTA; a assercao `waves.n === 3` deveria PASSAR.
+Logo o que sobra esta NO TESTE: o `const waves = auto.analisarWaves()` (linha 307) e lido depois do
+`carregarAutomation` (279), mas o valor que o teste ve nao e o que o `scanLog` deixou.
+**Proximo passo (1 linha, no TESTE):** imprimir `waves.n` DENTRO do `provaLog` (antes do `t.check`) -
+se der 3, o defeito e do `t.check`/harness; se der 0, o `scanLog` corre depois da leitura (observer).
+**Metodo que valeu 2x hoje:** o TRACO em execucao (1 linha + 1 corrida) resolveu o que a leitura
+estatica nao resolvia - e provou que o defeito nao estava onde eu o procurava.
