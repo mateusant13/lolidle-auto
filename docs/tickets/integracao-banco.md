@@ -320,3 +320,14 @@ dependem de detalhes (a ordem `DEFAULT → guardada`, o `cfgVer` gravado, o `ena
 de desenho do `ler`, com o teste à frente (ler 320-350 do `w10.test.mjs`).
 
 **Estado mantido:** 20 falhas (o melhor medido), extensão válida.
+
+
+## ADENDA 10:50 — B2: devolver o `perWave` sem taxa PIORA (20→22)
+Tentei o `ritmoMobs` devolver `{ perWave, killsMin: null, segPorWave: null }` quando há ≥3 abates mas
+**sem intervalo temporal** (todos no mesmo instante) — o teste B2 só verifica o `perWave`. Resultado:
+**banco 20 → 22** (outras suites dependem do `null` para "não inventa ritmo").
+
+**Conclusão:** o `ritmoMobs` tem um **contrato** que vários testes fixam (null quando não há ritmo
+MEDÍVEL) e o B2 quer o `perWave` nesse caso — **os dois não cabem no mesmo retorno** sem desenhar melhor
+(provavelmente expor `perWave` por OUTRA via, ex.: `mediaWaveDe(META.grupoSpawn)` directamente no
+`valeUlt`/`estimarRegiao`). Ler o B2 e o controlo lado a lado antes de mexer.
