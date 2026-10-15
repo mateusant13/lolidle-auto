@@ -7925,9 +7925,9 @@ const CFG_VER = 1;
   }
 
   function loadConfig() {
-    const ler = (s) => { if (!s) return; cfg = { ...DEFAULT, ...(s.automation || {}), enabled: !!(s.enabled ?? s.automation?.enabled) }; };
+    const ler = (s) => { if (!s) return; cfg = { ...DEFAULT, ...((migrarCfg(s) || {}).cfg || {}), enabled: !!(s.enabled ?? s.automation?.enabled) }; };
     try {
-      chrome.storage.local.get(STORAGE_KEY, (r) => ler(r?.[STORAGE_KEY]));
+      chrome.storage.local.get(STORAGE_KEY, (r) => { const s0 = r?.[STORAGE_KEY]; ler(s0); try { const cur = s0 || {}; chrome.storage.local.set({ [STORAGE_KEY]: { ...cur, cfgVer: CFG_VER, automation: { ...(cur.automation || {}), ...cfg } } }); } catch { /* ignore */ } });   // C3: o cfgVer grava-se no ARRANQUE
       chrome.storage.onChanged.addListener((ch, area) => {
         if (area !== 'local' || !ch[STORAGE_KEY]?.newValue) return;
         const nv = ch[STORAGE_KEY].newValue;
