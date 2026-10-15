@@ -2663,8 +2663,16 @@
   }
 
   /** Id do local (mapa) a partir do texto da região. */
+  /** Normaliza acento E caixa dos dois lados (o HUD escreve "Covil do Barão nível 40–50" e o
+   *  id é "barao"; "Fonte (núcleo)" tem de casar com "Fonte"). Sem isto a fuga/viagem não achavam o local. */
   function localId(regionTxt) {
-    const l = (META.locais || []).find((x) => regionTxt && regionTxt.startsWith(x.nome));
+    const t = semAcento(String(regionTxt == null ? '' : regionTxt)).toLowerCase().trim();
+    if (!t) return null;
+    const l = (META.locais || []).find((x) => {
+      const n = semAcento(String(x.nome || '')).toLowerCase().trim();
+      const id = semAcento(String(x.id || '')).toLowerCase().trim();
+      return (n && t.startsWith(n)) || (id && t.startsWith(id));
+    });
     return l ? l.id : null;
   }
 
