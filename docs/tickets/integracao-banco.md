@@ -621,3 +621,12 @@ O par completo (medido 2x, 8 e 8):
 Sozinho, o (1) dava 11->12; o PAR da 11->8. E o mesmo padrao do H12c e do chefe: a porta so vale
 aberta COM o que esta atras.
 **Estado: 8 falhas, 21/25 suites verdes.**
+## ADENDA 15:55 - medido RETENTADO (9.a) depois do fix do w10: 22/25 verdes mas 8->11-14
+Com o C2/C3 fechado, as falhas do `medido` sao agora 1 em cada suite (o ReferenceError). Aplicando o
+contrato: **corrida 1: 14 falhas / 22 verdes; corrida 2: 11 falhas / 22 verdes**.
+**Leitura:** o `medido` FECHA uma suite a mais (21->22) mas abre 3-6 assercoes reais atras da porta.
+Ficou o estado de 8 falhas / 21 verdes (o melhor em falhas); as 22 verdes ficam registadas como o
+estado a que se chega ao abrir a porta - e o trabalho e o PAR (medido + o que esta atras), como no
+H12c e no w10.
+**Nota de metodo:** o numero de SUITES VERDES e um indicador melhor que o total de falhas quando ha
+portas - uma suite verde = uma area verificada por inteiro.
