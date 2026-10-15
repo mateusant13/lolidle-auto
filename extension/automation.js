@@ -1674,7 +1674,7 @@
     // como se fosse DPS inflacionava qualquer valor de buff (ex.: a Respiracao do Vento).
     return {
       nivel,
-      vida: hp.max, vidaCur: hp.cur, escudo: hp.escudo, vidaEff: (hp.vidaEff != null ? hp.vidaEff : hp.max),
+      vida: hp.max, vidaCur: hp.cur, vidaAtual: hp.cur, escudo: hp.escudo, vidaEff: (hp.vidaEff != null ? hp.vidaEff : hp.max),
       armadura: s['Armadura'] || 0, rm: s['Res. mágica'] || 0, dano: s['Dano'] || 0, poder: s['Poder'] || 0, va: s['Vel. ataque'] || 0,
       // ROUBO DE VIDA (motor.js:538 `rouboVida`, aplicado em motor.js:1226-1228 `cura = dano × rv`):
       // era LIDO pelo `readStats` e DEITADO FORA pelo `player()`. Vale ~269 de cura/s numa base AD
