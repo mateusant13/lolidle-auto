@@ -2752,15 +2752,15 @@
   let _viagemTent = 0;
   let _viagemAgendada = false;   // guarda: só UMA viagem em voo (evita a cadeia de setTimeout no stub)
   function viajarPara(id) {
-    if (/runeterra/i.test(semAcento(String(id || '')))) { logEvent('runeterra', { bloqueado: id }); return; }   // Runeterra é manual
+    if (/runeterra/i.test(semAcento(String(id || '')))) { logEvent('runeterra', { bloqueado: id }); return { ok: false, motivo: 'runeterra bloqueado' }; }   // Runeterra é manual
     // Nao esta na base? RECALL primeiro e so depois viaja. Sem isto a viagem e cancelada.
     if (!naBase()) {
-      if (_viagemTent >= 3) { logEvent('viagem', { desistiu: id, tentativas: _viagemTent }); _viagemTent = 0; return; }
+      if (_viagemTent >= 3) { logEvent('viagem', { desistiu: id, tentativas: _viagemTent }); _viagemTent = 0; return { ok: false, motivo: 'desistiu apos 3 recalls', tentativas: 3 }; }
       _viagemTent++;
       logEvent('viagem', { recall: 'para a base antes de viajar', destino: id, tentativa: _viagemTent });
       press('b');
       setTimeout(() => viajarPara(id), esperaRecallMs());
-      return;
+      return { ok: false, motivo: 'a caminho da base', tentativa: _viagemTent };
     }
     _viagemTent = 0;
     press('m');
@@ -2769,6 +2769,7 @@
       if (b) b.click();
       setTimeout(() => { const ir = document.querySelector(`#mapa-info [data-ir="${id}"]`); if (ir) ir.click(); }, 400);
     }, 700);
+    return { ok: true, destino: id };
   }
 
   // ------------------------------------------------------------- laço (observação)
