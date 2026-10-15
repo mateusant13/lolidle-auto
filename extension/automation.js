@@ -5501,6 +5501,43 @@
     } catch { return null; }
   }
 
+  function recomendarAtributos(c) {
+    const cc = c || META.champAtual || {};
+    const magia = !!cc.magia;
+    let ctx = null;
+    try { ctx = ctxDano(); } catch { ctx = null; }
+    // dps das habilidades com um contexto alterado (mede, não teoriza)
+    const dpsHabs = (patch) => {
+      if (!ctx) return 0;
+      const c2 = Object.assign({}, ctx, patch || {});
+      let s = 0;
+      try { for (const h of ((readSkills().arsenal) || [])) s += dpsRank(c2, h.t, h.rank); } catch { /* ignore */ }
+      return s;
+    };
+    const base0 = dpsHabs({});
+    const p = player();
+    const autoDps = (p.dano || 0) * (p.va || 0);        // componente de auto-ataque (motor.js:1675)
+    const ganho = {};
+    // Força: na magia o ponto vira Poder (só as habilidades escalam com ele, motor.js:516);
+    // no AD o ponto é dano de ataque — entra nas habilidades QUE escalam com dano E no auto
+    // (motor.js:516 `ad += 1.2*at.forca`; o auto bate com `ad`, motor.js:1698).
+    ganho.forca = magia ? (dpsHabs({ ap: (ctx && ctx.ap || 0) + 2 }) - base0)
+      : (dpsHabs({ ad: (ctx && ctx.ad || 0) + 1.2 }) - base0) + 1.2 * (p.va || 0);
+    ganho.agilidade = 0.008 * autoDps;                   // motor.js:461 -> 516 -> 547
+    ganho.foco = base0 * (1 / Math.max(0.7, 1 - 0.004) - 1);   // motor.js:463/550 (tecto 30%)
+    if (cc.semMana) ganho.foco += 0.002 * base0;          // motor.js:470-474 (Katarina/Zac)
+    ganho.vitalidade = 0;                                // motor.js:457/516: não entra no dano
+    ganho.resistencia = 0;                               // motor.js:459/516: não entra no dano
+    const ordem = ['forca', 'agilidade', 'foco', 'vitalidade', 'resistencia'];
+    return ordem.map((k) => ({ atrib: k, danoPorPonto: ganho[k], fonte:
+      k === 'forca' ? (magia ? 'motor.js:467 (+2 Poder) + motor.js:516' : 'motor.js:455 (+1,2 dano) + motor.js:516')
+        : k === 'agilidade' ? 'motor.js:461 (+0,8% vel. ataque) + motor.js:547'
+          : k === 'foco' ? 'motor.js:463 (−0,4% recarga) + motor.js:550'
+            : k === 'vitalidade' ? 'motor.js:457 (+20 vida) — sem dano'
+              : 'motor.js:459 (+1,5 armadura/+1 RM) — sem dano' }))
+      .sort((a, b) => b.danoPorPonto - a.danoPorPonto);
+  }
+
   function farmarItem(ids) {
     const alvo = farmarItemIds(ids);
     if (!alvo.length) return { ok: false, motivo: 'sem itens (use farmarItem(["3089"]))' };
