@@ -55,12 +55,24 @@ for (const [nome, expr] of Object.entries(EXP)) {
 // SNAPSHOT DO BACKTEST: `{ cycles, lutas }` — a forma que tools/backtest.mjs le.
 // Nome do ficheiro = campeao actual (o backtest usa-o para agrupar).
 try {
-  const dados = await ev(wrap + "(function(){var f=A.getFarm()||{};return JSON.stringify({champ:((A.getMeta().champAtual||{}).id||'champ'),cycles:f.cycles||[],lutas:f.lutas||[],geradoEm:Date.now()})})()");
+  // TK-01-28: o snapshot do backtest levava cycles[] e lutas[] mas NAO deaths[] — o
+  // backtest nao tinha uma unica morte para treinar a fuga e o deaths.json ficava com 6 B.
+  // As mortes vivem em farm.deaths (automation.js:791) e por ciclo em farm.cycles[].deaths.
+  const dados = await ev(wrap + "(function(){var f=A.getFarm()||{};return JSON.stringify({champ:((A.getMeta().champAtual||{}).id||'champ'),conta:((A.getMeta().conta)||null),cycles:f.cycles||[],lutas:f.lutas||[],deaths:f.deaths||[],geradoEm:Date.now()})})()");
   const j = JSON.parse(dados);
   const nome = String(j.champ).toLowerCase() + '.json';
   fs.writeFileSync(DIR + '/' + nome, dados);
-  out.snapshot = nome + ' (' + j.cycles.length + ' ciclos, ' + j.lutas.length + ' lutas)';
+  out.snapshot = nome + ' (' + j.cycles.length + ' ciclos, ' + j.lutas.length + ' lutas, ' + (j.deaths || []).length + ' mortes)';
 } catch (e) { out.snapshot = 'ERRO: ' + String(e.message).slice(0, 60); }
-console.log(JSON.stringify(out, null, 1));
+// TK-01-49: o relatorio saia em JSON no STDOUT, e correr com `> ficheiro 2>&1` metia o
+// aviso que o ll.mjs escreve em stderr no meio do JSON — o backtest morria com
+// "Unexpected token". Agora o relatorio completo vai para docs/snapshots/_export.json e o
+// stdout leva UMA linha de texto (nunca JSON). Redireccionar com 2>&1 nao pode corromper nada.
+const REL = DIR + '/_export.json';
+try { fs.writeFileSync(REL, JSON.stringify({ geradoEm: new Date().toISOString(), dir: DIR, ficheiros: out }, null, 1)); } catch (e) { out._relatorio = 'ERRO: ' + e.message; }
+const ok = Object.entries(out).filter(([, v]) => typeof v === 'number').length;
+console.log('snap-export: ' + ok + ' ficheiro(s) escrito(s) em ' + DIR + ' — relatorio em _export.json');
+for (const [k, v] of Object.entries(out)) if (typeof v !== 'number') console.log('  ' + k + ': ' + v);
+if (process.argv.includes('--stdout-json')) console.log(JSON.stringify(out, null, 1));
 try { await send('Target.detachFromTarget', { sessionId: sess }); } catch {}
 ws.close();

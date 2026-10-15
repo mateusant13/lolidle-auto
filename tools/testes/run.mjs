@@ -31,6 +31,7 @@ import { suite as suiteInterruptores } from './interruptores.test.mjs';
 import { suite as suiteCofre } from './cofre.test.mjs';
 import { suite as suiteMotorTabelas } from './motor-tabelas.test.mjs';
 import { suite as suiteRegrasMotor } from './regras-motor.test.mjs';
+import { suite as suiteSnapshots } from './snapshots.test.mjs';
 
 const argv = process.argv.slice(2);
 if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
@@ -47,7 +48,7 @@ let filtro = null;
 const iF = argv.indexOf('--filter');
 if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 
-const SUITES = [suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteMotorTabelas, suiteRegrasMotor];
+const SUITES = [suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots];
 const checks = [];
 const notas = [];
 let populacaoExecutada = 0;
