@@ -592,3 +592,24 @@ rebentar em **`sobrevivenciaSet is not a function`** -> a cadeia de portas desta
 nao-deterministica do banco; nas medicoes em que aparece, o total sobe 3.
 **Nota de metodo:** a lista de falhas TEM de vir de uma corrida nova (ja me enganou: reportei 14
 quando o estado era 11).
+## ADENDA 14:50 - TICKET: sobrevivenciaSet / rankItensSobrevivencia (o CRITERIO DO DONO)
+**Nao existem** no `automation.js` (nem definidas nem exportadas). A suite `chefe` rebenta nelas - e
+sao a implementacao do criterio que o dono escreveu: *"sobrevive? mata em quantos segundos? quantas
+pocoes e quanto custam em ouro?"*. **O banco ja as pede; a extensao nao as tem.**
+
+### Contrato exacto (chefe.test.mjs:205-222)
+  sobrevivenciaSet(base, alvo, tipo) -> { vida, tMorrer, morre }
+    F1: os tres campos (vida e tMorrer finitos, morre booleano)
+    F2: `vida` = vida do PAINEL + itens de vida do conjunto; com `['3005','3089','3100','3135']`
+        (nenhum item de vida) tem de dar **4476**
+    F3: contra o Barao ao nivel 29 -> `morre === true`
+    F4: com o 3168 (500 de vida) -> `vida` E `tMorrer` MAIORES que sem ele
+  rankItensSobrevivencia(alvo, { base, regiaoId }) -> lista ORDENADA de
+    { sobrevive: boolean, tMorrer, nPocoes, ouroPocao }
+
+### Onde estao as pecas (para quem pegar nisto)
+- `statsSet`/`estimarSet`/`scoreSet` (a matematica de build que ja existe) - `automation.js:2091`
+- `estimarLuta` (nivel do chefe, DPS in/out) - e o `estimarRegiao` (o `mobHpMinRel` de sobrevivencia)
+- o custo das pocoes e a `decidirPocao` (ja modela o gasto em ouro)
+- a mitigacao da saida do jogador - `automation.js:1198` (a mesma conta do `estimarSet`)
+**Regra Nº 7:** e arrumavel com o que ja existe; fica com contrato e pontos de ancoragem prontos.
