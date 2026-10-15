@@ -261,3 +261,20 @@ Revertido.
 deve ver** (provavelmente cada uma precisa do SEU `medido`, ou o módulo precisa de o repor entre
 chamadas). É trabalho de desenho, não de uma linha. O banco actual (16 falhas) **não reporta este
 ReferenceError** porque a suite que o exercita falha antes — está latente.
+
+
+## ADENDA 10:15 — `w10` L4: o teste NÃO usa duplicados
+Li o teste (`w10.test.mjs:187-195`): chama `await saturarMercado(w.auto, w.m)`, monta a mochila com
+**UM** lendário (`9500~C`) e **UM** épico (`4001~C`), e verifica:
+```
+L4: o lendario NAO recebeu clique nenhum
+L4: o lendario nao esta em epicosVendidos
+L4: o lendario esta em regras.protegidos
+```
+Ou seja: **não é duplicado** — é o **mercado saturado** que impede o lendário de ir ao Lojista.
+Tentei a regra sem a condição de duplicado (`lend && mercadoSaturado().sat`) → **banco inalterado (16)**.
+
+**Conclusão:** ou o `mercadoSaturado()` no mundo do teste não reporta `sat` (ver `saturarMercado` no
+`w10.test.mjs`), ou as três asserções medem o **ACTOR** (a função que clica), não o `planBag`.
+Próximo passo exacto: **ler `saturarMercado`** e a asserção completa (que objecto expõe
+`epicosVendidos`) — é 1 leitura, não um bisect.
