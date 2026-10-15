@@ -608,7 +608,7 @@
   const seenLog = new WeakSet();
   let farm = { current: null, cycles: [], log: [], issues: [], deaths: [] };
 
-  const parseBig = (s) => { if (!s) return null; const m = String(s).match(/([\d.]+)\s*([kKmM]?)/); if (!m) return null; let v = parseFloat(m[1]); const s2 = (m[2] || '').toLowerCase(); if (s2 === 'k') v *= 1e3; if (s2 === 'm') v *= 1e6; return Math.round(v); };
+  const parseBig = (s) => { if (!s) return null; const m = String(s).match(/([\d.,]+)\s*([kKmM])?/); if (!m) return null; const v = parseNum(m[1], m[2]); return Number.isFinite(v) ? Math.round(v) : null; };
   function logEvent(type, data) { try { farm.log = [{ at: Date.now(), type, ...data }, ...(farm.log || [])].slice(0, 200); } catch { /* ignore */ } }
   function logIssue(type, data) { try { farm.issues = [{ at: Date.now(), type, ...data }, ...(farm.issues || [])].slice(0, 100); } catch { /* ignore */ } }
 
@@ -1055,29 +1055,13 @@
       if (!d) return;
       if (d.__lolidleAuto === 'meta-erro') { META.erro = d.erro; logIssue('meta-falha', { erro: d.erro }); return; }
       if (d.__lolidleAuto === 'chefe-hook') { META.chefeHook = !!d.ok; META.chefeHookErro = d.erro || null; return; }
-      // ---- EVENTOS QUE DECIDEM (inject.js:222 EV_DECIDEM -> :264-272) ----------------------
-      // O inject.js reencaminha os eventos do motor que mudam decisoes, mas NINGUEM os consumia:
-      // a mensagem chegava e caia fora do listener (que so tratava `'meta'`).
-      // O que interessa AQUI (TK-02-148): o `'chefeInvoca'` — o Barao invoca 2 LARVAS
-      // (motor.js:3141 `for (let k = 0; k < 2; k++) c.inimigos.push(criarMonstro('Larva do Vazio'...)`)
-      // e a VORACIDADE corta 1,5 s por cada abate DELAS: motor.js:1811
-      //   `if (HPk?.voracidade) for (const t of ['Q','W','E']) d.recargas[t] = Math.max(0, d.recargas[t] - (i.chefe ? HPk.voracidadeChefe : HPk.voracidade));`
-      // — ao contrario da tarefa (motor.js:1808 `if (!i.invocado) contarTarefa(...)`), esse corte
-      // NAO tem guarda `i.invocado`: as larvas CONTAM como abates para a Voracidade.
-      // E as larvas nao dao loot (motor.js:1792 `const itens = i.invocado ? [] : [...sortearLoot...]`),
-      // logo nao passam pelo log do jogo — por isso o `killsMinAoVivo` (que conta o log) nao as
-      // via. Medido no ciclo do Barao (motor.js:3089/:3099/:3103): 1 invocacao de 2 larvas a cada
-      // 34,3 s do rodizio -> 2 larvas x (60/34,3) = 3,5 larvas/min, mais 0,25 abates/min do chefe.
-      if (d.__lolidleAuto === 'evento') {
-        try {
-          if (d && d.tipo === 'chefeInvoca') {
-            // 2 larvas por invocacao (motor.js:3141) — o payload so traz o alvo.
-            larvasInvoca.push({ at: d.at || Date.now(), n: 2 });
-            if (larvasInvoca.length > 60) larvasInvoca.shift();
-          }
-        } catch { /* ignore */ }
-        return;
-      }
+      // TK-INT-01 — os DOIS canais que o inject.js já publica e que morriam aqui:
+      //   'estado' = o `combate` INTEIRO a cada mudança estrutural / 250 ms (inject.js:430-438);
+      //   'evento' = os tipos do motor que DECIDEM (inject.js:222-224, motor.js:1182 `emitir`).
+      // Ambos ficam disponíveis por `estadoVivo()`/`eventosVivos()` e são consumidos por
+      // `consumirEvento` (abaixo) — sem isto o motor era lido pela UI e por mais ninguém.
+      if (d.__lolidleAuto === 'estado') { _estadoVivo = d; return; }
+      if (d.__lolidleAuto === 'evento') { consumirEvento(d); return; }
       if (d.__lolidleAuto !== 'meta') return;
       if (d.chefeHook != null) META.chefeHook = d.chefeHook;
       if (d.chefeHookErro) META.chefeHookErro = d.chefeHookErro;
@@ -1086,7 +1070,9 @@
       if (d.balanco) META.balanco = d.balanco;
       if (d.itens) META.itens = d.itens;
       if (d.ondeItem) META.ondeItem = d.ondeItem;
-      for (const k of ['pocoes', 'exaustao', 'pocaoPvp', 'noturno', 'furioso', 'gemas', 'recall', 'grupo', 'nivelMax', 'espacos', 'curva', 'kit', 'champ', 'rodizio', 'mecanicas', 'kits', 'mochila', 'ciclo', 'fuso', 'grupoSpawn', 'respawn', 'modelos', 'dicaAtributos', 'nivelDif', 'habChefe']) if (d[k] != null) META[k] = d[k];
+      // `curvaPorNivel`/`rmMonstro` (TK-INT-01): curva REAL avaliada por nível e o RM dos
+      // monstros, ambos LIDOS do motor pelo inject.js — quem consome é o `curva()`/`rmMonstro()`.
+      for (const k of ['pocoes', 'exaustao', 'pocaoPvp', 'noturno', 'furioso', 'gemas', 'recall', 'grupo', 'nivelMax', 'espacos', 'curva', 'curvaPorNivel', 'rmMonstro', 'kit', 'champ', 'rodizio', 'mecanicas', 'kits', 'mochila', 'ciclo', 'fuso', 'grupoSpawn', 'respawn', 'modelos', 'dicaAtributos', 'nivelDif', 'habChefe']) if (d[k] != null) META[k] = d[k];
       if (d.kit || d.kits) aplicarKit();
       if (META.monstros && META.locais && META.balanco) {
         META.at = Date.now(); META.erro = null;
@@ -1099,6 +1085,13 @@
 
   const ajusteDe = (n) => (META.balanco || []).find((b) => n >= b.de && n <= b.ate) || { vida: 1, dano: 1, xp: 1, ouro: 1 };
   function curva(nivel) {
+    // CURVA REAL, LIDA do motor (REGRA Nº 3): o inject.js avalia as funções `CURVA`
+    // (motor.js:282-288) por nível e manda os NÚMEROS em `META.curvaPorNivel` — com o
+    // `ajuste` da planilha (motor.js:281, balanco.js) já DENTRO de cada valor, logo NÃO se
+    // multiplica outra vez. Se o jogo nerfar/buffar a curva amanhã, este número acompanha
+    // sozinho. Fallback (inject antigo): polinómio pelos coeficientes × o ajuste da planilha.
+    const cn = META.curvaPorNivel && META.curvaPorNivel[nivel];
+    if (cn && Number.isFinite(cn.hp)) return { hp: cn.hp, ad: cn.ad, armadura: cn.armadura, xp: cn.xp, ouro: cn.ouro };
     const a = ajusteDe(nivel);
     // Coeficientes vêm do motor (META.curva); fallback = fórmula original.
     const c = META.curva || { hp: [150, 100, 1], ad: [9, 4.8, 0.13], armadura: [5, 1.5], xp: [30, 7], ouro: [8, 3.5] };
@@ -1268,10 +1261,18 @@
       goldK += w * s.ouro * fs * bonus;
       hpAvg += w * s.hp; wsum += w;
     }
-    if (!wsum) return null;
+    if (!wsum) {
+      // Sem stats de monstro nao ha taxa teoica -- e tambem NAO ha prova de sobrevivencia.
+      // Fail-closed: a regiao fica marcada como nao segura em vez de devolver null (que o
+      // filtro trataria como "nao sei" e, antes desta correccao, deixava passar).
+      return { id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: null, mobHp: null,
+        killsMin: null, xpMin: null, goldMin: null, runasH: null, morte: true,
+        riscoMob: null, riscoDps: null, riscoTMorrer: null, semDados: true };
+    }
     xpK /= wsum; goldK /= wsum; hpAvg /= wsum;
-    const gs = META.grupoSpawn || { base: 2, rand: 3 };
-    const mobsPerWave = opts.mobsPerWave || (gs.base + Math.floor((gs.rand - 1) / 2));   // média de 2 + floor(rand*3) (motor)
+    const gs = META.grupoSpawn || { base: 2, rand: 3 };   // motor.js:1137 (medido pelo inject)
+    // media de 2 + floor(rand*3) (motor.js:1137) — a MESMA funcao do ritmoMobs (TK-01-08)
+    const mobsPerWave = opts.mobsPerWave != null ? opts.mobsPerWave : mediaWaveDe(gs);
     const mm = multMedio(mobsPerWave);
     xpK *= mm.xp; goldK *= mm.ouro;
     const rsp = META.respawn || { clear: 1.5, local: 1.2 };
@@ -1285,16 +1286,10 @@
       if (dpsKillsMin < spawnKillsMin) { killsMin = dpsKillsMin; modo = 'dps'; }
     }
     const kx = opts.kXp != null ? opts.kXp : ((cfg.kReg || {})[id]?.kXp || cfg.kXp || 1), ko = opts.kOuro != null ? opts.kOuro : ((cfg.kReg || {})[id]?.kOuro || cfg.kOuro || 1);
-    // ABATES/MIN tambem tem a medicao do JOGO como autoridade (jogo.js:551 `Abates por hora`,
-    // jogo.js:525-537 `A.abates++`). O factor vem do `calibrar` e corrige o killsMin teorico.
-    const ka = opts.kAbates != null ? opts.kAbates : ((cfg.kReg || {})[id]?.kAbates || cfg.kAbates || 1);
     const gk = 1 + (loc.tier || 0) * 0.1;                       // runas: +10% de chance por tier
     const multR = (vip ? 1.2 : 1) * fs;                          // runas levam o bônus de drop VIP e o fatorSaque
     let runasKill = 0; for (const gid of ['sorte', 'arcana', 'protecao']) runasKill += Math.min(1, GEMA_CH[gid] * gk * multR);
     const runasChefe = loc.chefe ? (GEMA_CHEFE.sorte + GEMA_CHEFE.arcana + GEMA_CHEFE.protecao) * (vip ? 1.2 : 1) : 0;
-    // `killsMinK` = kills/min com a medicao do JOGO aplicada (a autoridade, ver `calibrar`).
-    // As taxas por minuto saem deste; o `killsMin` teorico continua no resultado para comparacao.
-    const killsMinK = killsMin * ka;
     // ---- SOBREVIVÊNCIA EM TODAS AS REGIÕES (correcção do Lead, 2026-10-14) --------------------
     // MEDIDO AO VIVO (Katarina nv 29): `estimarRegiao('barao')` devolvia { goldMin: 5428,
     // xpMin: 15765 } SEM campo `morte` — e a `regiaoIdeal` filtrava com `!x.e.morte`, onde
@@ -1305,10 +1300,7 @@
     // significa NÃO SE SABE — e o filtro é FAIL-CLOSED (não se sabe não manda ninguém morrer).
     let morte = null, avaliados = 0, riscoMob = null, riscoDps = null, riscoTMorrer = null;
     try {
-      // CURA DO GIRO (motor.js:2188-2193): a cura PROPRA da Katarina entra na sobrevivencia —
-    // sem isto o `avaliar` contava so a pocao e o roubo de vida e a regiao parecia mais
-    // mortal do que e (TK-02-130, AGENTS.md prova n.o 7).
-    const curaMob = { skill: 0, pocao: curaPocaoMax() * 0.6, giro: curaGiroS() };
+      const curaMob = { skill: 0, pocao: curaPocaoMax() * 0.6 };
       // (i) A ZONA ESTÁ ACIMA DO BONECO? É a regra determinística e é a que apanha o caso medido
       // (Covil do Barão, `nm: [40, 48]`, com o boneco a 29). A tolerância é a MESMA que o
       // `doNivel0` logo abaixo já usa (6 níveis) — não se inventa um critério novo.
@@ -1316,8 +1308,7 @@
       const acima = nivelMin != null && (p.nivel || 1) + 6 < nivelMin;
       if (acima) morte = true;
       for (const par of (loc.monstros || [])) {
-        // `myDps` entra para o ROUBO DE VIDA (motor.js:1226-1228) contar na sobrevivencia.
-        const a = avaliar(par[0], Math.round(L), p, curaMob, myDps);
+        const a = avaliar(par[0], Math.round(L), p, curaMob);
         if (!a) continue;
         avaliados++;
         // (ii) MECÂNICA INSTA-KILL (o `mortal` do avaliador: o pior golpe do rodízio passa da vida).
@@ -1331,15 +1322,46 @@
         if (Number.isFinite(a.tMorrer)) riscoTMorrer = Math.min(riscoTMorrer == null ? Infinity : riscoTMorrer, +a.tMorrer.toFixed(1));
       }
       if (riscoTMorrer === Infinity) riscoTMorrer = null;
+      // (iii-b) O CHEFE DA REGIAO — a avaliação de luta que faltava (TK-02-41): a região tem
+      // um chefe com os stats do META e o `avaliar()` já sabe dizer se ele MATA. Sem olhar para
+      // o chefe, uma zona com mobs fáceis e chefe letal (Fosso do Dragão a nv 27) passava como
+      // segura -- era esse o buraco: avaliavam-se os mobs da lista e nunca o chefe.
+      // nível pelo motor (motor.js:1134): max(n0+2, min(n1+2, nível+4)).
+      try {
+        if (loc.chefe && loc.chefe[0]) {
+          const nc = nivelChefeDe(loc);
+          const avc = avaliar(loc.chefe[0], nc, p, curaMob);
+          if (avc) {
+            avaliados++;
+            if (avc.mortal) { morte = true; riscoMob = loc.chefe[0]; }
+            if (Number.isFinite(avc.dpsTomado)) riscoDps = Math.max(riscoDps || 0, Math.round(avc.dpsTomado));
+            if (Number.isFinite(avc.tMorrer)) riscoTMorrer = Math.min(riscoTMorrer == null ? Infinity : riscoTMorrer, +avc.tMorrer.toFixed(1));
+            // o chefe aguenta muito mais que um mob: morrer ANTES de o matar é o critério.
+            //  (a) insta-kill: o pior golpe do rodízio passa da vida (`mortal`);
+            //  (b) com DPS conhecido: morre em menos de 1,5x o tempo que leva a matá-lo;
+            //  (c) SEM DPS conhecido: se o chefe bate mais do que a cura estimada cobre
+            //      (`liquido > 0`), não há prova de que a luta se ganha — fail-closed.
+            const usaTempoC = (myDps || 0) > 0 && avc.hp && Number.isFinite(avc.tMorrer);
+            const segMatarC = usaTempoC ? avc.hp / Math.max(1, (myDps || 0) * (avc.fJ || 1)) : null;
+            if (avc.mortal || (usaTempoC && avc.tMorrer < segMatarC * 1.5) || (!usaTempoC && avc.liquido > 0)) {
+              morte = true; if (!riscoMob) riscoMob = loc.chefe[0];
+            }
+          }
+        }
+      } catch { /* ignore */ }
       // (iv) O HISTÓRICO MEDIDO manda: se aquela região já o matou, não é segura.
       try {
         const rr = (agregar() || []).find((x) => x.region && String(x.region).startsWith(String(loc.nome)));
         if (rr && rr.risco && rr.risco.morre) morte = true;
       } catch { /* ignore */ }
-      // "NÃO SE SABE" continua a ser null (fail-closed no filtro): só se declara segura com prova.
-      if (morte === null) morte = avaliados > 0 ? false : null;
+      // FAIL-CLOSED (regra do dono: "NAO E PRA MORRER, NUNCA, COM ESSE SCRIPT"): sem prova de
+      // que sobrevive, a regiao NAO e segura. `avaliados === 0` significa que nao conseguimos
+      // olhar para nenhum monstro da regiao (sem stats, sem META) — isso e exatamente o caso em
+      // que um `!undefined === true` mandava o boneco para a morte. Agora `morte: true`.
+      // O filtro `x.e.morte === false` (regiaoIdeal/rankRegioes) so passa quem PROVOU.
+      if (morte === null) morte = avaliados > 0 ? false : true;
     } catch { /* ignore */ }
-    return { id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: +L.toFixed(1), fatorXp: fx, noite: mm.noite, multXp: +mm.xp.toFixed(3), multOuro: +mm.ouro.toFixed(3), mobHp: Math.round(hpAvg), mobsPerWave, minhaDps: myDps || null, modo, kXp: kx, kOuro: ko, xpKill: +(xpK * kx).toFixed(2), goldKill: +(goldK * ko).toFixed(2), killsMin: +killsMinK.toFixed(1), killsMinTeorico: +killsMin.toFixed(1), kAbates: +ka.toFixed(3), xpMin: Math.round(xpK * kx * killsMinK), goldMin: Math.round(goldK * ko * killsMinK), runasKill: +runasKill.toFixed(5), runasMin: +(runasKill * killsMinK).toFixed(2), runasChefe: +runasChefe.toFixed(2), runasH: Math.round(runasKill * killsMinK * 60), morte, riscoMob, riscoDps, riscoTMorrer };
+    return { id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: +L.toFixed(1), fatorXp: fx, noite: mm.noite, multXp: +mm.xp.toFixed(3), multOuro: +mm.ouro.toFixed(3), mobHp: Math.round(hpAvg), mobsPerWave, minhaDps: myDps || null, modo, kXp: kx, kOuro: ko, xpKill: +(xpK * kx).toFixed(2), goldKill: +(goldK * ko).toFixed(2), killsMin: +killsMin.toFixed(1), xpMin: Math.round(xpK * kx * killsMin), goldMin: Math.round(goldK * ko * killsMin), runasKill: +runasKill.toFixed(5), runasMin: +(runasKill * killsMin).toFixed(2), runasChefe: +runasChefe.toFixed(2), runasH: Math.round(runasKill * killsMin * 60), morte, riscoMob, riscoDps, riscoTMorrer };
   }
 
   /** Calibra o fator de conta (k) comparando o estimado com o MEDIDO.
@@ -1593,13 +1615,12 @@
       // ROUBO DE VIDA entra na leitura (pedido do Lead): e o stat que decide a luta contra o chefe
       // (cura so em AUTO-ATAQUES, motor.js:1226-1228) e o painel do jogo mostra-o.
       const m = t.match(/^(Dano|Armadura|Vel\. ataque|Res\. mágica|Poder|Mana|Crítico|Esquiva|Roubo de vida)(.*)$/);
-      if (m) { const v = (m[2].match(/[\d.,]+/) || [''])[0]; out[m[1]] = v ? parseFloat(v.replace(',', '.')) : 0; }
+      // O painel escreve os valores com o `fmt` do jogo (jogo.js:6454-6460 `txt('#st-ad',
+      // fmt(a.ad))`), logo "Dano 12.3k" e "Vida 4.188" chegam aqui. Sem o sufixo no grupo
+      // (e sem a regra grupo-de-3 = milhar) o Dano acima de 10.000 era lido 1000x menor —
+      // e o `player()/dpsPorHabilidade` inteiro trabalha com esse número.
+      if (m) { const v = m[2].match(/([\d.,]+)\s*([kKmM])?/); out[m[1]] = v ? parseNum(v[1], v[2]) : 0; }
     }
-    // Stats que o painel escreve por ID (sem rotulo pescavel por texto) — ver `lerStatsId`.
-    const sid = lerStatsId();
-    if (sid.cdr != null) out.cdr = sid.cdr / 100;
-    if (sid.critico != null) out.critChance = sid.critico / 100;
-    if (sid.critDano != null) out.critMult = sid.critDano;
     return out;
   }
 
@@ -4061,7 +4082,7 @@
   function estimarSet(ids, alvo, opt) {
     const p = player();
     const S = statsSet(ids, opt);
-    const { cdr, pen, lich, chama, liandry, det } = S;
+    const { cdr, pen, penArmadura, lich, chama, liandry, det } = S;
     const ap = S.ap;
     const sk = readSkills();
     let dps = 0; const habs = [];
@@ -5432,6 +5453,90 @@
     return { cfg: a, migrou, cfgVer: CFG_VER };
   }
 
+  function consumirEvento(d) {
+    try {
+      const tipo = String((d && d.tipo) || '').trim();
+      if (!tipo) return;
+      _eventosCont[tipo] = (_eventosCont[tipo] || 0) + 1;
+      _eventosVivos.unshift({ tipo, t: d.t != null ? d.t : null, at: d.at || Date.now(), payload: d });
+      if (_eventosVivos.length > 100) _eventosVivos.pop();
+      const c = farm && farm.current;
+      if (tipo === 'abate') {
+        // motor.js:1807 — ouro/xp/itens EXACTOS do abate (a UI arredonda; o evento não).
+        const ouro = Number(d.ouro), xp = Number(d.xp);
+        if (c) {
+          c.abatesEvento = (c.abatesEvento || 0) + 1;
+          c.ouroEvento = (c.ouroEvento || 0) + (Number.isFinite(ouro) ? ouro : 0);
+          c.xpEvento = (c.xpEvento || 0) + (Number.isFinite(xp) ? xp : 0);
+          const fase = c.fase === 'boss' ? c.bossFase : c.mobFase;
+          if (fase) { fase.abatesEvento = (fase.abatesEvento || 0) + 1; }
+        }
+        logEvent('evento:abate', { nome: d.nome || null, ouro: Number.isFinite(ouro) ? ouro : null, xp: Number.isFinite(xp) ? xp : null, chefe: !!d.chefe, furioso: !!d.furioso, itens: (d.itens || []).length, gemas: (d.gemas || []).length });
+        return;
+      }
+      if (tipo === 'chefeInvoca') {           // motor.js:3142 — as 2 larvas do Barão
+        if (c) { c.chefeInvoca = (c.chefeInvoca || 0) + 1; }
+        logEvent('evento:chefeInvoca', { alvo: d.alvo != null ? d.alvo : null, chefe: c && c.boss ? c.boss : null });
+        return;
+      }
+      if (tipo === 'chefeCarrega' || tipo === 'chefeGolpe' || tipo === 'chefeInterrompido') {
+        if (c) { c[tipo] = (c[tipo] || 0) + 1; }
+        logEvent('evento:' + tipo, { alvo: d.alvo != null ? d.alvo : null, mec: d.mec || null, dur: d.dur != null ? d.dur : null, bloqueado: !!d.bloqueado });
+        return;
+      }
+      if (tipo === 'buffBarao') { if (c) { c.buffBarao = (c.buffBarao || 0) + 1; } logEvent('evento:buffBarao', {}); return; }
+      if (tipo === 'nivel') { logEvent('evento:nivel', { nivel: d.nivel != null ? d.nivel : null }); return; }
+      if (tipo === 'morreu') {
+        if (c) { c.deaths = (c.deaths || 0) + 1; }
+        logEvent('evento:morreu', { por: d.por || d.alvo || null });
+        return;
+      }
+      if (tipo === 'item') { if (c) { c.itensEvento = (c.itensEvento || 0) + 1; } logEvent('evento:item', { id: d.id || null }); return; }
+      if (tipo === 'pocao') { logEvent('evento:pocao', { tipo: d.pocao || d.tipo2 || null }); return; }
+      if (tipo === 'semPocao') { logEvent('evento:semPocao', {}); return; }
+      // os restantes (recall, grupo, kite, fluxo, luden, bravata, divisao, abateRoubado,
+      // recallCancelado...) ficam nos contadores + buffer: já não morrem silenciosamente.
+      logEvent('evento:' + tipo, { resumo: Object.keys(d).filter((k) => k !== '__lolidleAuto' && k !== 'tipo').slice(0, 6) });
+    } catch { /* um evento nunca pode derrubar o motor */ }
+  }
+
+  function estadoVivo() { return _estadoVivo; }
+
+  function eventosVivos() { return _eventosVivos.slice(); }
+
+  function eventosContadores() { return Object.assign({}, _eventosCont); }
+
+  function nivelAlvo(local, papel, nivelJogador) {
+    if (!local) return null;
+    const nm = local.nm || local.faixa || null;
+    if (!nm) return null;
+    const n0 = +nm[0] || 1, n1 = nm[1] != null ? +nm[1] : n0;
+    // `nivelJogador === null` (explicito) = o ramo `nivelJogador == null` do MOTOR: sem jogador
+    // lido, o chefe nasce no topo da faixa + 2 e o mob sai uniforme na faixa. `undefined`
+    // (argumento ausente) continua a usar o jogador lido do HUD, como a extensao sempre fez.
+    const p = (nivelJogador === undefined) ? (player() || {}).nivel : nivelJogador;
+    const semJog = (p == null || !(p > 0));
+    if (papel === 'chefe') return semJog ? n1 + 2 : Math.max(n0 + 2, Math.min(n1 + 2, p + 4));
+    // MOB: clamp(P-2+rand(0..3), n0, n1) -> media P-0,5 (motor.js:1132)
+    return semJog ? (n0 + n1) / 2 : Math.max(n0, Math.min(n1, p - 0.5));
+  }
+
+  const nivelMobDe = (local, nivelJogador) => nivelAlvo(local, 'mob', nivelJogador);
+
+  /** Stats de um monstro/chefe num nível (do motor). */
+  function statsMonstro(nome, nivel) {
+    const m = META.monstros?.[nome];
+    if (!m) return null;
+    const c = curva(nivel);
+    return { nome, nivel, hp: c.hp * m.hp, ad: c.ad * m.ad, as: m.as, armadura: c.armadura * m.armadura, xp: c.xp * m.xp, ouro: c.ouro * m.ouro * 0.75, chefe: !!m.chefe, magico: !!m.magico };
+  }
+
+  const mediaWaveDe = (g) => {
+    if (!g || g.base == null) return 3;                      // motor.js:1137 (valor esperado)
+    if (g.rand == null || !(g.rand > 1)) return g.base;      // sem variacao: a base e a media
+    return g.base + (g.rand - 1) / 2;
+  };
+
   async function refinarMelhores() {
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     // M6 — REGRA DO DONO: "ao conseguir um dos itens ESSENCIAIS, tier A ou mais, pode
@@ -5439,22 +5544,28 @@
     // os que pertencem à build ideal do campeão (`buildIdeal()` é champion-aware — para
     // o Yasuo devolve a build AD, não a AP). O refino do +2 em diante é irreversível,
     // por isso o alvo tem de ser o item que a build realmente quer.
-    // AUTORIDADE DA LISTA — resolvido por DADO, não por palpite: se já houver histórico
-    // medido suficiente, a lista de essenciais é a build que MEDIU melhor (mesmo princípio
-    // que o `melhorSet` no contexto 'mob': o empírico manda). Só quando não há amostra
-    // suficiente é que se cai na `buildIdeal()` teórica. Sem isto, o gate do M6 recusava
-    // refinar a build que ganhou o M1 só porque ela difere da lista teórica.
+    // AUTORIDADE DA LISTA — TK-02-06 (objectivo do dono, ponto 6, verbatim: "Tirar a ultima
+    // muleta: refinarMelhores ainda prefere o medido (n>=3) ao teorico"). O TEÓRICO MANDA: a
+    // lista de essenciais é a `buildIdeal()`, que sai do catálogo do MOTOR (META.itens) e dos
+    // pesos do perfil — a mesma build que a extensão recomenda em todo o lado. O MEDIDO
+    // (`rankBuildsTestadas`, n>=3) já não substitui a lista: passa a VALIDAÇÃO/DESEMPATE e
+    // fica registado no resultado (`medido`/`divergenciaMedido`) para o dono ver a diferença
+    // sem que ela mude a decisão. Motivo: um conjunto que mediu melhor numa região e num
+    // nível não é necessariamente a build certa para o campeão, e refinar é IRREVERSÍVEL.
     let essenciais = [];
     let fonteEssenciais = 'teorico';
+    try { essenciais = (buildIdeal() || []).map(String); } catch { essenciais = []; }
+    // VALIDAÇÃO MEDIDA (n>=3): só informa. Se a build medida tiver itens que a teórica não
+    // tem, a divergência é registada — não aplicada.
+    let medido = null, divergenciaMedido = [];
     try {
       const rank = (rankBuildsTestadas(null) || []).filter((r) => r.mob && r.mob.goldMin != null && ((r.confianca && r.confianca.mob) || 0) >= 3);
       if (rank.length) {
         rank.sort((a, b) => (b.mob.goldMin || 0) - (a.mob.goldMin || 0));
-        essenciais = (rank[0].itens || []).map(String);
-        fonteEssenciais = 'medido(n=' + ((rank[0].confianca && rank[0].confianca.mob) || 0) + ', ' + Math.round(rank[0].mob.goldMin) + ' ouro/min)';
+        medido = { itens: (rank[0].itens || []).map(String), n: ((rank[0].confianca && rank[0].confianca.mob) || 0), ouroMin: Math.round(rank[0].mob.goldMin) };
+        divergenciaMedido = medido.itens.filter((x) => essenciais.indexOf(x) < 0);
       }
     } catch { /* ignore */ }
-    if (!essenciais.length) { try { essenciais = (buildIdeal() || []).map(String); } catch { essenciais = []; } }
     const alvos = readEquip().filter((e) => {
       const it = (META.itens || []).find((x) => String(x.id) === e.base);
       // TETO DE REFINO — mecanica MEDIDA no texto do próprio Ornn:
@@ -5468,13 +5579,14 @@
       if (!it || it.raridade !== 'lendario' || qIdx(e.qual) < qIdx('A') || (e.refino || 0) >= refinoMax || e.base === RABADON) return false;
       return essenciais.includes(String(e.base));
     });
-    // OBSERVABILIDADE: TODAS as saidas (inclusive as de falha) levam o diagnostico.
-    const diag = { essenciais, fonteEssenciais, medido, divergenciaMedido };
-    if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), essenciais, fonteEssenciais };
+    if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), essenciais, fonteEssenciais, medido, divergenciaMedido };
     fecharJanelas(); await humano(300);
-    if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn' };
+    // os ALVOS e a lista de essenciais viajam em TODOS os retornos: quem chamou tem de ver
+    // O QUE ia ser refinado e PORQUÊ, mesmo quando o passo falha (é o log do dono).
+    const extras = { alvos: alvos.map((a) => a.base), essenciais, fonteEssenciais, medido, divergenciaMedido };
+    if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn', ...extras };
     const bt = await waitFor('#janela-npc [data-palavra="forjar"]', 4000);
-    if (!bt) return { ok: false, motivo: 'sem opcao forjar' };
+    if (!bt) return { ok: false, motivo: 'sem opcao forjar', ...extras };
     bt.click(); await humano(650);
     const feitos = [];
     for (const e of alvos) {
@@ -5492,8 +5604,8 @@
       feitos.push({ base: e.base, de: e.refino || 0, para: agora ? (agora.refino || 0) : null });
     }
     fecharJanelas();
-    logEvent('refino', { feitos });
-    return { ok: true, refinados: feitos };
+    logEvent('refino', { feitos, fonteEssenciais, divergenciaMedido: divergenciaMedido.length });
+    return { ok: true, refinidos: feitos, essenciais, fonteEssenciais, medido, divergenciaMedido };
   }
 
   /** MONTAGEM AUTÓNOMA — escolhe e monta sozinha a receita que serve a build.
@@ -6670,8 +6782,19 @@
     // SKILLS POR FASE (pedido do dono): no combate de MAPA os mobs vem em GRUPO, logo conta o
     // numero de ALVOS da skill (o `alvos` do kit do motor, ex.: Katarina R tem alvos: 3). No
     // chefe conta o dano de alvo unico. Desligavel por cfg.skillsPorFase === false.
+    // O peso da fase propriamente dito (e a prova de que a fase muda o CONJUNTO) está no
+    //`pesoFase` abaixo — TK-02-18.
     const porFase = cfg.skillsPorFase !== false && String(fase || '').toLowerCase() === 'mobs';
     const alvosDe = (t) => { const k = KAT[t] || {}; return k.alvos != null ? k.alvos : 1; };
+    // ---- PESO DA FASE (TK-02-18): a fase muda o PESO da skill, não só a ordem dela ----
+    // Antes a fase só mexia na ORDEM (um `if (porFase)` DEPOIS do bloco de disponibilidade,
+    // que nunca era alcançado com `barraPorDisponibilidade` ligado — o default) e o CONJUNTO
+    // de 4 era sempre o mesmo: MEDIDO, ideal mobs == ideal chefe para a Katarina. A fase
+    // tem de decidir QUAIS skills merecem os 4 lugares:
+    //   MOBS  -> vêm em GRUPO: peso = dano × nº de ALVOS (o `alvos` do kit do motor);
+    //   CHEFE -> alvo único: peso = dano só.
+    // NADA é inventado: `alvos` é campo do kit (motor.js:751/759 Katarina Q/R = 3,
+    // motor.js:736 Yasuo M = 4) e o dano é o `dpsPorHabilidade` (fórmulas do motor).
     // ---- OPÇÃO DO DONO: BARRA POR DISPONIBILIDADE (default FALSE) -------------------------
     // ---- BARRA POR DISPONIBILIDADE (DEFAULT TRUE — pedido do dono, ver `DEFAULT`) -----------
     // O dono: "usava tudo disponivel ... e ai removia dos slots pra colocar nos slots as que
@@ -6687,25 +6810,30 @@
     const cdDe = (t) => { const b = (s.bar || []).find((x) => x.t === t); return b && b.cd > 0 ? b.cd : 0; };
     const idxAtual = (t) => { const i = (s.bar || []).map((b) => b.t).indexOf(t); return i < 0 ? 99 : i; };
     const cand = (s.arsenal || []).filter((h) => h.rank > 0 && !(KAT[h.t] && KAT[h.t].passiva));
+    // Peso com que a skill CONCORRE A UM LUGAR na fase atual (multi-alvo em mobs, alvo único
+    // no chefe). É o que faz a barra de mobs diferir da de chefe quando o kit tem skills de
+    // área — e o que deixa a da Katarina IGUAL quando o kit dela já quer as mesmas 4 nas duas
+    // fases (a decisão é do motor, não nossa: Q e R são `alvos: 3` motor.js:751/759 e ficam
+    // dentro nas duas).
+    const pesoFase = (t) => { const d = dpsDe[t] || 0; const a = alvosDe(t); return porFase && a > 1 ? d * a : d; };
     cand.sort((a, b) => {
       const ua = ehUltimateFixa(a.t) ? 0 : 1, ub = ehUltimateFixa(b.t) ? 0 : 1;
       if (ua !== ub) return ua - ub;                       // a ultimate PRIMEIRO: fica SEMPRE dentro (inviolável)
+      // 1) QUEM MERECE O LUGAR: o peso da fase (em mobs, dano × alvos; no chefe, dano).
+      //    Desempata por rank e pela ordem do motor (determinístico).
+      const pa = pesoFase(a.t), pb = pesoFase(b.t);
+      if (pa !== pb) return pb - pa;
       if (porDisp) {
-        // 1) QUEM ESTÁ MAIS PRÓXIMA DE FICAR DISPONÍVEL: prontas primeiro (0), e as em recarga
-        //    pela recarga RESTANTE (menor primeiro).
+        // 2) A ORDEM DENTRO DA BARRA é a do dono ("usava tudo disponivel"): prontas primeiro,
+        //    depois pela recarga RESTANTE (menor primeiro).
         const da = cdDe(a.t), db = cdDe(b.t);
         if (da !== db) return da - db;
-        // 2) ANTI-OSCILAÇÃO (obrigatória): MESMA recarga restante -> NÃO reordena. Mantém quem já
+        // 3) ANTI-OSCILAÇÃO (obrigatória): MESMA recarga restante -> NÃO reordena. Mantém quem já
         //    está na barra e pela posição que ocupa (é isto que evita o churn de 2 s medido).
         const ia = idxAtual(a.t), ib = idxAtual(b.t);
         if (ia !== ib) return ia - ib;
-        return peso(a.t) - peso(b.t);                      // 3) desempate final determinístico (motor)
       }
-      if (porFase) {
-        const aa = alvosDe(a.t) > 1 ? 0 : 1, ab = alvosDe(b.t) > 1 ? 0 : 1;
-        if (aa !== ab) return aa - ab;                     // em mobs, quem bate em varios vem antes
-      }
-      return (dpsDe[b.t] || 0) - (dpsDe[a.t] || 0) || (b.rank - a.rank) || (peso(a.t) - peso(b.t));
+      return (b.rank - a.rank) || (peso(a.t) - peso(b.t));
     });
     return cand.slice(0, BARRA_SLOTS).map((h) => h.t);
   }
