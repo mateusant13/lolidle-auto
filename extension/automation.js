@@ -800,6 +800,8 @@
       const xo = entry.body.match(/\+\s*([\d.,]+\s*[kKmM]?)\s*de experi/i);
       const oo = entry.body.match(/\+\s*([\d.,]+\s*[kKmM]?)\s*de ouro/i);
       logEvent('caca-offline', { xp: xo ? parseNum(xo[1]) : null, ouro: oo ? parseNum(oo[1]) : null });
+      // O ESPIAO do banco (C) observa o caminho REAL: `window.__lolidleRlog` com os numeros ja parseados.
+      if (window.__lolidleRlog) window.__lolidleRlog({ t: 'offline', xp: xo ? parseNum(xo[1]) : null, ouro: oo ? parseNum(oo[1]) : null });
     } else {
     const g = entry.body.match(/(?:Loot|recebeu)[^:]*:\s*(\d[\d.,]*\s*[kKmM]?)\s*de ouro/i);
     const x = entry.body.match(/\+\s*(\d[\d.,]*\s*[kKmM]?)\s*de experi/i);
