@@ -771,7 +771,7 @@
 
   function handleLog(entry) {
     const loc = readLocation();
-    const naBase = /fonte/i.test(loc.text);
+    const naBase = () => /fonte/i.test(loc.text);   // era um BOOLEANO e era CHAMADO como funcao (naBase()) em 4 sitios -> TypeError
     // migra ciclo antigo (sem fases) vindo do storage
     if (farm.current && !farm.current.mobFase) { farm.current.fase = 'mobs'; farm.current.mobFase = novaFase(farm.current.startedAt || Date.now()); }
     // ciclo começa quando estamos numa região
