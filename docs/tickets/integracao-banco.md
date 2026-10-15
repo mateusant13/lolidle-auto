@@ -457,3 +457,12 @@ por isto (o 'trade-off' do H12c e a 'flakiness').
 O teste chama `a2.nivelDifMotor`; a extensao exporta `difNivelMotor`. Exportei o alias -> a suite
 `chefe` corre mais longe e falha noutras 2-5. Logo `nivelDifMotor` tem de ser uma funcao com
 COMPORTAMENTO proprio (nao um alias) - ler o que o teste espera dela (provavelmente (alvo, jogador)).
+## ADENDA 12:30 - nivelDifMotor: e a TABELA (sem argumentos), e ha variacao 15-18 no MESMO ficheiro
+D14/D15 (chefe.test.mjs:157-164) chamam `nivelDifMotor()` **sem argumentos** e leem `.danoMonstro`/`.livre`
+-> e uma funcao que devolve a TABELA efectiva: do RELAY (`META.nivelDif`) quando ele responde, senao a
+fotografia do `motor.js:1199`. Implementada assim (nao um alias do `difNivelMotor`, que e escalar).
+
+**VARIACAO 15-18 no MESMO ficheiro, outra vez** (corrida 1: 18; corrida 2: 15). As 3 que oscilam sao
+provavelmente sensiveis a TEMPO (o `killTimes` usa `Date.now()`; ha um MutationObserver no `#log`).
+O 3-run de ha pouco deu 15/15/15, logo a oscilacao e intermitente - e o piso e 15.
+**Metodo:** medir 3x e usar o MENOR numero (o piso), nao a media; e comparar as LISTAS.
