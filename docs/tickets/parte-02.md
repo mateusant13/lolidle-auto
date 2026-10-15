@@ -68,7 +68,7 @@
 - **Evidencia**: AGENTS.md REGRA Nº 3 — `inject.js:133 meta.curva = { hp: [150,100,1], ... }`, `inject.js:138 meta.grupoSpawn = { base: 2, rand: 3 }`, `inject.js:139 meta.respawn = { clear: 1.5, local: 1.2 }` — *"cópia à mão, congelada"*; AGENTS.md: *"a região do Barão foi buffada, o script não soube, e o dono morreu"*
 - **Fazer**: avaliar a `CURVA` do jogo por nível dentro do mundo MAIN e mandar os números por `postMessage`, em vez de os copiar; manter as chaves actuais como fallback só quando a avaliação falhar, com motivo no log.
 - **Aceitacao**: teste/Hook a mostrar que um buff na CURVA aparece no `meta` sem mexer no código (duas execuções com curvas diferentes dão `meta.curva` diferentes); `bun tools/testes/run.mjs` rc=0.
-- **Evidencia extra (medido ao vivo, parte-02.md:2642 e 2670)**: `curvaHp: [150, 100, 1]` — **exactamente o fallback escrito à mão**, confirmado como o valor que o motor está a usar; correcção pedida em parte-02.md:2685-2693 (`meta.curvaPorNivel = { 29: {hp: CURVA.hp(29), ...} }`, mais ler `grupoSpawn` e `respawn`, que também estão inline no motor)
+- **Evidencia extra (a auditoria provou que a CURVA **está exportada** — `motor.js:273` — e é chamável; a hipótese de que faltava expô-la é FALSA. O que falta é o `inject.js` **chamá-la**. Só `grupoSpawn` (`motor.js:1124`) e `respawn` (`motor.js:1625/3046`) são inline. Custo de não a ler: um buff de +20% faz a extensão subestimar vida e dano de **todos** os monstros em **16,7%** (Barão nv42: toma 539/s real, acha 449/s) — parte-02.md:9863-9864 e 9898.) · - **Evidencia extra (medido ao vivo, parte-02.md:2642 e 2670)**: `curvaHp: [150, 100, 1]` — **exactamente o fallback escrito à mão**, confirmado como o valor que o motor está a usar; correcção pedida em parte-02.md:2685-2693 (`meta.curvaPorNivel = { 29: {hp: CURVA.hp(29), ...} }`, mais ler `grupoSpawn` e `respawn`, que também estão inline no motor)
 - **Estado**: pendente
 
 ### TK-02-10 | P2 | GUI sem secções de farm (auto farm sozinho vs auto farm por item, com escolha dos itens)
@@ -884,6 +884,7 @@
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:7856-7870 — `motor.js:560  Katarina E: { ..., pen: [0.2, 0.23, 0.26, 0.29, 0.32, 0.35, 0.38, 0.41, ...] }` (a E dela penetra 20% da armadura no rank 1, até ~44% no rank 10); e o motor da extensão lê a pen só dos itens: `automation.js:1472  const pen = k.penSuspiro != null ? k.penSuspiro : txt.penArmadura;` com a nota “do TEXTO DO ITEM”; *“A pen do KIT não é usada em lado nenhum … a matemática de build ignora que a tua E já penetra 20% — e por isso sobrevaloriza o Cajado do Vazio e todos os itens de pen”*; e *“afecta toda a decisão de build que envolva penetração — em qualquer campeão que tenha pen no kit”* (parte-02.md:7870)
 - **Fazer**: incluir a penetração do kit (por rank, lida de `motor.js`) na matemática de build/DPS, somada à pen dos itens e limitada pelo tecto do jogo (`motor.js:529`); varrer todos os campeões com `pen` no kit.
+- **CORRECÇÃO (parte-02.md:9625 e 9646-9652 e 9999)**: a pen citada é do **Darius** (`motor.js:560`); o E da Katarina (`motor.js:743`) **não** tem `pen` — há **um único** `pen:` em todo o game-src. **O motor já usa** a pen do kit do Darius (`motor.js:516 → 539 → 1202`): **não havia bug ali**. Quem ignora é a matemática de build (`statsSet`, `estimarSet`, `scoreSet`, `valorBuff`) e o `inject.js:113-115` não serializa o campo. Impacto: 1 de 7 campeões, 20%→45% = **+12,3% a +32,9%** de dano físico.
 - **Aceitacao**: para a Katarina, o valor do Cajado do Vazio e dos itens de pen desce depois de a pen do kit entrar; número medido antes/depois; `bun tools/testes/run.mjs` rc=0 com caso novo por campeão com pen no kit.
 - **Estado**: pendente
 
@@ -1087,3 +1088,151 @@
 - **Fazer**: manter o AGENTS.md como documento vivo e acrescentar as provas novas que apareceram depois (o `3036` arquivado como penMag, a Voracidade, as larvas, o ratio AD/AP analítico).
 - **Aceitacao**: AGENTS.md com as provas actuais e data; nenhuma regra sem uma prova que a originou.
 - **Estado**: pendente
+
+---
+
+## Lote 23 — âncora `parte-02-lote-23` (leitura até parte-02.md:10250 e fim do histórico)
+
+### TK-02-142 | P1 | `player()` continua a não devolver o `rv` — o valor é lido do painel e deitado fora
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:9868 — *“A regex era código morto (0 acertos em 108 itens) e o readStats não lia o rv do painel. O OUTRO AGENTE JÁ CORRIGIU METADE durante a auditoria: removeu a regex (automation.js:4125) e pôs ‘Roubo de vida’ no readStats (1225) — MAS o player() continua a NÃO devolver rv (automation.js:1239): o valor é lido do painel e deitado fora.”*; confirmado em parte-02.md:9902 e 9982 (*“E o rv continua a ser lido e deitado fora”*)
+- **Fazer**: fazer o `player()` devolver o `rv` lido do painel e ligá-lo ao cálculo de cura (`motor.js:1226-1228`).
+- **Aceitacao**: `player().rv` devolve o valor do painel ao vivo (marcador discriminante) e a cura/s passa a usá-lo; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-143 | P1 | Peso do roubo de vida: hoje vale 0,038% do valor do Rabadon — o motor usa-o para sobreviver
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:9868 — *“FALTA isso + subir o peso. Valor hoje: 0,038% do valor do Rabadon (0,12 contra 315). Valor no motor: 87 poções / 9 570 de ouro no nv20; o Yasuo com rv 18% chega a 0 poções no nv38.”*
+- **Fazer**: subir o peso do `rv` para reflectir a cura medida (por `cura/s = dpsAtaque × rv`, `motor.js:1226-1228`), depois de TK-02-142.
+- **Aceitacao**: o valor do rv na pontuação sobe para a ordem de grandeza da cura que ele produz (número antes/depois) e a build de chefe passa a escolher itens com rv quando a cura decide.
+- **Estado**: pendente
+
+### TK-02-144 | P1 | As 13 passivas de estado medidas em HP/s evitado — Rylai vale −129 HP/s e a extensão dá-lhe 0
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:9869 — *“(c) AS 13 PASSIVAS DE ESTADO — modelei todas em HP/s de dano recebido evitado (não pedi peso). Rylai 3116 = −129 HP/s (mais que Banshee −27, Zhonya −11,2 e Anjo −7,6 SOMADOS) e a extensão dá-lhe 0. Luden 6655 = 102 dps em 3 alvos contra 34 dps em 1 alvo. Só fica UM pedido de regra: a taxa de troca SEGUNDOS↔OURO.”*
+- **Fazer**: implementar o valor das passivas de estado em HP/s de dano evitado (ou dps por número de alvos), usando a medida da auditoria; nenhum peso inventado.
+- **Aceitacao**: Rylai e Luden com valor diferente de 0 na pontuação, justificado pela medida; as 13 passivas cobertas; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-145 | P1 | Divergência montarBuildDe vs simulador: 484 vs 1196 dps (Katarina), 2102 vs 6269 (Yasuo) — o simulador está certo
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:9870 — *“(d) AS TRÊS DIVERGÊNCIAS — Katarina nv29 vs Barão: montarBuildDe 484 dps vs simulador 1 196 dps (×2,47), listas sem um único item em comum. Yasuo nv45: 2 102 vs 6 269 (×2,98) e a diferença é 37,7 s / 1 170 de ouro. Quem está certo é SEMPRE o simulador. O scoreSet é o pior dos três: o statsSet não soma ad, va nem critico em ramo nenhum.”*; refeito em parte-02.md:9946-9956
+- **Fazer**: substituir o modelo de build do motor pelo do simulador (ou fazê-lo validar contra ele), e corrigir o `statsSet` para somar `ad`, `va` e `critico`.
+- **Aceitacao**: a build do motor passa a bater com a do simulador (ou a divergência explicada com `file:linha`); teste no banco a comparar os dois modelos; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-146 | P2 | `montarBuildDe` nunca lê o nível — a lista é idêntica do nv1 ao nv50
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:9876 e 9960-9968 — *“montarBuildDe NUNCA lê o nível: a lista é IDÊNTICA do nv1 ao nv50. O que muda é sobrevive/segundos/poções: Katarina queima 21 210 de ouro em poções no nv30 e 3 810 no nv38; Yasuo chega a 0 poções no nv38 (a cura 334/s excede o dano recebido 229/s).”*; e *“É exactamente o que disseste: ‘as poções ficam caras por ser muito uso, a build ideal muda de novo’”*
+- **Fazer**: fazer a build ideal depender do nível (com o critério do dono: sobrevive · segundos · poções · ouro), incluindo o ponto em que o roubo de vida passa a valer.
+- **Aceitacao**: a build muda em níveis diferentes, com o número que a muda (poções/ouro/segundos) e o critério do dono impresso; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-147 | P1 | Oito números já errados: 6 itens do catálogo remendado + o `tierDe` 10× errado
+- **Ficheiro(s)**: extension/automation.js, extension/inject.js
+- **Evidencia**: parte-02.md:9861 e 9896 — *“JÁ ERRADAS HOJE (classe c): 6 itens do catálogo remendado (inject.js:161 manda I.ITENS_DADOS cru; o motor remenda 2022/1006/3057/3108/3802/4629 em motor.js:16-26 — a extensão recebe cdr/regen/efeito AUSENTES) + o tierDe (qIdx×10+refino diz que 1 qualidade = 10 refinos; motor.js:252 diz 1 degrau B→A ≈ 1,25 refinos — está 10× maior).”*
+- **Fazer**: passar a usar o catálogo já remendado pelo motor (em vez de `I.ITENS_DADOS` cru) e corrigir o `tierDe` para a fórmula do motor (`motor.js:252`).
+- **Aceitacao**: os 6 itens vêm com cdr/regen/efeito do motor, e o `tierDe` dá 1 qualidade ≈ 1,25 refinos; testes a cobrir os dois.
+- **Estado**: pendente
+
+### TK-02-148 | P1 | Voracidade: recarga efectiva 0,74 s vs 5,24 s (erro 7,1×) e as larvas também cortam 1,5 s
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:9867 e 9900 — *“CDR-médio da Voracidade vs o CDR de item (23,46%): 50% no farm (20 abates/min) · 20,1% na onda do Barão · 15,8% no Dragão · 19,2% no Arauto · 13,8%-29,0% no Barão … Na Q, a recarga efectiva com 3 abates é 0,74 s contra os 5,24 s que a extensão calcula → subestima a taxa de lançamento em 7,1×. CORRECÇÃO IMPORTANTE que apanhou depois (a regra ‘ler a LISTA’): o Barão invoca 2 larvas por ciclo de 34,3 s (motor.js:3080/3118) e o corte da Voracidade (motor.js:1789) NÃO tem guarda i.invocado — cada larva também corta 1,5 s. A minha primeira leitura dizia 5% contra o chefe; é falso para o Barão.”*; e *“O teu instinto sobre as larvas estava certo”* (parte-02.md:9944)
+- **Fazer**: modelar a Voracidade com o número de abates (larvas incluídas, sem guarda `i.invocado`) e usar a recarga efectiva em vez da recarga crua (`automation.js:1403, 3280`).
+- **Aceitacao**: recarga da Q com 3 abates = 0,74 s (e não 5,24 s); DPS de habilidades corrigido; teste a cobrir larvas como abates.
+- **Estado**: pendente
+
+### TK-02-149 | P1 | Darius: Hemorragia não modelada (+358 AD no nv50, DOT 198/s) e pen do kit descartada
+- **Ficheiro(s)**: extension/automation.js, extension/inject.js
+- **Evidencia**: parte-02.md:10246-10247 — *“Darius: Hemorragia não modelada de todo. motor.js:1631 danoSangue=(13+0,3*bonusAd+4*nivel)/5 por acúmulo/s (5 acúmulos) + motor.js:1276-1281/1329/1332 bonusPoder(nivel)=30+200*(min(n,18)-1)/17+4*max(0,n-18) → +358 AD no nível 50 (um Darius de 300 AD passa a 658 = x2,19) por 5 s ao chegar a 5 acúmulos. Contas: DOT = 125/s (nv30), 161/s (nv40), 198/s (nv50) depois de armadura+pen. Zero referências em automation.js.”*; e *“Pen de armadura do KIT (Darius E 20%→45%, motor.js:560). inject.js:113-115 descarta o campo pen; buffDoTexto (automation.js:1454) só lê /ignoram X% da armadura/ e a E diz ‘Dá penetração de armadura (passiva)’ (motor.js:561). Prova: mit 0,4098 → 0,5580 vs Barão (armadura 144) = +36,2% de dano”*
+- **Fazer**: serializar o campo `pen` do kit no `inject.js`, usar a pen de armadura do kit na mitigação física e modelar a Hemorragia do Darius (dano por acúmulo e o `bonusPoder`).
+- **Aceitacao**: Darius com pen do kit dá +36,2% contra o Barão e a Hemorragia entra no DPS (DOT 125/161/198/s por nível); testes novos.
+- **Estado**: pendente
+
+### TK-02-150 | P1 | Pen mágica usada como pen de ARMADURA em campeão AD, e escudos fora da vida efectiva
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:10248 e 10250 — *“Pen MÁGICA usada como pen de ARMADURA em campeão AD (ao contrário): automation.js:3235/3243 soma pen += it.penMag, e 3285/5398 usam-no em armadura*(1-pen). O 3036 não tem penMag (verificado). Muda a escolha de itens em todos os AD.”*; e *“Escudos fora da vida efectiva (avaliar só usa player.vida, automation.js:1657-1679): Fluxo do Yasuo = 80+28*nível = 1.480 no nv50 (+37% de vida), Taric F 1.200, Zac G 800, 3053 ~1.000, 3157/3026.”*
+- **Fazer**: separar pen mágica de pen de armadura em todos os sítios de decisão de item (`automation.js:3235/3243` vs `3285/5398`) e incluir os escudos na vida efectiva usada pelo `avaliar`.
+- **Aceitacao**: campeão AD deixa de receber pen de armadura vinda de pen mágica; `avaliar` conta os escudos (Fluxo do Yasuo = +1.480 no nv50); testes novos.
+- **Estado**: pendente
+
+### TK-02-151 | P2 | “R reinicia em 2 s” NÃO EXISTE no motor — só Q/W/E têm Voracidade
+- **Ficheiro(s)**: extension/automation.js, docs/ (corrigir o que foi escrito)
+- **Evidencia**: parte-02.md:9867 — *“O dono falou em ‘o R reinicia em 2 s’: NÃO EXISTE no motor (só Q/W/E) — reportado como não verificado.”*; e a linha citada antes em parte-02.md:6580 (`motor.js:1853 usar(R, {}, 2); // o abate reinicia a Guilhotina em 2s`)
+- **Fazer**: verificar no `motor.js` se a R tem algum efeito por abate; se não tiver, remover dos documentos e do modelo o “R reinicia em 2 s”.
+- **Aceitacao**: confirmação com `file:linha` (existe ou não existe) e nenhum documento a repetir a afirmação falsa.
+- **Estado**: pendente
+
+### TK-02-152 | P2 | A ordem correcta (dia 1): ler o motor inteiro, calculadora com zero números à mão, simulador, observação, automação
+- **Ficheiro(s)**: docs/ (plano) · tools/ (calculadora)
+- **Evidencia**: parte-02.md:10168-10232 — *“A diferença não é trabalhar mais. É a ORDEM … Hora 1-2 — LER O MOTOR INTEIRO … Hora 2-3 — A CALCULADORA. Um ficheiro: calc-jogo.mjs. Todas as fórmulas do motor extraídas por regex com file:linha … Regra dura: ZERO números escritos à mão … Hora 5-6 — A AUTOMAÇÃO … Sem matemática própria — pergunta à calculadora. É a única camada que devia ter sido escrita no fim — e foi a primeira.”*; e as cinco regras em parte-02.md:10212-10218 (zero números na automação · uma implementação por mecânica · testes comparam com a calculadora · antes de pedir regra procurar no motor · antes de responder confirmar no motor)
+- **Fazer**: escrever o plano com essa ordem e a calculadora (`tools/calc-jogo.mjs` já existe no repo — verificar se cobre as fórmulas) com zero números copiados; migrar a automação para perguntar à calculadora.
+- **Aceitacao**: `tools/calc-jogo.mjs` (ou equivalente) com cada fórmula extraída do motor e `file:linha`; automação sem números próprios; validação contra os tooltips do jogo.
+- **Estado**: pendente
+
+---
+
+## DECISÕES DO DONO (não são tickets de worker — perguntar **uma vez, em lote**)
+
+1. **Taxa de troca SEGUNDOS ↔ OURO** (parte-02.md:9869 e 9980) — a única regra que falta às 12 correcções da auditoria; sem ela não se pode ordenar “mais rápido” contra “mais barato”.
+2. **Âmbito: modelar a penE do Darius (1 de 7 campeões) ou declarar a limitação?** (parte-02.md:9634).
+3. **Âmbito: alargar o simulador de chefes às curas do Darius / Taric / Zac / Lux, ou declarar a limitação?** (parte-02.md:9635).
+4. **As tabelas do `docs/sim-baron.md` descrevem o personagem do dono (painel medido) ou um modelo?** (parte-02.md:9633) — o doc contradiz-se (`1 medido, `5 modelo) e **isso muda mata↔morre**.
+5. **Lendário duplicado com o MERCADO CHEIO**: ler à risca “nunca ao Lojista” = guardar na mochila até abrir lugar — foi a leitura do agente, não decisão do dono (parte-02.md:5299-5309 e 5392-5398). Confirmar ou mudar.
+6. **Destino de item quando não há lugar no mercado** (AGENTS.md REGRA Nº 2) — política, não dado.
+7. **Preço sem comparável**: o dono já respondeu **1,5M** (parte-02.md:1618) — implementado em TK-02-37; fica registado que está **decidido**.
+8. **Fuga de chefe**: o dono já respondeu *“é pra fugir de qualquer coisa que mata, pra qualquer boneco, em qualquer situacao”* (parte-02.md:1618) — implementado em TK-02-33; fica registado que está **decidido**.
+9. **Bota de pen para tanque AP** (Taric/Zac com `3170` em vez de `3175`) — regra nova que o agente não inventou (parte-02.md:3124-3125, 3177, TK-02-70).
+10. **Troca de item em combate no Barão**: o jogo permite fora de arenas (`motor.js:3056/3061`) e o dono perguntou se se deve trocar a bota quando spawnam larvas (parte-02.md:8314-8367) — a conclusão medida é **não** (as larvas são condição permanente), mas a política de troca em combate é do dono.
+
+---
+
+## FECHADOS NO HISTÓRICO (provados — **não** precisa de worker; listado para não repetir trabalho)
+
+| ticket | prova no histórico |
+|---|---|
+| TK-02-01 · épico → Lojista | `3108~A → VENDER_LOJISTA` ao vivo (parte-02.md:1443) |
+| TK-02-02 · rotação de skills | `rotacao_pai: "manutencao"` e barra `[R,Q,A,W]` com a ultimate (parte-02.md:897-904, 2789-2791) |
+| TK-02-03 · drops por classe | `porClasse[minhaClasse]` provado: AD usa 0,02, AP 0,07 no mesmo item/zona (parte-02.md:3035) |
+| TK-02-04/TK-02-26 · `3031`/`3089` intocáveis + GUI | tabela `PRIORIDADE_EXTREMA` (`automation.js:26-58`) medida em 3 campeões; falta só a GUI (TK-02-26) |
+| TK-02-08 · backtest com dado fresco | 30 ciclos, IC95, 3.830 ouro/min (parte-02.md:1160-1173, 1224-1230) |
+| TK-02-15 · `build-mob-chefe.md` | subsunção pelos 5 documentos novos (auditoria-matematica, pendencias-motor, build-ideal-final, build-por-luta, yasuo-roubo-de-vida) |
+| TK-02-16 · chefe por abate | tabela passa a `perKill` (parte-02.md:2267) |
+| TK-02-17 · planBag sem mochila | `planBag(scanBag(true))` → 12 acções (parte-02.md:1086-1090) |
+| TK-02-19 · pt-BR e sem história | verificado no ecrã: `instancia → false`, `cfg: → false` (parte-02.md:3704-3713) |
+| TK-02-20 · botões de estado | 4 estados com rótulo dependente do estado (parte-02.md:1767-1773) |
+| TK-02-21 · abas / Painel | 8 → 4 abas; `painelLen 142 → 10.905` (parte-02.md:1761-1762) |
+| TK-02-22 · exportar `getFarm().cycles` | snapshots regenerados (parte-02.md:665-671, 823-830) |
+| TK-02-31 · contagem dupla do CDR | `vp3171: 0` (era 90) e guarda `auditoriaPassivas().duplas.length === 0` (parte-02.md:2069, 3038) |
+| TK-02-33 · fuga em manutenção | `fugir: "manutencao"` e fuga sem exigir chefe (parte-02.md:3040, 3069) |
+| TK-02-34 · auditoria de hardcodes | 259 hardcodes contados; 5 docs (parte-02.md:3187-3195, 10104-10124) |
+| TK-02-35 · `× 2,2` do Lich | medido: proc limitado por habilidades/s; extensão acerta na Katarina (parte-02.md:2893-2901) |
+| TK-02-36 · regra dos 4 níveis | existe: `motor.js:1121` (parte-02.md:4587, 4695) |
+| TK-02-37 · preço 1,5M | `precoSemComparavel: 1500000` ao vivo (parte-02.md:2829, 7112) |
+| TK-02-39 · filtro de morte | `baraoMorte: true` e Barão fora do top 3 (parte-02.md:2209-2217, 7106) |
+| TK-02-40 · memória de região | `regiaoSegura`: memória letal descartada, segura usada (parte-02.md:3044) |
+| TK-02-42 · asserções do pin por classe | 4 asserções actualizadas + controle AP (parte-02.md:2057-2072) |
+| TK-02-45 · UX/botões \| interruptores à esquerda | árvore de 17 switches com independência (parte-02.md:2317-2347) |
+| TK-02-52 · `barraPorDisponibilidade` | default TRUE, cadência 2000 ms, prova do cenário de 4 skills (parte-02.md:3046) |
+| TK-02-62 · `mit` sem `RM_MONSTRO` | 4 sítios corrigidos; prova bit a bit contra o simulador (parte-02.md:4268-4283) |
+| TK-02-68 · simulador do Barão | primeiro nível que mata, poções, DPS por build (parte-02.md:4594-4603) |
+| TK-02-73 · `meta.rmMonstro` no inject | pedido pendente — **não** encontrar como fechado no histórico (ficou no limite do subagent, parte-02.md:4270, 5524, 5613) |
+| TK-02-78 · `valorEquip`/`valorVenda` | 4.692 e 5.625 conferidos ao vivo (parte-02.md:4948-4950) |
+| TK-02-85 · Lojista como descarte | `n.vender` só por espaço; `_venda.receita = 0` (parte-02.md:5502, 5559) |
+| TK-02-86 · lendário nunca ao Lojista | 3 sítios corrigidos + 8 asserções (parte-02.md:5497-5505, 5376-5390) |
+| TK-02-88 · roubo de vida no Yasuo | respondido: entra por acidente (18%), 0,02%, regex morta (parte-02.md:5770-5780) |
+| TK-02-89 · `/(1−cdr)` sobre dano total | 2 sítios (`scoreSet` + `rankItens`); margem do CDR caiu 43% (parte-02.md:6004-6024) |
+ | TK-02-95 · `scoreSet` não lia `~A` | causa (b) confirmada e corrigida (parte-02.md:6511-6524) |
+| TK-02-96 · CDR dos atributos | `foco = 0` medido no painel; os 23,46% são do Ímpeto (parte-02.md:6668-6690) |
+| TK-02-101 · build por fase | `mobs 3175,3089,3135,3100,6655` vs `chefe 3175,3089,3153,3135,6653` (parte-02.md:6833-6841) |
+| TK-02-102 · premissa falsa | refutada e registada no simulador (parte-02.md:7457, 7520) |
+| TK-02-104/TK-02-109 · `statsSet`/pen | `3175~A` → pen 0,15 (não 0,1725); `4629~A+3` → cdr 0,2346 (parte-02.md:7676-7680) |
+| TK-02-107 · simulador | crash corrigido, exit 0 (parte-02.md:7453-7457) |
+| TK-02-108 · peças reais | build do dono recomendada ao vivo (parte-02.md:7774-7776, 7803-7814) |
+| TK-02-110 · conflito de escritores | resolvido por âncoras no fim; fica o risco (registo) |
+| TK-02-112 · 5 lacunas | `8c293746` entregou `docs/pendencias-motor.md` (parte-02.md:9601-9643) |
+| TK-02-115 · Fonte automática | `cofreCadenciaMin: 10` e `lerCofre` em `NECESSIDADES_PRIMARIAS` (parte-02.md:8027-8038, 8082-8090) |
+| TK-02-134 · `3036` como penMag | corrigido: penMag igual com e sem o 3036 (parte-02.md:9992-9996) |
+| TK-02-140 · medição do ratio | `tools/medir-peso-ad.mjs` criado com controlos; ratio 0,135 (parte-02.md:9730-9746) |
+
+TOTAL: 152 tickets (P0=23 P1=74 P2=52 P3=3)

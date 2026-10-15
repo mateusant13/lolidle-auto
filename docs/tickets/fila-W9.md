@@ -103,3 +103,40 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Fazer**: correcção sistemática, não remendo: `valorPassiva` só pode modelar o que **não está** em campo estruturado; auditar uma a uma todas as regex acrescentadas contra os campos dos itens; e uma **guarda** que percorre os 108 itens e falha se voltar a haver duplicação (parte-02.md:1430).
 - **Aceitacao**: a guarda corre no banco e falha se algum item tiver campo e passiva a serem somados duas vezes; `vp3171` e `vp4629` deixam de valer 90 (medir o valor novo e justificá-lo); `bun tools/testes/run.mjs` rc=0.
 - **Estado**: pendente
+
+
+## TICKETS NOVOS (acrescentados pelo Lead 22:40 — P0 do leitor 2)
+### TK-02-109 | P0 | O pen NÃO escala com qualidade/refino — o agente mandou escalá-lo e introduziu um bug
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:7431 e 7439-7446 — *“O pen NÃO é escalado por qualidade/refino: motor.js:251-255 reescala ad/ap/mana/vida/armadura/rm/va/rv/critico/regen/cdr e NÃO penMag; a dica MEDIDA do 3175~A diz ‘15% de penetração mágica’ (farm.json). Logo ‘17,25% com A’ está errado”*; e *“Confirmado … motor.js:254-255 ad*m, ap*m, … cdr*m ↑ penMag NÃO está na lista **O 3175~A dá 15% de pen, não 17,25%. E eu mandei o motor escalá-lo — introduzi um bug.**”*; confirmação pela medição em parte-02.md:7479 (*“a medição do dono de 0,55 = 0,40 (Vazio) + 0,15 confirma”*)
+- **Fazer**: retirar a escala de qualidade/refino do `penMag` em todos os sítios onde foi introduzida (`efeitosEquipados`, `statsSet`, `parseSlotId`/`mult`, `valorEquip`/`valorVenda` se aplicarem) e deixar o pen como valor cru do catálogo; manter a escala para os campos que o motor escala (`motor.js:251-255`).
+- **Aceitacao**: `3175~A` → pen 0,15 (não 0,1725) e `4629~A+3` → cdr 0,2346 (continua escalado); medição ao vivo a dar `pen 0,55` com a build do dono; `bun tools/testes/run.mjs` rc=0 com caso novo.
+- **Estado**: pendente
+
+### TK-02-127 | P0 | Falta a magnitude do roubo de vida na pontuação (`cura/s = autoDps × rv`) — o `ad: 0` do perfil é a causa
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:8712-8725 — feito: `readStats` passou a ler o Roubo de vida do painel e a **regex morta foi removida** (*“a auditoria do catálogo REAL (108 itens) deu ZERO acertos — era código morto que parecia tratar do assunto”*); NÃO feito: *“A magnitude do rv na pontuação (cura/s = dano_de_auto/s × rouboVida, motor.js:1226-1228) e o rv a valer ZERO numa build AP: é UMA só alteração de modelo — o termo de cura precisa do DANO DE AUTO-ATAQUE DA BUILD, e o poder(i) do montarBuildDe pontua item a item, sem essa noção”*; e parte-02.md:8980 e 9059-9061 (*“para a Katarina, o mesmo bloqueio do ponto 1 (perfil ad: 0) faria o rv continuar a valer ~0 mesmo com a fórmula certa”*); número em parte-02.md:8809-8811 (`cura/s = dano_de_AUTO_ATAQUE/s × rouboVida`; 17 cura/s em AP vs 269 em AD — 16× mais)
+- **Fazer**: implementar o termo de cura por `cura/s = autoDps × rv` (`motor.js:1226-1228`) usando o dano de auto-ataque da build (o `det.autoCura`/`curaRV` que o simulador já expõe), e fazê-lo depender do peso do AD do perfil (ver TK-02-128).
+- **Aceitacao**: a mesma % de rv dá valores diferentes por base (17 cura/s em AP vs 269 em AD) e a build de chefe passa a escolher itens com rv quando a cura decide a sobrevivência; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-134 | P1 | Bug irmão: o `3036` (pen de ARMADURA) está arquivado como `penMag` — dano mágico falso de +13% a +19,6%
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:9626 e 9654-9662 — *“BUG IRMÃO (este atinge a Katarina): automation.js:3251 arquiva o ‘30% de penetração de armadura’ do 3036 como penMag → para campeões de magia o modelo aplica 30% de pen MÁGICA que o motor não dá (motor.js:529 não tem termo do 3036) → +13,0% (arm 104) a +19,6% (arm 200) de dano mágico falso. O 3036 está na build IDEAL dela.”*; e *“Para campeões de magia, o modelo aplica 30% de pen MÁGICA que o motor não dá … O motor está a inflacionar a build que recomenda.”*; correcção pedida em parte-02.md:9641 (*“Corrigir o statsSet para separar pen de armadura (3036) de pen mágica (3135/3175) — automation.js:3248-3251”*)
+- **Fazer**: separar pen de armadura de pen mágica no `statsSet` (`automation.js:3248-3251`), para que o `3036` só entre na penetração de armadura (ramo físico, `motor.js:516→539→1202`) e nunca como pen mágica (`motor.js:529`).
+- **Aceitacao**: com o `3036` na build, o dano mágico deixa de ter os +13% a +19,6% falsos; número antes/depois contra armadura 104 e 200; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-142 | P1 | `player()` continua a não devolver o `rv` — o valor é lido do painel e deitado fora
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:9868 — *“A regex era código morto (0 acertos em 108 itens) e o readStats não lia o rv do painel. O OUTRO AGENTE JÁ CORRIGIU METADE durante a auditoria: removeu a regex (automation.js:4125) e pôs ‘Roubo de vida’ no readStats (1225) — MAS o player() continua a NÃO devolver rv (automation.js:1239): o valor é lido do painel e deitado fora.”*; confirmado em parte-02.md:9902 e 9982 (*“E o rv continua a ser lido e deitado fora”*)
+- **Fazer**: fazer o `player()` devolver o `rv` lido do painel e ligá-lo ao cálculo de cura (`motor.js:1226-1228`).
+- **Aceitacao**: `player().rv` devolve o valor do painel ao vivo (marcador discriminante) e a cura/s passa a usá-lo; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
+
+### TK-02-150 | P1 | Pen mágica usada como pen de ARMADURA em campeão AD, e escudos fora da vida efectiva
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:10248 e 10250 — *“Pen MÁGICA usada como pen de ARMADURA em campeão AD (ao contrário): automation.js:3235/3243 soma pen += it.penMag, e 3285/5398 usam-no em armadura*(1-pen). O 3036 não tem penMag (verificado). Muda a escolha de itens em todos os AD.”*; e *“Escudos fora da vida efectiva (avaliar só usa player.vida, automation.js:1657-1679): Fluxo do Yasuo = 80+28*nível = 1.480 no nv50 (+37% de vida), Taric F 1.200, Zac G 800, 3053 ~1.000, 3157/3026.”*
+- **Fazer**: separar pen mágica de pen de armadura em todos os sítios de decisão de item (`automation.js:3235/3243` vs `3285/5398`) e incluir os escudos na vida efectiva usada pelo `avaliar`.
+- **Aceitacao**: campeão AD deixa de receber pen de armadura vinda de pen mágica; `avaliar` conta os escudos (Fluxo do Yasuo = +1.480 no nv50); testes novos.
+- **Estado**: pendente

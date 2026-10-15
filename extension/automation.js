@@ -3738,7 +3738,11 @@
       const cdBase = k.rec ? k.rec(h.rank) : null;
       // VORACIDADE POR ABATE (motor.js:1789): Q/W/E andam 1,5 s mais rapidas por abate.
       const cd = cdBase != null ? cdVoraz(cdBase * (1 - cdr), h.t) : null;
-      const d = cd ? total / cd : 0;
+      // CRITICO (motor.js:1700/1213): as habilidades de AUTO (o ataque reforcado, ex. a Sede de
+      // Sangue da Katarina) rolam a chance de critico; as skills puras nao.
+      let critHab = 1;
+      if (k.auto) { const cc = critDoSet(p, S); critHab = multCrit(cc.chance, cc.mult); }
+      const d = cd ? (total * critHab) / cd : 0;
       dps += d; habs.push({ t: h.t, nome: h.name, dps: Math.round(d) });
     }
     // MITIGAÇÃO PELO TIPO DE DANO do campeão: o MAGO faz dano MÁGICO -> armadura do alvo ×
@@ -3750,9 +3754,8 @@
     // parcela dos autos — a MESMA fronteira com que o CDR e separado. Sem isto a build AD/critico
     // saia 2,5x–2,8x subestimada contra o chefe (docs/auditoria-do-jogo.md C7).
     {
-      const fh = fracHabs();
       const c = critDoSet(p, S);
-      dps *= (fh + (1 - fh) * multCrit(c.chance, c.mult));
+      dps *= (1 + fracAuto() * (multCrit(c.chance, c.mult) - 1));
     }
     if (chama) dps *= 1 + (alvo?.chefe ? 0.066 : 0.033);   // ~1/3 (chefe) / ~1/6 (mob) da luta abaixo de 40%
     let burn = 0;
@@ -5948,6 +5951,25 @@
     } catch { /* sem arsenal */ }
     return 0;   // sem dados de habilidades o critico NAO pontua (controlo: sem skills, sem ganho)
   }
+  /** Fraccao do dano que vem de AUTO-ATAQUES — a fronteira do critico (motor.js:1700:
+   *  `Math.random() < a.critico` e rolado no ataque, nao nas habilidades).
+   *  Duas partes: (a) as habilidades de AUTO do arsenal (o ataque reforcado — Sede de Sangue da
+   *  Katarina, KAT_FB:1249 `auto: true`) e (b) o auto-ataque puro, estimado como
+   *  `dano x velocidade de ataque` (a MESMA conta que o `player()` documenta como piso de DPS).
+   *  Skill PURA nao rola critico — logo nao leva o multiplicador. */
+  function fracAuto() {
+    try {
+      const d = dpsPorHabilidade() || {};
+      const p = player() || {};
+      const habs = d.habs || [];
+      const dh = habs.filter((h) => !h.auto && !h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
+      const daH = habs.filter((h) => h.auto || h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
+      const auto = (p.dano || 0) * (p.va || 0);
+      const da = daH + auto;
+      if (dh + da > 0) return da / (dh + da);
+    } catch { /* sem arsenal */ }
+    return 0;
+  }
   /** Chance e multiplicador de critico de um CONJUNTO: o do jogador (painel) + o que os itens
    *  do conjunto somam. O +0,4 do 3031 so entra se o jogador ainda nao o tem equipado. */
   function critDoSet(p, S) {
@@ -5975,18 +5997,21 @@
     // A REPARTIÇÃO vem do `dpsPorHabilidade` (o modelo que já existe e divide cada habilidade pela
     // recarga efectiva) — não há duas contabilidades de CDR a divergir.
     // ANTES: `d = base * mit / (1 - S.cdr)` -> 15% de CDR valia +17,6% em TODO o dano, autos incluídos.
-    const fracHabs = fracHabs();   // sem dados de habilidades o CDR NÃO pontua (controlo: sem skills, sem ganho)
+    const fHabs = fracHabs();   // sem dados de habilidades o CDR NÃO pontua (controlo: sem skills, sem ganho)
     // VORACIDADE POR ABATE (motor.js:1789) entra no MESMO factor: o lancamento da Q/W/E fica
     // 1/(1 + 1,5/T) mais rapido, multiplicativo com o CDR. Só a parcela das habilidades acelera.
     const _vor = voracidadeDe();
     const _km = killsMinAoVivo();
     const ganhoVor = (_vor && _km > 0) ? _vor.valor / (60 / _km) : 0;
-    const fatorCdr = fracHabs / ((1 - S.cdr) * (1 + ganhoVor)) + (1 - fracHabs);
+    const fatorCdr = fHabs / ((1 - S.cdr) * (1 + ganhoVor)) + (1 - fHabs);
     // CRITICO (motor.js:1700/1213): so no auto-ataque, multiplicado pelo `multCrit` medio.
     const _p0 = (typeof player === 'function' ? player() : {}) || {};
     const _c0 = critDoSet(_p0, S);
     const fCrit = multCrit(_c0.chance, _c0.mult);
-    let d = (base * mit) * fatorCdr * (fracHabs + (1 - fracHabs) * fCrit) * (1 + (magia ? S.lich * 0.15 : 0));   // Lich: +75%AP/skill ≈ +15% no dano total
+    // CRITICO (motor.js:1700/1213): so a parcela dos AUTO-ATAQUES rola a chance e leva o
+    // multiplicador. `base` de um campeao AD e o dano de ataque — que alimenta os autos.
+    const _fa = fracAuto();
+    let d = (base * mit) * fatorCdr * ((1 - _fa) + _fa * fCrit) * (1 + (magia ? S.lich * 0.15 : 0));   // Lich: +75%AP/skill ≈ +15% no dano total
     if (S.chama) d *= 1 + (alvo?.chefe ? 0.066 : 0.033);        // finisher <40% HP
     if (S.liandry && alvo?.hp) {                                 // queima da Liandry
       const cv = (META.curva && META.curva.hp) || [150, 100, 1];
@@ -7134,7 +7159,7 @@
     // o medidor do jogo (xp/h, ouro/h, abates/h, DPS, loot), nivel do chefe pela regra do motor,
     // Voracidade por abate com os abates/min medidos ao vivo, roubo de vida e critico.
     numEcra, lerVidaHud, lerStatsId, lerBuffs, lerRecargaItens, lerAnaliseJogo,
-    killsMinAoVivo, voracidadeDe, cdVoraz, nivelChefeDe, mecanicaDe, fracHabs, multCrit, critDoSet, tierDe, capsMotor: () => ({ cdr: CAP_CDR, penMag: CAP_PEN_MAG, esquiva: CAP_ESQUIVA, critico: CAP_CRITICO, velAtaque: VEL_ATAQUE_MAX, penArmadura: penArmaduraDe(0.45, true) }),
+    killsMinAoVivo, voracidadeDe, cdVoraz, nivelChefeDe, mecanicaDe, fracHabs, fracAuto, multCrit, critDoSet, tierDe, capsMotor: () => ({ cdr: CAP_CDR, penMag: CAP_PEN_MAG, esquiva: CAP_ESQUIVA, critico: CAP_CRITICO, velAtaque: VEL_ATAQUE_MAX, penArmadura: penArmaduraDe(0.45, true) }),
     // ---- BUILD POR FASE (mob × chefe) e AS QUATRO FONTES ----
     buildParaMob, buildParaChefe, buildDaFase, buildIdealParaFase, faseBuild, planoBuildFase,
     alvoQuatroFontes, fontesDeItens, minhasOfertas, cofreConhecido, pecasDaFaseNoCofre,

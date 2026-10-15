@@ -26,7 +26,7 @@
  * CONTRATO: t.check(rotulo, condicao) so passa com condicao === true (nao ha truthy solto).
  */
 
-import { criarMundo, carregarAutomation, alimentarCatalogo, definirCampeao } from './dom-stub.mjs';
+import { criarMundo, carregarAutomation, alimentarCatalogo, alimentarMeta, definirCampeao } from './dom-stub.mjs';
 
 export const suite = {
   nome: 'hud',
@@ -366,6 +366,96 @@ export const suite = {
       t.check('H10: SS puro (1,7) acima de A+2 (1,426)', auto.tierDe({ qual: 'SS', refino: 0 }) > auto.tierDe({ qual: 'A', refino: 2 }));
     }
 
+
+    /* ================ H12 — OS NUMEROS ENTRAM NAS DECISOES (nao ficam no leitor) ================ */
+    /*
+     * Ler o numero e so metade do defeito: o observabilidade.md pede que ele MUDE a decisao.
+     * Estes casos montam o DOM como o jogo escreve e provam o efeito na saida.
+     */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest', { kit: {
+        Q: { max: 1, base: [100], ratio: [1], recarga: [10] },
+        G: { max: 1, base: [50], ratio: [0.5], recarga: [8], auto: true },
+      } });
+      alimentarMeta(m, {
+        monstros: { 'Tropa Corpo a Corpo': { hp: 1, ad: 0.9, as: 0.8, armadura: 0.6, xp: 1, ouro: 1 },
+          'Arauto do Vale': { hp: 10, ad: 2.5, as: 0.6, armadura: 1.5, xp: 12, ouro: 12, chefe: true } },
+        locais: [
+          { id: 'rio', nome: 'Rio', faixa: [25, 35], nm: [25, 33], tier: 5,
+            monstros: [['Tropa Corpo a Corpo', 1]], chefe: ['Arauto do Vale', 0.015] },
+          { id: 'lobos', nome: 'Toca dos Lobos', faixa: [10, 20], nm: [10, 18], tier: 2,
+            monstros: [['Tropa Corpo a Corpo', 1]] },
+        ],
+      });
+      m.montar('#hab-ativas .hab[data-t]', [
+        m.el({ label: 'aQ', dataset: { t: 'Q' }, textContent: '1 / 1' }),
+        m.el({ label: 'aG', dataset: { t: 'G' }, textContent: '1 / 1' }),
+      ]);
+      m.montar('.st', [m.el({ label: 'st', textContent: 'Dano 100' }), m.el({ label: 'st2', textContent: 'Vel. ataque 1.50' })]);
+      m.montar('#hud-vida-txt', [m.el({ label: 'v', textContent: '2000 / 2000' })]);
+      m.montar('#hud-nivel', [m.el({ label: 'nivel', textContent: '25' })]);   // jogador 25 no Rio
+      m.montar('#st-critx', [m.el({ label: 'critx', textContent: '1,75' })]);
+      const alvo = { armadura: 100, hp: 50000, nivel: 30 };
+
+      // ---- (a) CRITICO muda o score do conjunto.
+      m.montar('#st-crit', [m.el({ label: 'crit', textContent: '0%' })]);
+      const semCrit = auto.scoreSet(['2001'], alvo);
+      m.montar('#st-crit', [m.el({ label: 'crit2', textContent: '35%' })]);
+      const comCrit = auto.scoreSet(['2001'], alvo);
+      t.check('H12a: o score do conjunto SOBE com o critico do painel (35%)', comCrit > semCrit);
+      t.check('H12a: e sobe na medida do motor: 1 + fracAuto x (1,2625 - 1)',
+        Math.abs(comCrit / semCrit - (1 + auto.fracAuto() * (1.2625 - 1))) < 1e-9);
+      t.check('H12a: a parcela dos autos e a maioria neste campeao', auto.fracAuto() > 0.5);
+      t.check('H12a: a skill pura NAO leva critico (fracAuto < 1)', auto.fracAuto() < 1);
+      t.check('H12a: e a skill pura nao entra na fracao de critico (fracHabs > 0)', auto.fracHabs() > 0);
+
+      // ---- (b) ROUBO DE VIDA muda a sobrevivencia: cura = dano x rv (motor.js:1226-1228).
+      m.montar('.st', [m.el({ label: 'st3', textContent: 'Roubo de vida 15%' })]);
+      const p = auto.player();
+      const antes = auto.avaliar('Tropa Corpo a Corpo', 30, { ...p, rv: 0 }, { skill: 0, pocao: 0 }, 500);
+      const depois = auto.avaliar('Tropa Corpo a Corpo', 30, { ...p, rv: 0.15 }, { skill: 0, pocao: 0 }, 500);
+      t.check('H12b: o rv devolvido pelo player() e 15%', p.rv === 15);
+      t.check('H12b: avaliar() soma a cura do roubo de vida (motor.js:1226)', depois.curaRv > 0);
+      t.check('H12b: e essa cura estica o tempo de vida', depois.tMorrer > antes.tMorrer);
+      t.check('H12b: a conta liquida usa a cura total (nao so a das skills)',
+        Math.abs(depois.liquido - (depois.dpsTomado - depois.curaTotal)) < 1e-9);
+      t.check('H12b: a cura entra por dano x rv x mitigacao da saida',
+        depois.curaRv > antes.curaRv && antes.curaRv === 0);
+
+      // ---- (c) O MEDIDOR DO JOGO manda na calibracao (antes era so a estimativa).
+      const f = auto.getFarm();
+      f.cycles = [{ region: 'Rio nível 25\u201333', mobFase: { perMin: { gold: 1000, xp: 200, kills: 10 } } }];
+      const cExt = auto.calibrar();
+      t.check('H12c: sem o jogo a fonte e a estimativa da extensao', cExt.fonte === 'extensao');
+      m.montar('#rastreio-analise', [m.el({ label: 'rastreio', hidden: false,
+        textContent: 'Ca\u00e7ada10k XP/h \u00b7 2k ouro/h' })]);
+      const cJogo = auto.calibrar();
+      t.check('H12c: com o jogo a fonte passa a ser a medida do JOGO', cJogo.fonte === 'jogo');
+      t.check('H12c: kXp sai da medicao do jogo: (10000/60) / 200 = 0,833',
+        Math.abs(cJogo.kXp - (10000 / 60 / 200)) < 1e-3);   // 3 casas (o cfg grava toFixed(3))
+      t.check('H12c: kOuro sai da medicao do jogo: (2000/60) / 1000 = 0,033',
+        Math.abs(cJogo.kOuro - (2000 / 60 / 1000)) < 1e-3);
+      t.check('H12c: a medida do jogo vem no resultado', cJogo.jogo && cJogo.jogo.tem === true);
+      t.check('H12c: sem abates/h no rastreio o kAbates fica 1 (nao inventa)', cJogo.kAbates === 1);
+      // REGIAO MEDIDA: a medida dela ganha (o kReg por regiao NAO muda — ver o comentario do
+      // `calibrar`). REGIAO NUNCA RODADA: entra a medida do JOGO como autoridade.
+      const eRio = auto.estimarRegiao('rio');
+      t.check('H12c: na regiao JA MEDIDA a medida dela ganha (kReg por regiao)', eRio.kXp === cExt.kXp);
+      const eLobos = auto.estimarRegiao('lobos');
+      t.check('H12c: na regiao NUNCA RODADA a autoridade e a medicao do JOGO', eLobos.kXp === cJogo.kXp);
+      t.check('H12c: e o xp/min teorico sai escalado por ela', eLobos.xpMin > 0);
+      t.check('H12c: o killsMin teorico continua visivel ao lado do aplicado',
+        eLobos.killsMinTeorico > 0 && eLobos.kAbates === 1);
+
+      // ---- (d) O NIVEL DO CHEFE mede o risco do chefe REAL (motor.js:1121).
+      const luta = auto.estimarLuta('rio');
+      t.check('H12d: a luta contra o chefe do Rio usa o nivel 29 do motor (nao 35)', luta.nivel === 29);
+      t.check('H12d: e o HP do chefe e o do nivel 29 do motor',
+        luta.hpBoss > 0 && luta.nivel === auto.nivelChefeDe({ nm: [25, 33] }, 25));
+    }
     /* ================================ H11 — MECANICA DO CHEFE LIDA DO MOTOR ================================ */
     {
       const m = criarMundo();

@@ -72,3 +72,12 @@ Só podes mexer em: planejar, buildIdeal, buildIdealPara, valorPassiva, valorDe,
 - **Fazer**: fazer o `planejar` devolver todos os itens pedidos (incluindo os sem zona, com marca explícita “sem drop”) e agregar por item (melhor zona, chance por abate, drops/hora), para a GUI não ter de recalcular nada — e para a chance continuar a sair da classe certa (ver TK-02-03).
 - **Aceitacao**: teste a chamar `planejar` com um item sem zona e a receber o registo marcado; e com 3 itens a receber 3 linhas agregadas com a melhor zona de cada; `bun tools/testes/run.mjs` rc=0.
 - **Estado**: pendente
+
+
+## TICKET NOVO (acrescentado pelo Lead 22:40)
+### TK-02-101 | P0 | Contradição: `buildPorFase: true` mas as três builds dão o MESMO (e trazem a peça de chefe no farm de mobs)
+- **Ficheiro(s)**: extension/automation.js
+- **Evidencia**: parte-02.md:6526-6637 — `idealSemFase: "3175,3089,3153,3135,3100"` · `idealMobs: "3175,3089,3153,3135,3100"` ← IDÊNTICO · `idealChefe: "3175,3089,3153,3135,3100"` ← IDÊNTICO · `buildPorFase: true`; *“O motor afirma trocar a build por fase e devolve a mesma nos três casos … Tens o interruptor ligado e ele não faz nada”*; e *“O 3153 está na ideal — e é a PIOR peça para mobs (488 de 11) … O motor está a vestir a peça de chefe no farm de mobs”*; encaminhado em `1be1e7b7` com o pedido das duas listas exactas (mobs e chefe) depois da correcção e a proibição de inventar peso para a Voracidade
+- **Fazer**: fazer a fase mudar de facto a build (mobs vs chefe), tirando a peça de chefe da build de mobs, e devolver as duas listas exactas; nenhum peso inventado para a Voracidade (se faltar regra, pedir ao dono).
+- **Aceitacao**: `buildIdeal()`, `buildIdeal(mobs)` e `buildIdeal(boss)` dão listas **diferentes** quando devem diferir, com o `3153` fora da de mobs; prova ao vivo das duas builds vestidas em cada fase; `bun tools/testes/run.mjs` rc=0.
+- **Estado**: pendente
