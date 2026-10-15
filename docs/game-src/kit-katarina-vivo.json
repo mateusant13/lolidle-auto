@@ -1,0 +1,812 @@
+// kit-katarina-vivo.json — LIDO DO JOGO VIVO em 2026-10-14 (módulo motor.js, M.KITS.katarina).
+// Fonte: import('https://lolidle.com/js/motor.js') via relay CDP 9224 (mundo MAIN).
+// Ferramenta: tools/probe-kits.mjs. NUNCA editar à mão: reler quando o jogo mudar.
+{
+ "versao": null,
+ "kit": {
+  "id": "katarina",
+  "dados": {
+   "versao": "16.19.1",
+   "campeao": {
+    "nome": "Katarina",
+    "titulo": "a Lâmina Sinistra",
+    "lore": "Decisiva em seus julgamentos e letal em combate, Katarina é a assassina de maior calibre de Noxus. Filha mais velha do lendário General Du Couteau, Katarina é reconhecida por seus assassinatos eficientes contra inimigos desavisados. Sua ambição ardente a levou a buscar alvos extremamente protegidos, mesmo correndo o risco de colocar seus aliados em perigo; mas não importa a missão, Katarina não hesita ao executar seu dever no meio de um furacão de adagas serrilhadas.",
+    "stats": {
+     "hp": 672,
+     "hpperlevel": 108,
+     "mp": 0,
+     "mpperlevel": 0,
+     "movespeed": 335,
+     "armor": 32,
+     "armorperlevel": 4.7,
+     "spellblock": 32,
+     "spellblockperlevel": 2.05,
+     "attackrange": 125,
+     "hpregen": 7.5,
+     "hpregenperlevel": 0.7,
+     "mpregen": 0,
+     "mpregenperlevel": 0,
+     "crit": 0,
+     "critperlevel": 0,
+     "attackdamage": 58,
+     "attackdamageperlevel": 0,
+     "attackspeedperlevel": 2.74,
+     "attackspeed": 0.658
+    },
+    "funcoes": [
+     "Assassin",
+     "Mage"
+    ]
+   },
+   "habilidades": {
+    "P": {
+     "nome": "Voracidade",
+     "descricao": "Os Tempos de Recarga de Katarina são reduzidos drasticamente sempre que um Campeão que ela havia causado dano recentemente morrer. Se apanhar uma Adaga, Katarina a usa para cortar todos os inimigos próximos, causando Dano Mágico."
+    },
+    "Q": {
+     "nome": "Lâmina Saltitante",
+     "descricao": "Katarina arremessa uma Adaga no alvo. Ela salta em inimigos próximos antes de ricochetear e cair no chão.",
+     "recarga": [
+      11,
+      10,
+      9,
+      8,
+      7
+     ]
+    },
+    "W": {
+     "nome": "Preparação",
+     "descricao": "Katarina recebe um impulso de Velocidade de Movimento e joga uma Adaga para cima.",
+     "recarga": [
+      15,
+      14,
+      13,
+      12,
+      11
+     ]
+    },
+    "E": {
+     "nome": "Shunpo",
+     "descricao": "Katarina desloca-se em direção ao alvo, golpeando-o caso seja inimigo ou golpeando o inimigo mais próximo caso não seja.",
+     "recarga": [
+      12,
+      11,
+      10,
+      9,
+      8
+     ]
+    },
+    "R": {
+     "nome": "Lótus da Morte",
+     "descricao": "Katarina gira em torno de si mesma, disparando adagas muito rapidamente e causando muito Dano Mágico nos 3 Campeões inimigos mais próximos.",
+     "recarga": [
+      75,
+      60,
+      45
+     ]
+    }
+   },
+   "skins": [
+    {
+     "num": 0,
+     "nome": "Katarina"
+    },
+    {
+     "num": 10,
+     "nome": "Katarina Jurada de Morte"
+    },
+    {
+     "num": 12,
+     "nome": "Katarina Academia de Batalha"
+    },
+    {
+     "num": 29,
+     "nome": "Katarina Rainha de Batalha"
+    }
+   ]
+  },
+  "stats": {
+   "hp": 672,
+   "hpperlevel": 108,
+   "mp": 0,
+   "mpperlevel": 0,
+   "movespeed": 335,
+   "armor": 32,
+   "armorperlevel": 4.7,
+   "spellblock": 32,
+   "spellblockperlevel": 2.05,
+   "attackrange": 125,
+   "hpregen": 7.5,
+   "hpregenperlevel": 0.7,
+   "mpregen": 0,
+   "mpregenperlevel": 0,
+   "crit": 0,
+   "critperlevel": 0,
+   "attackdamage": 58,
+   "attackdamageperlevel": 0,
+   "attackspeedperlevel": 2.74,
+   "attackspeed": 0.658
+  },
+  "adBase": 58,
+  "adNivel": 3.4,
+  "hab": {
+   "P": {
+    "voracidade": 1.5,
+    "voracidadeChefe": 5,
+    "curaBase": 0.05,
+    "queda": {
+     "Q": 1.1,
+     "W": 1.25,
+     "A": 1,
+     "T": 0.8
+    },
+    "dura": 4,
+    "pegaCada": 0.35,
+    "shunpo": 0.5
+   },
+   "Q": {
+    "nome": "Lâmina Saltitante",
+    "nivel": 1,
+    "max": 10,
+    "recarga": [
+     10,
+     9.65,
+     9.3,
+     8.95,
+     8.6,
+     8.25,
+     7.9,
+     7.55,
+     7.2,
+     6.85
+    ],
+    "custo": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "base": [
+     80,
+     115,
+     150,
+     185,
+     220,
+     255,
+     290,
+     325,
+     360,
+     395
+    ],
+    "ratio": [
+     0.45,
+     0.48,
+     0.51,
+     0.54,
+     0.57,
+     0.6,
+     0.63,
+     0.66,
+     0.69,
+     0.72
+    ],
+    "alvos": 3,
+    "adaga": true,
+    "desc": "Arremessa uma adaga que salta em até 3 monstros e depois cai no chão atrás do primeiro, do lado oposto ao dela. Quando a Katarina pega a adaga, gira e corta todos em volta.",
+    "escalaPoder": true
+   },
+   "W": {
+    "nome": "Preparação",
+    "nivel": 1,
+    "max": 10,
+    "recarga": [
+     14,
+     13.6,
+     13.2,
+     12.8,
+     12.4,
+     12,
+     11.6,
+     11.2,
+     10.8,
+     10.4
+    ],
+    "custo": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "vel": [
+     0.5,
+     0.53,
+     0.56,
+     0.59,
+     0.62,
+     0.65,
+     0.68,
+     0.71,
+     0.74,
+     0.77
+    ],
+    "duracaoVel": 1.25,
+    "adaga": true,
+    "desc": "Joga uma adaga para o alto, que cai ao lado dela, e corre mais rápido por um instante. Pegar a adaga faz a Katarina girar e cortar todos em volta."
+   },
+   "E": {
+    "nome": "Shunpo",
+    "nivel": 1,
+    "max": 10,
+    "recarga": [
+     10,
+     9.6,
+     9.2,
+     8.8,
+     8.4,
+     8,
+     7.6,
+     7.2,
+     6.8,
+     6.4
+    ],
+    "custo": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "base": [
+     40,
+     60,
+     80,
+     100,
+     120,
+     140,
+     160,
+     180,
+     200,
+     220
+    ],
+    "ratio": [
+     0.3,
+     0.32,
+     0.34,
+     0.36,
+     0.38,
+     0.4,
+     0.42,
+     0.44,
+     0.46,
+     0.48
+    ],
+    "adRatio": 0.4,
+    "desc": "Aparece ao lado de um monstro e o corta. Se for até uma adaga no chão, pega a adaga e já gira. Cada adaga que ela pega corta pela metade o tempo que falta para o Shunpo voltar. No Summoner's Rift, ela vai até quem ainda está chegando.",
+    "escalaPoder": true
+   },
+   "R": {
+    "nome": "Lótus da Morte",
+    "nivel": 6,
+    "max": 5,
+    "recarga": [
+     75,
+     65,
+     55,
+     48,
+     42
+    ],
+    "custo": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "duracao": 2.5,
+    "golpes": 15,
+    "alvos": 3,
+    "base": [
+     30,
+     44,
+     58,
+     72,
+     86
+    ],
+    "ratio": [
+     0.25,
+     0.28,
+     0.31,
+     0.34,
+     0.37
+    ],
+    "desc": "Gira no lugar por 2,5 segundos, atirando adagas sem parar nos 3 monstros mais perto (15 adagas em cada um). Ser atordoada interrompe o giro.",
+    "escalaPoder": true
+   },
+   "G": {
+    "nome": "Sede de Sangue",
+    "nivel": 8,
+    "max": 10,
+    "recarga": [
+     20,
+     19.2,
+     18.4,
+     17.6,
+     16.8,
+     16,
+     15.2,
+     14.4,
+     13.6,
+     12.8
+    ],
+    "custo": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "duracao": 8,
+    "base": [
+     30,
+     45,
+     60,
+     75,
+     90,
+     105,
+     120,
+     135,
+     150,
+     165
+    ],
+    "ratio": [
+     0.3,
+     0.315,
+     0.33,
+     0.345,
+     0.36,
+     0.375,
+     0.39,
+     0.405,
+     0.42,
+     0.435
+    ],
+    "curaSede": 0.3,
+    "va": [
+     0.2,
+     0.22,
+     0.24,
+     0.26,
+     0.28,
+     0.3,
+     0.32,
+     0.34,
+     0.36,
+     0.38
+    ],
+    "desc": "Por 8 segundos a Katarina ataca mais rápido e cada ataque básico corta de novo com dano mágico; 30% desse dano volta como vida.",
+    "escalaPoder": true
+   },
+   "A": {
+    "nome": "Adaga Certeira",
+    "nivel": 13,
+    "max": 10,
+    "recarga": [
+     12,
+     11.5,
+     11,
+     10.5,
+     10,
+     9.5,
+     9,
+     8.5,
+     8,
+     7.5
+    ],
+    "custo": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "base": [
+     90,
+     125,
+     160,
+     195,
+     230,
+     265,
+     300,
+     335,
+     370,
+     405
+    ],
+    "ratio": [
+     0.6,
+     0.635,
+     0.67,
+     0.705,
+     0.74,
+     0.775,
+     0.81,
+     0.845,
+     0.88,
+     0.915
+    ],
+    "atordoa": 1,
+    "adaga": true,
+    "desc": "Atira uma adaga no monstro mais distante: dano mágico, ele fica atordoado por 1 segundo e a adaga cai no chão ao lado dele.",
+    "escalaPoder": true
+   },
+   "D": {
+    "nome": "Lâmina Sinistra",
+    "nivel": 18,
+    "max": 10,
+    "passiva": true,
+    "vaAdaga": [
+     0.08,
+     0.088,
+     0.096,
+     0.104,
+     0.112,
+     0.12,
+     0.128,
+     0.136,
+     0.144,
+     0.152
+    ],
+    "acumMax": 3,
+    "duracaoSinistra": 3,
+    "curaGiro": [
+     0.08,
+     0.09,
+     0.1,
+     0.11,
+     0.12,
+     0.13,
+     0.14,
+     0.15,
+     0.16,
+     0.17
+    ],
+    "desc": "Passiva: cada adaga que a Katarina pega dá velocidade de ataque por 3 segundos (acumula 3 vezes), e o giro devolve parte do dano como vida."
+   },
+   "F": {
+    "nome": "Lâmina Envenenada",
+    "nivel": 23,
+    "max": 10,
+    "recarga": [
+     16,
+     15.5,
+     15,
+     14.5,
+     14,
+     13.5,
+     13,
+     12.5,
+     12,
+     11.5
+    ],
+    "custo": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "duracao": 8,
+    "venenoBase": [
+     40,
+     58,
+     76,
+     94,
+     112,
+     130,
+     148,
+     166,
+     184,
+     202
+    ],
+    "venenoRatio": 0.25,
+    "venenoT": 3,
+    "desc": "Passa veneno nas lâminas: por 8 segundos, os ataques básicos e os giros das adagas envenenam, e o monstro perde vida por 3 segundos."
+   },
+   "T": {
+    "nome": "Chuva de Adagas",
+    "nivel": 28,
+    "max": 10,
+    "recarga": [
+     24,
+     23.2,
+     22.4,
+     21.6,
+     20.8,
+     20,
+     19.2,
+     18.4,
+     17.6,
+     16.8
+    ],
+    "custo": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "base": [
+     60,
+     88,
+     116,
+     144,
+     172,
+     200,
+     228,
+     256,
+     284,
+     312
+    ],
+    "ratio": [
+     0.4,
+     0.43,
+     0.46,
+     0.49,
+     0.52,
+     0.55,
+     0.58,
+     0.61,
+     0.64,
+     0.67
+    ],
+    "adagas": 3,
+    "raioArena": 2.4,
+    "desc": "Joga 3 adagas para o alto: elas cortam todos em volta ao cair e ficam no chão para a Katarina pegar.",
+    "escalaPoder": true
+   },
+   "B": {
+    "nome": "Passo das Sombras",
+    "nivel": 33,
+    "max": 10,
+    "recarga": [
+     24,
+     23.2,
+     22.4,
+     21.6,
+     20.8,
+     20,
+     19.2,
+     18.4,
+     17.6,
+     16.8
+    ],
+    "custo": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "some": 1.5,
+    "janela": 5,
+    "bonusSombra": [
+     1,
+     1.08,
+     1.16,
+     1.24,
+     1.32,
+     1.4,
+     1.48,
+     1.56,
+     1.64,
+     1.72
+    ],
+    "desc": "Some nas sombras por 1,5 segundo (nada a acerta). O próximo golpe dela, de habilidade ou de adaga, causa muito mais dano."
+   },
+   "M": {
+    "nome": "Execução Noxiana",
+    "nivel": 38,
+    "max": 10,
+    "recarga": [
+     14,
+     13.5,
+     13,
+     12.5,
+     12,
+     11.5,
+     11,
+     10.5,
+     10,
+     9.5
+    ],
+    "custo": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "base": [
+     200,
+     280,
+     360,
+     440,
+     520,
+     600,
+     680,
+     760,
+     840,
+     920
+    ],
+    "ratio": [
+     1.2,
+     1.27,
+     1.34,
+     1.41,
+     1.48,
+     1.55,
+     1.62,
+     1.69,
+     1.76,
+     1.83
+    ],
+    "executa": [
+     0.2,
+     0.21,
+     0.22,
+     0.23,
+     0.24,
+     0.25,
+     0.26,
+     0.27,
+     0.28,
+     0.29
+    ],
+    "reembolso": 0.5,
+    "desc": "Um golpe certeiro no monstro mais ferido. Se a vida dele ficar abaixo do limite, ele morre na hora e metade da recarga volta (os chefes só levam o dano).",
+    "escalaPoder": true
+   },
+   "N": {
+    "nome": "Tempestade de Lótus",
+    "nivel": 45,
+    "max": 5,
+    "recarga": [
+     75,
+     66,
+     58,
+     51,
+     45
+    ],
+    "custo": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "duracao": 3,
+    "golpes": 12,
+    "base": [
+     90,
+     130,
+     170,
+     210,
+     250
+    ],
+    "ratio": [
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65
+    ],
+    "adagasFim": 2,
+    "desc": "Vira uma tempestade de lâminas por 3 segundos: corta todos os monstros em volta 12 vezes e puxa quem ainda está chegando. Nada a interrompe, e no fim 2 adagas ficam no chão.",
+    "escalaPoder": true
+   }
+  },
+  "distancia": false,
+  "magia": true,
+  "semMana": true,
+  "adagas": true,
+  "hemorragia": false,
+  "papel": {
+   "dano": 1.2,
+   "recebido": 0.75,
+   "recebidoArena": 1,
+   "arena": 1.75,
+   "pvp": 1.15,
+   "pvpRecebido": 1,
+   "vel": 1.05
+  },
+  "ordem": [
+   "N",
+   "R",
+   "B",
+   "M",
+   "E",
+   "A",
+   "G",
+   "F",
+   "T",
+   "Q",
+   "W"
+  ],
+  "skins": [
+   {
+    "num": 0,
+    "nome": "Katarina",
+    "aVenda": false,
+    "preco": 0,
+    "efeitos": false
+   },
+   {
+    "num": 10,
+    "nome": "Katarina Jurada de Morte",
+    "aVenda": true,
+    "preco": 900,
+    "efeitos": true
+   },
+   {
+    "num": 12,
+    "nome": "Katarina Academia de Batalha",
+    "aVenda": true,
+    "preco": 500,
+    "efeitos": false
+   },
+   {
+    "num": 29,
+    "nome": "Katarina Rainha de Batalha",
+    "aVenda": true,
+    "preco": 900,
+    "efeitos": true
+   }
+  ]
+ }
+}
