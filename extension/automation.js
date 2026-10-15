@@ -1705,7 +1705,7 @@
       // FRONTEIRA DE UNIDADE: o painel escreve o rv em PERCENTAGEM (jogo.js:5999 `['rv','Roubo de
       // Vida','%']`, jogo.js:6001 `numComp`) e o motor guarda-o como FRACCAO (motor.js:538;
       // motor.js:1227 `cura = dano * a.rouboVida`) — divide-se por 100 AQUI.
-      rv: (s['Roubo de vida'] || 0) / 100,
+      rv: (s['Roubo de vida'] || s['Roubo de Vida'] || 0) / 100,
       // CRITICO (motor.js:541 chance; motor.js:499 base + 515 do 3031 = multiplicador): a build
       // AD/critico e 2,5–2,8x a de AP contra o chefe e nao entrava em conta nenhuma
       // (docs/auditoria-do-jogo.md item 7).
