@@ -89,6 +89,14 @@ export const suite = {
       t.check('H2: player().critDano = 1.75', p.critDano === 1.75);
       const st = auto.readStats();
       t.check('H2: readStats() tambem expõe cdr/critChance/critMult', st.cdr === 0.23 && st.critChance === 0.35 && st.critMult === 1.75);
+      // O CDR do PAINEL e o TOTAL do motor (motor.js:537: foco + itens). A soma dos itens nao
+      // ve o Foco — um boneco com 10 de foco tem 4% de CDR que a soma nao conhecothis.
+      t.check('H2: sem itens de CDR o efeitosEquipados() usa o do painel (23%)',
+        auto.efeitosEquipados().cdr === 0.23);
+      const m2b = criarMundo();
+      const auto2b = carregarAutomation(m2b);
+      alimentarCatalogo(m2b); definirCampeao(m2b, 'adtest');
+      t.check('H2: sem painel nem itens o CDR e 0 (nao inventa)', auto2b.efeitosEquipados().cdr === 0);
     }
 
     /* ================================ H3 — RECARGA EXACTA (--cd) ================================ */
@@ -456,6 +464,23 @@ export const suite = {
       t.check('H12d: e o HP do chefe e o do nivel 29 do motor',
         luta.hpBoss > 0 && luta.nivel === auto.nivelChefeDe({ nm: [25, 33] }, 25));
     }
+
+    /* ================ H13 — TECTOS DO MOTOR num sitio so, cada um com o file:linha ================ */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      const caps = auto.capsMotor();
+      t.check('H13: tecto de CDR = 0,4 (motor.js:537)', caps.cdr === 0.4);
+      t.check('H13: tecto de pen magica = 0,6 (motor.js:529)', caps.penMag === 0.6);
+      t.check('H13: tecto de esquiva = 0,25 (motor.js:536)', caps.esquiva === 0.25);
+      t.check('H13: tecto de chance de critico = 1 (motor.js:541)', caps.critico === 1);
+      t.check('H13: velocidade de ataque maxima = 3 (motor.js:344)', caps.velAtaque === 3);
+      // pen de armadura: a conta do motor e 1-(1-penE)x0,7 = 0,835 com penE maximo (motor.js:539/560)
+      t.check('H13: pen de armadura maxima = 0,835 (motor.js:539, nao 0,7)',
+        Math.abs(caps.penArmadura - 0.835) < 1e-9);
+    }
     /* ================================ H11 — MECANICA DO CHEFE LIDA DO MOTOR ================================ */
     {
       const m = criarMundo();
@@ -472,6 +497,13 @@ export const suite = {
       // com o motor a mandar o HAB_CHEFE, o NOME e os tempos vem dele (motor.js:3069-3079)
       const semHab = (auto.mecanicaDe('sopro').nome === 'sopro') || (auto.mecanicaDe('sopro').nome.length > 0);
       t.check('H11: a mecanica tem sempre nome utilizavel', semHab === true);
+      // com o motor a mandar o HAB_CHEFE (motor.js:3069-3079): NOME, carrega e espera vem dele
+      alimentarMeta(m, { habChefe: { sopro: { carrega: 1, espera: 9, nome: 'Sopro de Fogo [motor]' } } });
+      const soproM = auto.mecanicaDe('sopro');
+      t.check('H11: o nome da mecanica vem do HAB_CHEFE do motor', soproM.nome === 'Sopro de Fogo [motor]');
+      t.check('H11: o aviso (carrega) vem do motor (motor.js:3069-3079)', soproM.carrega === 1);
+      t.check('H11: a espera entre mecanicas vem do motor', soproM.espera === 9);
+      t.check('H11: e o multiplicador continua o do mecanicaChefe (motor.js:3105)', soproM.mult === 2.2);
     }
   },
 };
