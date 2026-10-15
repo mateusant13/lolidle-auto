@@ -792,6 +792,9 @@
     const x = entry.body.match(/\+\s*(\d[\d.]*)\s*de experi/i);
     const nomeLoot = (entry.body.match(/Loot de\s+(.+?):/i) || [])[1] || null;
     if (g || x) {
+      // B2: o abate conta por OURO **ou** XP (o killTimes so era alimentado no ramo do ouro —
+      // um abate so-XP nao entrava no ritmo e o `ritmoMobs` devolvia null).
+      killTimes.push(Date.now()); if (killTimes.length > 200) killTimes.shift();
       if (window.__lolidleRlog) window.__lolidleRlog({ t: 'kill', nome: nomeLoot, gold: g ? parseNum(g[1]) : null, xp: x ? parseNum(x[1]) : null });
       if (!farm.current && !naBase) farm.current = novoCiclo(loc.text, Date.now());
       if (farm.current) {
