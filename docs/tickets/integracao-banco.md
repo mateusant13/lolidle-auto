@@ -206,3 +206,27 @@ função (ver `hud.test.mjs` à volta da linha 430 — o objecto `cJogo` vem de 
 passam a **correr** essas funções e falham em asserções **reais**. O número sobe, mas o código está
 **mais correcto**. Para o banco ficar verde é preciso **corrigir o comportamento**, não só expor a API.
 Revertido (o objectivo é verde, não é número).
+
+
+## MAPA DAS 21 FALHAS (2026-10-15 09:30) — com a causa exacta
+| Suite | N | Causa (mensagem) |
+|---|---|---|
+| `w10` | 4 | L4 ×3 (lendário tem de ficar em `regras.protegidos`, sem clique) · `farmarItemIds is not defined` |
+| `barrafase` | 3 | F1/F2: `alvos` do kit na barra de mobs vs chefe |
+| `fuga` | 3 | W5/W7: o giro tem de REGISTAR a espera e o contador |
+| `chefe` | 3 | B1 ×2 (3153 na build ideal) · `auto.NIVEL_DIF_FB` |
+| `hud` | 2 | H12c (killsMin teórico) · `aL.larvasInvoca is not a function` (**falta EXPORTAR**) |
+| `integracao` | 1 | `_eventosCont is not defined` |
+| `numeros` | 1 | N2: HUD vazio → fallback 4188 |
+| `score` | 1 | T142a: `Roubo de Vida` (mede o `readStats`) |
+| `refinar` | 1 | `medido is not defined` |
+| `atributos` | 1 | `auto.recomendarAtributos` |
+| `w1-regioes` | 1 | `auto.mediaWaveDe` |
+
+### CONFIRMADO (2×): exportar faz o número SUBIR
+Exportar `larvasInvoca` (que está definida e é chamada pelo teste) levou o banco de **21 → 27**: a suite
+`hud` passa a **correr** e falha em asserções reais que antes nem chegavam a executar.
+**Decisão:** manter o estado com o número menor (21) **e registar** que a API pública está incompleta —
+o verde exige corrigir o comportamento dessas funções, não só expô-las. Quem for fechar isto: exportar
+`larvasInvoca`, `mediaWaveDe`, `recomendarAtributos`, `NIVEL_DIF_FB`, `farmarItemIds` **e** corrigir
+as asserções que aparecerem (é trabalho de comportamento, não de porta).
