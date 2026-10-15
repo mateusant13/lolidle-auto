@@ -183,3 +183,26 @@ Tentei (ambos revertidos por não mudarem o banco):
 **Banco inalterado (33) nos dois.** Logo o H12c **não** lê estes dois caminhos: o teste chama outra
 função (ver `hud.test.mjs` à volta da linha 430 — o objecto `cJogo` vem de uma chamada própria).
 **Próximo:** ler as linhas 425-435 do teste e ver **qual função** produz `cJogo`, em vez de adivinhar.
+
+
+## MAPA COMPLETO DAS 33 FALHAS (2026-10-15 09:10, com mensagem exacta)
+| Suite | N | Falhas |
+|---|---|---|
+| `hud` | 8 | H12c (killsMin teórico ao lado do aplicado) · **H14 ×4: larvas do `chefeInvoca` na contagem** |
+| `w1-regioes` | 5 | A6 ×4 (papel: `avaliar` tem de DEVOLVER o fator) · `mediaWaveDe is not a function` |
+| `fuga` | 5 | W5/W7 ×3 (log do giro) · **W9: `viajarPara` tem de devolver RESULTADO** (`r.ok`) |
+| `w10` | 4 | L4 ×3 (lendário em `regras.protegidos`, sem clique) · `farmarItemIds is not defined` |
+| `barrafase` | 3 | F1/F2: `alvos` do kit na barra de mobs vs chefe |
+| `chefe` | 3 | B1 (3153 na build ideal) · `auto.NIVEL_DIF_FB` |
+| `integracao` | 1 | `_eventosCont is not defined` |
+| `numeros` | 1 | N2: HUD vazio → fallback 4188 |
+| `score` | 1 | T142a: `Roubo de Vida` (V maiúsculo) |
+| `refinar` | 1 | `medido is not defined` |
+| `atributos` | 1 | `auto.recomendarAtributos` |
+
+### LIÇÃO NOVA (importante)
+**Exportar uma função NÃO é ganho grátis.** Exportei `mediaWaveDe`, `recomendarAtributos`,
+`NIVEL_DIF_FB`, `farmarItem*`, `fracAuto`, `fracHabs` → o banco **PIOROU (33 → 40)**: os testes
+passam a **correr** essas funções e falham em asserções **reais**. O número sobe, mas o código está
+**mais correcto**. Para o banco ficar verde é preciso **corrigir o comportamento**, não só expor a API.
+Revertido (o objectivo é verde, não é número).
