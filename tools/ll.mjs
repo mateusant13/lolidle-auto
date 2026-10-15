@@ -24,6 +24,7 @@
  *   test <json>            inicia teste de conjuntos: '[{"nome":"x","itens":["3089"]}]'
  *   stop-test              para o teste
  *   enable on|off          liga/desliga a automação
+ *   dps [--regiao <id>]    cenarios de DPS; --regiao dispensa a localizacao actual (TK-01-13)
  *   eval '<js>'            avalia JS cru no mundo isolado
  */
 import { spawnSync } from 'node:child_process';
@@ -40,6 +41,14 @@ let CONTA = process.env.LL_CONTA || 'katarina';
 {
   const i = rest.indexOf('--conta');
   if (i >= 0) { CONTA = rest[i + 1]; rest.splice(i, 2); }
+}
+// --regiao <id> (TK-01-13): passa a regiao EXPLICITAMENTE, sem depender da localizacao actual.
+// Sem isto, correr `dps` na Fonte (ou com o #local-nome ainda por ler) dava {mob:null} em
+// silencio — o falso "regiao fonte / mob null" do historico.
+let REGIAO = null;
+{
+  const i = rest.indexOf('--regiao');
+  if (i >= 0) { REGIAO = rest[i + 1]; rest.splice(i, 2); }
 }
 const arg = rest.join(' ');
 if (!cmd) { console.error('uso: bun tools/ll.mjs <cmd> [args] [--conta katarina|yasuo]'); process.exit(2); }
@@ -72,7 +81,9 @@ const CMDS = {
   equip: () => JA(`${A}.aplicarItens(${j((rest[0] || '').split(',').map((x) => x.trim()).filter(Boolean))})`),
   // dps [regiao] : sem argumento usa a localizacao ATUAL. Passar a regiao evita
   // o falso "regiao fonte / mob null" que aparece por correr o comando na base.
-  dps: () => J(`${A}.dpsCenarios(${A}.readEquip().map(e=>e.base), ${rest[0] ? j(String(rest[0])) : `${A}.localId(${A}.readLocation().text)`})`),
+  // dps [regiao] (TK-01-13): a regiao vem de --regiao, do argumento posicional ou da
+  // localizacao actual, por esta ordem. Passar a regiao evita o falso "regiao fonte / mob null".
+  dps: () => J(`${A}.dpsCenarios(${A}.readEquip().map(e=>e.base), ${(REGIAO || rest[0]) ? j(String(REGIAO || rest[0])) : `${A}.localId(${A}.readLocation().text)`})`),
   cofre: () => J(`${A}.lerCofreSlots()`),
   'cofre-abrir': () => JA(`${A}.abrirCofreTesoureira()`),
   cancel: () => J(`(()=>{const r=${A}.cancelarOferta(${j(String(rest[0] || ''))});return{ok:r,id:${j(String(rest[0] || ''))}};})()`),

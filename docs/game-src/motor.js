@@ -1,3 +1,10 @@
+// motor.js — LIDO DO JOGO VIVO em 2026-10-14 via https://lolidle.com/js/motor.js (curl, sem browser).
+// 285082 bytes · 3846 linhas · sha256 e3bb66d4d8c6574d77fe6736aac783ca8b3b4e404b0b2983768baf77c176b8eb
+// A copia anterior do repo (278724 bytes / 3792 linhas, mais de 60 linhas atrasada) ficou em
+// docs/historico/motor-anterior-desactualizado.js. Regra N.o 3: numero LIDO, nunca copiado.
+// DIFERENCAS vs a copia antiga: +54 linhas, com o lote de mascote no mercado (ofertaMascote/MASCOTE)
+// e novos comentarios; ha INSERTOES a partir da linha 122, logo os numeros de linha dos documentos
+// antigos podem estar desviados em dezenas — relocalizar por conteudo, nao por linha.
 // Motor do jogo: estado, atributos, combate, loot e progressão. Sem DOM, para poder simular no Node.
 import { DADOS } from './dados.js';
 import { DADOS_EZREAL } from './dados-ezreal.js';
@@ -119,7 +126,9 @@ export const podeUsarGema = (e, gema, para) => !!(gema && GEMAS[gema]?.[para] &&
 function gastarGema(e, gema) { e.gemas[gema]--; if (!e.gemas[gema]) delete e.gemas[gema]; }
 // no mercado, um lote de gemas vira o item "gema:<id>:<quantidade>"
 export const ofertaGema = (item) => { const m = /^gema:(\w+):(\d+)$/.exec(String(item)); return m && Object.hasOwn(GEMAS, m[1]) && +m[2] >= 1 ? { id: m[1], q: +m[2] } : null; };
-export const nomeOferta = (item) => { const g = ofertaGema(item); return g ? `${g.q}× ${nomeGema(g.id)}` : infoItem(item).nomeRef; };
+// o lote de mascote no mercado (p677): "mascote:<id>", só dos negociáveis (o Poro de Bigode); devolve o id ou null
+export const ofertaMascote = (item) => { const m = /^mascote:(\w+)$/.exec(String(item)); return m && Object.hasOwn(MASCOTES, m[1]) && MASCOTES[m[1]].negociavel ? m[1] : null; };
+export const nomeOferta = (item) => { const g = ofertaGema(item); if (g) return `${g.q}× ${nomeGema(g.id)}`; const mo = ofertaMascote(item); return mo ? MASCOTES[mo].nome : infoItem(item).nomeRef; };
 export function chancesGema(local, mult = 1) {
   const k = 1 + (local?.tier || 0) * 0.1;
   return Object.fromEntries(ORDEM_GEMAS.map((id) => [id, Math.min(1, GEMAS[id].chance * k * mult)]));
@@ -322,6 +331,10 @@ export const ESPOLIOS = {
   // só do Baú da Vilemaw (chefe global)
   'seda-vilemaw':       { nome: 'Seda de Vilemaw', valor: valorEsp(45, 4), cor: '#d8d0ff' },
   'presa-vilemaw':      { nome: 'Presa de Vilemaw', valor: valorEsp(50, 30), cor: '#7affe8' },
+  // a Dungeon do Braum (p675): só vêm do prêmio da dungeon
+  'pele-yeti':          { nome: 'Pele de Yeti', valor: valorEsp(45, 20.14), cor: '#e8f4ff' },      // ~2.000, abaixo da Presa do Barão (p684)
+  'presa-gelo':         { nome: 'Presa do Lobo do Gelo', valor: valorEsp(45, 25.18), cor: '#bfe8ff' },      // ~2.500 (p684)
+  'bigode-braum':       { nome: 'Mecha do Bigode do Braum', valor: valorEsp(50, 683.06), cor: '#c8a070' },      // ~75 mil (p686)
 };
 // o que cada monstro pode deixar: [espólio, chance] (cada um é sorteado à parte; à noite, os noturnos sorteiam duas vezes)
 export const ESPOLIO_MONSTRO = {
@@ -869,28 +882,28 @@ export const KITS = {
   // vel: velocidade de andar em Runeterra (o servidor aceita junto, pvp.js)
   darius: { id: 'darius', dados: DADOS, stats: DADOS.campeao.stats, adBase: 64, adNivel: 3.9, hab: HAB_DARIUS_KIT, distancia: false, hemorragia: true, papel: { dano: 1.1, recebido: 0.55, arena: 1.075, pvp: 0.95, pvpRecebido: 0.85 },      // dano 0,91 → 1,1 e arena 1,3 → 1,075 em 13/10/2026 (p633: +21% só no Rift)
     ordem: ['N', 'R', 'E', 'A', 'G', 'B', 'F', 'T', 'Q', 'M', 'W'] },
-  ezreal: { id: 'ezreal', dados: DADOS_EZREAL, stats: DADOS_EZREAL.campeao.stats, adBase: 66, adNivel: 4.2, hab: HAB_EZREAL, distancia: true, hemorragia: false, chegadaExtra: 1.2, papel: { dano: 1.12, recebido: 1.05, arena: 1.1, pvp: 1.08, pvpRecebido: 1.03, vel: 1.08 },
+  ezreal: { id: 'ezreal', dados: DADOS_EZREAL, stats: DADOS_EZREAL.campeao.stats, adBase: 66, adNivel: 4.2, hab: HAB_EZREAL, distancia: true, hemorragia: false, chegadaExtra: 1.2, papel: { dano: 1.12, recebido: 1.05, arena: 1.1, pvp: 1.08, pvpRecebido: 0.95, vel: 1.08 },
     // kiting: recua entre os disparos (recuo em s que o monstro leva para alcançar de novo), gastando fôlego
     kite: { recarga: 1.6, recuo: 0.6, gasto: 0.25, recupera: 0.15, pausa: 0.2 },
     ordem: ['N', 'G', 'F', 'R', 'E', 'B', 'T', 'A', 'M', 'W', 'Q'] },
   // magia: as habilidades escalam com o Poder de Habilidade e causam dano mágico; o saque é de itens de mago
-  lux: { id: 'lux', dados: DADOS_LUX, stats: DADOS_LUX.campeao.stats, adBase: 54, adNivel: 3.3, hab: HAB_LUX, distancia: true, magia: true, hemorragia: false, chegadaExtra: 1.2, papel: { dano: 1.59, recebido: 1.05, arena: 1.0, pvp: 1.2, pvpRecebido: 1.05 },
+  lux: { id: 'lux', dados: DADOS_LUX, stats: DADOS_LUX.campeao.stats, adBase: 54, adNivel: 3.3, hab: HAB_LUX, distancia: true, magia: true, hemorragia: false, chegadaExtra: 1.2, papel: { dano: 1.59, recebido: 1.05, arena: 1.0, pvp: 1.2, pvpRecebido: 0.95 },
     kite: { recarga: 1.8, recuo: 0.55, gasto: 0.25, recupera: 0.15, pausa: 0.2 },
     ordem: ['N', 'R', 'W', 'E', 'A', 'G', 'B', 'F', 'T', 'Q', 'M'] },
   // Yasuo: corpo a corpo, sem mana (Fluxo), crítico dobrado
-  yasuo: { id: 'yasuo', dados: DADOS_YASUO, stats: DADOS_YASUO.campeao.stats, adBase: 60, adNivel: 3.9, hab: HAB_YASUO, distancia: false, hemorragia: false, fluxo: true, papel: { dano: 1.15, recebido: 0.85, arena: 1.5, pvp: 1, pvpRecebido: 0.92, vel: 1.04 },
+  yasuo: { id: 'yasuo', dados: DADOS_YASUO, stats: DADOS_YASUO.campeao.stats, adBase: 60, adNivel: 3.9, hab: HAB_YASUO, distancia: false, hemorragia: false, fluxo: true, papel: { dano: 1.15, recebido: 0.85, arena: 1.5, pvp: 0.92, pvpRecebido: 0.92, vel: 1.04 },
     ordem: ['N', 'R', 'W', 'E', 'A', 'G', 'B', 'F', 'T', 'M', 'Q'] },
   // Katarina: corpo a corpo, de magia, sem mana; as adagas (Q, A, T) caem no chão e ela gira ao pegar
   katarina: { id: 'katarina', dados: DADOS_KATARINA, stats: DADOS_KATARINA.campeao.stats, adBase: 58, adNivel: 3.4, hab: HAB_KATARINA, distancia: false, magia: true, semMana: true, adagas: true,
-    hemorragia: false, papel: { dano: 1.2, recebido: 0.75, recebidoArena: 1, arena: 1.75, pvp: 1.15, pvpRecebido: 1, vel: 1.05 },
+    hemorragia: false, papel: { dano: 1.2, recebido: 0.75, recebidoArena: 1, arena: 1.75, pvp: 1.15, pvpRecebido: 0.92, vel: 1.05 },
     ordem: ['N', 'R', 'B', 'M', 'E', 'A', 'G', 'F', 'T', 'Q', 'W'] },
   // Taric: tanque de suporte, de magia; cura, escudos e atordoamentos, e a Bravata depois de cada habilidade
   taric: { id: 'taric', dados: DADOS_TARIC, stats: DADOS_TARIC.campeao.stats, adBase: 55, adNivel: 3.3, hab: HAB_TARIC, distancia: false, magia: true,
-    hemorragia: false, papel: { dano: 0.9, recebido: 0.75, arena: 0.78, pvp: 0.88, pvpRecebido: 0.85 },      // recebido 0,62 → 0,75 em 12/10/2026 (aguentava mais que o Darius)
+    hemorragia: false, papel: { dano: 0.9, recebido: 0.75, arena: 0.78, pvp: 0.8, pvpRecebido: 1 },      // recebido 0,62 → 0,75 em 12/10/2026 (aguentava mais que o Darius)
     ordem: ['R', 'N', 'F', 'Q', 'W', 'E', 'B', 'G', 'M', 'T', 'A'] },
   // Zac: tanque que entra na briga; sem mana, paga as habilidades com vida (semMana) e se cura com as gosmas
   zac: { id: 'zac', dados: DADOS_ZAC, stats: DADOS_ZAC.campeao.stats, adBase: 60, adNivel: 3.3, hab: HAB_ZAC, distancia: false, magia: true, semMana: true, gosmas: true,
-    hemorragia: false, papel: { dano: 1.425, recebido: 0.66, recebidoArena: 0.7, arena: 0.7, pvp: 0.5, pvpRecebido: 0.69 },      // dano 1,37 → 1,425 em 13/10/2026 (p600, +4%)
+    hemorragia: false, papel: { dano: 1.425, recebido: 0.66, recebidoArena: 0.7, arena: 0.7, pvp: 0.65, pvpRecebido: 0.69 },      // dano 1,37 → 1,425 em 13/10/2026 (p600, +4%)
     ordem: ['N', 'R', 'B', 'G', 'E', 'A', 'T', 'M', 'F', 'W', 'Q'] },
 };
 export const kit = (estado) => KITS[estado?.campeao] || KITS.darius;
@@ -1167,6 +1180,8 @@ export function sortearLoot(local, chefe, mult = 1, classe = 'ad') {
 const mitigar = (dano, armadura) => dano * (100 / (100 + Math.max(0, armadura)));
 
 function emitir(c, tipo, dados) { c.eventos.push({ tipo, t: c.tempo, ...dados }); }
+// na dungeon (p708): a queimadura lembra quem a aplicou, para o dano ir para a conta dele (não aparece em JSON nem no desenho)
+function donoQueima(q, c) { if (c.dg) Object.defineProperty(q, 'dono', { value: c, enumerable: false }); return q; }
 
 function gastarMana(estado, custo) {
   if (estado.mana < custo) return false;
@@ -1181,14 +1196,14 @@ export const RM_MONSTRO = 0.6;
 // Monstro mais de NIVEL_DIF.livre níveis acima do jogador bate mais forte e aguenta mais, por nível a mais (com teto e piso).
 // Quem caça na própria faixa não sente nada. Vale no Rift e em Runeterra (chefes e guardiões também); a Vilemaw e o PvP, não.
 // (a primeira versão, livre 5 / +8% / 2,5x / −5% / 35%, só pesava no Barão: jogadores de nível 23 a 25 continuavam solando o Dragão)
-export const NIVEL_DIF = { livre: 4, danoMonstro: 0.15, maxDanoMonstro: 3, danoJogador: 0.07, minDanoJogador: 0.25 };
+export const NIVEL_DIF = { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5, danoJogador: 0.12, minDanoJogador: 0.25 };      // 0,15 / 3 / 0,07 até 13/10/2026 (p647: o Yasuo 30 solava o Vazio)
 export const difNivel = (estado, m) => Math.max(0, (Number(m?.nivel) || 0) - (estado.nivel || 1) - NIVEL_DIF.livre);
 export const fatorDanoMonstro = (estado, m) => { const d = difNivel(estado, m); return d ? Math.min(NIVEL_DIF.maxDanoMonstro, 1 + NIVEL_DIF.danoMonstro * d) : 1; };
 export const fatorDanoJogador = (estado, m) => { const d = difNivel(estado, m); return d ? Math.max(NIVEL_DIF.minDanoJogador, 1 - NIVEL_DIF.danoJogador * d) : 1; };
 // itens que tiram % da vida do monstro (Liandry, Rei Destruído): a porcentagem conta no máximo sobre TETO_VIDA_ITEM vezes a
 // curva de vida do nível (um monstro comum forte); senão, quanto mais vida o monstro (chefe, guardião, furioso), mais o item rendia
 export const TETO_VIDA_ITEM = 3;
-export const vidaRefItem = (alvo, vida = alvo.hpMax) => Math.min(vida, TETO_VIDA_ITEM * CURVA.hp(alvo.nivel || 1));
+export const vidaRefItem = (alvo, vida = alvo.hpMax) => Math.min(alvo.refItem ? alvo.refItem * vida / alvo.hpMax : vida, TETO_VIDA_ITEM * CURVA.hp(alvo.nivel || 1));      // na dungeon (p709): sobre a vida que o monstro teria fora dela
 function golpear(estado, c, a, alvo, bruto, fonte, { acumula = true, critico = false, magico = false, poder = false, frac = 1 } = {}) {
   if (alvo.hp <= 0) return 0;
   if (alvo.surgindo > 0) return 0;      // Runeterra: o monstro ainda está surgindo (1,5 s sem levar dano)
@@ -1204,7 +1219,7 @@ function golpear(estado, c, a, alvo, bruto, fonte, { acumula = true, critico = f
     const f = alvo.hp / alvo.hpMax;
     if (a.tem?.('4645') && f < 0.4) bruto *= 1.2;           // Chama Sombria
     if (a.tem?.('3165') && f < 0.5) bruto *= 1.12;          // Morellonomicon
-    if (a.tem?.('6653')) alvo.queima = { dps: vidaRefItem(alvo) * 0.015, t: 3 };     // Liandry: queima (com teto em monstro de muita vida)
+    if (a.tem?.('6653')) alvo.queima = donoQueima({ dps: vidaRefItem(alvo) * 0.015, t: 3 }, c);     // Liandry: queima (com teto em monstro de muita vida)
     if (a.tem?.('3116')) alvo.lento = Math.max(alvo.lento || 0, 1.5);         // Rylai: lentidão
   }
   const d = c.darius;
@@ -1218,7 +1233,9 @@ function golpear(estado, c, a, alvo, bruto, fonte, { acumula = true, critico = f
   if (hab && a.danoHab) dano *= 1 + a.danoHab;               // Foco da Katarina (vale também no giro das adagas)
   if (hab && d.absorcao > 0) dano *= 1 + (d.absorcaoBonus || 0) * (d.absorcaoAcum || 0);      // Absorção (Zac): cada gosma pega
   if (d.sombraPronta > 0 && hab && fonte !== 'B') { dano *= 1 + (d.sombraBonus || 0); d.sombraPronta = 0; emitir(c, 'sombraGolpe', { alvo: alvo.id }); }
-  dano *= fatorDanoJogador(estado, alvo);                  // monstro bem acima do seu nível aguenta mais
+  if (!c.dg) dano *= fatorDanoJogador(estado, alvo);                  // monstro bem acima do seu nível aguenta mais
+  if (alvo.escudoLonge > 0 && kit(estado).distancia) dano *= 1 - alvo.escudoLonge;      // Inquebrável do Braum: segura quem ataca de longe (p663)
+  if (alvo.reducaoDano > 0) dano *= 1 - alvo.reducaoDano;      // a fúria do Braum (p663)
   alvo.hp -= dano;
   alvo.golpeOutro = null;                                   // o último golpe agora é seu (ver processarAbates)
   emitir(c, 'dano', { alvo: alvo.id, valor: dano, fonte, critico, magico });
@@ -1294,6 +1311,8 @@ function escolherPocao(estado, tipo, falta) {
   const disp = Object.entries(POCOES).filter(([k, p]) => p.tipo === tipo && estado.pocoes[k] > 0 && estado.nivel >= p.nivel)
     .sort((x, y) => y[1].cura - x[1].cura);
   if (!disp.length) return null;
+  const pref = tipo === 'vida' ? estado.auto?.pocaoVida : estado.auto?.pocaoMana;      // a poção escolhida no automático (p695)
+  if (pref && disp.some(([k]) => k === pref)) return pref;
   return (disp.find(([, p]) => p.cura <= falta * 1.2) || disp[disp.length - 1])[0];
 }
 export function usarPocao(estado, c, chave) {
@@ -1340,7 +1359,7 @@ export function passo(estado, c, dt) {
 
   // morto: espera renascer na Fonte (na Arena, espera a próxima rodada, que o servidor manda: renascerArena)
   if (d.morto > 0) {
-    if (LOCAL[estado.local]?.aram) return;
+    if (LOCAL[estado.local]?.aram || c.dg) return;      // na dungeon fica caído até o fim do estágio (p663)
     d.morto -= dt;
     if (d.morto <= 0) {
       estado.local = 'fonte'; c.inimigos = [];
@@ -1404,11 +1423,11 @@ export function passo(estado, c, dt) {
 
   usarPocoesAuto(estado, c, a);
   // VIP: acabaram as poções de vida ou a mochila encheu → volta para a Fonte e fica lá parado (para não morrer nem perder saque)
-  if (rotinaAtiva(estado) && !local.arena && estado.rotina.pocoes && d.recall <= 0 && !temPocao(estado, 'vida')) {
+  if (rotinaAtiva(estado) && !local.arena && !c.dg && estado.rotina.pocoes && d.recall <= 0 && !temPocao(estado, 'vida')) {
     voltarBase(estado, c); emitir(c, 'rotinaVolta', { motivo: 'pocoes' });
   }
   // rotina: mochila cheia também é motivo para voltar
-  else if (rotinaAtiva(estado) && !local.arena && estado.rotina.mochila && mochilaCheia(estado) && d.recall <= 0) {
+  else if (rotinaAtiva(estado) && !local.arena && !c.dg && estado.rotina.mochila && mochilaCheia(estado) && d.recall <= 0) {
     voltarBase(estado, c); emitir(c, 'rotinaVolta', { motivo: 'mochila' });
   }
 
@@ -1416,6 +1435,7 @@ export function passo(estado, c, dt) {
 
   // novo grupo de monstros
   if (!c.inimigos.length) {
+    if (c.dg) return;      // na dungeon quem manda as ondas é ela (p663)
     c.respawn -= dt;
     if (c.respawn > 0) return;
     c.inimigos = gerarGrupo(local, ehNoite(estado), estado.nivel);
@@ -1440,7 +1460,7 @@ export function passo(estado, c, dt) {
   const K = kit(estado), HK = K.hab;
   const vivos = c.inimigos.filter((i) => i.hp > 0);
   if (K.fluxo && vivos.length) encherFluxo(estado, a, HK.P.fluxoSeg * dt);      // Yasuo: lutando, o Fluxo enche
-  for (const i of vivos) i.chegada = Math.max(0, i.chegada - dt);
+  if (!c.dg) for (const i of vivos) i.chegada = Math.max(0, i.chegada - dt);      // na dungeon os monstros andam uma vez só (p663)
   const prontos = vivos.filter((i) => i.chegada <= 0);
   // corpo a corpo luta com quem já chegou; o atirador acerta o mais próximo, mesmo se ainda estiver chegando
   const alvo = K.distancia ? [...vivos].sort((x, y) => x.chegada - y.chegada)[0] : prontos[0];
@@ -1609,18 +1629,19 @@ export function passo(estado, c, dt) {
   }
 
   // mecânicas dos chefes
-  for (const i of prontos) if (i.chefe && i.hp > 0 && d.morto <= 0) mecanicaChefe(estado, c, a, i, dt);
+  if (!c.dg) for (const i of prontos) if (i.chefe && i.hp > 0 && d.morto <= 0) mecanicaChefe(estado, c, a, i, dt);      // na dungeon, as mecânicas são dela (p663)
   if (d.morto > 0) return;
 
   if (K.kite) kitar(c, K.kite, prontos, dt);
 
   // inimigos atacam
   for (const i of prontos) {
-    if (i.hp <= 0 || d.morto > 0 || i.atordoado > 0 || i.carregando > 0 || i.chegada > 0) continue;
+    if (i.hp <= 0 || d.morto > 0 || i.atordoado > 0 || i.carregando > 0 || i.chegada > 0 || (c.dg && i.foco !== c.dg.id)) continue;      // na dungeon cada monstro bate em quem escolheu (p663)
     inimigoAtaca(estado, c, a, i, dt);
   }
   if (d.morto > 0) return;
 
+  if (c.dg) { for (const i of c.inimigos) if (i.hp <= 0 && !i.morto) { i.morto = true; emitir(c, 'abate', { alvo: i.id, nome: i.nome, dungeon: true }); } return; }      // dungeon: o prêmio é o baú do fim (p663)
   processarAbates(estado, c, a, local);
   if (c.inimigos.length && c.inimigos.every((i) => i.morto)) { c.inimigos = []; c.respawn = 1.5; }
 }
@@ -1638,6 +1659,7 @@ function tickInimigos(estado, c, a, adEfetivo, vivos, dt) {
       for (const i of vivos) if (i.hp > 0 && !i.externo && (A ? Math.hypot(i.x - A.x, i.y - A.y) <= SOLAR.raio : i.chegada <= 0)) golpear(estado, c, adEfetivo, i, dano, 'item', { acumula: false, magico: true });
     }
   }
+  if (c.dg && !c.dg.principal) return;      // na dungeon os efeitos nos monstros passam uma vez por passo (p663)
   for (const i of vivos) {
     if (i.surgindo > 0) i.surgindo = Math.max(0, i.surgindo - dt);
     if (i.acumulos > 0 && i.tSangue > 0) {
@@ -1651,7 +1673,7 @@ function tickInimigos(estado, c, a, adEfetivo, vivos, dt) {
     i.lento = Math.max(0, i.lento - dt);
     if (i.queima?.t > 0 && i.hp > 0) {      // Liandry e veneno: a queima tira vida por alguns segundos e o número aparece aos poucos
       const q = Math.min(i.hp, i.queima.dps * dt); i.queima.t -= dt; i.hp -= q; i.queimaAcum = (i.queimaAcum || 0) + q; i.queimaSeg = (i.queimaSeg || 0) + dt;
-      if (i.queimaSeg >= 0.5 || i.queima.t <= 0 || i.hp <= 0) { emitir(c, 'dano', { alvo: i.id, valor: Math.round(i.queimaAcum), fonte: 'queima' }); i.queimaAcum = 0; i.queimaSeg = 0; }      // um número a cada meio segundo
+      if (i.queimaSeg >= 0.5 || i.queima.t <= 0 || i.hp <= 0) { emitir(i.queima.dono || c, 'dano', { alvo: i.id, valor: Math.round(i.queimaAcum), fonte: 'queima' }); i.queimaAcum = 0; i.queimaSeg = 0; }      // na dungeon, na conta de quem aplicou (p708)      // um número a cada meio segundo
     }
     i.atordoado = Math.max(0, (i.atordoado || 0) - dt);
     if (i.noAr > 0) i.noAr = Math.max(0, i.noAr - dt);      // jogado para o alto (Yasuo): fica atordoado enquanto está no ar
@@ -2034,6 +2056,7 @@ export function encherFluxo(estado, a, quanto) { if (kit(estado).fluxo) estado.m
 // a linha de a (quem atira) até b (o Yasuo) cruza a parede de frente para trás, a até PAREDE_MEIA tiles do meio.
 // Devolve o ponto onde a linha bate na parede (ou null). Usada pelo motor, pelo arena.js, pela cena e pelo servidor.
 export const PAREDE_MEIA = 1.3;
+export const PAREDE_PVP = 2.5;      // a Parede de Vento segura outro jogador por 2,5 s (contra monstro, a duração da habilidade; p714)
 export function paredeBarra(p, a, b) {
   if (!p || !a || !b || a.x == null || b.x == null) return null;
   const sa = (a.x - p.x) * p.dx + (a.y - p.y) * p.dy, sb = (b.x - p.x) * p.dx + (b.y - p.y) * p.dy;
@@ -2153,7 +2176,7 @@ function envenenar(estado, c, a, alvo) {
   const HF = habDe(estado).F, rF = estado.ranks.F;
   if (!HF?.veneno || !rF || alvo.hp <= 0) return;
   const dps = mitigar(HF.veneno(rF, a), alvo.armadura * RM_MONSTRO * (1 - (a.penMagica || 0))) * (kit(estado).papel?.dano ?? 1);
-  alvo.queima = { dps: Math.max(alvo.queima?.t > 0 ? alvo.queima.dps : 0, dps), t: HF.venenoT };
+  alvo.queima = donoQueima({ dps: Math.max(alvo.queima?.t > 0 ? alvo.queima.dps : 0, dps), t: HF.venenoT }, c);
 }
 // o giro de quando ela pega uma adaga: corta todos em volta; com a Lâmina Sinistra, ataca mais rápido e cura
 export function giroAdaga(estado, c, a, adEfetivo, alvos, ad = null) {
@@ -2693,7 +2716,7 @@ function kitar(c, k, prontos, dt) {
 function receberDano(estado, c, a, dano, doSangramento, magico = false, origem = null) {
   const d = c.darius;
   if ((d.invulneravel || 0) > 0) return;                                       // Zhonya: em stasis, nada acerta
-  if (!doSangramento && origem?.nivel) dano *= fatorDanoMonstro(estado, origem);      // monstro bem acima do seu nível bate mais forte
+  if (!doSangramento && origem?.nivel && !c.dg) dano *= fatorDanoMonstro(estado, origem);      // na dungeon o nível dos monstros é o do grupo (p663)      // monstro bem acima do seu nível bate mais forte
   if (!doSangramento) { const pp = kit(estado).papel; dano *= (LOCAL[estado.local]?.arena && pp?.recebidoArena != null ? pp.recebidoArena : pp?.recebido) ?? 1; }      // o papel do campeão (o tanque apanha menos; em Runeterra pode ser outro)
   if (!doSangramento && a.tem('3102') && (d.timers.banshee || 0) <= 0) {        // Véu da Banshee: bloqueia um golpe
     d.timers.banshee = 40; emitir(c, 'item', { nome: t('Escudo de Feitiço') }); return;
@@ -2776,10 +2799,10 @@ function zerarEfeitos(d) {
 function morrer(estado, c, por) {
   const d = c.darius, aram = !!LOCAL[estado.local]?.aram;
   zerarEfeitos(d);
-  d.morto = aram ? 1e9 : 3;          // na Arena fica caído até a próxima rodada
+  d.morto = aram || c.dg ? 1e9 : 3;          // na Arena fica caído até a próxima rodada; na dungeon, até o próximo estágio (p663)
   estado.buffBarao = 0;
   estado.vida = 0;
-  const { perda } = aram ? { perda: 0 } : penalidadeMorte(estado);      // na Arena morrer não custa nada
+  const { perda } = aram || c.dg ? { perda: 0 } : penalidadeMorte(estado);      // na Arena e na dungeon morrer não custa nada (p663)
   const quem = c.inimigos.find((i) => i.hp > 0 && i.chegada <= 0);
   // em Runeterra o jogo pede ao servidor para derrubar os itens no chão (soltarSaco no jogo.js)
   emitir(c, 'morreu', { perdaXp: perda, por: por ?? quem?.nome, pvp: !!por, aram, runeterra: !aram && !!(c.arena?.mundo && LOCAL[estado.local]?.arena) });
@@ -3523,6 +3546,9 @@ export const MASCOTES = {
   aranha: { nome: 'Aranhinha', especial: true, req: { texto: 'Cai do Baú da Vilemaw ou vem com 30 dias seguidos de prêmio diário', ok: (e) => !!e.mascotes?.aranha },
     desc: 'Filhote da Vilemaw: morde o alvo a cada 3s (22% do dano +2,5% por nível) e acha um pouco mais de itens (+0,25% de chance por nível). Em personagem AP, usa também o Poder de Habilidade.', ataque: (n) => 0.22 + 0.025 * n, intervalo: 3,
     bonus: (n) => ({ itens: 0.0025 * n }) },
+  // só o servidor dá: 1% por vitória na Dungeon do Braum, sem garantia (p675, p679)
+  poroBigode: { nome: 'Poro de Bigode', especial: true, negociavel: true, req: { texto: 'Cai da Dungeon do Braum', ok: (e) => !!e.mascotes?.poroBigode },
+    desc: 'O poro favorito do Braum: corre pegar o ouro dos monstros, +1,25% de ouro por nível.', bonus: (n) => ({ ouro: 0.0125 * n }) },
 };
 // a Aranhinha também vem pela sequência do prêmio diário
 export const ARANHA_DIAS = 30;
@@ -3548,7 +3574,43 @@ export function adotarMascote(estado, id) {
   estado.mascote = id;
   return true;
 }
-// mascote especial dado pelo servidor (a Aranhinha); devolve true se era novo
+// ---------- Dungeon do Braum: o prêmio (p675) ----------
+// XP de xpMin minutos e ouro de ouroMin minutos de caça na zona ideal (com o bônus de Runeterra na XP), mais espólios de
+// Freljord que valem uns espoliosMin minutos de ouro; a derrota paga porEstagio[estágios vencidos]. Só na vitória: o lendário
+// (2%), a Mecha do Bigode (2%) e o Poro de Bigode (1%, sem garantia; quem decide é o servidor).
+// a referência é o que os jogadores ganham de verdade caçando (p680): mediana de XP e ouro por minuto de cada faixa de
+// nível na produção (saves.media, 14/10/2026; do 45 em diante, a mesma subida das faixas de baixo); a XP leva o bônus de
+// Runeterra (a caça do Vazio). Antes era 0,2 nível por hora para todos, o que no 45 dava 3,2 milhões de ouro por luta.
+// teto (p681, p685): o ouro e os espólios comuns de uma luta, cada um, nunca passam de 20 mil (10 min caçando no Barão rendem ~120 mil no 45)
+export const PREMIO_DUNGEON = { xpMin: 15, ouroMin: 10, espoliosMin: 10, teto: 20000, porEstagio: [0, 0.25, 0.5], lendario: 0.1, bigode: 0.02, mascote: 0.01 };
+const RITMO_NIVEL = [[5, 1588, 533], [10, 2067, 688], [15, 2929, 951], [20, 5055, 1598], [25, 7917, 2489], [30, 12899, 4213], [35, 21075, 6826], [40, 31565, 9104], [45, 45800, 12300], [50, 66400, 16600]];
+export function ritmoReal(nivel) {      // { xp, ouro } por minuto, interpolado entre as faixas
+  const T = RITMO_NIVEL, n = Math.max(T[0][0], Math.min(T[T.length - 1][0], nivel));
+  let k = 0; while (k < T.length - 2 && n > T[k + 1][0]) k++;
+  const [a, xa, oa] = T[k], [b, xb, ob] = T[k + 1], f = (n - a) / (b - a);
+  return { xp: xa + (xb - xa) * f, ouro: oa + (ob - oa) * f };
+}
+export function premioDungeonDe(nivel, frac = 1) {
+  const r = ritmoReal(nivel), P = PREMIO_DUNGEON;
+  return { xp: Math.round(P.xpMin * r.xp * ARENA.bonus * frac), ouro: Math.round(Math.min(P.teto, P.ouroMin * r.ouro) * frac), espolioOuro: Math.round(Math.min(P.teto, P.espoliosMin * r.ouro) * frac) };
+}
+export function darPremioDungeon(estado, frac, venceu, r = Math.random) {
+  const pr = premioDungeonDe(estado.nivel || 1, frac), E = ESPOLIOS;
+  estado.ouro = (estado.ouro || 0) + pr.ouro;
+  if (pr.xp > 0) ganharXp(estado, null, pr.xp);
+  const ganhos = {};
+  if (frac > 0) { ganhos['pele-yeti'] = Math.max(1, Math.round(pr.espolioOuro / 2 / E['pele-yeti'].valor)); ganhos['presa-gelo'] = Math.max(1, Math.round(pr.espolioOuro / 2 / E['presa-gelo'].valor)); }
+  if (venceu && r() < PREMIO_DUNGEON.bigode) ganhos['bigode-braum'] = 1;
+  estado.espolios ??= {}; const espolios = {}, perdidos = [];
+  for (const [id, q] of Object.entries(ganhos)) { if (cabeEspolio(estado, id)) { estado.espolios[id] = (estado.espolios[id] || 0) + q; espolios[id] = q; } else perdidos.push(id); }
+  let item = null;
+  if (venceu && r() < PREMIO_DUNGEON.lendario) {
+    const lista = itensPorRaridade('lendario', localDaArena(estado.nivel || 1), classeDe(estado)), base = lista[Math.floor(r() * lista.length)];
+    if (base) { const id = comItem(base, 0, sortearQualidade()); if (espacosLivres(estado) > 0) { estado.mochila.push(id); item = id; } else perdidos.push(id); }
+  }
+  return { xp: pr.xp, ouro: pr.ouro, espolios, item, perdidos };
+}
+// mascote especial dado pelo servidor (a Aranhinha, o Poro de Bigode); devolve true se era novo
 export function ganharMascote(estado, id) {
   prepararMascotes(estado);
   if (!MASCOTES[id] || estado.mascotes[id]) return false;
@@ -3788,4 +3850,3 @@ export function anjoPvp(estado, c) {
 // peças do combate usadas pelo motor de Runeterra (js/arena.js)
 export const interno = { efetivo, golpear, curar, receberDano, aplicarHemorragia, acertouHabilidade, detonarOrbe, emitir, gastarMana, tornarNoturno,
   bonusPoder, tickInimigos, avancarAtaque, golpeBasico, inimigoAtaca, processarAbates, mecanicaChefe, aoUsarHabilidade, dispararCentelha, iluminar, curaTaric, pegarGosma, soltarGosmas, pagarVida, dividirZac, reunirZac };
-
