@@ -31,6 +31,8 @@ import { suite as suiteInterruptores } from './interruptores.test.mjs';
 import { suite as suiteCofre } from './cofre.test.mjs';
 // W3 (w3-barra) — integração com o inject.js (TK-INT-01).
 import { suite as suiteIntegracao } from './integracao.test.mjs';
+// W3 (w3-barra) — leitura de números do jogo (sufixo k/M do fmt).
+import { suite as suiteNumeros } from './numeros.test.mjs';
 
 const argv = process.argv.slice(2);
 if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
@@ -48,7 +50,7 @@ const iF = argv.indexOf('--filter');
 if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 
 const SUITES = [suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre,
-  suiteIntegracao];
+  suiteIntegracao, suiteNumeros];
 const checks = [];
 const notas = [];
 let populacaoExecutada = 0;

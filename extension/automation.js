@@ -198,7 +198,31 @@
   };
   let cfg = structuredClone(DEFAULT);
 
-  const parseNum = (s) => { const d = String(s ?? '').replace(/[^\d]/g, ''); return d ? Number(d) : NaN; };
+  // SUFIXO do `fmt` do JOGO (docs/game-src/cena.js:225):
+  //   fmt = n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e4 ? (n/1e3).toFixed(1)+'k' : Math.round(n)
+  // O parser antigo (`replace(/[^\d]/g,'')`) APAGAVA o sufixo: "12.3k" virava 123 e "1.2M"
+  // virava 12 — ouro, poções e stats lidos errados EM SILÊNCIO acima de 10.000. REGRA provada
+  // no content.js:83-100 (o MESMO bug, lá com o gatilho da poção a morrer acima de 10k de HP):
+  // grupo de 3 casas ("4.188") = MILHAR (pt-BR); com sufixo ("12.3k") = decimal. Com inteiros o
+  // comportamento é idêntico (sem regressão).
+  const SUFIXO = { k: 1e3, K: 1e3, m: 1e6, M: 1e6 };   // cena.js:225: k = x1000, M = x1000000
+  /**
+   * Número do HUD como o jogo o escreve.
+   * @param {string} raw campo numérico (sem o sufixo)
+   * @param {string} [suf] 'k'/'m' que vinha imediatamente a seguir ao campo
+   */
+  const parseNum = (raw, suf) => {
+    const s = String(raw ?? '').replace(/[\s\u00a0\u202f]/g, '');
+    if (!s) return NaN;
+    const d = s.replace(/[^\d.,]/g, '');                       // "12.3" | "4.188" | "1.234.567"
+    if (!d) return NaN;
+    // "4.188" (grupo de 3) é MILHAR em pt-BR; "12.3" é decimal (o `fmt` dá 1 casa, cena.js:225).
+    const v = /^\d{1,3}([.,]\d{3})+$/.test(d) ? Number(d.replace(/[.,]/g, ''))
+      : /^\d+[.,]\d+$/.test(d) ? Number(d.replace(',', '.'))
+        : Number(d.replace(/[.,]/g, ''));
+    const mult = SUFIXO[String(suf ?? '').trim()] || 1;
+    return Number.isFinite(v) ? v * mult : NaN;
+  };
   const numOr = (v, d) => Number.isFinite(v) ? v : d;
 
   // ------------------------------------------------------------- keybinds
@@ -211,9 +235,12 @@
   // ------------------------------------------------------------- leitura
   function readGold() {
     const t = document.querySelector('#st-ouro')?.textContent || '';
-    if (/M/i.test(t)) return Math.round(parseFloat(t) * 1e6);
-    if (/k/i.test(t)) return Math.round(parseFloat(t) * 1e3);
-    return parseNum(t);
+    // O sufixo do `fmt` entra no GRUPO (cena.js:225): "12.3k" = 12.300. A versão antiga
+    // testava /k/i e multiplicava por 1e3 — funcionava para "12.3k", mas um "1.234" puro
+    // caía no parseNum que apagava o ponto: 1234 virava 123. Agora os dois casos passam
+    // pela MESMA regra (grupo de 3 = milhar; com sufixo = decimal).
+    const m = String(t).match(/([\d.,]+)\s*([kKmM])?/);
+    return m ? parseNum(m[1], m[2]) : NaN;
   }
   function readLocation() {
     const t = document.querySelector('#local-nome')?.textContent || '';
@@ -598,7 +625,10 @@
   const seenLog = new WeakSet();
   let farm = { current: null, cycles: [], log: [], issues: [], deaths: [] };
 
-  const parseBig = (s) => { if (!s) return null; const m = String(s).match(/([\d.]+)\s*([kKmM]?)/); if (!m) return null; let v = parseFloat(m[1]); const s2 = (m[2] || '').toLowerCase(); if (s2 === 'k') v *= 1e3; if (s2 === 'm') v *= 1e6; return Math.round(v); };
+  // Mesma regra do parseNum (sufixo do `fmt`, cena.js:225; grupo de 3 = milhar em pt-BR).
+  // O antigo capturava `([\d.]+)` — sem a vírgula e sem o sufixo no grupo, "Perdeu 12,3k"
+  // não casava e o XP da morte era registado como null.
+  const parseBig = (s) => { if (!s) return null; const m = String(s).match(/([\d.,]+)\s*([kKmM])?/); if (!m) return null; const v = parseNum(m[1], m[2]); return Number.isFinite(v) ? Math.round(v) : null; };
   function logEvent(type, data) { try { farm.log = [{ at: Date.now(), type, ...data }, ...(farm.log || [])].slice(0, 200); } catch { /* ignore */ } }
   function logIssue(type, data) { try { farm.issues = [{ at: Date.now(), type, ...data }, ...(farm.issues || [])].slice(0, 100); } catch { /* ignore */ } }
 
@@ -1313,7 +1343,11 @@
       // ROUBO DE VIDA entra na leitura (pedido do Lead): e o stat que decide a luta contra o chefe
       // (cura so em AUTO-ATAQUES, motor.js:1226-1228) e o painel do jogo mostra-o.
       const m = t.match(/^(Dano|Armadura|Vel\. ataque|Res\. mágica|Poder|Mana|Crítico|Esquiva|Roubo de vida)(.*)$/);
-      if (m) { const v = (m[2].match(/[\d.,]+/) || [''])[0]; out[m[1]] = v ? parseFloat(v.replace(',', '.')) : 0; }
+      // O painel escreve os valores com o `fmt` do jogo (jogo.js:6454-6460 `txt('#st-ad',
+      // fmt(a.ad))`), logo "Dano 12.3k" e "Vida 4.188" chegam aqui. Sem o sufixo no grupo
+      // (e sem a regra grupo-de-3 = milhar) o Dano acima de 10.000 era lido 1000x menor —
+      // e o `player()/dpsPorHabilidade` inteiro trabalha com esse número.
+      if (m) { const v = m[2].match(/([\d.,]+)\s*([kKmM])?/); out[m[1]] = v ? parseNum(v[1], v[2]) : 0; }
     }
     return out;
   }
@@ -1322,11 +1356,15 @@
   function player() {
     const s = readStats();
     const nivel = parseInt(document.querySelector('#hud-nivel')?.textContent || document.querySelector('#st-nivel')?.textContent || '0', 10) || 0;
-    const hp = (document.querySelector('#hud-vida-txt')?.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
+    // "9.876 / 12.3k" — o sufixo do `fmt` (cena.js:225) tem de entrar nos GRUPOS: sem ele
+    // o máximo acima de 10.000 era lido como 123 e a vida caía no fallback 4188 (o que enviesa
+    // TODA a avaliação de sobrevivência: poções, fuga, luta contra o chefe).
+    const hp = (document.querySelector('#hud-vida-txt')?.textContent || '').match(/([\d.,]+)\s*([kKmM])?\s*\/\s*([\d.,]+)\s*([kKmM])?/);
     // `va` = velocidade de ataque do HUD — usada como PISO de DPS quando não há histórico medido
     // (dano × vel. ataque = DPS de auto-ataque). Antes só existia `dano`, e usar o DANO POR GOLPE
     // como se fosse DPS inflacionava qualquer valor de buff (ex.: a Respiração do Vento).
-    return { nivel, vida: hp ? +hp[2] : 4188, armadura: s['Armadura'] || 0, rm: s['Res. mágica'] || 0, dano: s['Dano'] || 0, poder: s['Poder'] || 0, va: s['Vel. ataque'] || 0 };
+    const vidaMax = hp ? parseNum(hp[3], hp[4]) : NaN;
+    return { nivel, vida: Number.isFinite(vidaMax) && vidaMax > 0 ? vidaMax : 4188, armadura: s['Armadura'] || 0, rm: s['Res. mágica'] || 0, dano: s['Dano'] || 0, poder: s['Poder'] || 0, va: s['Vel. ataque'] || 0 };
   }
 
   // Habilidades da Katarina (FALLBACK; o normal é vir do motor via META.kit).
@@ -1413,19 +1451,23 @@
   /** Lê o TOOLTIP (data-dica) do item: stats REAIS (já com refino + qualidade) + passivas. */
   function parseDica(dica) {
     const t = dica || '';
-    const f = (m) => m ? parseFloat(String(m[1]).replace(/\./g, '').replace(',', '.')) : 0;
-    const d = (m) => m ? parseFloat(String(m[1]).replace(',', '.')) : 0;
+    // SUFIXO do `fmt` DENTRO do grupo (cena.js:225): o tooltip do jogo escreve "+12.3k dano" /
+    // "+1.2M ouro", e sem o grupo do sufixo o regex nem casava — o stat era descartado em
+    // silêncio. MESMA regra do parseNum: grupo de 3 casas = milhar (pt-BR), com sufixo = decimal.
+    const f = (m) => (m ? parseNum(m[1], m[2]) : 0);
+    const d = (m) => (m ? parseNum(m[1], m[2]) : 0);
+    const num = /([\d.,]+)\s*([kKmM])?/;                 // grupo 1 = valor, grupo 2 = sufixo
     return {
-      ap: d(t.match(/\+([\d.,]+)\s*poder de habilidade/i)),
-      ad: d(t.match(/\+([\d.,]+)\s*dano de ataque/i)),
-      vida: f(t.match(/\+([\d.,]+)\s*vida/i)),
-      mana: f(t.match(/\+([\d.,]+)\s*mana/i)),
-      armadura: f(t.match(/\+([\d.,]+)\s*armadura/i)),
-      rm: f(t.match(/\+([\d.,]+)\s*res\.?\s*mágica/i)),
-      cdr: d(t.match(/[−-]\s*([\d.,]+)\s*%\s*recarga/i)) / 100,               // linha de stats (JÁ inclui o refino)
-      penMag: d(t.match(/([\d.,]+)\s*%\s*de\s*penetração\s*mágica/i)) / 100,
+      ap: d(t.match(new RegExp('\\+' + num.source + '\\s*poder de habilidade', 'i'))),
+      ad: d(t.match(new RegExp('\\+' + num.source + '\\s*dano de ataque', 'i'))),
+      vida: f(t.match(new RegExp('\\+' + num.source + '\\s*vida', 'i'))),
+      mana: f(t.match(new RegExp('\\+' + num.source + '\\s*mana', 'i'))),
+      armadura: f(t.match(new RegExp('\\+' + num.source + '\\s*armadura', 'i'))),
+      rm: f(t.match(new RegExp('\\+' + num.source + '\\s*res\\.?\\s*mágica', 'i'))),
+      cdr: d(t.match(new RegExp('[−-]\\s*' + num.source + '\\s*%\\s*recarga', 'i'))) / 100,   // linha de stats (JÁ inclui o refino)
+      penMag: d(t.match(new RegExp(num.source + '\\s*%\\s*de\\s*penetração\\s*mágica', 'i'))) / 100,
       apPct: d(t.match(/Poder de Habilidade total em\s*([\d.,]+)\s*%/i)) / 100,
-      lich: d(t.match(/\+([\d.,]+)\s*%\s*do\s*Poder de Habilidade/i)) / 100,
+      lich: d(t.match(new RegExp('\\+' + num.source + '\\s*%\\s*do\\s*Poder de Habilidade', 'i'))) / 100,
       refino: +(t.match(/refinado\s*\+?(\d+)/i)?.[1] || 0),
       qual: (t.match(/Qualidade\s*([A-Z]{1,2})/i) || [])[1] || null,
     };
