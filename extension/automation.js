@@ -769,6 +769,7 @@
     return marks;
   }
 
+  let _ultimoKillMs = 0;
   function handleLog(entry) {
     const loc = readLocation();
     const naBase = () => /fonte/i.test(loc.text);   // era um BOOLEANO e era CHAMADO como funcao (naBase()) em 4 sitios -> TypeError
@@ -809,7 +810,12 @@
     if (g || x) {
       // B2: o abate conta por OURO **ou** XP (o killTimes so era alimentado no ramo do ouro —
       // um abate so-XP nao entrava no ritmo e o `ritmoMobs` devolvia null).
-      killTimes.push(Date.now()); if (killTimes.length > 200) killTimes.shift();
+      // LOTE INICIAL: o `scanLog` do arranque processa o #log inteiro no MESMO milissegundo -> span=0 e a
+      // medida do ritmo desaparecia. Abates no mesmo ms sao espacados 1 s (no jogo real sao segundos
+      // apart, logo isto nao toca em nada); `_ultimoKillMs` guarda o ultimo carimbo.
+      const _agoraKill = (() => { const n = Date.now(); return (n <= _ultimoKillMs) ? _ultimoKillMs + 1000 : n; })();
+      _ultimoKillMs = _agoraKill;
+      killTimes.push(_agoraKill); if (killTimes.length > 200) killTimes.shift();
       if (window.__lolidleRlog) window.__lolidleRlog({ t: 'kill', nome: nomeLoot, gold: g ? parseNum(g[1]) : null, xp: x ? parseNum(x[1]) : null });
       if (!farm.current && !naBase) farm.current = novoCiclo(loc.text, Date.now());
       if (farm.current) {
