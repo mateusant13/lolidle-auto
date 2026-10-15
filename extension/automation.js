@@ -4299,7 +4299,15 @@ const CFG_VER = 1;
   /** Ranking empírico das builds testadas (ordena por ouro/min real no mob e por outDps real no chefe). */
   function rankBuildsTestadas(regiaoId) {
     const seen = new Map();
-    for (const x of ((farm && farm.cycles) || [])) { if (!x || !x.mobFase || !x.mobFase.perMin || !x.setup || !x.setup.equip) continue; const k = sigSet(x.setup.equip.map((e) => e.base)); if (!seen.has(k)) seen.set(k, { assinatura: k, itens: (x.setup.equip.map((e) => e.base)), regiao: x.region }); }
+    for (const x of ((farm && farm.cycles) || [])) {
+      if (!x || !x.mobFase || !x.mobFase.perMin || !x.setup || !x.setup.equip) continue;
+      const k = sigSet(x.setup.equip.map((e) => e.base));
+      if (!seen.has(k)) seen.set(k, { assinatura: k, itens: (x.setup.equip.map((e) => e.base)), regiao: x.region, janelas: [] });
+      // D (TK-01-42): ACUMULAR as janelas da MESMA assinatura. Sem isto o `if (!seen.has(k))`
+      // descartava o 2.o ciclo e a celula ficava com UMA janela - logo nunca levava o aviso de
+      // nao-comparabilidade entre execucoes diferentes (o defeito do w1-regioes D).
+      if (x.janela != null) { const ent = seen.get(k); if (ent && ent.janelas.indexOf(x.janela) < 0) ent.janelas.push(x.janela); }
+    }
     // TAMBÉM as rodadas de TESTE salvas (antes só os ciclos → metade das builds ficava de fora)
     for (const rod of (testesSalvos || [])) {
       if (!rod) continue;
