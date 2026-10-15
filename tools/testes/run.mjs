@@ -30,10 +30,13 @@ import { suite as suitePontos } from './pontos.test.mjs';
 import { suite as suiteInterruptores } from './interruptores.test.mjs';
 import { suite as suiteCofre } from './cofre.test.mjs';
 import { suite as suiteHud } from './hud.test.mjs';
-// W3 (w3-barra) — integração com o inject.js (TK-INT-01).
 import { suite as suiteIntegracao } from './integracao.test.mjs';
 import { suite as suiteW5 } from './w5-itens.test.mjs';
-import { suite as suiteScore } from './score.test.mjs'
+import { suite as suiteScore } from './score.test.mjs';
+import { suite as suitePlanejar } from './planejar.test.mjs';
+import { suite as suitePassivas } from './passivas.test.mjs';
+import { suite as suiteRefinar } from './refinar.test.mjs';
+
 const argv = process.argv.slice(2);
 if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -49,7 +52,8 @@ let filtro = null;
 const iF = argv.indexOf('--filter');
 if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 
-const SUITES = [suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteHud, suiteIntegracao, suiteW5, suiteScore];const checks = [];
+const SUITES = [suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre, suiteHud, suiteIntegracao, suiteW5, suiteScore, suitePlanejar, suitePassivas, suiteRefinar];
+const checks = [];
 const notas = [];
 let populacaoExecutada = 0;
 

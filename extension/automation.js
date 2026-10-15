@@ -1912,6 +1912,17 @@
    *  A resolução id -> stats REUTILIZA o `statsSet` (o mesmo que o `estimarSet`/`scoreSet` usam),
    *  para não haver duas tabelas de pen/CDR a divergir. Sem `ids`, lê `readEquip()` como sempre —
    *  os chamadores sem argumento (`cdrEquipado`, `dpsPorHabilidade`, `estimarSet`, `scoreSet`) não mudam. */
+  /** AP% DE UM ITEM LIDO DO TEXTO DA PASSIVA (motor.js/itens.js, campo `efeito`).
+   *  "Obra-Prima Mágica: aumenta seu Poder de Habilidade total em 35%." (itens.js:2580, 3089).
+   *  ANTES disto era `(S.det||[]).some(d => /Rabadon/.test(d)) ? 0.35 : 0` — o 0,35 estava
+   *  ESCRITO À MÃO e amarrado ao NOME: acertava no 3089 e valia 0 para qualquer outro item
+   *  com a mesma passiva (REGRA Nº 3: número que existe no jogo é LIDO). Agora o valor sai
+   *  do texto, por item. */
+  const apPctDe = (base) => {
+    const ef = String(((META.itens || []).find((x) => String(x.id) === String(base)) || {}).efeito || '');
+    const m = ef.match(/Poder de Habilidade total em ([\d.,]+)\s*%/i);
+    return m ? +String(m[1]).replace(',', '.') / 100 : 0;
+  };
   function efeitosEquipados(ids) {
     if (Array.isArray(ids)) {
       // `parseSlotId` é o ÚNICO intérprete de '<base>+<refino>~<qual>' (o `statsSet` usa o mesmo)
@@ -1920,13 +1931,12 @@
         const p = parseSlotId(raw);
         const base = p.base, qual = p.qual, refino = p.refino, mult = p.mult;
         const S = statsSet([base], { mult });
-        // O `statsSet` escala pelo `mult` (qualidade/refino) EXACTAMENTE a lista do motor
-        // (motor.js:252-255: ad/ap/mana/vida/armadura/rm/va/rv/critico/regen/**cdr**) — e só ela.
-        // O `penMag` NÃO está nessa lista (TK-02-109): '3175~A' dá 15% de pen, NÃO 17,25%
-        // (motor.js:254-255; a dica MEDIDA do jogo confirma, docs/snapshots/farm.json). Quem
-        // escalava o pen aqui introduzia um bug — o valor já vem CRU do `statsSet`, não mexer.
-        return { base, qual, refino, cdr: S.cdr, penMag: S.pen, penArmadura: S.penArmadura || 0, apPct: (S.det || []).some((d) => /Rabadon/.test(d)) ? 0.35 : 0,
-          lich: S.lich, ap: S.ap, ad: S.ad, efeito: ((META.itens || []).find((x) => String(x.id) === base) || {}).efeito || null };
+        // O `statsSet` só escala ap/ad pelo `mult` — o motor escala TUDO (motor.js:252-255:
+        // ad/ap/mana/vida/armadura/rm/va/rv/critico/regen/**cdr**). Aqui o cdr/pen levam o `mult`
+        // para a qualidade/refino contarem como no jogo ('3175~A' -> pen 0.15*1.15 = 0.1725).
+        // O `statsSet` JÁ aplica o `mult` (qualidade/refino) ao cdr/pen desde que passou a usar o
+        // `parseSlotId` — NÃO multiplicar outra vez aqui (era contagem dupla).
+        return { base, qual, refino, cdr: S.cdr, penMag: S.pen, penArmadura: S.penArmadura || 0, apPct: apPctDe(base),          lich: S.lich, ap: S.ap, ad: S.ad, efeito: ((META.itens || []).find((x) => String(x.id) === base) || {}).efeito || null };
       });
       const soma = (k) => itens.reduce((t, x) => t + (x[k] || 0), 0);
       return { cdr: Math.min(CAP_CDR, soma('cdr')), penMag: Math.min(CAP_PEN_MAG, soma('penMag')), penArmadura: Math.max(0, Math.min(1, soma('penArmadura'))), apPct: soma('apPct'),
@@ -3929,7 +3939,11 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       if (id === '4645') { chama = true; det.push('Chama +20% (<40%)'); }
       if (id === '6653') { liandry = true; det.push('Liandry queima 1,5%/s'); }
     }
-    cdr = Math.min(CAP_CDR, cdr); pen = Math.min(CAP_PEN_MAG, pen); penArmadura = penArmaduraDe(penArmadura);
+    // Pen de armadura COMPOSTA: o motor multiplica as fontes (motor.js:539
+    // `1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`); aqui chegam SOMADAS (0,3 da 3036 mais o que o
+    // kit trouxer) — o composto de reduções independentes fica no limite físico [0,1]
+    // (TK-02-150: era `Math.min(0.7, ...)`, número que o motor NUNCA aplica e que não mordia).
+    cdr = Math.min(CAP_CDR, cdr); pen = Math.min(CAP_PEN_MAG, pen); penArmadura = Math.max(0, Math.min(1, penArmadura));
     // `pen` = pen MAGICA (motor.js:529) e `penArmadura` = pen de ARMADURA (motor.js:539, so no ramo fisico).
     // rv = roubo de vida somado dos itens (motor.js:538; cura em motor.js:1226-1228).
     return { ap: apItem * (1 + apPct), ad: adItem, cdr, pen, penArmadura, rv: rvItens, lich, chama, liandry, crit, infinito, det };
@@ -4827,6 +4841,75 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
   const ehEspecialErrado = (base) => { const e = especialDe(base); return !!(e && !e.meu); };
 
 
+  /** FREQUÊNCIA DE SKILLS do campeão = conjurações POR SEGUNDO, lida do kit do MOTOR —
+   *  nunca copiada (REGRA Nº 3). O proc da Perdição de Lich (3100, itens.js:1710: "depois de
+   *  usar uma habilidade, o próximo ataque causa +75% do PA") depende disto: quem conjura mais
+   *  proca mais. ANTES era ×2,2 ESCRITO À MÃO, igual para todos os campeões
+   *  (parte-02.md:1564 "esse número deveria sair da frequência de skills do campeão";
+   *   :1602 "é heurística minha, não matemática do jogo").
+   *
+   *  FONTES, todas no motor.js:
+   *    :563    `serie(ini, passo, n)` — a recarga de cada habilidade é uma SÉRIE por rank
+   *            (ex. KATARINA Q `serie(10, -0.35)` :751 · LUX Q `serie(7, -0.3)` :648)
+   *    :564    "Cada habilidade vai até o rank 10 (as ultimates até o 5). São 110 ranks no
+   *            total e só 50 pontos (1 POR NÍVEL)"        -> pontos = nivel - 1
+   *    :565    mesma frase: a build depende de quais habilidades se fortalece
+   *    :884/…  `ordem: [...]` — a ORDEM OFICIAL de subir habilidade de cada campeão
+   *            (KATARINA :899, TARIC :903; reencaminhada por inject.js:160)
+   *    :1057   `e.barra ??= ['Q','W','E','R']`          -> toda destrancada tem rank >= 1
+   *
+   *  MODELO (explícito, para haver o que corrigir se o jogo mudar):
+   *    1. destrancadas no nível = as que têm `nivel <= L` e não são `passiva`;
+   *    2. rank: 1 em cada destrancada (motor.js:1057) e o resto dos pontos (L-1) gasto na
+   *       ORDEM OFICIAL do motor (motor.js:884/903), enchendo cada habilidade até ao `max`;
+   *    3. frequência = Σ 1/recarga[rank-1] sobre as que têm DANO (`base`/`ratio`/`adRatio`) —
+   *       passivas e utilidades (escudo, velocidade, buff) não conjuram dano e não procam.
+   *  Sem kit do campeão devolve 0: não há frequência que se invente. */
+  function freqSkills(c) {
+    const id = c && c.id != null ? String(c.id) : null;
+    const entrada = id && META.kits && META.kits[id] ? META.kits[id] : null;
+    const K = entrada ? entrada.kit : null;
+    if (!K) return 0;
+    const nivel = Math.max(1, +(player() || {}).nivel || 1);
+    const chave = id + '|' + nivel + '|' + Object.keys(K).length;
+    if (_freqMemo && _freqMemo.chave === chave) return _freqMemo.freq;
+    // (1) destrancadas e não passivas
+    const rank = {};
+    for (const t of Object.keys(K)) {
+      const h = K[t];
+      if (!h || h.passiva) continue;
+      if (h.nivel && h.nivel > nivel) continue;
+      rank[t] = 1;                                        // motor.js:1057 (a barra começa cheia)
+    }
+    // (2) pontos livres (1 por nível, motor.js:564-565) na ORDEM OFICIAL (motor.js:884/903)
+    let pontos = Math.max(0, nivel - 1 - Object.keys(rank).length);
+    for (const t of (entrada.ordem || [])) {
+      if (pontos <= 0) break;
+      if (!(t in rank)) continue;                         // trancada ou passiva neste nível
+      const h = K[t], max = +h.max || 10;
+      const sobe = Math.min(Math.max(0, max - rank[t]), pontos);
+      rank[t] += sobe; pontos -= sobe;
+    }
+    // (3) Σ 1/recarga sobre as que têm dano
+    let freq = 0;
+    for (const t of Object.keys(rank)) {
+      const h = K[t];
+      if (!((h.base && h.base.length) || (h.ratio && h.ratio.length) || h.adRatio)) continue;
+      const rec = Array.isArray(h.recarga) && h.recarga.length
+        ? h.recarga[Math.max(0, Math.min(h.recarga.length, rank[t]) - 1)]
+        : (typeof h.recarga === 'number' ? h.recarga : null);
+      if (!(rec > 0)) continue;
+      freq += 1 / rec;
+    }
+    _freqMemo = { chave, freq };
+    return freq;
+  }
+  let _freqMemo = null;
+  /** ESCALA de pontos por 1% de PA vindo de um proc (Perdição de Lich, 3100, itens.js:1710
+   *  "o próximo ataque causa +75% do Poder de Habilidade"). AP: 9 — a MESMA escala da
+   *  passiva do Rabadon (+35% PA → 315, motor.js:522). AD: 9 × 1,2/2,2 — preserva a proporção
+   *  AD:AP que o ×2,2/×1,2 antigo tinha (um campeão AD não vive de PA: vale pouco, não zero). */
+  const LICH_PONTOS = { ap: 9, ad: (9 * 1.2) / 2.2 };
   /** VALOR da PASSIVA (efeito) do item — parseia o texto do MOTOR (única fonte) e pontua
    *  pelo que o campeão REALMENTE usa. Ex.: Rabadon +35% AP, Liandry queima, pen mágica… */
   function valorPassiva(base, c) {
@@ -4850,7 +4933,14 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     if (it.penMag == null) v += n(/([\d,]+)%\s*de penetração mágica/i) * (ap ? 7 : 1);
     if (/queimam o alvo/i.test(e)) v += ap ? 140 : 20;                        // Liandry (queima % da vida — ótimo no chefe)
     if (/menos de 40% de Vida/i.test(e)) v += ap ? 90 : 15;                   // Chama Sombria (execução)
-    v += n(/próximo ataque causa \+([\d,]+)%/i) * (ap ? 2.2 : 1.2);           // Lich
+    // LICH BANE (3100) — o proc depende da FREQUÊNCIA de skills do campeão (TK-02-35):
+    // a passiva é "depois de usar uma habilidade, o próximo ataque causa +X% do PA"
+    // (itens.js:1710), e o número de conjurações por segundo sai das RECARGAS DO MOTOR
+    // (motor.js:563 `serie(ini,passo)`, motor.js:751 KATARINA Q, motor.js:648 LUX Q) —
+    // era ×2,2 escrito à mão, igual para a Katarina e para um mago lento
+    // (parte-02.md:1564/1602, dono: "uma Katarina que usa skill a cada 2 s proca o Lich
+    // muito mais que um mago lento, e o número fixo trata os dois igual").
+    v += n(/próximo ataque causa \+([\d,]+)%/i) * (ap ? LICH_PONTOS.ap : LICH_PONTOS.ad) * freqSkills(cc);
     v += n(/Dano de Ataque total em ([\d,]+)%/i) * (ap ? 1 : 9);              // AD%
     // REGEX REMOVIDA (auditoria do catalogo REAL, 108 itens): `% de roubo de vida` no TEXTO tem
     // ZERO acertos — era codigo morto que parecia tratar do assunto e nao tratava. O `rv` e um
@@ -5234,22 +5324,28 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
     // os que pertencem à build ideal do campeão (`buildIdeal()` é champion-aware — para
     // o Yasuo devolve a build AD, não a AP). O refino do +2 em diante é irreversível,
     // por isso o alvo tem de ser o item que a build realmente quer.
-    // AUTORIDADE DA LISTA — resolvido por DADO, não por palpite: se já houver histórico
-    // medido suficiente, a lista de essenciais é a build que MEDIU melhor (mesmo princípio
-    // que o `melhorSet` no contexto 'mob': o empírico manda). Só quando não há amostra
-    // suficiente é que se cai na `buildIdeal()` teórica. Sem isto, o gate do M6 recusava
-    // refinar a build que ganhou o M1 só porque ela difere da lista teórica.
+    // AUTORIDADE DA LISTA — TK-02-06 (objectivo do dono, ponto 6, verbatim: "Tirar a ultima
+    // muleta: refinarMelhores ainda prefere o medido (n>=3) ao teorico"). O TEÓRICO MANDA: a
+    // lista de essenciais é a `buildIdeal()`, que sai do catálogo do MOTOR (META.itens) e dos
+    // pesos do perfil — a mesma build que a extensão recomenda em todo o lado. O MEDIDO
+    // (`rankBuildsTestadas`, n>=3) já não substitui a lista: passa a VALIDAÇÃO/DESEMPATE e
+    // fica registado no resultado (`medido`/`divergenciaMedido`) para o dono ver a diferença
+    // sem que ela mude a decisão. Motivo: um conjunto que mediu melhor numa região e num
+    // nível não é necessariamente a build certa para o campeão, e refinar é IRREVERSÍVEL.
     let essenciais = [];
     let fonteEssenciais = 'teorico';
+    try { essenciais = (buildIdeal() || []).map(String); } catch { essenciais = []; }
+    // VALIDAÇÃO MEDIDA (n>=3): só informa. Se a build medida tiver itens que a teórica não
+    // tem, a divergência é registada — não aplicada.
+    let medido = null, divergenciaMedido = [];
     try {
       const rank = (rankBuildsTestadas(null) || []).filter((r) => r.mob && r.mob.goldMin != null && ((r.confianca && r.confianca.mob) || 0) >= 3);
       if (rank.length) {
         rank.sort((a, b) => (b.mob.goldMin || 0) - (a.mob.goldMin || 0));
-        essenciais = (rank[0].itens || []).map(String);
-        fonteEssenciais = 'medido(n=' + ((rank[0].confianca && rank[0].confianca.mob) || 0) + ', ' + Math.round(rank[0].mob.goldMin) + ' ouro/min)';
+        medido = { itens: (rank[0].itens || []).map(String), n: ((rank[0].confianca && rank[0].confianca.mob) || 0), ouroMin: Math.round(rank[0].mob.goldMin) };
+        divergenciaMedido = medido.itens.filter((x) => essenciais.indexOf(x) < 0);
       }
     } catch { /* ignore */ }
-    if (!essenciais.length) { try { essenciais = (buildIdeal() || []).map(String); } catch { essenciais = []; } }
     const alvos = readEquip().filter((e) => {
       const it = (META.itens || []).find((x) => String(x.id) === e.base);
       // TETO DE REFINO — mecanica MEDIDA no texto do próprio Ornn:
@@ -5263,7 +5359,7 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       if (!it || it.raridade !== 'lendario' || qIdx(e.qual) < qIdx('A') || (e.refino || 0) >= refinoMax || e.base === RABADON) return false;
       return essenciais.includes(String(e.base));
     });
-    if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), essenciais, fonteEssenciais };
+    if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), essenciais, fonteEssenciais, medido, divergenciaMedido };
     fecharJanelas(); await humano(300);
     if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn' };
     const bt = await waitFor('#janela-npc [data-palavra="forjar"]', 4000);
@@ -5285,8 +5381,8 @@ let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvIten
       feitos.push({ base: e.base, de: e.refino || 0, para: agora ? (agora.refino || 0) : null });
     }
     fecharJanelas();
-    logEvent('refino', { feitos });
-    return { ok: true, refinados: feitos };
+    logEvent('refino', { feitos, fonteEssenciais, divergenciaMedido: divergenciaMedido.length });
+    return { ok: true, refinidos: feitos, essenciais, fonteEssenciais, medido, divergenciaMedido };
   }
 
   /** MONTAGEM AUTÓNOMA — escolhe e monta sozinha a receita que serve a build.
