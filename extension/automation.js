@@ -2721,7 +2721,7 @@
     if (!foge) return;
     if (!fatalVivo && cobrem) { logEvent('chefe-fatal', { adiado: 'poções cobrem', regiao: regiaoTxt, perde, morre }); return; }
     fugindoAte = Date.now() + (cfg.fugirMs || 30000);
-    const decisao = { regiao: regiaoTxt, regiaoId: idReg, chefe: (c && c.boss) || null, fatalVivo, morre, perde, cobrem,
+    const decisao = { regiaoMata: morre, lutaPerdida: perde, regiao: regiaoTxt, regiaoId: idReg, chefe: (c && c.boss) || null, fatalVivo, morre, perde, cobrem,
       dps: r && r.risco ? Math.round(r.risco.dps) : null, tMorrer: r && r.risco ? r.risco.tMorrer : null, acao: 'fugir (B → base)' };
     logEvent('chefe-fatal', decisao);
     if (live) live.fatal = false;
