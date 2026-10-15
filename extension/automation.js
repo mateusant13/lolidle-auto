@@ -674,12 +674,17 @@
   /** Ritmo dos mobs: tempo por wave e tempo de 3 waves (base p/ decidir a ultimate). */
   function ritmoMobs() {
     const aw = analisarWaves();
-    if (!aw || aw.n < 3) return null;
-    const perWave = (META.grupoSpawn && META.grupoSpawn.base) || aw.perWave || 3;      // mobs/wave vem do MOTOR (média 3)
-    const gapS = aw.medGapMs ? aw.medGapMs / 1000 : (aw.killsMin ? (perWave / aw.killsMin) * 60 : null);
+    // B2 (TK-01-08): mobs/wave é a MÉDIA do motor (`mediaWaveDe`, motor.js:1137), NÃO a `base` (o MÍNIMO).
+    // A versão antiga usava a base e deixava o `seg3` 33% baixo — a ultimate nunca saía nos mobs.
+    const perWave = mediaWaveDe(META.grupoSpawn) || (aw && aw.perWave) || 3;
+    // A taxa aceita a MEDIDA (agregar/perMin) além da janela do #log: sem isto, um mundo com kills
+    // medidos mas poucos abates no log devolvia null e o ritmo desaparecia.
+    const km = (aw && aw.killsMin) || killsMinAoVivo();
+    if (!(km > 0)) return null;
+    const gapS = (aw && aw.medGapMs) ? aw.medGapMs / 1000 : (perWave / km) * 60;
     if (!gapS) return null;
     const segPorWave = +(perWave * gapS).toFixed(1);
-    return { n: aw.n, waves: aw.waves, perWave, killsMin: aw.killsMin, segPorWave, seg3: +(segPorWave * 3).toFixed(1), intraMs: aw.intraMs, interMs: aw.interMs, medGapMs: aw.medGapMs };
+    return { n: (aw && aw.n) || 0, waves: (aw && aw.waves) || 1, perWave, killsMin: km, segPorWave, seg3: +(segPorWave * 3).toFixed(1), intraMs: aw.intraMs, interMs: aw.interMs, medGapMs: aw.medGapMs };
   }
   /** Vale usar a ultimate (skill de CD longo > 35s) nos mobs? Sim se 3 waves DEMORAM p/ morrer.
    *  Se vale, é sinal FORTE de que o chefe da área não é vencível — mas NÃO é o único critério. */
