@@ -1432,7 +1432,12 @@
       // Campos do kit que o `serialKit` do inject.js (inject.js:107-123) reencaminha. `va`/
       // `bonus`/`bonusHab`/`penSuspiro`/`duracaoPen` NÃO estão nessa lista — ficam como
       // `serie(null)` = null e o `valorBuff` cai no TEXTO da habilidade (ver `buffDoTexto`).
-      out[t] = { max: h.max, mult: h.mult, alvo: h.alvo, adaga: !!h.adaga, auto: !!h.auto, dot: !!h.dot, passiva: !!h.passiva, util: !!h.util, adRatio: h.adRatio,
+      // `alvos` (TK-02-18): nº de alvos que a skill ATINGE — campo do kit do MOTOR
+      // (motor.js:751/759 a Q e o R da Katarina, motor.js:736 o M do Yasuo), reencaminhado
+      // pelo inject.js (inject.js:126). Estava PERDIDO aqui: a `barraIdeal` perguntava
+      // `KAT[t].alvos`, dava sempre undefined e a preferência por multi-alvo NUNCA
+      // discriminava — medido: a barra de mobs e a de chefe eram o MESMO conjunto.
+      out[t] = { max: h.max, mult: h.mult, alvo: h.alvo, alvos: h.alvos != null ? h.alvos : null, adaga: !!h.adaga, auto: !!h.auto, dot: !!h.dot, passiva: !!h.passiva, util: !!h.util, adRatio: h.adRatio,
         base: serie(h.base), ratio: serie(h.ratio), rec: serie(h.recarga), nivel: h.nivel,
         duracao: h.duracao, duracaoPen: h.duracaoPen, penSuspiro: h.penSuspiro,
         va: serie(h.va), bonus: serie(h.bonus), bonusHab: serie(h.bonusHab) };
@@ -5785,8 +5790,19 @@
     // SKILLS POR FASE (pedido do dono): no combate de MAPA os mobs vem em GRUPO, logo conta o
     // numero de ALVOS da skill (o `alvos` do kit do motor, ex.: Katarina R tem alvos: 3). No
     // chefe conta o dano de alvo unico. Desligavel por cfg.skillsPorFase === false.
+    // O peso da fase propriamente dito (e a prova de que a fase muda o CONJUNTO) está no
+    //`pesoFase` abaixo — TK-02-18.
     const porFase = cfg.skillsPorFase !== false && String(fase || '').toLowerCase() === 'mobs';
     const alvosDe = (t) => { const k = KAT[t] || {}; return k.alvos != null ? k.alvos : 1; };
+    // ---- PESO DA FASE (TK-02-18): a fase muda o PESO da skill, não só a ordem dela ----
+    // Antes a fase só mexia na ORDEM (um `if (porFase)` DEPOIS do bloco de disponibilidade,
+    // que nunca era alcançado com `barraPorDisponibilidade` ligado — o default) e o CONJUNTO
+    // de 4 era sempre o mesmo: MEDIDO, ideal mobs == ideal chefe para a Katarina. A fase
+    // tem de decidir QUAIS skills merecem os 4 lugares:
+    //   MOBS  -> vêm em GRUPO: peso = dano × nº de ALVOS (o `alvos` do kit do motor);
+    //   CHEFE -> alvo único: peso = dano só.
+    // NADA é inventado: `alvos` é campo do kit (motor.js:751/759 Katarina Q/R = 3,
+    // motor.js:736 Yasuo M = 4) e o dano é o `dpsPorHabilidade` (fórmulas do motor).
     // ---- OPÇÃO DO DONO: BARRA POR DISPONIBILIDADE (default FALSE) -------------------------
     // ---- BARRA POR DISPONIBILIDADE (DEFAULT TRUE — pedido do dono, ver `DEFAULT`) -----------
     // O dono: "usava tudo disponivel ... e ai removia dos slots pra colocar nos slots as que
@@ -5802,25 +5818,30 @@
     const cdDe = (t) => { const b = (s.bar || []).find((x) => x.t === t); return b && b.cd > 0 ? b.cd : 0; };
     const idxAtual = (t) => { const i = (s.bar || []).map((b) => b.t).indexOf(t); return i < 0 ? 99 : i; };
     const cand = (s.arsenal || []).filter((h) => h.rank > 0 && !(KAT[h.t] && KAT[h.t].passiva));
+    // Peso com que a skill CONCORRE A UM LUGAR na fase atual (multi-alvo em mobs, alvo único
+    // no chefe). É o que faz a barra de mobs diferir da de chefe quando o kit tem skills de
+    // área — e o que deixa a da Katarina IGUAL quando o kit dela já quer as mesmas 4 nas duas
+    // fases (a decisão é do motor, não nossa: Q e R são `alvos: 3` motor.js:751/759 e ficam
+    // dentro nas duas).
+    const pesoFase = (t) => { const d = dpsDe[t] || 0; const a = alvosDe(t); return porFase && a > 1 ? d * a : d; };
     cand.sort((a, b) => {
       const ua = ehUltimateFixa(a.t) ? 0 : 1, ub = ehUltimateFixa(b.t) ? 0 : 1;
       if (ua !== ub) return ua - ub;                       // a ultimate PRIMEIRO: fica SEMPRE dentro (inviolável)
+      // 1) QUEM MERECE O LUGAR: o peso da fase (em mobs, dano × alvos; no chefe, dano).
+      //    Desempata por rank e pela ordem do motor (determinístico).
+      const pa = pesoFase(a.t), pb = pesoFase(b.t);
+      if (pa !== pb) return pb - pa;
       if (porDisp) {
-        // 1) QUEM ESTÁ MAIS PRÓXIMA DE FICAR DISPONÍVEL: prontas primeiro (0), e as em recarga
-        //    pela recarga RESTANTE (menor primeiro).
+        // 2) A ORDEM DENTRO DA BARRA é a do dono ("usava tudo disponivel"): prontas primeiro,
+        //    depois pela recarga RESTANTE (menor primeiro).
         const da = cdDe(a.t), db = cdDe(b.t);
         if (da !== db) return da - db;
-        // 2) ANTI-OSCILAÇÃO (obrigatória): MESMA recarga restante -> NÃO reordena. Mantém quem já
+        // 3) ANTI-OSCILAÇÃO (obrigatória): MESMA recarga restante -> NÃO reordena. Mantém quem já
         //    está na barra e pela posição que ocupa (é isto que evita o churn de 2 s medido).
         const ia = idxAtual(a.t), ib = idxAtual(b.t);
         if (ia !== ib) return ia - ib;
-        return peso(a.t) - peso(b.t);                      // 3) desempate final determinístico (motor)
       }
-      if (porFase) {
-        const aa = alvosDe(a.t) > 1 ? 0 : 1, ab = alvosDe(b.t) > 1 ? 0 : 1;
-        if (aa !== ab) return aa - ab;                     // em mobs, quem bate em varios vem antes
-      }
-      return (dpsDe[b.t] || 0) - (dpsDe[a.t] || 0) || (b.rank - a.rank) || (peso(a.t) - peso(b.t));
+      return (b.rank - a.rank) || (peso(a.t) - peso(b.t));
     });
     return cand.slice(0, BARRA_SLOTS).map((h) => h.t);
   }
