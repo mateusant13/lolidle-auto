@@ -721,3 +721,13 @@ assercoes reais atras da porta (as mesmas que ja documentei).
 a porta - e as 6 assercoes sao o trabalho seguinte, com o contrato ja extraido (`{n:4, ouroMin:9999}`
 e `divergenciaMedido` com '3089').
 **Estado: 4 falhas, 22/25 verdes.**
+## ADENDA 18:05 - D (2.a tentativa, robusta): ligar as janelas ao ranking e NEUTRO outra vez
+O fixture do D **JA TRAZ** `janela: 'jA'/'jB'` (regiao.test.mjs:363-366) e o `agregar()` expoe as duas
+(a assercao 384 PASSA). O que falta e o `rankBuildsTestadas` trazer as duas (378-382).
+Liguei as janelas ao `seen` com match de regiao NORMALIZADO (semAcento, prefixo nos dois sentidos) ->
+**4 falhas nas DUAS corridas (neutro)**. Revertido.
+**O que sobra no D:** o `seen` do ranking e construido a partir das RODADAS de teste salvas
+(`testesSalvos`), nao do `farm.cycles` - e o fixture do D so semeia `farm`. Logo, para o ranking
+trazer as janelas, ou (a) as rodadas salvas passam a levar `janela`, ou (b) o `seen` passa a incluir as
+regioes do `agregar()` como celulas. E uma decisao de DESENHO, nao um campo em falta.
+**Estado: 4 falhas, 22/25 verdes.**
