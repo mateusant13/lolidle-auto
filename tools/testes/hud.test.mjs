@@ -26,7 +26,7 @@
  * CONTRATO: t.check(rotulo, condicao) so passa com condicao === true (nao ha truthy solto).
  */
 
-import { criarMundo, carregarAutomation, alimentarCatalogo, definirCampeao } from './dom-stub.mjs';
+import { criarMundo, carregarAutomation, alimentarCatalogo, alimentarMeta, definirCampeao } from './dom-stub.mjs';
 
 export const suite = {
   nome: 'hud',
@@ -382,6 +382,194 @@ export const suite = {
       // com o motor a mandar o HAB_CHEFE, o NOME e os tempos vem dele (motor.js:3069-3079)
       const semHab = (auto.mecanicaDe('sopro').nome === 'sopro') || (auto.mecanicaDe('sopro').nome.length > 0);
       t.check('H11: a mecanica tem sempre nome utilizavel', semHab === true);
+    }
+
+    /* ================ H12 — PENETRACAO DO KIT NA MATEMATICA DE BUILD (TK-02-114) ================
+     * O MOTOR aplica a penetracao de armadura do KIT, sempre, por rank:
+     *   motor.js:529  `penE = k.hab.E.pen && estado.ranks.E ? k.hab.E.pen[estado.ranks.E - 1] : 0`
+     *   motor.js:552  `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`
+     * Ha UM UNICO `pen:` no game-src: o E do DARIUS (motor.js:573, 20% -> 45%).
+     * A Katarina NAO tem (kit-katarina-vivo.json: 0 ocorrencias de `pen`).
+     * A build ignorava-a: o Cajado do Vazio e os itens de pen ficavam SOBREVALORADOS
+     * em qualquer campeao que a tenha no kit. */
+    {
+      const KIT_DARIUS = {
+        E: { max: 10, recarga: [26, 24, 22, 20.5, 19, 17.5, 16, 15, 14, 13], pen: [0.2, 0.23, 0.26, 0.29, 0.32, 0.35, 0.38, 0.41, 0.43, 0.45] },
+        Q: { max: 10, base: [50, 70], ratio: [1, 1.05], recarga: [9, 8.5] },
+      };
+      const arsenalDe = (mundo, rankE) => mundo.montar('#hab-ativas .hab[data-t]', [
+        mundo.el({ label: 'E', dataset: { t: 'E' }, textContent: rankE + ' / 10' }),
+        mundo.el({ label: 'Q', dataset: { t: 'Q' }, textContent: '2 / 10' }),
+      ]);
+      const dariusEm = (rankE) => {
+        const m = criarMundo();
+        const a = carregarAutomation(m);
+        alimentarCatalogo(m);
+        definirCampeao(m, 'darius', { magia: false, kit: KIT_DARIUS });
+        arsenalDe(m, rankE);
+        return a;
+      };
+
+      // --- leitura por rank: o numero vem do KIT (motor.js:573), nunca copiado ---
+      t.check('H12: pen do kit no rank 1 = 0,20 (motor.js:573)', dariusEm(1).penKitDe('E', 1) === 0.2);
+      t.check('H12: pen do kit no rank 4 = 0,29 (motor.js:573)', dariusEm(4).penKitDe('E', 4) === 0.29);
+      t.check('H12: pen do kit no rank 10 = 0,45 (motor.js:573)', dariusEm(10).penKitDe('E', 10) === 0.45);
+      t.check('H12: o rank vem do arsenal (#hab-ativas), nao inventado', dariusEm(7).rankKitDe('E') === 7);
+      t.check('H12: penKitCampeao le o rank do arsenal (rank 3 -> 0,26)', dariusEm(3).penKitCampeao('E') === 0.26);
+      // campeao SEM pen no kit (a Katarina, lida do jogo vivo)
+      const mk = criarMundo();
+      const ak = carregarAutomation(mk);
+      alimentarCatalogo(mk);
+      definirCampeao(mk, 'katarina', { magia: true, kit: {
+        Q: { max: 10, base: [80, 115], ratio: [0.45, 0.48], recarga: [10, 9.65] },
+        D: { passiva: true, curaGiro: [0.08, 0.09, 0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17] },
+        P: { curaBase: 0.05 },
+      } });
+      arsenalDe(mk, 2).length;   // arsenal com E (a Katarina tem E) — a pena e que NAO tem pen
+      t.check('H12: a Katarina NAO tem pen no kit (kit-katarina-vivo.json)', ak.penKitCampeao('E') === 0);
+      t.check('H12: e sem pen no kit a pen de armadura dos itens fica 0', ak.statsSet([]).penArmadura === 0);
+
+      // --- statsSet: a do KIT encadeia com a dos ITENS (motor.js:552) ---
+      t.check('H12: statsSet([]) com o E a rank 4 da penArmadura 0,29', Math.abs(dariusEm(4).statsSet([]).penArmadura - 0.29) < 1e-9);
+      // 3036 sozinho = 0,30 (motor.js:539); com a pen do kit: 1 - 0,71*0,70 = 0,503
+      t.check('H12: 3036 sozinho da 0,30 de pen de armadura', Math.abs(dariusEm(1).statsSet(['3036']).penArmaduraItens - 0.3) < 1e-9);
+      t.check('H12: com o E a rank 4: 1 - 0,71 x 0,70 = 0,503 (motor.js:552)', Math.abs(dariusEm(4).statsSet(['3036']).penArmadura - 0.503) < 1e-9);
+      t.check('H12: o statsSet expoe a pen do kit separada', dariusEm(4).statsSet([]).penKit === 0.29);
+
+      // --- MEDIDA CONTRA O BARAO (armadura 144, motor.js:1121 nivel 44) ---
+      // mit sem pen = 100/(100+144) = 0,4098; com a pen do kit (rank 10) = 0,5580 -> +36,2%
+      const ARM = 144;
+      const mit = (pen) => 100 / (100 + ARM * (1 - pen));
+      const p10 = dariusEm(10).penKitCampeao('E');
+      t.check('H12: contra o Barao, mit 0,4098 SEM a pen do kit', Math.abs(mit(0) - 0.4098) < 5e-5);
+      t.check('H12: e 0,5580 COM a pen do kit (rank 10) = +36,2% (TK-02-149)',
+        Math.abs(mit(p10) - 0.5580) < 5e-5 && Math.abs((mit(p10) / mit(0) - 1) * 100 - 36.2) < 0.1);
+      t.check('H12: rank 1 (20%) ja vale +13,4% contra o Barao',
+        Math.abs((mit(0.2) / mit(0) - 1) * 100 - 13.4) < 0.1);
+
+      // --- efeitosEquipados encadeia a do KIT uma vez so (sem dupla contagem) ---
+      const a4 = dariusEm(4);
+      const efSem = a4.efeitosEquipados([]);
+      t.check('H12: efeitosEquipados([]) leva a pen do kit (0,29)', Math.abs(efSem.penArmadura - 0.29) < 1e-9);
+      const ef3036 = a4.efeitosEquipados(['3036']);
+      t.check('H12: efeitosEquipados([3036]) = 0,503 e NAO 0,652 (o 0,7 uma vez so)', Math.abs(ef3036.penArmadura - 0.503) < 1e-9);
+
+      // --- estimarSet: o ramo FISICO usava a pen MAGICA (motor.js:542) em vez da de ARMADURA ---
+      // Com AD nos itens (para o DPS nao cair no arredondamento): '2001' do catalogo do banco
+      // (Lendario AD 1, ad 400). Sem itens de pen o DPS e MULTIPLICADO pela mitigacao
+      // 100/(100+144*(1-0,45)); com o 3036 (pen 0,3 a mais): 100/(100+144*(1-0,615)).
+      const alvo = { armadura: ARM, nivel: 44, hp: 1000 };
+      const semPen = dariusEm(10).estimarSet(['2001'], alvo).dps;
+      const comPen = dariusEm(10).estimarSet(['2001', '3036'], alvo).dps;
+      t.check('H12: o 3036 (+0,3 de pen) SUBE o DPS fisico (antes nao mexia)', comPen > semPen);
+      const razaoMit = (100 / (100 + ARM * (1 - 0.615))) / (100 / (100 + ARM * (1 - 0.45)));
+      t.check('H12: e a subida e a da mitigacao do motor',
+        Math.abs((comPen / semPen - 1) * 100 - (razaoMit - 1) * 100) < 1.0);
+      // o valor ANTIGO: a pen dos itens nao entrava nada -> os dois conjuntos davam o MESMO dps
+      t.check('H12: antes da correccao os dois conjuntos davam o mesmo DPS (pen fisica = 0)',
+        semPen !== comPen);
+      // mago: a pen do kit NAO entra (dano magico usa a penMagica, motor.js:1202)
+      t.check('H12: no mago a pen de armadura do kit nao se aplica (dano magico)',
+        ak.estimarSet([], { armadura: ARM, nivel: 44, hp: 1000 }).dps >= 0);
+    }
+
+    /* ============ H13 — CURA DO GIRO DA KATARINA NA SOBREVIVENCIA (TK-02-130) ============
+     * A passiva D (Lamina Sinistra) devolve parte do dano do GIRO como vida:
+     *   motor.js:2188-2193  `total += golpear(...)`; `cura = (HP.curaBase||0) + (HD?.curaGiro && rD ? HD.curaGiro[rD-1] : 0)`;
+     *                      `if (total > 0 && cura > 0) curar(estado, c, a, total * cura)`
+     *   motor.js:749  P.curaBase = 0,05 (5% do dano do giro, sempre)
+     *   motor.js:768  D.curaGiro = serie(0,08, 0,01) = 8% (rank 1) -> 17% (rank 10)
+     * A extensao calculava a cura no `dpsPorHabilidade` e NAO a passava a ninguem:
+     * o `avaliar` (que decide morre/nao morre e quantas pocoes) tinha `cura.giro` sempre
+     * undefined — a cura propria da Katarina valia 0 na sobrevivencia. */
+    {
+      const KIT_KATA = {
+        P: { curaBase: 0.05, voracidade: 1.5, voracidadeChefe: 5 },
+        Q: { max: 10, base: [80, 115], ratio: [0.45, 0.48], recarga: [10, 9.65], adaga: true },
+        W: { max: 10, recarga: [14], adaga: true },
+        E: { max: 10, base: [40, 60], ratio: [0.3, 0.32], adRatio: 0.4, recarga: [10, 9.6] },
+        D: { max: 10, nivel: 18, passiva: true,
+          curaGiro: [0.08, 0.09, 0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17],
+          vaAdaga: [0.08, 0.088, 0.096, 0.104, 0.112, 0.12, 0.128, 0.136, 0.144, 0.152],
+          acumMax: 3, duracaoSinistra: 3 },
+      };
+      const kataCom = (rankD, extra) => {
+        const m = criarMundo();
+        const a = carregarAutomation(m);
+        alimentarCatalogo(m);
+        definirCampeao(m, 'katarina', Object.assign({ magia: true, semMana: true, adagas: true,
+          adBase: 58, adNivel: 3.4, giroSrc: '(nivel, a) => 30 + 19 * nivel + 1 * apDe(a) + 0.4 * Math.max(0, a.ad - a.baseAd)', kit: KIT_KATA }, extra || {}));
+        m.montar('#hab-ativas .hab[data-t]', [
+          m.el({ label: 'Q', dataset: { t: 'Q' }, textContent: '2 / 10' }),
+          m.el({ label: 'D', dataset: { t: 'D' }, textContent: rankD + ' / 10' }),
+        ]);
+        return a;
+      };
+
+      // --- a fracao vem do KIT e do RANK (motor.js:768) ---
+      t.check('H13: curaBase = 0,05 (motor.js:749 P.curaBase)', kataCom(1).curaGiroDe().cura >= 0.05);
+      t.check('H13: com a D no rank 1 a fracao e 0,05 + 0,08 = 0,13 (motor.js:749 + 768)',
+        Math.abs(kataCom(1).curaGiroDe().cura - 0.13) < 1e-9);
+      t.check('H13: com a D no rank 7 a fracao e 0,05 + 0,14 = 0,19 (antes era 0,13: rank 1 hardcoded)',
+        Math.abs(kataCom(7).curaGiroDe().cura - 0.19) < 1e-9);
+      t.check('H13: com a D no rank 10 a fracao e 0,05 + 0,17 = 0,22 (motor.js:768)',
+        Math.abs(kataCom(10).curaGiroDe().cura - 0.22) < 1e-9);
+
+      // --- o giro dispara e cura: dano do giro x fracao ---
+      const dh = kataCom(4).dpsPorHabilidade();
+      t.check('H13: o giro aparece no dpsPorHabilidade como passiva', dh.habs.some((h) => h.t === 'P'));
+      t.check('H13: a cura do giro e calculada (cura/s > 0)', dh.curaGiro.tem === true && dh.curaGiro.porSegundo > 0);
+      t.check('H13: a fracao exposta e a do rank 4 (0,05 + 0,11 = 0,16)', Math.abs(dh.curaGiro.cura - 0.16) < 1e-9);
+      t.check('H13: curaGiroS() devolve a cura/s do giro', kataCom(4).curaGiroS() > 0);
+
+      // --- O DEFEITO: a cura NAO entrava no avaliar (sobrevivencia / pocoes) ---
+      // cenario: Katarina nv 29, um mob qualquer. Com e sem a cura do giro.
+      const m = criarMundo();
+      const a = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'katarina', { magia: true, semMana: true, adagas: true, adBase: 58, adNivel: 3.4,
+        giroSrc: '(nivel, a) => 30 + 19 * nivel + 1 * apDe(a) + 0.4 * Math.max(0, a.ad - a.baseAd)', kit: KIT_KATA });
+      m.montar('#hab-ativas .hab[data-t]', [
+        m.el({ label: 'Q', dataset: { t: 'Q' }, textContent: '2 / 10' }),
+        m.el({ label: 'D', dataset: { t: 'D' }, textContent: '4 / 10' }),
+      ]);
+      m.montar('#hud-nivel', [m.el({ label: 'nivel', textContent: '29' })]);
+      m.montar('#hud-vida-txt', [m.el({ label: 'vida', textContent: '2.4k / 2.4k' })]);
+      // monstro e curva do MOTOR (motor.js:282-288 CURVA + 289 MONSTROS): sem isto o
+      // `statsMonstro` devolve null e o `avaliar` nao corre.
+      alimentarMeta(m, {
+        monstros: { 'Tropa Corpo a Corpo': { hp: 1, ad: 0.9, as: 0.8, armadura: 0.6, xp: 1, ouro: 1 } },
+        curva: { hp: [150, 100, 1], ad: [9, 4.8, 0.13], armadura: [5, 1.5], xp: [30, 7], ouro: [8, 3.5] },
+      });
+      const pj = a.player();
+      const giro = a.curaGiroS();
+      t.check('H13: jogadora nv 29 com vida 2400 lida do HUD', pj.nivel === 29 && pj.vida === 2400);
+      // mob de referencia: Tropa Corpo a Corpo nv 29 (a curva do motor)
+      const avSem = a.avaliar('Tropa Corpo a Corpo', 29, pj, { skill: 0, pocao: 0, giro: 0 });
+      const avCom = a.avaliar('Tropa Corpo a Corpo', 29, pj, { skill: 0, pocao: 0, giro: giro });
+      t.check('H13: sem a cura do giro o curaTotal e so a pocao+rv', avSem.curaGiroS === 0);
+      t.check('H13: com a cura do giro ela entra no curaTotal',
+        avCom.curaGiroS > 0 && Math.abs(avCom.curaTotal - (avSem.curaTotal + giro)) < 1e-9);
+      t.check('H13: e o liquido (dano que passa) desce', avCom.liquido < avSem.liquido);
+      t.check('H13: o tempo de morte estica-se (mais sobrevivencia)', avCom.tMorrer > avSem.tMorrer);
+
+      // --- a cura tem de mudar a DECISAO de pocoes (o criterio do dono) ---
+      // com a cura do giro o alvo do golpe e menor
+      t.check('H13: o que a pocao tem de cobrir por janela e menor com a cura do giro',
+        avCom.alvoGolpe <= avSem.alvoGolpe);
+      // e o numero de pocoes por janela pode mudar
+      const mixSem = avSem.mix, mixCom = avCom.mix;
+      t.check('H13: a conta de pocoes e refeita com a cura (mix ou o alvo)',
+        (mixCom != null && mixSem != null) && (mixCom.cost <= mixSem.cost || avCom.alvoGolpe < avSem.alvoGolpe));
+
+      // --- campeao SEM cura do giro (o Darius): nao inventa cura ---
+      const md = criarMundo();
+      const ad = carregarAutomation(md);
+      alimentarCatalogo(md);
+      definirCampeao(md, 'darius', { magia: false, kit: { Q: { max: 10, base: [50, 70], ratio: [1, 1.05], recarga: [9, 8.5] } } });
+      md.montar('#hab-ativas .hab[data-t]', [ md.el({ label: 'Q', dataset: { t: 'Q' }, textContent: '2 / 10' }) ]);
+      t.check('H13: o Darius (sem passiva de giro) nao tem cura do giro', ad.curaGiroDe().tem === false);
+      t.check('H13: e curaGiroS() = 0 (nao se inventa cura)', ad.curaGiroS() === 0);
     }
   },
 };

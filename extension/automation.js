@@ -615,6 +615,14 @@
   const PRECO_POCAO = { get vida() { return pocaoInfo('vida').preco; }, get vidaF() { return pocaoInfo('vidaF').preco; }, get vidaS() { return pocaoInfo('vidaS').preco; } };
   const lootTimes = [];
   const killTimes = [];
+  /** Larvas que o Barao invocou, com a data (motor.js:3141-3142). Contam como ABATES para a
+   *  Voracidade (motor.js:1811, sem guarda `i.invocado`) mas nao dao loot (motor.js:1792),
+   *  logo nao aparecem no log do jogo — tem de as contar aqui (TK-02-148).
+   *  Formato: [{ at: ms, n: 2 }] (2 larvas por invocacao). */
+  const larvasInvoca = [];
+  /** Janela das larvas invocadas (ms): 90 s = 2,6 voltas do rodizio do Barao (34,3 s,
+   *  motor.js:3080/:3099/:3103). O que passa dela ja nao conta para a cadencia AGORA. */
+  const LARVAS_JANELA_MS = 90000;
   let ultimoFurioso = 0;
   /** Contexto atual pela wave: boss > furioso > nº de mobs mortos nos últimos 5s. */
   function contexto(now, boss) {
@@ -1011,6 +1019,29 @@
       if (!d) return;
       if (d.__lolidleAuto === 'meta-erro') { META.erro = d.erro; logIssue('meta-falha', { erro: d.erro }); return; }
       if (d.__lolidleAuto === 'chefe-hook') { META.chefeHook = !!d.ok; META.chefeHookErro = d.erro || null; return; }
+      // ---- EVENTOS QUE DECIDEM (inject.js:222 EV_DECIDEM -> :264-272) ----------------------
+      // O inject.js reencaminha os eventos do motor que mudam decisoes, mas NINGUEM os consumia:
+      // a mensagem chegava e caia fora do listener (que so tratava `'meta'`).
+      // O que interessa AQUI (TK-02-148): o `'chefeInvoca'` — o Barao invoca 2 LARVAS
+      // (motor.js:3141 `for (let k = 0; k < 2; k++) c.inimigos.push(criarMonstro('Larva do Vazio'...)`)
+      // e a VORACIDADE corta 1,5 s por cada abate DELAS: motor.js:1811
+      //   `if (HPk?.voracidade) for (const t of ['Q','W','E']) d.recargas[t] = Math.max(0, d.recargas[t] - (i.chefe ? HPk.voracidadeChefe : HPk.voracidade));`
+      // — ao contrario da tarefa (motor.js:1808 `if (!i.invocado) contarTarefa(...)`), esse corte
+      // NAO tem guarda `i.invocado`: as larvas CONTAM como abates para a Voracidade.
+      // E as larvas nao dao loot (motor.js:1792 `const itens = i.invocado ? [] : [...sortearLoot...]`),
+      // logo nao passam pelo log do jogo — por isso o `killsMinAoVivo` (que conta o log) nao as
+      // via. Medido no ciclo do Barao (motor.js:3089/:3099/:3103): 1 invocacao de 2 larvas a cada
+      // 34,3 s do rodizio -> 2 larvas x (60/34,3) = 3,5 larvas/min, mais 0,25 abates/min do chefe.
+      if (d.__lolidleAuto === 'evento') {
+        try {
+          if (d && d.tipo === 'chefeInvoca') {
+            // 2 larvas por invocacao (motor.js:3141) — o payload so traz o alvo.
+            larvasInvoca.push({ at: d.at || Date.now(), n: 2 });
+            if (larvasInvoca.length > 60) larvasInvoca.shift();
+          }
+        } catch { /* ignore */ }
+        return;
+      }
       if (d.__lolidleAuto !== 'meta') return;
       if (d.chefeHook != null) META.chefeHook = d.chefeHook;
       if (d.chefeHookErro) META.chefeHookErro = d.chefeHookErro;
@@ -1234,7 +1265,10 @@
     // significa NÃO SE SABE — e o filtro é FAIL-CLOSED (não se sabe não manda ninguém morrer).
     let morte = null, avaliados = 0, riscoMob = null, riscoDps = null, riscoTMorrer = null;
     try {
-      const curaMob = { skill: 0, pocao: curaPocaoMax() * 0.6 };
+      // CURA DO GIRO (motor.js:2188-2193): a cura PROPRA da Katarina entra na sobrevivencia —
+    // sem isto o `avaliar` contava so a pocao e o roubo de vida e a regiao parecia mais
+    // mortal do que e (TK-02-130, AGENTS.md prova n.o 7).
+    const curaMob = { skill: 0, pocao: curaPocaoMax() * 0.6, giro: curaGiroS() };
       // (i) A ZONA ESTÁ ACIMA DO BONECO? É a regra determinística e é a que apanha o caso medido
       // (Covil do Barão, `nm: [40, 48]`, com o boneco a 29). A tolerância é a MESMA que o
       // `doNivel0` logo abaixo já usa (6 níveis) — não se inventa um critério novo.
@@ -1598,20 +1632,60 @@
    *  O `curaBase` (motor.js:736) nao vem do inject; o `curaGiro` vem do kit (motor.js:755-756). */
   function curaGiroDe() {
     const P_ = KAT.P || {}, D_ = KAT.D || {};
-    const cg = typeof D_.curaGiro === 'function' ? D_.curaGiro(1) : null;     // fallback rank 1 (max 10)
+    // RANK REAL da D (motor.js:2183 `rD = estado.ranks.D`): a `curaGiro` e uma serie por rank
+    // (motor.js:768, 8% no rank 1 -> 17% no rank 10). Antes era `D_.curaGiro(1)` — rank 1
+    // hardcoded, logo a Katarina com a D a rank 7 via 8% em vez de 14% (TK-02-130).
+    let cg = null;
+    if (typeof D_.curaGiro === 'function') {
+      const rD = rankKitDe('D');
+      cg = rD ? D_.curaGiro(rD) : D_.curaGiro(1);
+    }
     const base = P_.curaBase != null ? P_.curaBase : 0;
     if (!base && !cg) return { cura: 0, tem: false };
     return { cura: base + (cg || 0), tem: true };
+  }
+  /** CURA POR SEGUNDO do giro das adagas (motor.js:2188-2193): o dano do giro X a fracao
+   *  `curaBase + curaGiro[rank]`. E a cura PROPRIA da Katarina (AGENTS.md, prova n.o 7) e
+   *  entra na sobrevivencia (o criterio do dono: quantas pocoes / quanto custa).
+   *  Sem skill de adaga no arsenal devolve 0 (nao ha giro, nao ha cura). */
+  function curaGiroS() {
+    try {
+      const cg = curaGiroDe();
+      if (!cg.tem) return 0;
+      const d = dpsPorHabilidade();
+      const g = d && d.curaGiro;
+      return (g && g.tem && Number.isFinite(g.porSegundo)) ? g.porSegundo : 0;
+    } catch { return 0; }
   }
   /** Abates por minuto MEDIDOS ao vivo — a extensao ja os conta (`killTimes` enchido pelo
    *  `handleLog`, automation.js:733-800) e o `analisarWaves` (automation.js:620-638) deriva o
    *  `killsMin` disso. E a cadencia de abates que a Voracidade precisa. Ordem: a wave viva,
    *  depois o historico agregado. Sem medida, null (e a Voracidade nao entra — nao se inventa). */
   function killsMinAoVivo() {
-    try { const w = analisarWaves(); if (w && w.killsMin) return w.killsMin; } catch { /* ignore */ }
-    try { const r = ritmoMobs(); if (r && r.killsMin) return r.killsMin; } catch { /* ignore */ }
-    try { for (const a of (agregar() || [])) if (a.killsMin) return a.killsMin; } catch { /* ignore */ }
-    return null;
+    const base = (() => {
+      try { const w = analisarWaves(); if (w && w.killsMin) return w.killsMin; } catch { /* ignore */ }
+      try { const r = ritmoMobs(); if (r && r.killsMin) return r.killsMin; } catch { /* ignore */ }
+      try { for (const a of (agregar() || [])) if (a.killsMin) return a.killsMin; } catch { /* ignore */ }
+      return null;
+    })();
+    // ---- LARVAS DO BARAO (motor.js:3141-3142) CONTAM COMO ABATES (TK-02-148) ---------------
+    // motor.js:1811 corta 1,5 s da recarga da Q/W/E por cada abate, e o corte NAO tem guarda
+    // `i.invocado` (ao contrario da tarefa, motor.js:1808). As larvas do Barao nao dao loot
+    // (motor.js:1792) e por isso nao passam pelo log — o `base` acima nao as ve.
+    // Ciclo do rodizio (motor.js:3089/:3099/:3103): invocar 2 larvas e 1 de 3 mecanicas; com
+    // `(0+14)+(1,3+9)+(1+9) = 34,3 s` por volta, sao 2 x (60/34,3) = 3,5 larvas por minuto,
+    // mais o proprio Barao (0,25/min). Na pratica: a fracao das larvas nos abates da luta e
+    // (3,5)/(3,5+0,25) = 93% — a Voracidade corta MUITO mais do que o `base` diz.
+    // So se soma quando ha larvas registadas nesta fase (o chefe estar activo).
+    // Janela deslizante propria: 90 s (2,6 voltas do rodizio de 34,3 s) — o que passa dela ja
+    // nao conta para a cadencia AGORA. Larvas antigas caiem fora (e o array nao cresce sem fim).
+    const agora = Date.now();
+    while (larvasInvoca.length && agora - larvasInvoca[0].at > LARVAS_JANELA_MS) larvasInvoca.shift();
+    if (!larvasInvoca.length) return base;
+    const larvasNaJanela = larvasInvoca.reduce((s, l) => s + (l.n || 0), 0);
+    const larvasMin = (larvasNaJanela / (LARVAS_JANELA_MS / 60000));
+    if (base == null) return larvasMin > 0 ? larvasMin : null;
+    return base + larvasMin;
   }
   /** RECARGA EFECTIVA com a Voracidade: `C' = C / (1 + v/T)`, com T = segundos por abate.
    *  Derivacao de motor.js:1789 (cada abate tira `v` da recarga): num ciclo de recarga C com
@@ -1625,6 +1699,36 @@
     const k = km != null ? km : killsMinAoVivo();
     if (!(k > 0)) return cd;
     return cd / (1 + v.valor / (60 / k));
+  }
+  /** RECARGA EFECTIVA SEGUNDO O MOTOR (corte DIRECTO por abate, motor.js:1811).
+   *  `d.recargas[t] = Math.max(0, d.recargas[t] - (i.chefe ? v : voracidade))` — cada abate
+   *  tira `v` da recarga, e a recarga continua a contar por baixo. Se 3 abates caem
+   *  dentro da recarga, a conta e DIRECTA: `C - n*v`, e nao `C/(1+v/T)`.
+   *  A aproximacao do `cdVoraz` (regime estacionario) serve de limite inferior: ela
+   *  assume um abate a cada T e so CONTA os abates que cabem no ciclo alongado — quando os
+   *  abates sao mais frequentes do que a recarga, o motor vai a zero muito antes.
+   *  MEDIDO (TK-02-148, ticket): Q no rank 10 com 23% de CDR = 6,85 x 0,77 = 5,24 s; com 3
+   *  abates a cortar 1,5 s cada, o motor da 5,24 - 4,5 = 0,74 s. A extensao dizia 5,24 s —
+   *  a taxa de lancamento estava subestimada 7,1x.
+   *  Aqui: com `abatesNaRecarga` (>= 0, default calculado de km) a recarga efectiva e
+   *  `max(0, C - n*v)`; se o resultado da <= 0 a habilidade fica SEMPRE pronta (o motor
+   *  nao deixa a recarga passar de zero).
+   *  Uso: relatorio/decissao; o `cdVoraz` continua a ser o que alimenta o DPS (limite
+   *  conservador e estavel). */
+  function cdVorazMotor(cd, t, km, abatesNaRecarga) {
+    if (!(cd > 0)) return cd;
+    const v = voracidadeDe();
+    if (!v || v.hab.indexOf(t) < 0) return cd;
+    let n = abatesNaRecarga;
+    if (n == null) {
+      const k = km != null ? km : killsMinAoVivo();
+      // quantos abates cabem na recarga crua: floor(C/T) (o motor corta por abate ocorrido)
+      n = (k > 0) ? Math.floor(cd / (60 / k)) : 0;
+    }
+    if (!(n > 0)) return cd;
+    const r = Math.max(0, cd - n * v.valor);
+    if (r <= 0) return 0;      // sempre pronta: a Voracidade cobre a recarga toda
+    return r;
   }
 
   /** Campeão atual, detectado pelo caminho do ícone da skill (#hud-habs). */
@@ -1673,13 +1777,24 @@
     const out = {};
     for (const t of Object.keys(fonte.kit)) {
       const h = fonte.kit[t] || {};
-      // Campos do kit que o `serialKit` do inject.js (inject.js:107-123) reencaminha. `va`/
-      // `bonus`/`bonusHab`/`penSuspiro`/`duracaoPen` NÃO estão nessa lista — ficam como
-      // `serie(null)` = null e o `valorBuff` cai no TEXTO da habilidade (ver `buffDoTexto`).
+      // Campos do kit que o `serialKit` do inject.js (inject.js:136-151) reencaminha: o filtro
+      // Agora passa TODOS os campos primitivos (arrays de números incluidos), portanto `pen`,
+      // `curaBase`, `curaGiro`, `vaAdaga` e `voracidade`/`voracidadeChefe` chegam AQUI.
+      // O `aplicarKit` é que os deitava fora: nao estavam nesta lista (defeito medido — ver
+      // `penKitDe`, `curaGiroDe` e `voracidadeDe`).
       out[t] = { max: h.max, mult: h.mult, alvo: h.alvo, adaga: !!h.adaga, auto: !!h.auto, dot: !!h.dot, passiva: !!h.passiva, util: !!h.util, adRatio: h.adRatio,
         base: serie(h.base), ratio: serie(h.ratio), rec: serie(h.recarga), nivel: h.nivel,
         duracao: h.duracao, duracaoPen: h.duracaoPen, penSuspiro: h.penSuspiro,
-        va: serie(h.va), bonus: serie(h.bonus), bonusHab: serie(h.bonusHab) };
+        va: serie(h.va), bonus: serie(h.bonus), bonusHab: serie(h.bonusHab),
+        // ---- kit passivo / penetração / cura (motor.js:529 `penE`, 552 `penArmadura`) ----
+        // `pen` = penetração de armadura POR RANK da habilidade (só o E do Darius a tem,
+        // motor.js:573: 0,20 no rank 1 -> 0,45 no rank 10). O MOTOR aplica-a sempre
+        // (atributos, motor.js:529 -> 552); a matemática de build ignorava-a.
+        pen: serie(h.pen),
+        // Voracidade/cura do giro da Katarina (motor.js:749-750 P; 768 D).
+        curaBase: h.curaBase, curaGiro: serie(h.curaGiro), vaAdaga: serie(h.vaAdaga),
+        voracidade: h.voracidade, voracidadeChefe: h.voracidadeChefe,
+        acumMax: h.acumMax, duracaoSinistra: h.duracaoSinistra };
     }
     KAT = out;
     META.champAtual = { id, adBase: fonte.adBase, adNivel: fonte.adNivel, magia: !!fonte.magia, semMana: !!fonte.semMana, adagas: !!fonte.adagas, distancia: !!fonte.distancia, papel: fonte.papel || null };
@@ -1687,6 +1802,52 @@
     const src = fonte.giroSrc || '';
     const num = (re, d) => { const m = src.match(re); return m ? parseFloat(m[1]) : d; };
     _giro = { base: num(/=>\s*([\d.]+)/, 30), nivel: num(/([\d.]+)\s*\*\s*nivel/, 19), ap: num(/([\d.]+)\s*\*\s*(?:apDe|a\.ap|poder)/, 1), ad: num(/([\d.]+)\s*\*\s*Math\.max/, 0.4) };
+  }
+
+  /** ============ PENETRACAO DO KIT (TK-02-114) ============
+   *  O MOTOR aplica a penetracao de armadura que vem do KIT, sempre ligada, por rank:
+   *    motor.js:529  `const penE = k.hab.E.pen && estado.ranks.E ? k.hab.E.pen[estado.ranks.E - 1] : 0;`
+   *    motor.js:552  `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`
+   *  ha UM UNICO `pen:` em todo o game-src: o E do DARIUS (motor.js:573,
+   *  `pen: [0.2, 0.23, 0.26, 0.29, 0.32, 0.35, 0.38, 0.41, 0.43, 0.45]` = 20% no rank 1,
+   *  45% no rank 10). A Katarina NAO tem (kit-katarina-vivo.json: 0 ocorrencias de "pen").
+   *  A matematica de build (statsSet/estimarSet/scoreSet/valorBuff) ignorava-a: sobrevalorizava
+   *  o Cajado do Vazio e todos os itens de pen em qualquer campeao que a tenha no kit.
+   *  REGRA N.o 3: o numero vem do KIT (lido do jogo), nunca copiado para aqui. */
+  function penKitDe(t, rank) {
+    const k = (typeof KAT === 'object' && KAT) ? KAT[t] : null;
+    const f = k && typeof k.pen === 'function' ? k.pen : null;
+    if (!f) return 0;
+    const r = Math.max(1, Math.round(Number(rank) || 1));
+    const v = f(r);
+    return Number.isFinite(v) ? Math.max(0, v) : 0;
+  }
+  /** Rank actual de uma habilidade, lido do arsenal (#hab-ativas .hab[data-t], jogo.js:5846) —
+   *  o MESMO elemento e a MESMA regex que o `readSkills` usa para `arsenal[].rank`,
+   *  isto é, o numero que o motor guarda em `estado.ranks`. Sem arsenal (o rank ainda nao
+   *  veio) devolve null e quem chama decide: a pen do kit nao entra (nao se inventa rank).
+   *  LIDO AQUI E NAO PELO `readSkills` DE PROPOSITO: `efeitosEquipados` -> `penKitCampeao` ->
+   *  `readSkills` -> `efeitosEquipados` e um CICLO (o `readSkills` chama o
+   *  `efeitosEquipados` para o CDR quando o painel nao esta la). A query directa quebra-o.
+   *  Medido: com o ciclo, a suite `regras` passou de 79 ms para 858 ms. */
+  function rankKitDe(t) {
+    try {
+      for (const h of document.querySelectorAll('#hab-ativas .hab[data-t]')) {
+        const tt = (h && h.dataset) ? h.dataset.t : null;
+        if (tt !== t) continue;
+        const m = (h && h.textContent ? String(h.textContent) : '').match(/(\d+)\s*\/\s*(\d+)/);
+        if (m && +m[1] > 0) return +m[1];
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+  /** Penetracao de armadura do kit do campeao actual, por rank, para a habilidade `t`.
+   *  0 quando o campeao nao tem pen no kit (7 campeoes: 6 nao tem) ou quando o rank ainda nao
+   *  foi lido (nao se inventa rank). */
+  function penKitCampeao(t) {
+    const tt = t || 'E';
+    const rk = rankKitDe(tt);
+    return rk ? penKitDe(tt, rk) : 0;
   }
 
   /** Dano e DPS por habilidade (nível atual), a partir do motor + stats do personagem.
@@ -1737,11 +1898,19 @@
         // para a qualidade/refino contarem como no jogo ('3175~A' -> pen 0.15*1.15 = 0.1725).
         // O `statsSet` JÁ aplica o `mult` (qualidade/refino) ao cdr/pen desde que passou a usar o
         // `parseSlotId` — NÃO multiplicar outra vez aqui (era contagem dupla).
-        return { base, qual, refino, cdr: S.cdr, penMag: S.pen, penArmadura: S.penArmadura || 0, apPct: (S.det || []).some((d) => /Rabadon/.test(d)) ? 0.35 : 0,
+        // `penArmaduraItens` = a pen dos ITENS sozinha (o `statsSet` ja lhes encadeia a do
+        // KIT, TK-02-114); aqui a do KIT entra UMA vez no conjunto, nao uma vez por item.
+        return { base, qual, refino, cdr: S.cdr, penMag: S.pen, penArmadura: S.penArmadura || 0,
+          penArmaduraItens: S.penArmaduraItens != null ? S.penArmaduraItens : (S.penArmadura || 0),
+          apPct: (S.det || []).some((d) => /Rabadon/.test(d)) ? 0.35 : 0,
           lich: S.lich, ap: S.ap, ad: S.ad, efeito: ((META.itens || []).find((x) => String(x.id) === base) || {}).efeito || null };
       });
       const soma = (k) => itens.reduce((t, x) => t + (x[k] || 0), 0);
-      return { cdr: Math.min(CAP_CDR, soma('cdr')), penMag: Math.min(CAP_PEN_MAG, soma('penMag')), penArmadura: penArmaduraDe(soma('penArmadura')), apPct: soma('apPct'),
+      // motor.js:552 `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)` — penE = a do KIT.
+      const penItens = Math.max(0, Math.min(1, soma('penArmaduraItens')));
+      const penKit = penKitCampeao('E');
+      return { cdr: Math.min(CAP_CDR, soma('cdr')), penMag: Math.min(CAP_PEN_MAG, soma('penMag')),
+        penArmadura: 1 - (1 - penKit) * (1 - penItens), penArmaduraItens: penItens, penKit, apPct: soma('apPct'),
         lich: itens.reduce((m, x) => Math.max(m, x.lich || 0), 0), apItens: soma('ap'), itens };
     }
     let cdr = 0, penMag = 0, penArm = 0, apPct = 0, lich = 0, apItens = 0; const itens = [];
@@ -1760,7 +1929,12 @@
     // esta la (banco de testes), fica a soma dos itens.
     const cdrPainel = (player() || {}).cdr;
     if (cdrPainel != null) cdr = cdrPainel;
-    return { cdr: Math.min(CAP_CDR, cdr), penMag: Math.min(CAP_PEN_MAG, penMag), penArmadura: penArmaduraDe(penArm), apPct, lich, apItens, itens };
+    // PEN DE ARMADURA DO KIT (motor.js:529 -> 552): o caminho sem `ids` e o que o jogo real usa
+    // (`dpsPorHabilidade`, `avaliar`, `mitSaida`). A penetracao da E do Darius (20%->45% por
+    // rank) entra aqui uma vez, encadeada com a dos itens (3036 = 0,3, motor.js:539).
+    const penKit = penKitCampeao('E');
+    return { cdr: Math.min(CAP_CDR, cdr), penMag: Math.min(CAP_PEN_MAG, penMag),
+      penArmadura: 1 - (1 - penKit) * (1 - penArmaduraDe(penArm)), penArmaduraItens: penArmaduraDe(penArm), penKit, apPct, lich, apItens, itens };
   }
   const cdrEquipado = () => efeitosEquipados().cdr;
 
@@ -1877,7 +2051,9 @@
     const k = KAT[t]; if (!k) return 0;
     const cdBase = k.rec ? k.rec(r) : null;
     if (cdBase == null) return 0;
-    const cd = cdBase * (1 - ctx.cdr);
+    // RECARGA EFECTIVA (Voracidade, motor.js:1811): a frequencia com que o ponto sobe e a
+    // real. Usava a recarga crua e o valor do buff ficava SUBESTIMADO (TK-02-148).
+    const cd = cdVoraz(cdBase * (1 - ctx.cdr), t, ctx.km);
     if (!(cd > 0)) return 0;
     const txt = buffDoTexto(dica);
     const ser = (campo) => (typeof k[campo] === 'function' ? k[campo](r) : null);
@@ -1888,6 +2064,28 @@
     let v = 0;
     if (pen && penSeg) v += pen * (penSeg / cd) * (dpsTotal || 0);
     if (vaGanho && vaSeg) v += (vaGanho / VA_BASE_MOTOR) * (vaSeg / cd) * (dpsTotal || 0);
+    // ---- PENETRACAO PASSIVA DO KIT (motor.js:529 -> 552; TK-02-114) --------------------------
+    // A E do DARIUS da penetracao de armadura como PASSIVA (motor.js:573-574:
+    // `Dá penetração de armadura (passiva)`): o motor aplica-a por rank em
+    // `atributos`, SEM depender de recarga nem de duracao. Portanto o valor do ponto e
+    // a diferenca de pen x TODO o dano — nao fracionado por (duracao/recarga) como o buff temporario.
+    // Medido contra o Barao (armadura 144, sem itens de pen): rank 4 -> 0,29 de pen,
+    // 1 - (1-0,29) = 0,71 da armadura que resta -> mit 0,5580 contra 0,4098 = +36,2% de dano.
+    const penKitAgora = penKitDe(t, r);
+    if (penKitAgora > 0) {
+      const antes2 = r > 1 ? penKitDe(t, r - 1) : 0;
+      const ganhoPen = penKitAgora - antes2;
+      const alvoArm = (ctx && ctx.armadura != null) ? ctx.armadura : null;
+      // o ganho relativo depende da armadura do alvo: d(mit)/d(pen) = arm/(100+arm*(1-pen))^2 * 100
+      // sem armadura conhecida usa-se o valor do ponto x o dano total (limite conservador).
+      if (alvoArm != null && alvoArm > 0) {
+        const mitAntes = 100 / (100 + alvoArm * (1 - antes2));
+        const mitDepois = 100 / (100 + alvoArm * (1 - penKitAgora));
+        v += (mitDepois / mitAntes - 1) * (dpsTotal || 0);
+      } else if (ganhoPen > 0) {
+        v += ganhoPen * (dpsTotal || 0);
+      }
+    }
     return v;
   }
   /** VALOR DO PRÓXIMO PONTO em `t` (rank r -> r+1) — é ISTO que ordena o `subirHabilidades`.
@@ -2007,7 +2205,9 @@
       if (tg && tg.name && tg.level && META.monstros && META.monstros[tg.name]) {
         const key = tg.name + '@' + tg.level;
         if (_golpeWiki.key !== key || Date.now() - _golpeWiki.at > 3000) {
-          const av = avaliar(tg.name, tg.level, player(), { skill: healSkill, pocao: 0 }, meuDps() || 0);
+          // CURA DO GIRO (motor.js:2188-2193) entra tambem: o golpe que a pocao tem de cobrir
+          // e menor quando a Katarina esta a girar (TK-02-130).
+          const av = avaliar(tg.name, tg.level, player(), { skill: healSkill, pocao: 0, giro: curaGiroS() }, meuDps() || 0);
           _golpeWiki = { at: Date.now(), key, v: av && Number.isFinite(av.danoGolpe) ? av.danoGolpe : 0 };
         }
         golpeWiki = _golpeWiki.v;
@@ -2156,7 +2356,10 @@
       let curaPocao = (r.hp / d) / 60;    // cura/s EFETIVA das poções (mobs)
       const curaPocaoChefe = r.chpn ? r.chp / r.chpn : curaPocao;
       if (!curaPocaoChefe) curaPocao = cp * 0.6; // região nova: estimativa conservadora
-      const risco = r.boss && nivelChefe ? avaliar(r.boss, nivelChefe, pl, { skill: curaSkillChefe, pocao: curaPocaoChefe || cp * 0.6 }) : null;
+      // CURA DO GIRO (motor.js:2188-2193): a Katarina cura sozinha enquanto gira. O `risco` e
+      // o numero que decide se a regiao e segura (e quantas pocoes gasta) — tinha de a levar.
+      const _giroS = curaGiroS();
+      const risco = r.boss && nivelChefe ? avaliar(r.boss, nivelChefe, pl, { skill: curaSkillChefe, pocao: curaPocaoChefe || cp * 0.6, giro: _giroS }) : null;
       return { region: r.region, n: r.n, deaths: r.deaths, boss: r.boss, goldMin: r.g / d, xpMin: r.x / d, killsMin: r.k / d, mobHpMinRel: r.hpm, potMin: r.p / d, goldPotionMin: r.gp / d, healSkillS: curaSkill, healSkillChefeS: curaSkillChefe, healPotionS: curaPocao, bossMs: r.bossN ? r.bossMs / r.bossN : null, potChefe: r.bpc ? r.bpoc / r.bpc : null, risco: risco ? { nivel: nivelChefe, hp: risco.hp, dps: risco.dpsTomado, danoGolpe: risco.danoGolpe, intervalo: risco.intervalo, nPocoes: risco.nPocoes, curaSkill: risco.curaSkill, curaPocao: risco.curaPocao, curaTotal: risco.curaTotal, liquido: risco.liquido, mixTxt: risco.mixTxt, custoPocaoS: risco.custoPocaoS, tMorrer: risco.tMorrer, fM: risco.fM, piorMec: risco.piorMec, mecFatalNome: risco.mecFatalNome, mortal: risco.mortal, morre: risco.morre } : null };
     });
     arr.sort((a, b) => b.goldMin - a.goldMin);
@@ -2222,8 +2425,10 @@
         const bossNome = zona.chefe ? zona.chefe[0] : null;
         const nivel = zona.nm ? Math.round((zona.nm[0] + zona.nm[1]) / 2) : (zona.faixa ? Math.round((zona.faixa[0] + zona.faixa[1]) / 2) : null);
         const reg = agg.find((r) => zona.nome && r.region.startsWith(zona.nome));
-        const curaMob = reg ? { skill: reg.healSkillS || 0, pocao: reg.healPotionS || cp * 0.6 } : { skill: 0, pocao: cp * 0.6 };
-        const curaChefe = reg ? { skill: reg.healSkillChefeS || 0, pocao: reg.healPotionS || cp * 0.6 } : curaMob;
+        // CURA DO GIRO (motor.js:2188-2193) — ver `curaGiroS`: entra no mob e no chefe.
+        const _giroS = curaGiroS();
+        const curaMob = reg ? { skill: reg.healSkillS || 0, pocao: reg.healPotionS || cp * 0.6, giro: _giroS } : { skill: 0, pocao: cp * 0.6, giro: _giroS };
+        const curaChefe = reg ? { skill: reg.healSkillChefeS || 0, pocao: reg.healPotionS || cp * 0.6, giro: _giroS } : curaMob;
         const avMob = mobs[0] ? avaliar(mobs[0], nivel, p, curaMob) : null;
         const avChefe = bossNome ? avaliar(bossNome, nivel + 2, p, curaChefe) : null;
         // A TABELA DE DROP DEPENDE DA CLASSE (motor.js:383 DROPS vs 397 DROPS_AP; 407 carrega as duas).
@@ -3667,6 +3872,7 @@
     const qm = (opt && opt.mult) || 1;   // multiplicador de ATRIBUTO (qualidade/refino) p/ simular cenários
     const itens = META.itens || [];
     let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, lich = 0, chama = false, liandry = false, crit = 0, infinito = false;
+    let tem3036 = false;   // motor.js:552 `tem('3036')` — a pen de armadura do item encadeia com a do KIT
     const det = [];
     for (const raw of ids) {
       // `parseSlotId` resolve a BASE e a qualidade/refino ('3175~A', '4629+3~A', '3171~B+2') — o
@@ -3690,7 +3896,7 @@
       // em +13,0% (armadura 104) a +19,6% (armadura 200). Ver docs/pendencias-motor.md, lacuna 1.
       if (!pm) { const mm2 = ef.match(/(\d+)\s*%\s*de\s*penetra[çc][ãa]o\s*m[áa]gica/i); if (mm2) pm = +mm2[1] / 100; }
       let pa = it.penArmadura || 0;
-      if (!pa && id === '3036') pa = 0.3;   // motor.js:539 (`0.7` = 1 - 0,30)
+      if (!pa && id === '3036') { pa = 0.3; tem3036 = true; }   // motor.js:539 (`0.7` = 1 - 0,30) + 552
       // O `mult` (qualidade/refino) aplica-se EXACTAMENTE à lista do motor (motor.js:254-255): ad, ap,
       // mana, vida, armadura, rm, va, rv, critico, regen e **cdr**. O `penMag` NÃO está nessa lista —
       // NÃO é escalado (o 3175~A dá 15% de pen, não 17,25%; a dica medida no jogo confirma:
@@ -3705,9 +3911,25 @@
       if (id === '4645') { chama = true; det.push('Chama +20% (<40%)'); }
       if (id === '6653') { liandry = true; det.push('Liandry queima 1,5%/s'); }
     }
-    cdr = Math.min(CAP_CDR, cdr); pen = Math.min(CAP_PEN_MAG, pen); penArmadura = penArmaduraDe(penArmadura);
-    // `pen` = pen MAGICA (motor.js:529) e `penArmadura` = pen de ARMADURA (motor.js:539, so no ramo fisico).
-    return { ap: apItem * (1 + apPct), ad: adItem, cdr, pen, penArmadura, lich, chama, liandry, crit, infinito, det };
+    cdr = Math.min(CAP_CDR, cdr); pen = Math.min(CAP_PEN_MAG, pen);
+    // ---- PEN DE ARMADURA: a do KIT encadeada com a dos ITENS (motor.js:552) ------------------
+    //   motor.js:529  `penE = k.hab.E.pen && estado.ranks.E ? k.hab.E.pen[estado.ranks.E - 1] : 0`
+    //   motor.js:552  `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`
+    // O MOTOR aplica a penetracao do kit SEMPRE (e por rank). A matematica de build ignorava-a
+    // (TK-02-114): com o E do Darius a rank 4 (0,29) a pen ia de 0,30 (so o 3036) para
+    // 1 - 0,71*0,70 = 0,503 — e o Cajado do Vazio / itens de pen ficavam SOBREVALORADOS.
+    // `penArmaduraItens` fica separada para quem encadeia por-item (efeitosEquipados(ids)).
+    // A pen dos ITENS ja vem encadeada (motor.js:539): o 3036 contribui 0,3 e o
+    // `penArmaduraDe` do motor aplica o `* 0,7` UMA vez so
+    // (motor.js:552 `1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`). Aqui o 3036 ja entrou
+    // no `penArmadura` (0,3), portanto o factor extra so se aplica quando NAO houve
+    // contribuicao de item — senao contaria o 0,7 duas vezes (medido: 0,652 em vez de 0,503).
+    const penArmaduraItens = Math.max(0, Math.min(1, penArmadura));
+    const penKit = penKitCampeao('E');
+    penArmadura = 1 - (1 - penKit) * (1 - penArmaduraItens) * (penArmaduraItens > 0 ? 1 : (tem3036 ? 0.7 : 1));
+    // `pen` = pen MAGICA (motor.js:542, tecto 0,6) e `penArmadura` = pen de ARMADURA
+    // (motor.js:552, so no ramo fisico).
+    return { ap: apItem * (1 + apPct), ad: adItem, cdr, pen, penArmadura, penArmaduraItens, penKit, lich, chama, liandry, crit, infinito, det };
   }
 
   function estimarSet(ids, alvo, opt) {
@@ -3743,7 +3965,11 @@
     }
     // MITIGAÇÃO PELO TIPO DE DANO do campeão: o MAGO faz dano MÁGICO -> armadura do alvo ×
     // RM_MONSTRO (motor.js:1202); o AD faz físico -> armadura pura, como já era.
-    const mit = 100 / (100 + ((META.champAtual && META.champAtual.magia) ? armMagicaEfetiva(alvo?.armadura, pen) : (alvo?.armadura || 0) * (1 - pen)));
+    // BUG CORRIGIDO (TK-02-114): o ramo FISICO usava a pen MAGICA (`pen`, motor.js:542) em vez
+    // da pen de ARMADURA (`S.penArmadura`, motor.js:552). Um campeao AD via a pen dos itens
+    // VALER ZERO na mitigacao — e a do KIT (E do Darius) tambem. Medido contra o Barao
+    // (armadura 144): mit 0,4098 com a pen do kit -> 0,5580 sem ela.
+    const mit = 100 / (100 + ((META.champAtual && META.champAtual.magia) ? armMagicaEfetiva(alvo?.armadura, pen) : (alvo?.armadura || 0) * (1 - S.penArmadura)));
     dps *= mit;
     // CRITICO (motor.js:1700/1213): o auto-ataque rola a chance de critico e multiplica o dano
     // por `danoCritico`. As HABILIDADES nao rolam (salvo poucos on-hit), logo o factor so entra na
@@ -7135,6 +7361,11 @@
     // Voracidade por abate com os abates/min medidos ao vivo, roubo de vida e critico.
     numEcra, lerVidaHud, lerStatsId, lerBuffs, lerRecargaItens, lerAnaliseJogo,
     killsMinAoVivo, voracidadeDe, cdVoraz, nivelChefeDe, mecanicaDe, fracHabs, multCrit, critDoSet, tierDe, capsMotor: () => ({ cdr: CAP_CDR, penMag: CAP_PEN_MAG, esquiva: CAP_ESQUIVA, critico: CAP_CRITICO, velAtaque: VEL_ATAQUE_MAX, penArmadura: penArmaduraDe(0.45, true) }),
+    // ---- PENETRACAO DO KIT (TK-02-114): a pen de armadura que vem do KIT do campeao, por rank,
+    // lida do kit do motor (motor.js:529 -> 552). So o E do Darius a tem.
+    penKitDe, penKitCampeao, rankKitDe, statsSet, aplicarKit,
+    // ---- CURA DO GIRO (TK-02-130): a cura propria da Katarina, por rank da D ---
+    curaGiroDe, curaGiroS, cdVorazMotor, larvasInvoca: () => larvasInvoca.slice(),
     // ---- BUILD POR FASE (mob × chefe) e AS QUATRO FONTES ----
     buildParaMob, buildParaChefe, buildDaFase, buildIdealParaFase, faseBuild, planoBuildFase,
     alvoQuatroFontes, fontesDeItens, minhasOfertas, cofreConhecido, pecasDaFaseNoCofre,
