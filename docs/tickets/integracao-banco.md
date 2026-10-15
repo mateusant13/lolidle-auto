@@ -583,3 +583,12 @@ DUAS corridas. O par ainda nao fecha: a migracao no load mexe em mais do que as 
 (provavelmente o `enabled` a parte e a ordem DEFAULT->guardada). Revertido; estado 11.
 **As tentativas do C2 estao todas medidas:** inline 20->21 (estado intermedio, nao valida), com `ler`
 corrigido 11->12.
+## ADENDA 14:40 - nivelDoChefe: API exportada -> a suite chefe AVANCA e revela a proxima porta
+Com `nivelDoChefe` exportada (alias do `nivelChefeDe`), o `chefe` deixa de rebentar nela e passa a
+rebentar em **`sobrevivenciaSet is not a function`** -> a cadeia de portas desta suite e:
+`nivelDifMotor` -> `nivelDoChefe` -> `sobrevivenciaSet` -> ...
+**Isto e util:** cada porta aberta diz QUAL e a proxima (sem adivinhar) e a suite vai correndo mais.
+**O B2 do w1-regioes OSCILA** entre corridas (aparece em algumas, nao em outras) - e a unica parte
+nao-deterministica do banco; nas medicoes em que aparece, o total sobe 3.
+**Nota de metodo:** a lista de falhas TEM de vir de uma corrida nova (ja me enganou: reportei 14
+quando o estado era 11).
