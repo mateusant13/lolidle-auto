@@ -1,0 +1,23 @@
+const ws = new WebSocket('ws://127.0.0.1:9224/cdp');
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p, sid) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify(sid ? { id: i, method: m, params: p||{}, sessionId: sid } : { id: i, method: m, params: p||{} })); setTimeout(() => r({ __t: true }), 15000); });
+const nt = await send('Target.createTarget', { url: 'chrome://extensions/' });
+const tid = nt.result && nt.result.targetId;
+console.log('aba extensions: ' + (tid ? 'criada' : 'FALHOU'));
+if (!tid) process.exit(0);
+await new Promise(r => setTimeout(r, 7000));
+const s = (await send('Target.attachToTarget', { targetId: tid, flatten: true })).result?.sessionId;
+console.log('attach: ' + (s ? 'ok' : 'FALHOU'));
+if (!s) process.exit(0);
+await send('Accessibility.enable', {}, s); await send('DOM.enable', {}, s);
+await new Promise(r => setTimeout(r, 4000));
+const ax = await send('Accessibility.getFullAXTree', {}, s);
+const nos = ax.result ? ax.result.nodes : [];
+const nomes = nos.map(n => (n.name && n.name.value) || '').filter(Boolean);
+console.log('textos: ' + JSON.stringify(nomes.slice(0, 18)).slice(0, 420));
+const dev = nos.find(n => /programador|developer mode/i.test((n.name && n.name.value) || ''));
+console.log('dev mode: ' + (dev ? JSON.stringify(dev.name.value) + ' role=' + dev.role.value : 'nao achei'));
+if (dev && dev.backendDOMNodeId) { const box = await send('DOM.getBoxModel', { backendNodeId: dev.backendDOMNodeId }, s); if (box.result) { const q = box.result.model.content; const x = (q[0]+q[2]+q[4]+q[6])/4, y = (q[1]+q[3]+q[5]+q[7])/4; await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 }, s); await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }, s); console.log('CLIQUEI no dev mode em ' + Math.round(x) + ',' + Math.round(y)); } }
+ws.close(); process.exit(0);

@@ -1,0 +1,12 @@
+const v = await (await fetch('http://127.0.0.1:9224/json/version')).json();
+const ws = new WebSocket(v.webSocketDebuggerUrl || 'ws://127.0.0.1:9224/cdp');
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method: m, params: p || {} })); setTimeout(() => r({ __t: true }), 15000); });
+const up = await send('Extensions.loadUnpacked', { path: 'I:\\!lolidle.com\\extension' });
+console.log('loadUnpacked: ' + JSON.stringify(up.result || up.error).slice(0, 80));
+const list = await (await fetch('http://127.0.0.1:9224/json/list')).json();
+const jogos = list.filter(t => t.type === 'page' && /lolidle/.test(t.url));
+console.log('abas do jogo: ' + jogos.length + ' (nao fecho nenhuma tua)');
+ws.close(); process.exit(0);

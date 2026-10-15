@@ -1,0 +1,18 @@
+const list = await (await fetch('http://127.0.0.1:9224/json/list')).json();
+const jogos = list.filter(t => t.type === 'page' && /lolidle/.test(t.url));
+const ws = new WebSocket('ws://127.0.0.1:9224/cdp');
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p, sid) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify(sid ? { id: i, method: m, params: p||{}, sessionId: sid } : { id: i, method: m, params: p||{} })); setTimeout(() => r({ __t: true }), 15000); });
+for (const t of jogos) await send('Target.closeTarget', { targetId: t.targetId });
+console.log('fechei ' + jogos.length + ' abas minhas');
+await new Promise(r => setTimeout(r, 2500));
+const nt = await send('Target.createTarget', { url: 'https://lolidle.com/jogar' });
+const s = (await send('Target.attachToTarget', { targetId: nt.result.targetId, flatten: true })).result?.sessionId;
+console.log('aba nova: ' + (s ? 'ok' : 'FALHOU'));
+if (!s) process.exit(0);
+await new Promise(r => setTimeout(r, 14000));
+const r = await send('Runtime.evaluate', { expression: "(() => { const b = document.body ? document.body.innerText : ''; const btns = [...document.querySelectorAll('button, a, .botao, [role=button]')].map(x => (x.textContent||'').trim()).filter(Boolean).slice(0, 28); return JSON.stringify({ convidado: /convidado|guest/i.test(b), texto: b.replace(/\\n+/g,' | ').slice(0, 320), botoes: btns }); })()", returnByValue: true }, s);
+console.log((r.__t ? 'sem resposta' : String(r.result?.result?.value)).slice(0, 1100));
+ws.close(); process.exit(0);

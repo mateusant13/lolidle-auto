@@ -1,0 +1,18 @@
+const v = await (await fetch('http://127.0.0.1:9340/json/version')).json();
+const ws = new WebSocket(v.webSocketDebuggerUrl);
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method: m, params: p || {} })); setTimeout(() => r({ __t: true }), 12000); });
+const c = await send('Network.getCookies', { urls: ['https://lolidle.com', 'https://www.lolidle.com'] });
+const cookies = (c.result ? c.result.cookies : []) || [];
+console.log('COOKIES do lolidle: ' + cookies.length);
+for (const k of cookies.slice(0, 12)) console.log('  ' + k.name + ' = ' + String(k.value).slice(0, 40) + ' (dominio ' + k.domain + ')');
+await send('DOMStorage.enable');
+const ls = await send('DOMStorage.getDOMStorageItems', { storageId: { securityOrigin: 'https://lolidle.com', isLocalStorage: true } });
+const itens = (ls.result ? ls.result.entries : []) || [];
+console.log('LOCALSTORAGE do lolidle: ' + itens.length + ' chaves');
+for (const it of itens.slice(0, 15)) console.log('  ' + String(it[0]).slice(0, 40) + ' = ' + String(it[1]).slice(0, 45));
+fs.writeFileSync('I:/!lolidle.com/tools/_sessao.json', JSON.stringify({ cookies, localStorage: itens }));
+console.log('sessao guardada em tools/_sessao.json');
+ws.close(); process.exit(0);
