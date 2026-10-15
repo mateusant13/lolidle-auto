@@ -794,6 +794,13 @@
       farm.current = naBase ? null : novoCiclo(loc.text, Date.now());
       publishFarm();
     }
+    // C (TK-01-07): a CAÇA OFFLINE nao e abate — registada e o bloco do abate fica no `else`
+    // (NAO usar `return`: o handleLog tem seccoes seguintes — chefe, etc.).
+    if (/Enquanto voce estava fora|Enquanto você estava fora/i.test(entry.body)) {
+      const xo = entry.body.match(/\+\s*([\d.,]+\s*[kKmM]?)\s*de experi/i);
+      const oo = entry.body.match(/\+\s*([\d.,]+\s*[kKmM]?)\s*de ouro/i);
+      logEvent('caca-offline', { xp: xo ? parseNum(xo[1]) : null, ouro: oo ? parseNum(oo[1]) : null });
+    } else {
     const g = entry.body.match(/(?:Loot|recebeu)[^:]*:\s*(\d[\d.,]*\s*[kKmM]?)\s*de ouro/i);
     const x = entry.body.match(/\+\s*(\d[\d.,]*\s*[kKmM]?)\s*de experi/i);
     const nomeLoot = (entry.body.match(/Loot de\s+(.+?):/i) || [])[1] || null;
@@ -808,6 +815,7 @@
         if (g) { const v = parseNum(g[1]); farm.current.gold += v; fase.gold += v; fase.kills += 1; lootTimes.push(Date.now()); if (lootTimes.length > 30) lootTimes.shift(); killTimes.push(Date.now()); if (killTimes.length > 200) killTimes.shift(); }
         if (x) { const v = parseNum(x[1]); farm.current.xp += v; fase.xp += v; }
       }
+    }
     }
     const apChefe = entry.body.match(/Um chefe apareceu:\s*(.+?)[!.]?$/i);
     if (apChefe) {
