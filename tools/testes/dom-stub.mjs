@@ -107,6 +107,7 @@ export const SELETORES_CONHECIDOS = [
   '.presente-pegar',
   '#atributos [data-atrib]',
   'button, a, .botao, [data-pular-tutorial]',
+  'button, .botao',          // clicarDialogo (automation.js): confirma num dialogo qualquer
   '[data-pular-tutorial]',
   '.novidades-fundo',
   // deteccao do campeao (icone da habilidade)
@@ -153,6 +154,10 @@ export const PADROES_CONHECIDOS = [
   /^#janela-npc \[data-qtd="[^"]+"\]$/,
   /^#janela-npc \[data-comprar="[^"]+"\]$/,
   /^#janela-mercado \[data-cancelar="[^"]+"\]$/,
+  // bancada do Ornn (montarItem/receitasOrnn) — seletores dinamicos por id de receita
+  /^#janela-npc button\[data-receita="[^"]+"\]$/,
+  /^#janela-npc \[data-montar="[^"]+"\]$/,
+  /^#janela-npc \[data-usarGema="[^"]+"\]$/,
 ];
 
 /* seletores consultados DENTRO de um elemento (el.querySelector) */
@@ -416,6 +421,14 @@ export function criarMundo(opts) {
     takeRecords() { return []; }
   }
 
+  /** MouseEvent stubado (W5, TK-01-39): o `montarItem`/disparar cliques usa
+   *  `new MouseEvent('dblclick', { bubbles: true })`. Sem isto no sandbox, testar a cadeia
+   *  da bancada do Ornn rebentava com "MouseEvent is not defined" — buraco do HARNESS,
+   *  nao do automation.js. */
+  const MouseEventStub = class MouseEvent {
+    constructor(tipo, opts) { this.type = String(tipo || ''); Object.assign(this, opts || {}); }
+  };
+
   const sandbox = {
     document: documento,
     chrome: chrome,
@@ -428,6 +441,7 @@ export function criarMundo(opts) {
     KeyboardEvent: KeyboardEventStub,
     Event: EventStub,
     MessageEvent: MessageEventStub,
+    MouseEvent: MouseEventStub,
     structuredClone: structuredClone,
     queueMicrotask: queueMicrotask,
     JSON: JSON,
@@ -495,7 +509,8 @@ export function carregarAutomation(mundo, caminho) {
     new vm.Script(codigo, { filename: AUTOMATION_REL }).runInContext(mundo.contexto);
   } else {
     const nomes = ['window', 'document', 'chrome', 'console', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
-      'MutationObserver', 'KeyboardEvent', 'Event', 'MessageEvent', 'structuredClone', 'queueMicrotask'];
+      'MutationObserver', 'KeyboardEvent', 'Event', 'MessageEvent', 'MouseEvent', 'CustomEvent',
+      'structuredClone', 'queueMicrotask'];
     const valores = nomes.map((n) => mundo.sandbox[n]);
     const fn = new Function(nomes.join(','), codigo);
     fn.apply(null, valores);
@@ -649,4 +664,99 @@ export async function saturarMercado(auto, mundo) {
   montarMercado(mundo, ofertasLendarias(10));
   const o = await auto.salvarOfertas();
   return o;
+}
+
+/* ===================== BANCADA DO ORNN (acrescentado pelo worker W5, TK-01-39) =====================
+ * Fixture da bancada de MONTAGEM do Ornn, com os MESMOS seletores que o automation.js procura
+ * (medidos na bancada real, ver o comentario de `receitasOrnn`):
+ *   #npcs button[data-npc="Ornn"] · #janela-npc [data-palavra="montar"]
+ *   .troca-linha.montagem · button[data-receita] · img.comp (dica traz "Voce tem")
+ *   span.ouro (custo) · span.chance-montar (chance + "Em media: N tentativas")
+ *   #npc-troca [data-slot] · SPAN.forja-pegar · [data-usarGema] · [data-montar][data-vezes]
+ * Serve para provar no banco (sem browser, sem CDP) que a cadeia
+ *   receitasOrnn() -> escolherReceitaOrnn() -> montarItem() -> contabilidade
+ * corre de ponta a ponta.
+ *
+ * ASSINATURA: montarOrnn(mundo, receitas, slots)
+ *   receitas: [{ id, nome, ouro, chance, tentativasMedias, comps: [{ nome, tem }] }]
+ *   slots:    quantos [data-slot] a receita tem (Tiamat = 2). Default 2. */
+export function montarOrnn(mundo, receitas, slots) {
+  const nSlots = slots == null ? 2 : slots;
+  const linhas = (receitas || []).map((r) => {
+    const comps = (r.comps || []).map((c) => mundo.el({
+      tag: 'img', label: 'comp:' + c.nome, className: 'comp',
+      dataset: { dica: String(c.nome) + '\n' + (c.tem ? 'Você tem' : 'Você não tem') },
+    }));
+    const sel = mundo.el({ tag: 'button', label: 'receita:' + r.id, dataset: { receita: String(r.id) } });
+    return mundo.el({
+      tag: 'div', label: 'linha:' + r.id, className: 'troca-linha montagem',
+      find: {
+        'button[data-receita]': [sel],
+        'img.comp': comps,
+        '.info b': [mundo.el({ tag: 'b', label: 'nome:' + r.id, textContent: r.nome || String(r.id) })],
+        '.chance-montar': [mundo.el({
+          tag: 'span', label: 'chance:' + r.id, textContent: r.chance || '1,2%',
+          dataset: { dica: (r.chance || '1,2%') + (r.tentativasMedias ? ' | Em média: ' + r.tentativasMedias + ' tentativas' : '') },
+        })],
+        'span.ouro': [mundo.el({ tag: 'span', label: 'ouro:' + r.id, textContent: r.ouro || '0' })],
+      },
+    });
+  });
+  const slotEls = Array.from({ length: nSlots }, (_, i) =>
+    mundo.el({ tag: 'div', label: 'slot:' + i, className: 'montar-slot', dataset: { slot: 'itens:' + i } }));
+  // Os botoes de LOTE ([data-montar="<id>"][data-vezes="N"]). O `montarItem` procura-os por
+  // selector EXACTO com o id da receita, logo cada um e montado no seu proprio selector.
+  // Os botoes de LOTE ([data-montar="<id>"][data-vezes="N"]). O `montarItem` procura-os pelo
+  // selector `#janela-npc [data-montar="<id>"]` e escolhe o lote por `data-vezes`, logo a lista
+  // INTEIRA (1/10/100/1000) tem de estar montada sob esse MESMO selector.
+  const botoesMontar = (receitas || []).map((r) => {
+    const lista = [1, 10, 100, 1000].map((v) => mundo.el({
+      tag: 'button', label: 'montar:' + r.id + ':' + v,
+      dataset: { montar: String(r.id), vezes: String(v) },
+    }));
+    mundo.montar('#janela-npc [data-montar="' + r.id + '"]', lista);
+    return lista;
+  }).flat();
+  const gemas = ['sorte', 'arcana', 'protecao'].map((g) => mundo.el({ tag: 'button', label: 'gema:' + g, dataset: { usarGema: g } }));
+  // As pecas da bancada. No jogo, o duplo clique corre o handler de #npc-troca
+  // (jogo.js:5325 `porNoSlot(p.dataset.pegar, null)`) que ENCHE o slot — o fixture replica isso:
+  // ao receber o dblclick, o primeiro slot vazio passa a .montar-slot.cheio. Sem esta
+  // replicacao o `montarItem` pararia sempre em "nenhuma peca entrou na bancada".
+  const pegar = Array.from({ length: 6 }, (_, i) => {
+    const el = mundo.el({
+      tag: 'span', label: 'pegar:' + i, className: 'forja-pegar', dataset: { pegar: 'itens:' + i },
+    });
+    const dispatch = el.dispatchEvent;
+    el.dispatchEvent = (ev) => {
+      const r = dispatch(ev);
+      if (ev && ev.type === 'dblclick') {
+        const vazio = slotEls.find((s) => !s.classList.contains('cheio'));
+        if (vazio) {
+          vazio.classList.add('cheio');
+          // o documento consulta `#npc-troca .montar-slot.cheio` por selector EXACTO (o stub
+          // nao avalia classes): o slot cheio entra tambem nessa montagem para a leitura ver.
+          const cheios = mundo.estado.montados.get('#npc-troca .montar-slot.cheio') || [];
+          if (cheios.indexOf(vazio) < 0) { cheios.push(vazio); mundo.estado.montados.set('#npc-troca .montar-slot.cheio', cheios); }
+        }
+      }
+      return r;
+    };
+    return el;
+  });
+  mundo.montar('#npcs button[data-npc="Ornn"]', [mundo.el({ tag: 'button', label: 'npc-ornn' })]);
+  mundo.montar('#janela-npc [data-palavra="montar"]', [mundo.el({ tag: 'button', label: 'palavra-montar' })]);
+  mundo.montar('#janela-npc .troca-linha.montagem', linhas);
+  // o `montarItem` procura a receita por SELETOR EXACTO
+  // (`#janela-npc button[data-receita="<id>"]`); o stub resolve selector exacto no documento,
+  // logo cada botao e montado no seu proprio selector.
+  for (const r of (receitas || [])) {
+    mundo.montar('#janela-npc button[data-receita="' + r.id + '"]',
+      [mundo.el({ tag: 'button', label: 'receita:' + r.id, dataset: { receita: String(r.id) } })]);
+  }
+  mundo.montar('#janela-npc [data-usarGema]', gemas);
+  mundo.montar('#npc-troca [data-slot]', slotEls);
+  mundo.montar('#janela-npc [data-montar]', botoesMontar);
+  mundo.montar('#janela-npc SPAN.forja-pegar', pegar);
+  mundo.montar('#npc-troca .montar-slot.cheio', []);
+  return linhas;
 }
