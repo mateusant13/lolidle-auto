@@ -35,6 +35,8 @@ import { suite as suiteIntegracao } from './integracao.test.mjs';
 import { suite as suiteNumeros } from './numeros.test.mjs';
 // W3 (w3-barra) — barra por fase (TK-02-18).
 import { suite as suiteBarraFase } from './barrafase.test.mjs';
+// W3 (w3-barra) — passivas de estado com contexto de combate (TK-02-05).
+import { suite as suitePassivas } from './passivas.test.mjs';
 
 const argv = process.argv.slice(2);
 if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
@@ -52,7 +54,7 @@ const iF = argv.indexOf('--filter');
 if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 
 const SUITES = [suiteRegras, suiteAtor, suiteBarra, suiteObjetivo, suiteEquip, suiteRegiao, suitePontos, suiteInterruptores, suiteCofre,
-  suiteIntegracao, suiteNumeros, suiteBarraFase];
+  suiteIntegracao, suiteNumeros, suiteBarraFase, suitePassivas];
 const checks = [];
 const notas = [];
 let populacaoExecutada = 0;

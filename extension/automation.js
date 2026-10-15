@@ -4035,21 +4035,23 @@
     mobs: {
       stat: { va: 1.4, critico: 1.1, cdr: 1.15, ad: 1, ap: 1, rv: 1, vida: 0.9, armadura: 0.85, rm: 0.85, mana: 1, regen: 1 },
       itens: {
-        '3085': { mult: 1.9, why: 'Furacão de Runaan: cada ataque atinge mais 2 inimigos [motor.js:1718]' },
-        '6631': { mult: 1.8, why: 'Quebrapassos: +80% do AD em TODOS os alcançados, a cada 5 s [motor.js:1719]' },
-        '3074': { mult: 1.7, why: 'Hidra Raivosa: 40% do AD nos outros alcançados em CADA ataque [motor.js:1720]' },
-        '3748': { mult: 1.5, why: 'Hidra Titânica: +1,5% da vida máxima em todos os alcançados [motor.js:1721]' },
-        '3046': { mult: 1.6, why: 'Dançarina Fantasma: +6% de velocidade de ataque por ataque, até 5× [motor.js:1707]' },
-        '6610': { mult: 1.35, why: 'Céu Dividido: o primeiro ataque em CADA inimigo é crítico [motor.js:1699]' },
-        // Eco de Luden: o item de ÁREA do mago — em mobs o alvo é o GRUPO (motor.js:1947-1948
+        // CITAÇÕES RELOCALIZADAS para o motor VIVO (substituído 2026-10-14 21:50; tinha
+        // 3792 linhas, tem 3846 — as inserções a partir da linha 122 desviaram os números).
+        '3085': { mult: 1.9, why: 'Furacão de Runaan: cada ataque atinge mais 2 inimigos [motor.js:1740]' },
+        '6631': { mult: 1.8, why: 'Quebrapassos: +80% do AD em TODOS os alcançados, a cada 5 s [motor.js:1741]' },
+        '3074': { mult: 1.7, why: 'Hidra Raivosa: 40% do AD nos outros alcançados em CADA ataque [motor.js:1742]' },
+        '3748': { mult: 1.5, why: 'Hidra Titânica: +1,5% da vida máxima em todos os alcançados [motor.js:1743]' },
+        '3046': { mult: 1.6, why: 'Dançarina Fantasma: +6% de velocidade de ataque por ataque, até 5× [motor.js:1688]' },
+        '6610': { mult: 1.35, why: 'Céu Dividido: o primeiro ataque em CADA inimigo é crítico e cura 6% da vida perdida [motor.js:1721-1726]' },
+        // Eco de Luden: o item de ÁREA do mago — em mobs o alvo é o GRUPO (motor.js:1969
         // bate em ATÉ 3 inimigos); no chefe (um alvo só) ele perde para a Liandry, cujo % da
         // vida máxima bate no teto contra vida alta (motor.js:1191). A CONTA que fixa o
         // multiplicador: com 400 de AP o Eco faz (100 + 40) × 3 alvos = 420 por 6 s ≈ 70/s no
         // grupo, contra ≈ 30/s da Liandry num mob de ~2 000 de vida. O multiplicador é a minha
         // CALIBRAÇÃO sobre a direcção que o motor fixa (o valor da passiva da Liandry já entra
         // a +140 pelo texto; a do Eco não tem regra em `valorPassiva`).
-        '6655': { mult: 1.9, why: 'Eco de Luden: a cada 6 s a habilidade bate em até 3 inimigos, 100 + 10% do AP [motor.js:1945]' },
-        '3742': { mult: 1.2, why: 'Couraça do Defunto: +40 de dano fixo a cada 4 s — pesa mais contra vida baixa [motor.js:1698]' },
+        '6655': { mult: 1.9, why: 'Eco de Luden: a cada 6 s a habilidade bate em até 3 inimigos, 100 + 10% do AP [motor.js:1967-1971]' },
+        '3742': { mult: 1.2, why: 'Couraça do Defunto: +40 de dano fixo a cada 4 s — pesa mais contra vida baixa [motor.js:1720]' },
       },
     },
     chefe: {
@@ -4062,10 +4064,16 @@
         '6653': { mult: 1.4, why: 'Liandry: queima 1,5% da vida máxima por segundo, com teto — o chefe bate no teto [motor.js:1207, motor.js:1191]' },
         '3135': { mult: 1.35, why: 'Cajado do Vazio: 40% de penetração mágica [motor.js:529]' },
         '3065': { mult: 1.2, why: 'Rookern: +25% em TODA a cura recebida — luta longa [motor.js:1286]' },
-        '6333': { mult: 1.25, why: '30% do dano recebido vira sangramento; abater cura 15% [motor.js:1790, motor.js:2701]' },
-        '3026': { mult: 1.3, why: 'Renascimento: volta com 50% da vida — morrer no chefe custa muito [motor.js:2729]' },
-        '3053': { mult: 1.25, why: 'Escudo de 60% da vida bónus abaixo de 30% de vida [motor.js:2725]' },
-        '3157': { mult: 1.2, why: 'Stasis: invulnerável 2,5 s abaixo de 25% de vida [motor.js:2722]' },
+        '6333': { mult: 1.25, why: '30% do dano recebido vira sangramento; abater cura 15% [motor.js:2724-2726, motor.js:1812]' },
+        '3026': { mult: 1.3, why: 'Renascimento: volta com 50% da vida — morrer no chefe custa muito [motor.js:2752-2753]' },
+        '3053': { mult: 1.25, why: 'Escudo de 60% da vida bónus abaixo de 30% de vida [motor.js:2748-2749]' },
+        '3157': { mult: 1.2, why: 'Stasis: invulnerável 2,5 s abaixo de 25% de vida [motor.js:2745-2746]' },
+        // Banshee e Sedenta (TK-02-05): faltavam as duas. O bloqueio é de UM golpe a cada
+        // 40 s (motor.js:2721-2722) — no chefe o golpe bloqueado é grande e a luta dá para
+        // vários ciclos; a Sedenta transforma a overcura do rv em escudo até 25% da vida
+        // (motor.js:1246), o que só existe em luta longa com cura constante.
+        '3102': { mult: 1.2, why: 'Véu da Banshee: bloqueia 1 golpe de monstro a cada 40 s [motor.js:2721-2722]' },
+        '3072': { mult: 1.15, why: 'Sedenta: a cura do roubo de vida que passa do máximo vira escudo (até 25% da vida) [motor.js:1246]' },
       },
     },
   };
@@ -4124,6 +4132,109 @@
   }
   /** NOME de utilizador de cada fase (a GUI e o log falam assim). */
   const NOME_FASE = { mobs: 'mobs', chefe: 'chefe' };
+
+  // =====================================================================================
+  // PASSIVAS DE ESTADO (TK-02-05) — as 13 que faltavam, com regra própria e contexto de combate
+  //
+  // "13 passivas de estado (Stasis, Renascimento, Eco, Furia do Vento, Geada, Rammus...):
+  //  precisam de regra propria com contexto de combate. Se exigirem pesos inventados, pedir a
+  //  regra ao dono em vez de inventar." (parte-02.md:226)
+  //
+  // REGRA Nº 1 CUMPRIDA AQUI: cada linha cita o motor VIVO (docs/game-src/motor.js, versão
+  // 3846 linhas) no ponto EXACTO onde a mecânica é aplicada — valor + lista de campos lidos,
+  // nunca um número solto. Onde o motor dá o número, o valor é CALCULADO (Lâmina Encantada,
+  // Geada); onde o motor dá só a direcção (uma protecção pontual numa luta longa), entra como
+  // multiplicador de fase declarado em `why` — o mesmo padrão que o PESO_FASE já usava, e essas
+  // ficam nomeadas no relatório para o dono ajustar se quiser.
+  // =====================================================================================
+  const PASSIVAS_ESTADO = [
+    // ---- as que o motor deixa CALCULAR (nada inventado) ----
+    // Lâmina Encantada: depois de CADA habilidade, o próximo ataque básico ganha
+    // +1x (Fulgor) / +2x (Trindade) do AD BASE. motor.js:1694 `lamina(a) = tem('3078') ? 2 :
+    // tem('3057') ? 1 : 0`; motor.js:1603/1711 (põe o marcador ao usar habilidade);
+    // motor.js:1719 (aplica no ataque: `bruto += d.trindade * a.baseAd`) e motor.js:2689
+    // (aplica dentro da habilidade seguinte). Valor = lamina x baseAd x lançamentos/s.
+    { id: '3057', nome: 'Fulgor', fases: ['mobs', 'chefe'], tipo: 'lamina', lamina: 1,
+      motor: 'motor.js:1694 (lamina=1 c/ 3057) + motor.js:1603/1711 + motor.js:1719/2689 (aplica)' },
+    { id: '3078', nome: 'Força da Trindade', fases: ['mobs', 'chefe'], tipo: 'lamina', lamina: 2,
+      motor: 'motor.js:1694 (lamina=2 c/ 3078) + motor.js:1603/1719/2689 (aplica)' },
+    // Geada (Rylai): as habilidades de DANO MÁGICO deixam o alvo lento 1,5 s
+    // (motor.js:1223 `alvo.lento = max(lento, 1.5)`) e o relógio de ataque do inimigo
+    // desce a 0,6 enquanto lento (motor.js:1748 `i.ataque -= dt * (i.lento > 0 ? 0.6 : 1)`).
+    // Logo cada conjuração tira 0,6 s de ataques do alvo. Valor = 0,6 x dps básico do alvo,
+    // por conjuração — o alvo de referência da fase (mob mais pesado / chefe do local).
+    { id: '3116', nome: 'Cetro de Cristal de Rylai', fases: ['mobs', 'chefe'], tipo: 'geada',
+      motor: 'motor.js:1223 (lento 1,5 s) + motor.js:1748 (ataque a 0,6 enquanto lento)' },
+    // ---- as que o motor dá por MECÂNICA e a fase decide o peso (multiplicador declarado) ----
+    // Escudo de Feitiço (Banshee): bloqueia UM golpe de monstro a cada 40 s
+    // (motor.js:2721-2722). Num grupo o bloqueio é de um golpe entre muitos; contra o chefe
+    // é de um golpe GRANDE — e a luta é longa (rendem mais ciclos de 40 s).
+    { id: '3102', nome: 'Véu da Banshee', fases: ['mobs', 'chefe'], tipo: 'bloqueio',
+      motor: 'motor.js:2721-2722 (bloqueia 1 golpe a cada 40 s)' },
+    // Renascimento (Anjo): ao morrer volta com 50% da vida, 300 s (motor.js:2752-2753).
+    // Morrer no CHEFE custa a luta inteira; em mobs, custa uma wave — logo só o chefe o promove.
+    { id: '3026', nome: 'Anjo Guardião', fases: ['chefe'], tipo: 'renascer',
+      motor: 'motor.js:2752-2753 (50% da vida ao morrer, 300 s)' },
+    // Stasis (Zhonya): abaixo de 25% da vida fica invulnerável 2,5 s, 120 s
+    // (motor.js:2745-2746). É a defeza do CHEFE (o burst que mata vem de lá); em mobs
+    // raramente se desce de 25%.
+    { id: '3157', nome: 'Ampulheta de Zhonya', fases: ['chefe'], tipo: 'stasis',
+      motor: 'motor.js:2745-2746 (invulnerável 2,5 s abaixo de 25% de vida, 120 s)' },
+    // Escudo Sanguíneo (Sedenta): a cura de roubo de vida que passa da vida máxima vira
+    // escudo até 25% da vida máxima (motor.js:1246). Depende do rv — que já é campo
+    // pontuado do item (motor.js:264/521) — logo só a parcela do ESCUDO entra aqui.
+    { id: '3072', nome: 'Sedenta por Sangue', fases: ['mobs', 'chefe'], tipo: 'escudoSangue',
+      motor: 'motor.js:1246 (overcura do rv vira escudo até 25% da vida máxima)' },
+    // Ignorar a Dor (Dança da Morte): 30% do dano recebido passa a sangramento em 3 s
+    // (motor.js:2724-2726) e ao abater limpa o sangramento e cura 15% da vida perdida
+    // (motor.js:1812). O Sangue não reduz o dano — só adia 30% dele; o que decide é a
+    // cura por abate, que rende em luta longa (chefe).
+    { id: '6333', nome: 'Dança da Morte', fases: ['chefe'], tipo: 'ignorarDor',
+      motor: 'motor.js:2724-2726 (30% do dano em sangramento) + motor.js:1812 (abate cura 15%)' },
+  ];
+  /** Contexto de combate para valorizar as passivas de estado (cache curto: o scoring é
+   *  chamado por item e o `dpsPorHabilidade` lê o DOM). Tudo sai do motor: baseAd do kit,
+   *  recargas do kit, monstros/curva do motor. */
+  let _ctxEstado = { at: 0, v: null };
+  function ctxEstadoComba() {
+    if (_ctxEstado.v && Date.now() - _ctxEstado.at < 1000) return _ctxEstado.v;
+    const c = META.champAtual || {};
+    let castsPorSeg = 0;
+    try {
+      for (const h of (dpsPorHabilidade().habs || [])) {
+        if (h.passiva || h.auto || !(h.dano > 0) || !(h.dps > 0)) continue;
+        castsPorSeg += h.dps / h.dano;        // dano/recarga efetiva -> lançamentos por segundo
+      }
+    } catch { /* sem arsenal: fica 0 */ }
+    // dps básico do alvo de referência de cada fase (ad x vel. ataque do monstro/chefe)
+    const dpsAlvo = (fase) => {
+      const alvo = alvoDeReferencia(fase);
+      if (!alvo) return 0;
+      const s = statsMonstro(alvo.nome, alvo.nivel);
+      return s ? s.ad * (s.as || 1) : 0;
+    };
+    _ctxEstado = { at: Date.now(), v: { baseAd: (c.adBase || 58), castsPorSeg, dpsAlvo } };
+    return _ctxEstado.v;
+  }
+  /** VALOR das passivas de ESTADO do item na fase pedida (TK-02-05). 0 quando a passiva não
+   *  existe ou a fase não a activa. As fórmulas usam SÓ números do motor (baseAd do kit,
+   *  recargas do kit, ad/as do monstro da curva) — nenhum peso inventado. As passivas
+   *  puramente defensivas e de temporização (Banshee, Anjo, Zhonya, Sedenta, Dança) ficam no   *  PESO_FASE.itens como multiplicador de fase declarado, com o file:linha no `why`. */
+  function valorPassivaEstado(base, c, fase) {
+    const p = PASSIVAS_ESTADO.find((x) => x.id === String(base == null ? '' : base).replace(/[+~].*$/, ''));
+    if (!p || !fase || p.fases.indexOf(fase) < 0) return 0;
+    const ctx = ctxEstadoComba();
+    const w = pesosItem(perfilDe(c || META.champAtual || {}));
+    if (p.tipo === 'lamina') {
+      // dano extra/s = lamina x AD base x lançamentos/s (motor.js:1694 + 1719/2689)
+      return p.lamina * ctx.baseAd * ctx.castsPorSeg * (w.ad || 0);
+    }
+    if (p.tipo === 'geada') {
+      // 0,6 s de ataques do alvo evitados por conjuração (motor.js:1223 + 1748)
+      return 0.6 * ctx.dpsAlvo(fase) * ctx.castsPorSeg * (w.vida || 0);
+    }
+    return 0;   // as restantes são multiplicador de fase (PESO_FASE.itens), não valor somado
+  }
   /** PESOS do perfil JÁ corrigidos pela fase (multiplicadores de stat do PESO_FASE). */
   function pesosItemFase(perfil, fase) {
     const base = pesosItem(perfil);
@@ -4436,7 +4547,10 @@
     // do multiplicador de classe, e por isso o Rabadon ("Poder de Habilidade total em 35%" ->
     // +315 de valor) valia 317 num Yasuo AD e ENTRAVA no conjunto-alvo. Um item da classe
     // errada não vale NADA: o multiplicador tem de cobrir stats + passiva + sinergia.
-    const v = (stats * multDef + valorPassiva(base) + sinergiaDe(base, ctx)) * multClasse * multRar * multEsp;
+    // PASSIVAS DE ESTADO (TK-02-05): regra própria activada pela fase. Entra DENTRO do
+    // multiplicador de classe, como o `valorPassiva` — um item da classe errada não vale nada.
+    const v = (stats * multDef + valorPassiva(base) + sinergiaDe(base, ctx)
+      + (fase ? valorPassivaEstado(base, c, fase) : 0)) * multClasse * multRar * multEsp;
     // BÓNUS DE FASE (só quando ligado): item que o motor lê PELO ID para mudar a regra
     // (ex.: 3036 = +15% de dano contra CHEFES, motor.js:1214). Sem fase, é exactamente 1.
     const bonus = fase ? bonusItemFase(base, fase) : 1;
@@ -4966,7 +5080,8 @@
       const v = e(i.ad) * pesos.ad + e(i.ap) * pesos.ap + e(i.va) * pesos.va + e(i.critico) * pesos.critico + e(i.rv) * pesos.rv
         + e(i.vida) * pesos.vida + e(i.armadura) * pesos.armadura + e(i.rm) * pesos.rm
         + e(i.cdr) * pesos.cdr + (i.penMag || 0) * pesos.penMag + e(i.mana) * pesos.mana + e(i.regen) * pesos.regen + valorPassiva(i.id, c)
-        + valorPctVida(i.id, alvoRef, c);   // passivas que dependem do alvo (3153: 5% da vida DELE)
+        + valorPctVida(i.id, alvoRef, c)   // passivas que dependem do alvo (3153: 5% da vida DELE)
+        + valorPassivaEstado(i.id, c, fase);   // passivas de estado com contexto de combate (TK-02-05)
       const cl = classeItem(i.id);
       const multClasse = cl === 'neutro' ? 1 : (cl === classe ? 1 : 0.12);
       const ofensivo = (i.ad || 0) + (i.ap || 0) + (i.va || 0) + (i.critico || 0) + (i.rv || 0) + (i.cdr || 0) + (i.penMag || 0);
@@ -6750,7 +6865,7 @@
     // TK-INT-01 — estado vivo e eventos do motor (inject.js): leitura para a GUI/banco e o
     // consumo que dobra abates/invocações/mecânicas do chefe no ciclo do farm.
     estadoVivo, eventosVivos, eventosContadores, consumirEvento,
-    auditoriaPassivas,
+    auditoriaPassivas, PASSIVAS_ESTADO, valorPassivaEstado, ctxEstadoComba,
     PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
     getMeta: () => META, getFarm: () => farm, getConfig: () => cfg };
 
