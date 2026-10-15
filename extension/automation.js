@@ -1740,9 +1740,9 @@ const CFG_VER = 1;
   /** motor.js:1200 — diferença de nível EFECTIVA (desconta a faixa livre). É a base do fJ. */
   const difNivelMotor = (nivelAlvo, nivelJogador) => Math.max(0, (Number(nivelAlvo) || 0) - (Number(nivelJogador) || 1) - NIVEL_DIF_FB.livre);
   /** motor.js:1201 — o MONSTRO bem acima do nível bate mais forte (tecto maxDanoMonstro). */
-  const fatorDanoMonstroMotor = (nivelAlvo, nivelJogador) => { const d = difNivelMotor(nivelAlvo, nivelJogador); return d ? Math.min(NIVEL_DIF_FB.maxDanoMonstro, 1 + NIVEL_DIF_FB.danoMonstro * d) : 1; };
+  const fatorDanoMonstroMotor = (d) => d ? Math.min(NIVEL_DIF_FB.maxDanoMonstro, 1 + NIVEL_DIF_FB.danoMonstro * d) : 1;   // motor.js:1201 — recebe a DIFICULDADE
   /** motor.js:1202 — o JOGADOR contra monstro bem acima do nível: o dano DELE é reduzido (piso 0,25). */
-  const fatorDanoJogadorMotor = (nivelAlvo, nivelJogador) => { const d = difNivelMotor(nivelAlvo, nivelJogador); return d ? Math.max(NIVEL_DIF_FB.minDanoJogador, 1 - NIVEL_DIF_FB.danoJogador * d) : 1; };
+  const fatorDanoJogadorMotor = (d) => d ? Math.max(NIVEL_DIF_FB.minDanoJogador, 1 - NIVEL_DIF_FB.danoJogador * d) : 1;   // motor.js:1202 — recebe a DIFICULDADE
 
   const KAT_FB = {
     Q: { max: 10, rec: (r) => 10 - 0.35 * (r - 1), base: (r) => 80 + 35 * (r - 1), ratio: (r) => 0.45 + 0.03 * (r - 1), mult: 3, alvo: '3 alvos', adaga: true },
