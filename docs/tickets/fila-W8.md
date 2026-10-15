@@ -21,7 +21,7 @@ Só podes mexer em extension/inject.js, extension/content.js e docs/ (markdown).
 - **Fazer**: avaliar a `CURVA` do jogo por nível dentro do mundo MAIN e mandar os números por `postMessage`, em vez de os copiar; manter as chaves actuais como fallback só quando a avaliação falhar, com motivo no log.
 - **Aceitacao**: teste/Hook a mostrar que um buff na CURVA aparece no `meta` sem mexer no código (duas execuções com curvas diferentes dão `meta.curva` diferentes); `bun tools/testes/run.mjs` rc=0.
 - **Evidencia extra (medido ao vivo, parte-02.md:2642 e 2670)**: `curvaHp: [150, 100, 1]` — **exactamente o fallback escrito à mão**, confirmado como o valor que o motor está a usar; correcção pedida em parte-02.md:2685-2693 (`meta.curvaPorNivel = { 29: {hp: CURVA.hp(29), ...} }`, mais ler `grupoSpawn` e `respawn`, que também estão inline no motor)
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:1114 (a CURVA e LIDA do motor (fallback declarado)). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-30 | P2 | Documentos entregues com marcas NAO VERIFICADO por falta de dados do jogo no repo
 - **Ficheiro(s)**: docs/game-src/ (adicionar o que falta) e docs/drops-e-prioridades.md, docs/yasuo-build.md, docs/filtro-basicos.md

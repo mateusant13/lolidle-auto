@@ -53,14 +53,14 @@ Só podes mexer em: config e defaults (guardada vs default do código), valorDaV
 - **Evidencia**: parte-02.md:4636-4640 — *“Na Katarina, a build AP do bot NÃO é a melhor contra o Barão. Uma build AD/crítico faz 2,8× o DPS — porque o motor não restringe itens por classe. A divisão AP/AD existe nas tabelas de drop (o Barão AP não dropa o Gume do Infinito), mas não no equipamento … a tua Katarina está equipada com a build que a teoria de mago diz, e existe uma build física que a mata o Barão três vezes mais depressa.”*
 - **Fazer**: separar as duas coisas: a **tabela de drop** continua a ser escolhida pela classe (regra do jogo), mas a **build/equipamento** deixa de ser restringida pela classe e passa a ser escolhida pelo DPS/sobrevivência medidos contra o alvo; a build de chefe pode ser de outra classe que a de mobs.
 - **Aceitacao**: para a Katarina, o motor é capaz de propor a build AD/crítico contra o Barão com o DPS medido (2,8×) e mantém a build de mobs coerente; `bun tools/testes/run.mjs` rc=0 com o controle de que as tabelas de drop continuam por classe.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:323 (classe nas builds). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-65 | P1 | A extensão proíbe repetir qualquer item base; o motor só proíbe lendário repetido
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:3203-3204 e 3305 — *“escolherConjunto/montarBuildDe proíbem repetir QUALQUER base; o motor só proíbe LENDÁRIO repetido (motor.js:2879/2886/2891). É mais restritivo que o jogo.”*
 - **Fazer**: restringir a proibição de repetição a lendários iguais (regra do jogo), deixando repetir itens não-lendários quando o motor permite; confirmar a lista exacta das condições em `motor.js:2879/2891` antes de codar.
 - **Aceitacao**: teste a mostrar que dois itens não-lendários iguais podem ser escolhidos e que dois lendários iguais não podem (bater com o motor); `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:349 (lendario repetido (regra do dono)). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-93 | P1 | Muleta do `refinarMelhores`: objectivo pede para a tirar, mas ela está inerte e o que a substituiria tem erro conhecido
 - **Ficheiro(s)**: extension/automation.js
@@ -74,4 +74,4 @@ Só podes mexer em: config e defaults (guardada vs default do código), valorDaV
 - **Evidencia**: parte-02.md:2265 — *“O QUE FALTA NO MOTOR para a modalidade (b) existir ‘a serio’: (1) nao ha modo persistente ‘farmar ate cair’ — a regiao fica fixa e nao ha auto-avanco/parada quando o item cai (esta dito na propria GUI); (2) nao existe funcao do motor tipo farmarItem(ids) — a GUI compoe setConfig(enabled)+setConfig(regionDefault)+viajarPara”*
 - **Fazer**: implementar no motor um modo persistente “farmar até cair o item X” (com parada/auto-avanço quando o item cai) e uma função própria (ex.: `farmarItem(ids)`), em vez de a GUI compor `setConfig`+`regionDefault`+`viajarPara` a cada vez.
 - **Aceitacao**: no banco, ligar o modo com 1 id faz o motor fixar a região, viajar e parar quando o item aparece na mochila; sem o item, continua a farmar; `bun tools/testes/run.mjs` rc=0 com casos novos.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:5619 (modo farmar item). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado

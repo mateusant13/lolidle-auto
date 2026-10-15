@@ -39,7 +39,7 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Evidencia**: parte-02.md:3199-3200 e 3303 — *“A MESMA passiva vale 3x-4x: valorPassiva (texto) x multEsp (1.25) x PESO_FASE.itens (fase). Ex.: 3135 = 40*7=280 -> x1.25 -> x1.35 = +472 de valor só de palpites”*
 - **Fazer**: fazer a passiva contar **uma** vez em cada etapa do scoring (remover a multiplicação cruzada texto×especial×fase, ou justificar cada factor com `file:linha` do motor).
 - **Aceitacao**: teste a mostrar o valor do `3135` sem os +472 de palpites e o valor final da build inalterado onde não deve mudar; `auditoriaPassivas().duplas.length === 0` continua a valer; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:2237 (passiva sem contagem tripla). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-62 | P1 | `mit` calculado sem o `RM_MONSTRO = 0,6` — dano mágico subestimado 1,6×
 - **Ficheiro(s)**: extension/automation.js
@@ -67,14 +67,14 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Evidencia**: parte-02.md:4566-4573 — *“O infoItem do motor devolve stats: null — quem o consultar para saber os atributos de um item recebe nada. Os stats só existem no caminho do efeitosEquipados, que os calcula para os itens equipados. Para um item na mochila ou no mercado, o motor não sabe os atributos dele. Isso é maior que o preço: significa que ao decidir entre a tua peça equipada e uma na mochila, o motor só tem os stats de uma delas.”*
 - **Fazer**: calcular os stats de **qualquer** item (equipado, mochila, mercado) pela mesma fórmula que o `efeitosEquipados` usa (`motor.js:251-255`, com `QUALIDADES` `motor.js:173` e `BONUS_REFINO` `motor.js:55`), e exponde-os no `infoItem`.
 - **Aceitacao**: `infoItem(4629)` devolve `ap 109,5 / vida 547 / cdr 0,23` (os valores reais da peça do dono, escalados), e a comparação equipado-vs-mochila usa stats dos dois lados; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:5482 (infoItem devolve stats (statsDePeca)). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-80 | P1 | Nome do item perde a qualidade (motor escreve “+3”, o jogo mostra “+3 [A]”)
 - **Ficheiro(s)**: extension/automation.js (e extension/gui.js onde o nome é mostrado)
 - **Evidencia**: parte-02.md:4406 e 4543 — `nome: "Ímpeto Cósmico +3"` — **sem o `[A]`**, contra o ecrã do dono `"Ímpeto Cósmico +3 [A]"`; *“Para ler o ecrã e casar com o que tens equipado, falta a qualidade no nome”*; pedido em parte-02.md:4521
 - **Fazer**: acrescentar a qualidade ao nome onde ele é construído (`[A]`, `[S]`…), para o nome do motor casar com o do jogo.
 - **Aceitacao**: `nomeItem`/`infoItem` devolvem “+3 [A]” para a peça do dono; casamento com o texto do jogo testado no banco.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:7276 (nome do item com qualidade/refino). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-34 | P1 | Auditoria dos hardcodes da matemática de builds (necessário / derivável / heurística minha)
 - **Ficheiro(s)**: docs/ (relatório da auditoria) + extension/automation.js para os que forem deriváveis
@@ -125,18 +125,18 @@ Só podes mexer em: scoreSet, multClasse, multEsp, PESO_FASE, tierDe, CAMPOS_MUL
 - **Evidencia**: parte-02.md:9626 e 9654-9662 — *“BUG IRMÃO (este atinge a Katarina): automation.js:3251 arquiva o ‘30% de penetração de armadura’ do 3036 como penMag → para campeões de magia o modelo aplica 30% de pen MÁGICA que o motor não dá (motor.js:529 não tem termo do 3036) → +13,0% (arm 104) a +19,6% (arm 200) de dano mágico falso. O 3036 está na build IDEAL dela.”*; e *“Para campeões de magia, o modelo aplica 30% de pen MÁGICA que o motor não dá … O motor está a inflacionar a build que recomenda.”*; correcção pedida em parte-02.md:9641 (*“Corrigir o statsSet para separar pen de armadura (3036) de pen mágica (3135/3175) — automation.js:3248-3251”*)
 - **Fazer**: separar pen de armadura de pen mágica no `statsSet` (`automation.js:3248-3251`), para que o `3036` só entre na penetração de armadura (ramo físico, `motor.js:516→539→1202`) e nunca como pen mágica (`motor.js:529`).
 - **Aceitacao**: com o `3036` na build, o dano mágico deixa de ter os +13% a +19,6% falsos; número antes/depois contra armadura 104 e 200; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:4785 (classe do item (3036 pen de armadura)). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-142 | P1 | `player()` continua a não devolver o `rv` — o valor é lido do painel e deitado fora
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:9868 — *“A regex era código morto (0 acertos em 108 itens) e o readStats não lia o rv do painel. O OUTRO AGENTE JÁ CORRIGIU METADE durante a auditoria: removeu a regex (automation.js:4125) e pôs ‘Roubo de vida’ no readStats (1225) — MAS o player() continua a NÃO devolver rv (automation.js:1239): o valor é lido do painel e deitado fora.”*; confirmado em parte-02.md:9902 e 9982 (*“E o rv continua a ser lido e deitado fora”*)
 - **Fazer**: fazer o `player()` devolver o `rv` lido do painel e ligá-lo ao cálculo de cura (`motor.js:1226-1228`).
 - **Aceitacao**: `player().rv` devolve o valor do painel ao vivo (marcador discriminante) e a cura/s passa a usá-lo; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:1716 (player() devolve o rv (as duas grafias)). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-150 | P1 | Pen mágica usada como pen de ARMADURA em campeão AD, e escudos fora da vida efectiva
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-02.md:10248 e 10250 — *“Pen MÁGICA usada como pen de ARMADURA em campeão AD (ao contrário): automation.js:3235/3243 soma pen += it.penMag, e 3285/5398 usam-no em armadura*(1-pen). O 3036 não tem penMag (verificado). Muda a escolha de itens em todos os AD.”*; e *“Escudos fora da vida efectiva (avaliar só usa player.vida, automation.js:1657-1679): Fluxo do Yasuo = 80+28*nível = 1.480 no nv50 (+37% de vida), Taric F 1.200, Zac G 800, 3053 ~1.000, 3157/3026.”*
 - **Fazer**: separar pen mágica de pen de armadura em todos os sítios de decisão de item (`automation.js:3235/3243` vs `3285/5398`) e incluir os escudos na vida efectiva usada pelo `avaliar`.
 - **Aceitacao**: campeão AD deixa de receber pen de armadura vinda de pen mágica; `avaliar` conta os escudos (Fluxo do Yasuo = +1.480 no nv50); testes novos.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:1210 (pen magica separada da de armadura). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado

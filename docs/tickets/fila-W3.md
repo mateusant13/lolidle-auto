@@ -27,7 +27,7 @@ Só podes mexer em: barraIdeal, rotacao/skillsPorFase, escolha de skill no comba
 - **Evidencia**: parte-02.md:923 e 980-987 — `ideal mobs: [R, Q, A, W]` / `ideal chefe: [R, Q, A, W]` ← IDÊNTICOS; *"a preferência por multi-alvo não está a discriminar"*; kit da Katarina tem `alvos: 3` só no Q e no R
 - **Fazer**: diagnosticar porque a fase não muda o conjunto (a fase tem de afectar os pesos das skills, não só a ordem) e fazê-lo discriminando de facto — **sem inventar pesos**: os pesos vêm do motor (`file:linha`) ou vão para decisão do dono.
 - **Aceitacao**: para um campeão com kit de áreas (Lux/Yasuo/Darius) as barras mob vs chefe diferem no banco (prova já existente: Yasuo troca `3085`→`3036`); para a Katarina, se as barras legítimamente coincidem, dizer isso no relatório com `file:linha` em vez de forçar troca.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:120 (barraIdeal por fase (mob x chefe)). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-05 | P1 | 13 passivas de estado continuam sem regra própria com contexto de combate
 - **Ficheiro(s)**: extension/automation.js

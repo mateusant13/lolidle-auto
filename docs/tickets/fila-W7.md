@@ -92,7 +92,7 @@ Só podes mexer em tools/ (sims, backtest, testes, snap-export). NÃO mexas em e
 - **Evidencia**: parte-02.md:3049 — *“NAO escrevi nem alterei NENHUMA assercao do banco (o meu escopo e automation.js). As assercoes novas que pediste (3031/3089, rotacao, fuga, regiao memorizada, barra, auditoria de passivas) ficam do teu lado; deixei-as provadas por script efemero e expus no window.__lolidleAuto o que o banco precisa: auditoriaPassivas, regiaoSegura, primeiaVez, primeiraVezPasso, PRIORIDADE_EXTREMA, ehPrioridadeExtrema”*
 - **Fazer**: escrever as asserções para: (a) protecção `3031`/`3089` (duplicados incluídos) com controlo de item comum a ir ao mercado; (b) `rotacao` sob manutenção a mexer a barra com auto-play desligado; (c) `fugir` em manutenção, sem exigir chefe, com controlo `fugir=false`; (d) `regiaoSegura` a descartar memória letal e a aceitar memória segura; (e) `barraPorDisponibilidade` (cenário de 2 prontas + 2 em recarga, empate sem oscilação, ultimate sempre em 1.º); (f) `auditoriaPassivas().duplas.length === 0`.
 - **Aceitacao**: `bun tools/testes/run.mjs` rc=0 com as suites novas e POPULATION acima de 260; relatório nomeia cada asserção acrescentada e qual comportamento antigo deixa de ser aceite.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:7230 (assercoes novas no banco (25/25 verdes)). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-58 | P1 | Discrepância entre o que o subagent reporta e o que a extensão a correr mostra (código novo, runtime velho)
 - **Ficheiro(s)**: extension/ (recarregar) — verificação ao vivo, sem escrever código

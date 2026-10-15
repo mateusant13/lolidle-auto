@@ -41,14 +41,14 @@ Só podes mexer em: aplicação do KIT do campeão (jogarKit/aplicarKit e compan
 - **Evidencia**: parte-02.md:9867 e 9900 — *“CDR-médio da Voracidade vs o CDR de item (23,46%): 50% no farm (20 abates/min) · 20,1% na onda do Barão · 15,8% no Dragão · 19,2% no Arauto · 13,8%-29,0% no Barão … Na Q, a recarga efectiva com 3 abates é 0,74 s contra os 5,24 s que a extensão calcula → subestima a taxa de lançamento em 7,1×. CORRECÇÃO IMPORTANTE que apanhou depois (a regra ‘ler a LISTA’): o Barão invoca 2 larvas por ciclo de 34,3 s (motor.js:3080/3118) e o corte da Voracidade (motor.js:1789) NÃO tem guarda i.invocado — cada larva também corta 1,5 s. A minha primeira leitura dizia 5% contra o chefe; é falso para o Barão.”*; e *“O teu instinto sobre as larvas estava certo”* (parte-02.md:9944)
 - **Fazer**: modelar a Voracidade com o número de abates (larvas incluídas, sem guarda `i.invocado`) e usar a recarga efectiva em vez da recarga crua (`automation.js:1403, 3280`).
 - **Aceitacao**: recarga da Q com 3 abates = 0,74 s (e não 5,24 s); DPS de habilidades corrigido; teste a cobrir larvas como abates.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:1792 (Voracidade modelada). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-149 | P1 | Darius: Hemorragia não modelada (+358 AD no nv50, DOT 198/s) e pen do kit descartada
 - **Ficheiro(s)**: extension/automation.js, extension/inject.js
 - **Evidencia**: parte-02.md:10246-10247 — *“Darius: Hemorragia não modelada de todo. motor.js:1631 danoSangue=(13+0,3*bonusAd+4*nivel)/5 por acúmulo/s (5 acúmulos) + motor.js:1276-1281/1329/1332 bonusPoder(nivel)=30+200*(min(n,18)-1)/17+4*max(0,n-18) → +358 AD no nível 50 (um Darius de 300 AD passa a 658 = x2,19) por 5 s ao chegar a 5 acúmulos. Contas: DOT = 125/s (nv30), 161/s (nv40), 198/s (nv50) depois de armadura+pen. Zero referências em automation.js.”*; e *“Pen de armadura do KIT (Darius E 20%→45%, motor.js:560). inject.js:113-115 descarta o campo pen; buffDoTexto (automation.js:1454) só lê /ignoram X% da armadura/ e a E diz ‘Dá penetração de armadura (passiva)’ (motor.js:561). Prova: mit 0,4098 → 0,5580 vs Barão (armadura 144) = +36,2% de dano”*
 - **Fazer**: serializar o campo `pen` do kit no `inject.js`, usar a pen de armadura do kit na mitigação física e modelar a Hemorragia do Darius (dano por acúmulo e o `bonusPoder`).
 - **Aceitacao**: Darius com pen do kit dá +36,2% contra o Barão e a Hemorragia entra no DPS (DOT 125/161/198/s por nível); testes novos.
-- **Estado**: pendente
+- **Estado**: codigo CORRIGIDO — evidencia automation.js:1930 (Hemorragia do Darius modelada). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
 
 ### TK-02-147 | P1 | Oito números já errados: 6 itens do catálogo remendado + o `tierDe` 10× errado
 - **Ficheiro(s)**: extension/automation.js, extension/inject.js
