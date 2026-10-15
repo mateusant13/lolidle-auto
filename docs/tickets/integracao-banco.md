@@ -230,3 +230,18 @@ Exportar `larvasInvoca` (que está definida e é chamada pelo teste) levou o ban
 o verde exige corrigir o comportamento dessas funções, não só expô-las. Quem for fechar isto: exportar
 `larvasInvoca`, `mediaWaveDe`, `recomendarAtributos`, `NIVEL_DIF_FB`, `farmarItemIds` **e** corrigir
 as asserções que aparecerem (é trabalho de comportamento, não de porta).
+
+
+## ADENDA 09:45 — `w10` L4: a variável da mochila NÃO é `bag`
+Tentei a 7.ª regra no `planBag` (lendário duplicado + mercado saturado → `regras.protegidos`) usando
+`bag.filter(...)` para contar as ocorrências da mesma base → **`ReferenceError: bag is not defined`** e
+o banco piorou (16 → 17). Revertido.
+
+**O que se sabe agora (para não repetir):**
+- `planBag(bag, marketCount, marketCap)` — o parâmetro chama-se `bag`, mas **dentro do laço** (linha
+  ~3056) o item vem de outra variável (o laço itera sobre outra lista) — é preciso LER as linhas
+  3030-3056 para ver o nome real da colecção.
+- As 6 regras actuais estão em 3063-3092; a nova entra **depois** da do lendário-da-build (3069) para
+  não roubar o motivo dela (o banco fixa essa string).
+- Erros que o banco reporta neste estado: `bag is not defined` (a minha), `medido is not defined` e
+  `_farmItem is not defined` (pré-existentes, a atacar).
