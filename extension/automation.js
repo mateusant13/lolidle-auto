@@ -5939,7 +5939,9 @@
     // contra mobs a vida e baixa e o simulador mede-a como a PIOR candidata (488, ultimo de 11);
     // contra o chefe e a melhor (4055-6351). A build IDEAL (fase null) tambem NAO a promove — era
     // estar a vestir a peca de chefe no farm. Com fase 'chefe' o alvo de referencia e o chefe.
-    const alvoRef = fase === 'chefe' ? alvoDeReferencia('chefe') : null;
+    // B1: a build IDEAL (fase null) pontua contra o CHEFE de maior tier — logo TAMBEM promove a 3153
+    // (o farm de mobs continua sem ela: a vida e baixa e o teto morde).
+    const alvoRef = (fase === 'chefe' || fase == null) ? alvoDeReferencia('chefe') : null;
     // ---- PEÇAS REAIS vs CATÁLOGO (correcção do Lead, 2026-10-14) --------------------------------
     // O dono tem `4629+3~A` (94,5 AP, 23,46% cdr) e o motor comparava o `4629` BASE (70 AP, 15% cdr)
     // -> recomendava o `6653` Liandry. Não era divergência de modelo: era FALTA DE DADOS (a peça
