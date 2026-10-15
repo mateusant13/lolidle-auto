@@ -1,0 +1,94 @@
+DBG-R0 rk=0 medido=null n_cycles=0 testes=0
+DBG-R0 rk=1 medido={"n":4,"ouroMin":9999,"xpMin":3000,"itens":["3089","3001","3002","3003","3004"]} n_cycles=4 testes=0
+DBG-R0 rk=1 medido={"n":4,"ouroMin":9999,"xpMin":3000,"itens":["3089","3001","3002","3003","3004"]} n_cycles=4 testes=0
+DBG-R0 rk=0 medido=null n_cycles=0 testes=0
+DBG-R0 rk=1 medido={"n":3,"ouroMin":1200,"xpMin":900,"itens":["1001","1001","1001","1001"]} n_cycles=3 testes=0
+LoL Idle - banco de regressao: automation.js REAL em vm com DOM stubado (sem browser/CDP)
+FONTE extension/automation.js  bytes=556428  sha256=5d3461274a09a1aa3ea46cc75720dde990339cc0e23866ec9bf361bdfb99fade
+POPULATION 1056  (assercoes das suites=1031 + 25 checagens de integridade do harness)
+
+SUITE regras - Regras do planejador (planBag/identidade/dedupe/memo/mercado)
+  checks=90 falhas=0  mundos=15  ms=129  UNSTUBBED=0  errosAsync=0  intervals=150
+
+SUITE ator - Regras do ator (venderBase real no Lojista, com controlos)
+  checks=44 falhas=0  mundos=8  ms=82  UNSTUBBED=0  errosAsync=0  intervals=80
+
+SUITE barra - Barra de habilidades (a ultimate nunca sai)
+  checks=14 falhas=0  mundos=1  ms=4  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE barrafase - Barra por fase: o conjunto muda com a fase (alvos do kit do motor)
+  checks=14 falhas=0  mundos=1  ms=21  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE objetivo - Objetivo de item (cfg.objetivoItem fixa o alvo na build)
+  checks=11 falhas=0  mundos=1  ms=8  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE equip - Equipamento (epico vence basico; o melhor do slot; sem downgrade)
+  checks=9 falhas=0  mundos=1  ms=14  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE regiao - Regiao e objetivo (abaixo do nivel; score por ouro+xp)
+  checks=26 falhas=0  mundos=1  ms=3  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE pontos - Gastar pontos (skill e atributo) - nada a gastar = nada a fazer)
+  checks=11 falhas=0  mundos=1  ms=5  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE interruptores - Hierarquia de interruptores (mestre -> sub -> sub)
+  checks=42 falhas=0  mundos=1  ms=5  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE cofre - Cofre na Fonte (Tesoureira em CY-5: subir ate ela, verificando #npcs a cada tile)
+  checks=26 falhas=0  mundos=8  ms=27  UNSTUBBED=0  errosAsync=0  intervals=80
+
+SUITE hud - HUD do jogo como fonte (vida k/M e escudo, recarga exacta, medidor, Voracidade, rv, critico)
+  checks=227 falhas=0  mundos=59  ms=248  UNSTUBBED=0  errosAsync=0  intervals=590
+
+SUITE integracao - Integracao com o inject.js: estado vivo, eventos do motor e curva lida
+  checks=20 falhas=0  mundos=1  ms=6  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE numeros - Leitura de numeros (sufixo k/M do fmt do jogo: cena.js:225)
+  checks=29 falhas=0  mundos=4  ms=15  UNSTUBBED=0  errosAsync=0  intervals=40
+
+SUITE score - Pontuacao e matematica de builds (tierDe, CAMPOS_MULT, infoItem, pen, mit, CDR, rv)
+  checks=58 falhas=0  mundos=1  ms=8  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE planejar - Planejador class-aware: a tabela de drops segue a classe do campeão (motor.js:383/397/407)
+  checks=10 falhas=0  mundos=1  ms=7  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE refinar - refinarMelhores: o teórico manda; o medido (n>=3) é só validação (TK-02-06)
+  checks=13 falhas=3  mundos=1  ms=270  UNSTUBBED=0  errosAsync=0  intervals=10
+  FALHOU: R0: e não há medição a validar -> valor=false
+  FALHOU: R2: o medido é devolvido (n=4, 9999 ouro/min) -> valor=false
+  FALHOU: R2: e a divergência está nomeada (o 3089 medido está fora da teórica) -> valor=false
+
+SUITE w10 - W10 - config guardada, precos, Lojista, repeticao de base e farm por item
+  checks=127 falhas=0  mundos=20  ms=282  UNSTUBBED=0  errosAsync=0  intervals=200
+
+SUITE atributos - Recomendação de pontos de atributo pelo dano medido (por classe)
+  checks=11 falhas=0  mundos=1  ms=6  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE regiao - Regiao e objetivo (abaixo do nivel; score por ouro+xp)
+  checks=26 falhas=0  mundos=1  ms=4  UNSTUBBED=0  errosAsync=0  intervals=10
+
+SUITE w1-regioes - Fila W1: regioes, avaliacao de luta e ritmo (morte fail-closed, nivel do alvo, fator de dano, papel, ritmo, janela)
+  checks=76 falhas=2  mundos=20  ms=203  UNSTUBBED=0  errosAsync=0  intervals=200
+  FALHOU: D: a celula medida em 2 janelas traz as DUAS (jA, jB) -> valor=false
+  FALHOU: D: e leva o aviso de nao-comparabilidade entre janelas -> valor=false
+
+SUITE motor-tabelas - Tabelas do simulador conferidas contra o motor vivo (nada copiado a mao)
+  checks=54 falhas=0  mundos=0  ms=1  UNSTUBBED=0  errosAsync=0  intervals=0
+
+SUITE regras-motor - Regras do motor provadas pelo proprio motor (rank da passiva D; reset da ultimate)
+  checks=24 falhas=0  mundos=0  ms=31  UNSTUBBED=0  errosAsync=0  intervals=0
+
+SUITE snapshots - Leitura do snapshot: JSON duplo, stderr no meio, DPS real e deaths[]
+  checks=18 falhas=0  mundos=0  ms=144  UNSTUBBED=0  errosAsync=0  intervals=0
+
+SUITE fuga - Fila W4: fuga, memoria da regiao, viagem, trava de pocao e giro
+  checks=31 falhas=0  mundos=9  ms=1241  UNSTUBBED=0  errosAsync=0  intervals=90
+
+SUITE chefe - Build de chefe (3153), tolerancia de nivel e criterio de sobrevivencia
+  checks=71 falhas=0  mundos=11  ms=314  UNSTUBBED=0  errosAsync=0  intervals=110
+
+UNSTUBBED 0  (nenhum buraco: todos os seletores procurados estao no vocabulario do stub)
+INTERVALS 1670 registados e NAO disparados (limitacao declarada: o loop de fundo do jogo fica fora do banco)
+NOTA [w1-regioes] D: limitacao — o janela do novoCiclo nao tem teste directo (sem caminho publico); coberto pelo consumo em agregar/rankBuildsTestadas
+NOTA [snapshots] yasuo.json ainda vem no formato antigo (duplo); o backtest converte-o na primeira leitura.
+rc=1

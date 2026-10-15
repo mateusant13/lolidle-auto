@@ -5784,7 +5784,9 @@ const CFG_VER = 1;
     });
     // OBSERVABILIDADE: TODAS as saidas (inclusive as de falha) levam o diagnostico.
     const diag = { essenciais, fonteEssenciais, medido, divergenciaMedido };
-    if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), essenciais, fonteEssenciais };
+    // O DIAG TEM DE SAIR: sem `...diag` o `medido`/`divergenciaMedido` nunca chegavam ao teste (e a
+    // observabilidade que o dono pede ficava a zero). Era o defeito do R0/R2 do refinar.test.mjs.
+    if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), ...diag };
     fecharJanelas(); await humano(300);
     if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn' };
     const bt = await waitFor('#janela-npc [data-palavra="forjar"]', 4000);
@@ -5807,7 +5809,7 @@ const CFG_VER = 1;
     }
     fecharJanelas();
     logEvent('refino', { feitos });
-    return { ok: true, refinados: feitos };
+    return { ok: true, refinados: feitos, ...diag };
   }
 
   /** MONTAGEM AUTÓNOMA — escolhe e monta sozinha a receita que serve a build.
