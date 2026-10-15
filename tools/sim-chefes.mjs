@@ -22,16 +22,16 @@ const __dir = path.dirname(fileURLToPath(import.meta.url));
 
 // ---- dados do motor (coeficientes / tabelas; os multiplicadores são inline no motor) ----
 const CURVA = { hp: (n) => 150 + 100 * n + n * n, ad: (n) => 9 + 4.8 * n + 0.13 * n * n, armadura: (n) => 5 + 1.5 * n };
-const MONSTROS = {
+export const MONSTROS = {
   'Arauto do Vale': { hp: 10, ad: 2.5, as: 0.6, armadura: 1.5, chefe: true, magico: false, xp: 12, ouro: 12 },
   'Dragão Infernal': { hp: 12, ad: 3, as: 0.55, armadura: 1.6, chefe: true, magico: true, xp: 14, ouro: 14 },
   'Barão Nashor': { hp: 16, ad: 3.2, as: 0.5, armadura: 1.8, chefe: true, magico: true, xp: 20, ouro: 20 },
   'Larva do Vazio': { hp: 1.1, ad: 1.05, as: 0.8, armadura: 1, magico: true, xp: 1.1, ouro: 1 },
 };
-const NIVEL_DIF = { livre: 4, danoMonstro: 0.15, maxDanoMonstro: 3 };
-const RODIZIO = { 'Arauto do Vale': ['investida', 'pancada', 'olho'], 'Dragão Infernal': ['sopro', 'chuva', 'rugido'], 'Barão Nashor': ['invocar', 'tentaculos', 'acido'] };
+export const NIVEL_DIF = { livre: 4, danoMonstro: 0.15, maxDanoMonstro: 3 };
+export const RODIZIO = { 'Arauto do Vale': ['investida', 'pancada', 'olho'], 'Dragão Infernal': ['sopro', 'chuva', 'rugido'], 'Barão Nashor': ['invocar', 'tentaculos', 'acido'] };
 // carrega/espera vêm de HAB_CHEFE (motor); o MULT vai inline no mecanicaChefe (não exportado)
-const HAB = {
+export const HAB = {
   investida: { carrega: 1.5, espera: 8, mult: 3.5, magico: false },
   pancada: { carrega: 1.2, espera: 7, mult: 2.2, magico: false },
   olho: { carrega: 1.3, espera: 8, mult: 2.6, magico: true },

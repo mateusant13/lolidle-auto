@@ -628,8 +628,13 @@ export const suite = {
       const comPen = dariusEm(10).estimarSet(['2001', '3036'], alvo).dps;
       t.check('H12: o 3036 (+0,3 de pen) SUBE o DPS fisico (antes nao mexia)', comPen > semPen);
       const razaoMit = (100 / (100 + ARM * (1 - 0.615))) / (100 / (100 + ARM * (1 - 0.45)));
-      t.check('H12: e a subida e a da mitigacao do motor',
-        Math.abs((comPen / semPen - 1) * 100 - (razaoMit - 1) * 100) < 1.0);
+      // A subida NAO e SO a da mitigacao: o `estimarSet` soma tambem a HEMORRAGIA do Darius
+      // (motor.js:1652), que e ela propria mitigada pela pen de armadura — logo cresce com o
+      // 3036 e o ganho total fica ACIMA da razao de mitigacao pura.
+      t.check('H12: e a subida e PELO MENOS a da mitigacao do motor (a hemorragia soma por cima)',
+        (comPen / semPen) >= razaoMit - 1e-9);
+      t.check('H12: e o ganho fica ACIMA da mitigacao pura (o DOT tambem leva a pen)',
+        (comPen / semPen) > razaoMit + 1e-9);
       // o valor ANTIGO: a pen dos itens nao entrava nada -> os dois conjuntos davam o MESMO dps
       t.check('H12: antes da correccao os dois conjuntos davam o mesmo DPS (pen fisica = 0)',
         semPen !== comPen);
