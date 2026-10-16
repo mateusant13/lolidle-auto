@@ -569,3 +569,41 @@ perfil (conteudo) - extensoes - Windhawk - relay - relay-ligado - carga de GPU -
 - Verificar o efeito NO JOGO (HUD presente?), nao so 'a pagina responde'.
 - Medir se o componente esta no processo afectado antes de o acusar (Get-Process -Module).
 - Nunca tratar um dump como sendo da instancia certa sem confirmar o perfil de origem.
+## CAUSA-RAIZ (2026-10-16) — EXTENSAO DE VPN INTERCEPTA O `pulso.js` E O JOGO FICA PENDURADO
+
+### A prova (captura de rede com CDP, numa aba NOVA, na copia do perfil do dono)
+```
+pedidos: 152 | concluidos: 151 | falhados: 2
+PENDENTES (nunca concluiu):  +1.8s  [Script]  https://lolidle.com/js/pulso.js
+estado final: SEM RESPOSTA (congelada)
+FALHAS: chrome-extension://majdfhpaihoncoakbjgbdhglocklcgno/assets/intro-offer... -> net::ERR_FILE_NOT_FOUND
+        chrome-extension://majdfhpaihoncoakbjgbdhglocklcgno/assets/offer-trigger... -> net::ERR_FILE_NOT_FOUND
+```
+**O UNICO pedido por concluir no momento do congelamento e o `pulso.js`** — e o jogo bloqueia a espera dele.
+
+### Quem e `majdfhpaihoncoakbjgbdhglocklcgno`
+```
+nome: VPN Gratis para Chrome - VPN Proxy VeePN
+versao: 5.0.3    location: 1 (Web Store)
+```
+**Uma extensao de VPN/Proxy.** E o servidor do jogo esta bom: pedir `https://lolidle.com/js/pulso.js`
+directamente devolve **HTTP 200, 326 B, text/javascript**.
+
+### Isto explica TODAS as observacoes
+| Observacao | Explicacao |
+|---|---|
+| Um **perfil novo** funciona | nao tem a VPN |
+| **Reiniciar o Chrome nao cura** | a extensao persiste |
+| As minhas **copias COMPLETAS** travam | incluem a pasta `Extensions` |
+| As copias **SELECTIVAS** nao travavam | **nao tinham a pasta `Extensions`** |
+| O jogo carrega e depois trava | carrega o HTML/JS e **bloqueia no `pulso.js`** |
+| "Comecou do nada" | a VPN foi instalada/actualizada, ou o proxy dela comecou a falhar |
+
+### A CORRECCAO (1 clique, reversivel)
+**`chrome://extensions` -> desligar (ou remover) a "VPN Gratis para Chrome - VPN Proxy VeePN" -> F5 no jogo.**
+Se confirmar, o problema esta resolvido sem mexer em GPU, settings do Chrome, Windhawk ou perfil.
+
+### Honestidade sobre o que falta
+A prova e forte (o pedido pendente exacto + a extensao a falhar no mesmo instante + a consistencia com
+todas as copias), mas **nao fiz o A/B final** (desligar a extensao -> o jogo deixa de travar) porque a
+copia que usei se partiu ao editar o `Secure Preferences` por script. **O dono confirma em 1 minuto.**
