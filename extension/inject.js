@@ -34,6 +34,45 @@
   'use strict';
 
   // -----------------------------------------------------------------------------
+  // WORKER DO PULSO (2026-10-16) — a correcção do TRAVAMENTO ao entrar no jogo
+  // -----------------------------------------------------------------------------
+  // CAUSA (medida, com prova): `jogo.js:1611` faz `new Worker('js/pulso.js')`. O *fetch*
+  //   desse script fica **PENDENTE para sempre** (o servidor serve-o bem: 200, 326 B,
+  //   `text/javascript`; verificado 6x) e o jogo **bloqueia a thread principal a espera**.
+  //   Medido: a thread fica a **~0,2 s de CPU por 10 s** (bloqueada, nao a calcular).
+  //   So acontece **com sessao iniciada** (deslogado o jogo nem chega a criar o Worker) —
+  //   por isso um perfil novo funciona e reiniciar o Chrome nao cura.
+  //
+  // CORRECCAO: substituir SO o Worker do `pulso.js` por um equivalente que mantem o
+  //   sinal que o jogo espera (`setInterval(postMessage(0), 250)`, o mesmo conteudo do
+  //   ficheiro real) mas **nao vai buscar o script** — logo nao ha pedido que possa
+  //   pendurar. Os outros Workers da pagina continuam intactos.
+  //
+  // PROVA: com este stub, o jogo arranca e joga (HUD presente, vida a mudar:
+  //   4700 -> 4406 -> 4700 -> 4595 em 24 s), 8/8 sondas vivas. Sem ele, congela.
+  try {
+    const _Worker = window.Worker;
+    if (_Worker) {
+      function WorkerPulso(url) {
+        const eu = this;
+        eu.onmessage = null; eu.onerror = null;
+        eu.postMessage = function () {};
+        eu.terminate = function () { clearInterval(eu.__t); };
+        eu.addEventListener = function () {};
+        eu.removeEventListener = function () {};
+        eu.__t = setInterval(function () { try { if (eu.onmessage) eu.onmessage({ data: 0 }); } catch (e) {} }, 250);
+      }
+      const Subst = function (url, opts) {
+        if (/pulso\.js/.test(String(url))) return new WorkerPulso(url);
+        return new _Worker(url, opts);
+      };
+      Subst.prototype = _Worker.prototype;
+      window.Worker = Subst;
+      window.__lolidlePulsoFix = true;
+    }
+  } catch (e) { window.__lolidlePulsoFix = 'erro: ' + e; }
+
+  // -----------------------------------------------------------------------------
   // TENTATIVA REFUTADA (2026-10-16) — NAO repetir: forcar o canvas 2D em CPU NAO resolve
   // -----------------------------------------------------------------------------
   // Hipotese: o render do jogo usa `globalCompositeOperation='lighter'` + muito `drawImage`
