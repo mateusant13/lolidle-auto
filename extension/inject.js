@@ -34,35 +34,18 @@
   'use strict';
 
   // -----------------------------------------------------------------------------
-  // CANVAS EM CPU (2026-10-16) — evita o TRAVAMENTO que o dono relata
+  // TENTATIVA REFUTADA (2026-10-16) — NAO repetir: forcar o canvas 2D em CPU NAO resolve
   // -----------------------------------------------------------------------------
-  // CAUSA (lida no codigo do jogo, REGRA Nº 1): o render desenha a cada quadro com
-  //   `globalCompositeOperation = 'lighter'` + muito `drawImage` (cena.js tem 116 ocorrencias
-  //   de composite/drawImage) num canvas 2D **GPU-backed**. Cada operacao dessas tem de
-  //   sincronizar com o processo GPU; se o GPU estiver ocupado (várias abas de video a fazer
-  //   decode no mesmo GPU), a THREAD PRINCIPAL fica presa à espera — 0% CPU, sem crash, sem
-  //   dialogo, e `Debugger.pause` nem consegue pausar (o bloqueio esta abaixo do motor de JS).
-  //   Medido no Chrome do dono: o jogo congela ~3 s depois de carregar (batimento lido do
-  //   LevelDB com a pagina desligada) e `--disable-gpu` evita (10/10 sondas, 25 s).
-  //
-  // ESTA CORRECÇÃO: pedir o contexto 2D com `willReadFrequently: true` obriga o Chrome a
-  //   manter o canvas em memoria de CPU (rasterizacao software) -> **nao ha sincronizacao com
-  //   o GPU**, logo nao ha bloqueio. O jogo nao muda de aspecto; so o custo/desempenho muda.
-  //
-  // NOTA: `willReadFrequently` tem de estar no PRIMEIRO `getContext` do canvas (o Chrome
-  //   guarda as opcoes do primeiro pedido). Por isso o hook e feito aqui, no `document_start`,
-  //   ANTES de o jogo criar o contexto.
-  try {
-    const _origGet = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (tipo, opts) {
-      if (String(tipo).toLowerCase() === '2d') {
-        opts = Object.assign({}, opts || {}, { willReadFrequently: true });
-      }
-      return _origGet.call(this, tipo, opts);
-    };
-    window.__lolidleCanvasCpu = true;
-  } catch (e) { window.__lolidleCanvasCpu = 'erro: ' + e; }
-
+  // Hipotese: o render do jogo usa `globalCompositeOperation='lighter'` + muito `drawImage`
+  //   (116 ocorrencias em cena.js) num canvas 2D GPU-backed; a sincronizacao com o GPU prenderia
+  //   a thread principal. Implementou-se `willReadFrequently:true` no `getContext('2d')`.
+  // MEDICAO (no Chrome do dono, com o hook ACTIVO e confirmado `fix=true`):
+  //   o batimento no localStorage parou em **n=3** — a pagina congelou exactamente como antes.
+  //   => **REFUTADO.** O `willReadFrequently` muda o *backing store* do canvas, NAO o
+  //      **compositor** — e e o compositor que o `--disable-gpu` desliga. Logo o bloqueio
+  //      esta no caminho do compositor, nao no canvas.
+  // O codigo foi removido (seria regressao de desempenho sem beneficio). Fica a nota para
+  //   o proximo agente nao gastar tempo no mesmo caminho.
   const HEAL = '#40e060';
   const MANA = '#5aa8ff';
   // Escudos usam vários tons de verde/azul claro (#c8ff8a, #ffe8f8, #bfe8ff,
