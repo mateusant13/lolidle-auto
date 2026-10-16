@@ -538,3 +538,34 @@ A pagina deslogada responde **e mostra o menu do jogo** — logo o jogo corre; o
 O que o jogo faz **depois de autenticar**: carregar o estado da conta do servidor e inicializa-lo.
 O bloqueio esta nesse caminho, com os dados **deste** dono. Proximo passo: ler `jogo.js`/`cena.js`
 no arranque pos-login e medir com a conta carregada.
+## ESTADO DA INVESTIGACAO (2026-10-16, fim de sessao)
+
+### PROVADO por medicao
+1. O jogo congela ~3 s depois de carregar (batimento no localStorage lido do disco, com a pagina desligada, n=3).
+2. O travamento depende de estar LOGADO na conta — A/B na mesma copia, mesmo Chrome, mesmo GPU:
+   COM token (logado): 0 vivas / 9 mudas -> TRAVA
+   SEM token (deslogado): 7 vivas / 0 mudas -> o jogo RENDERIZA (Mapa/Fonte/Status/VIP)
+3. Reiniciar o Chrome NAO cura (feito com autorizacao: GPU fresco crash=0, sem dumps novos, jogo travou igual).
+4. Um perfil novo funciona (nao esta logado).
+5. Uma copia COMPLETA do perfil reproduz o travamento; as copias selectivas nao travavam por nao terem o Local Storage (o token).
+
+### ELIMINADO por medicao
+perfil (conteudo) - extensoes - Windhawk - relay - relay-ligado - carga de GPU - readback de canvas - canvas 2D (fix refutado ao vivo) - versao do Chrome (.40 e .80) - n de abas - n de renderers (28) - espaco em disco - estado do processo GPU (fresco, crash=0) - politicas do Chrome - pasta aninhada Local Storage/Local Storage.
+
+### NAO esta provado
+- O que, nos dados da conta, bloqueia o jogo. Suspeito lido no codigo: jogo.js:3001 carrega o mercado/inventario apos autenticar (/api/mercado). M.migrar (motor.js:1038) e migrarPersistencia (:94) foram lidos e sao pequenos.
+- INCONSISTENCIA EM ABERTO: no Chrome do dono, apos remover a pasta que continha o token, o jogo continuou a travar (o A/B dizia que devia funcionar). Sem explicacao medida. Nao inventar uma.
+
+### ERROS MEUS (todos assumidos)
+1. Parei o Windhawk com base num dump de OUTRA instancia -> congelei o Windows do dono (Ctrl+Shift+B). Restaurado.
+2. Apresentei medicao contaminada por mim (matar o GPU faz o Chrome contar crash).
+3. Implementei um fix do canvas antes de o testar; nao funcionava. Removido.
+4. Disse 'o reinicio foi executado' quando nao tinha sido.
+5. Confundi 'a pagina responde' com 'o jogo funciona' (sondas 8/8 com local:null/vida:null = o jogo nao renderizava).
+6. Removi a pasta Local Storage/Local Storage julgando ser resto duplicado — era o localStorage REAL (continha o token) -> desloguei o dono. RESTAURADA do backup (era movida, nao apagada); Local Storage de volta a 18,17 MB.
+
+### LICOES
+- Num A/B, garantir que a variavel manipulada nao muda outra coisa (apagar Local Storage apaga o token).
+- Verificar o efeito NO JOGO (HUD presente?), nao so 'a pagina responde'.
+- Medir se o componente esta no processo afectado antes de o acusar (Get-Process -Module).
+- Nunca tratar um dump como sendo da instancia certa sem confirmar o perfil de origem.
