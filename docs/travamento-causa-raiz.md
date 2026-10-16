@@ -482,3 +482,27 @@ Li `cena.js` (6100 linhas, actualizado) e `jogo.js`. O loop de render (`jogo.js:
    `commit` por frame no canvas do jogo — evita a sincronizacao **sem mexer nas settings do Chrome**.
    (Correccao real, nao contorno.)
 3. Nao abrir os videos durante o jogo.
+## CORRECÇÃO Nº 3 (2026-10-16) — a hipótese do canvas foi TESTADA e REFUTADA
+
+**Hipótese** (lida do código do jogo): o render usa `globalCompositeOperation='lighter'` + muito
+`drawImage` por quadro num canvas 2D GPU-backed -> a sincronização com o GPU prenderia a thread.
+**Fix implementado**: `willReadFrequently:true` no `getContext('2d')`, no `inject.js` (mundo MAIN,
+`document_start`, antes de o jogo criar o canvas).
+
+**MEDIÇÃO (no Chrome do dono, hook ACTIVO e confirmado):**
+```
+__cpufix = {"n":3, "fix":true}     <-- fix activo E a pagina congelou na mesma aos 3 s
+```
+**=> REFUTADO.** O `willReadFrequently` muda o ***backing store*** do canvas, **não o compositor** —
+e é o **compositor** que o `--disable-gpu` desliga. **Logo o bloqueio está no caminho do compositor,**
+**não no canvas.**
+
+O código foi **removido** (seria regressão de desempenho sem benefício) e ficou uma **nota no
+`inject.js`** para o próximo agente não repetir o caminho. Banco continua verde (25/25, 0 falhas).
+
+### Onde isto deixa a investigação (estado real)
+- **Sólido**: o jogo congela ~3 s após carregar; medido **sem instrumentação ligada** (`n=3`), com
+  `--disable-gpu` a evitar (10/10) e a cópia do perfil a correr bem.
+- **Agora mais estreito**: o bloqueio é no **caminho do compositor/GPU**, **não** no canvas 2D.
+- **Continua por identificar**: o que, no estado daquela instância de Chrome, faz o compositor
+  bloquear. Apanhar um dump **orgânico** (sem eu provocar) é o passo que falta.
