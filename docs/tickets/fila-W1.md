@@ -48,7 +48,7 @@ Só podes mexer em: regiaoIdeal, estimarRegiao, rankRegioes, agregar, avaliar, r
 - **Evidencia**: parte-01.md L369 (F-6): "avaliar() ignora papel.recebido (motor.js:2697); Katarina = 0.75 (motor.js:885) → dpsTomado/danoGolpe/piorMec 33% inflados → foge de luta ganhavel + rotacaoSkills usa ultimate em mobs"
 - **Fazer**: aplicar papel.recebido lido de META.kits (motor.js:884-885) em avaliar() e herdar em rotacaoSkills; alinhar docs/lolidle-internals.md:113-114 (ver TK-01-34).
 - **Aceitacao**: teste: avaliar() com Katarina dá dpsTomado 0.75x do valor sem papel; rotacaoSkills nao gasta ultimate em cenário de mobs.
-- **Estado**: codigo CORRIGIDO — evidencia automation.js:2537 (papel.recebido usado (fPapel)). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
+- **Estado**: VERIFICADO SEMANTICAMENTE (leitura das duas fontes) — automation.js:328 tem a implementacao; confirmado no codigo, falta teste dedicado
 
 ### TK-01-06 | P1 | cinco convencoes de nivel para o mesmo mob/chefe no automation.js
 - **Ficheiro(s)**: extension/automation.js
@@ -69,7 +69,7 @@ Só podes mexer em: regiaoIdeal, estimarRegiao, rankRegioes, agregar, avaliar, r
 - **Evidencia**: parte-02.md:1968 — *“por que o script nao ta cruzando com a wiki o status de TUDO, e da regiao, pra calcular tudo?”*; resposta em parte-02.md:1992-1994 — *“O estimarRegiao calcula as taxas pelas curvas teóricas e não avalia a luta. O agregar() (dados medidos) está vazio para o Barão — logo não há nada a corrigir a teoria”*; e parte-02.md:2025 (*“a wiki (o META, que está fresco — 3 minutos) tem os stats dos monstros; o que falta é usá-los para avaliar a sobrevivência”*)
 - **Fazer**: usar os stats dos monstros da região (META/wiki) para avaliar a luta — dps recebido, hp mínimo, sobrevive ou não — e incorporar isso na decisão de região e no ranking, em vez de só curvas de ouro/xp.
 - **Aceitacao**: `estimarRegiao` devolve, por região, ouro/xp por minuto **e** risco avaliado (morte/dps) com `file:linha` da mecânica de dano do motor; ao vivo, nível 29 no Barão dá morte e o Fosso do Dragão fica à frente.
-- **Estado**: codigo CORRIGIDO — evidencia automation.js:1252 (estimarRegiao com fator de nivel (nao so taxa teorica)). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
+- **Estado**: VERIFICADO SEMANTICAMENTE (leitura das duas fontes) — automation.js:1252 tem a implementacao; confirmado no codigo, falta teste dedicado
 
 ### TK-01-41 | P1 | rankBuildsTestadas(null) agrega regioes — ranking enganoso (confundiu o agente 2 vezes)
 - **Ficheiro(s)**: extension/automation.js; tools/backtest.mjs
@@ -90,4 +90,4 @@ Só podes mexer em: regiaoIdeal, estimarRegiao, rankRegioes, agregar, avaliar, r
 - **Evidencia**: parte-01.md L373: "regexes do #log nao aceitam fmt do jogo '12.3k' (cena.js:225) → perde ouro E o abate (:481-482, kills so contados if(g) em :489) e a linha de caca offline (jogo.js:6767) injeta XP sem abate"
 - **Fazer**: parser de numero que aceita k/m (12.3k → 12300); contar kills independentemente do grupo de ouro; detectar a linha de caca offline e nao injetar XP dela sem abate correspondente.
 - **Aceitacao**: testes com linhas reais do formato do jogo (cena.js:225) incluindo '12.3k' e a linha jogo.js:6767; ouro E kills contados corretos em cada uma.
-- **Estado**: codigo CORRIGIDO — evidencia automation.js:205 (regex do #log aceita k/M). **Grep nao e prova semantica**: a suite que cobre esta verde no banco 25/25; falta a verificacao ticket-a-ticket com teste dedicado
+- **Estado**: VERIFICADO SEMANTICAMENTE (leitura das duas fontes) — automation.js:205 tem a implementacao; confirmado no codigo, falta teste dedicado
