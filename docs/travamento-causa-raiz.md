@@ -506,3 +506,35 @@ O código foi **removido** (seria regressão de desempenho sem benefício) e fic
 - **Agora mais estreito**: o bloqueio é no **caminho do compositor/GPU**, **não** no canvas 2D.
 - **Continua por identificar**: o que, no estado daquela instância de Chrome, faz o compositor
   bloquear. Apanhar um dump **orgânico** (sem eu provocar) é o passo que falta.
+## CAUSA-RAIZ (2026-10-16) — O CONGELAMENTO DEPENDE DO ESTADO DA CONTA
+
+### Prova (A/B limpo, na mesma cópia do perfil, mesmo Chrome, mesmo GPU)
+```
+COM  o token (logado na conta do dono):  0 vivas / 9 mudas   -> TRAVA
+SEM  o token (deslogado):                7 vivas / 0 mudas   -> o jogo RENDERIZA (Mapa/Fonte/Status/VIP)
+```
+A pagina deslogada responde **e mostra o menu do jogo** — logo o jogo corre; o que muda e o **estado da conta**.
+
+### Isto explica todas as observacoes anteriores
+| Observacao | Explicacao |
+|---|---|
+| Um **perfil novo** funciona | nao esta logado -> nao carrega os dados da conta |
+| **Reiniciar o Chrome nao cura** | continua logado |
+| A **copia completa** do perfil trava | tem o `lol-idle-token` -> carrega a conta |
+| As copias **selectivas** nao travavam | nao tinham o token |
+| "Comecou do nada" | os dados da conta cresceram ate ao ponto de bloquear |
+| A remocao da pasta `Local Storage/Local Storage` pareceu curar | **CONFUNDIDOR**: apagou o token -> deslogou |
+
+### Correccao dos meus erros anteriores (registada para nao repetir)
+1. **A pasta aninhada `Local Storage/Local Storage` (18 MB) NAO e a causa.** Removida do perfil do dono
+   (backup em `%USERPROFILE%\ll-BACKUP-LocalStorage-aninhado-20261016`) e **o jogo continuou a travar**.
+   O A/B parecia conclusivo mas estava **confundido**: apagar o `Local Storage` apaga o token.
+2. **Licao**: num A/B, garantir que a variavel manipulada **nao muda outra coisa** (aqui, o estado de login).
+   Verificar sempre o **efeito no jogo** (HUD presente?), nao so "a pagina responde" — as minhas sondas
+   davam 8/8 vivas com `local:null, vida:null`, ou seja, **o jogo nao estava a renderizar** e eu li isso
+   como sucesso.
+
+### Onde procurar agora (REGRA Nº 1 — ler o motor)
+O que o jogo faz **depois de autenticar**: carregar o estado da conta do servidor e inicializa-lo.
+O bloqueio esta nesse caminho, com os dados **deste** dono. Proximo passo: ler `jogo.js`/`cena.js`
+no arranque pos-login e medir com a conta carregada.
