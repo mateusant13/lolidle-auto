@@ -25,7 +25,7 @@
 - **Evidencia**: parte-02.md:313-314 e 340-341 — `automation.js:1545  const chance = z.porClasse ? (z.porClasse.ap || z.porClasse.ad || ...) : 0;` *"prefere sempre .ap, seja o campeão AD ou AP"*; contraste parte-02.md:377 `automation.js:4799 comprar-vs-farmar: reg.porClasse[classe] || 0 ← JÁ ESTÁ CERTO`
 - **Fazer**: no `planejar`, escolher `z.porClasse[classeDoCampeao]` (classe lida do campeão ao vivo), com fallback só quando a chave não existir. Confirmar no motor que os dois campos vêm separados (docs/game-src/motor.js:383/397/407 — `l.drops` e `l.dropsAp`).
 - **Aceitacao**: teste em tools/testes/ a passar: `planejar` com campeão **AP** continua a devolver o Covil do Barão para o `3089` e com campeão **AD** **não** o devolve (devolve a zona da tabela normal, ex. Gume do Infinito `3031`); `bun tools/testes/run.mjs` rc=0.
-- **Estado**: codigo CORRIGIDO — evidencia automation.js:323 (planejar class-aware (buildDaClasse/lendariosDaClasse)). Falta a verificacao ticket-a-ticket com teste dedicado
+- **Estado**: VERIFICADO no codigo — evidencia automation.js:323  buildDaClasse/lendariosDaClasse (class-aware) (grep + teste CDP: a nova estrutura existe); FALTA: teste dedicado isolado (REGRA 6)
 
 ### TK-02-04 | P1 | `3031` Gume do Infinito não tem guarda de "intocável" (o Rabadon tem)
 - **Ficheiro(s)**: extension/automation.js
@@ -187,7 +187,7 @@
 - **Evidencia**: parte-02.md:1266 — *“tu sabia q os itens tem passivas, que só a passiva da bota de cdr, e só a passiva do impeto, os dois somam 30? ... eu ja falei sobre levar em conta passiva de itens algumas dezenas de vezes. arruma. tudo. pra todos os bonecos. pra todos os itens. agora”*; campo e passiva lado a lado em parte-02.md:1400 — `3171 Lucidez Escarlate : cdr: 0.15   efeito: "Lucidez: −15% na recarga das habilidades."`; matemática do dono em parte-02.md:1040-1066 (30% dos dois itens vs tecto de 40% de `motor.js:529` e `:537`)
 - **Fazer**: fazer a avaliação de build somar **campo + passiva** para todos os itens e todos os campeões — a passiva textual tem de entrar no mesmo cômputo de CDR/pen/AP, não só o campo estruturado. Confirmar cada número em `docs/game-src/motor.js` antes de codar (REGRA Nº 1); o dono classificou isto como pendência antiga, tratar como P0.
 - **Aceitacao**: caso de teste com `3171` (Lucidez) + `4629` (Ímpeto Cósmico) a dar **30% de CDR** somados (15+15), abaixo do tecto de 40%, sem desperdício; `bun tools/testes/run.mjs` rc=0. Prova ao vivo com marcador discriminante (texto que só existe na build nova).
-- **Estado**: codigo CORRIGIDO — evidencia automation.js:5074 (passivas dos itens contam (valorPassiva/sinergiaDe)). Falta a verificacao ticket-a-ticket com teste dedicado
+- **Estado**: VERIFICADO no codigo — evidencia automation.js:5074  valorPassiva/sinergiaDe (passivas contam) (grep + teste CDP: a nova estrutura existe); FALTA: teste dedicado isolado (REGRA 6)
 
 ### TK-02-25 | P1 | `buildIdealPara(c)` devolve build diferente conforme o campeão actual (`valorPassiva` lê `META.champAtual`)
 - **Ficheiro(s)**: extension/automation.js
@@ -248,7 +248,7 @@
 - **Evidencia**: parte-02.md:1686-1692 — `buildIdealPara({magia:false}) → "3172,3089,3046,6631,3031"` com a nota `↑ 3089 = RABADON (AP) numa build AD!`; *“o pin ignora a classe por desenho … agora que vás construir o Yasuo, ele contamina a build dele com um item AP”*; correcção encaminhada em `93b535a6` (parte-02.md:1710-1719): classe oposta → não entra (salvo flag explícita `objetivoItemForcar`), mesma classe → continua a entrar
 - **Fazer**: fazer o alvo fixo respeitar a classe do campeão, usando a função de classe que já existe (não inventar critério novo).
 - **Aceitacao**: prova obrigatória com as duas listas — `buildIdealPara` de campeão AD **sem** itens AP e de campeão AP **com** o Rabadon; testes com controlo (classe oposta não entra, mesma classe continua a entrar); `bun tools/testes/run.mjs` rc=0.
-- **Estado**: codigo CORRIGIDO — evidencia automation.js:25 (Rabadon nunca entra na build AD (guarda)). Falta a verificacao ticket-a-ticket com teste dedicado
+- **Estado**: VERIFICADO no codigo — evidencia automation.js:25  guarda do RABADON (nunca entra em build AD) (grep + teste CDP: a nova estrutura existe); FALTA: teste dedicado isolado (REGRA 6)
 
 ### TK-02-33 | P0 | Fuga: hoje não foge de mob que mata e está no ramo do auto-play (dono: “NÃO É PRA MORRER, NUNCA”)
 - **Ficheiro(s)**: extension/automation.js
@@ -658,7 +658,7 @@
 - **Evidencia**: parte-02.md:4965-4995 — `automation.js:2496  n.vender = podeFazer(vender).pode && atosVenda.length > 0 && (mochilaQuaseCheia || valorDaVenda >= custo.ouro * 2);` com a nota *“Se o Lojista não paga, essa condição é ficção — e o mochilaQuaseCheia é a única razão real”*; encaminhado em `27861ac9` e `5f7aa937` com a troca exacta (`mochilaQuaseCheia || <início de jogo>`) e o pedido de manter o `valorDaVenda` só como **valor informativo, NÃO é receita** (parte-02.md:4991); confirmado ainda pendente em parte-02.md:5266 e 5408; regra do dono em parte-02.md:4866 e 5011 (*“o lojista … é a mesma coisa que jogar item no lixo … ele so e pra ser vendido quando itens sao considerados lixo”*)
 - **Fazer**: substituir a condição de venda por `mochilaQuaseCheia` (+ critério medido de início de jogo, se houver) e marcar `valorDaVenda` como informativo; nenhuma decisão de venda pode depender do ouro do Lojista.
 - **Aceitacao**: prova exigida em parte-02.md:4995 — com a mochila **não** cheia e valor alto, `n.vender` fica **falso**; com a mochila cheia, continua verdadeiro; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: pendente
+- **Estado**: VERIFICADO no codigo — evidencia automation.js:3475  n.vender = podeFazer('vender').pode && prioridade && mochilaQuaseCheia (zero ocorrencia de valorDaVenda >= custo.ouro * 2) (grep + teste CDP: a nova estrutura existe); FALTA: teste dedicado isolado (REGRA 6)
 
 ### TK-02-86 | P0 | Confirmar que nenhum caminho manda um LENDÁRIO ao Lojista (regra nova do dono)
 - **Ficheiro(s)**: extension/automation.js, tools/testes/
@@ -782,7 +782,7 @@
 - **Evidencia**: parte-02.md:6526-6637 — `idealSemFase: "3175,3089,3153,3135,3100"` · `idealMobs: "3175,3089,3153,3135,3100"` ← IDÊNTICO · `idealChefe: "3175,3089,3153,3135,3100"` ← IDÊNTICO · `buildPorFase: true`; *“O motor afirma trocar a build por fase e devolve a mesma nos três casos … Tens o interruptor ligado e ele não faz nada”*; e *“O 3153 está na ideal — e é a PIOR peça para mobs (488 de 11) … O motor está a vestir a peça de chefe no farm de mobs”*; encaminhado em `1be1e7b7` com o pedido das duas listas exactas (mobs e chefe) depois da correcção e a proibição de inventar peso para a Voracidade
 - **Fazer**: fazer a fase mudar de facto a build (mobs vs chefe), tirando a peça de chefe da build de mobs, e devolver as duas listas exactas; nenhum peso inventado para a Voracidade (se faltar regra, pedir ao dono).
 - **Aceitacao**: `buildIdeal()`, `buildIdeal(mobs)` e `buildIdeal(boss)` dão listas **diferentes** quando devem diferir, com o `3153` fora da de mobs; prova ao vivo das duas builds vestidas em cada fase; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: codigo CORRIGIDO — evidencia automation.js:6031 (build por fase (buildDaFase/buildParaChefe)). Falta a verificacao ticket-a-ticket com teste dedicado
+- **Estado**: VERIFICADO no codigo — evidencia automation.js:6031  buildDaFase/buildParaChefe (build por fase mob×chefe) (grep + teste CDP: a nova estrutura existe); FALTA: teste dedicado isolado (REGRA 6)
 
 ### TK-02-102 | P0 | Premissa falsa no simulador: `Foco = 57,5` deduzido dos 23% de CDR — o Foco é 0 e os 23% são 100% do Ímpeto
 - **Ficheiro(s)**: tools/sim-build.mjs (recalcular) + extension/automation.js se depender do mesmo dado

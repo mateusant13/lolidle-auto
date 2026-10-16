@@ -1,0 +1,16 @@
+const ws = new WebSocket('ws://127.0.0.1:9224/cdp');
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p, sid) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify(sid ? { id: i, method: m, params: p||{}, sessionId: sid } : { id: i, method: m, params: p||{} })); setTimeout(() => r({ __t: true }), 18000); });
+const nt = await send('Target.createTarget', { url: 'https://lolidle.com/jogar' });
+const s = (await send('Target.attachToTarget', { targetId: nt.result.targetId, flatten: true })).result?.sessionId;
+console.log('aba: ' + (s ? 'ok (sessao anexada)' : 'FALHOU'));
+if (!s) process.exit(0);
+await send('Runtime.enable', {}, s); await send('Page.enable', {}, s);
+await send('Page.reload', { ignoreCache: true }, s);
+await new Promise(r => setTimeout(r, 15000));
+const ev = (expr) => send('Runtime.evaluate', { expression: expr, returnByValue: true }, s);
+const r1 = await ev("JSON.stringify({ local:(document.querySelector('#local-nome')||{}).textContent||null, vida:(document.querySelector('#hud-vida-txt')||{}).textContent||null, marcadores: document.querySelectorAll('#marcadores .marcador[data-local]').length })");
+console.log('JOGO: ' + (r1.__t ? 'TRAVOU (sem resposta)' : String(r1.result?.result?.value)));
+ws.close(); process.exit(0);
