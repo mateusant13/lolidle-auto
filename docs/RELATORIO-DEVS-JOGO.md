@@ -44,9 +44,18 @@ a página congelou na mesma — logo ele é o **local** onde o jogo parou, não 
 | `jogo.js:1611` | `new Worker('js/pulso.js')` | o Worker cujo pedido fica pendente |
 | **`jogo.js:1613-1624`** | **`avancar()`**: `acum += dt` e **`while (acum >= DT) { M.passo(...); processarEventos(); acum -= DT; }`** | **laço de recuperação de passos: se `M.passo` for lento com um estado grande, `acum` cresce e o laço corre cada vez mais passos por quadro — a thread nunca devolve** |
 
-**Hipótese principal:** o custo de `M.passo(estado, combate, DT)` com o estado desta conta é alto o
-suficiente para o jogo não acompanhar 60 quadros/s; o laço de recuperação de `jogo.js:1624` entra em
-espiral e bloqueia a thread principal. A conta tem muito progresso acumulado (itens, mochila, mercado).
+**Hipótese principal (medida):** a thread principal fica **BLOQUEADA a ~0% de CPU** — não é uma espiral.
+Medido num perfil mínimo com uma só aba: **0,2 s de CPU em 10 s**. Deslogado, o `pulso.js` **nem é pedido**
+e a página responde; logado, o pedido de `js/pulso.js` (o Worker de `jogo.js:1611`) fica **PENDENTE para
+sempre** e a página congela.
+
+O `pulso.js` é `setInterval(() => postMessage(0), 250)` — existe para **acordar** a thread principal. Se o
+arranque **bloqueia a thread à espera do primeiro sinal do Worker** (p.ex. `Atomics.wait` num
+`SharedArrayBuffer`) e o pedido do Worker nunca completa, a thread fica presa para sempre.
+
+**Pedido:** (1) ver se o arranque bloqueia à espera do Worker; (2) se sim, **nunca bloquear a thread
+principal à espera de um Worker**; (3) investigar por que o pedido de `js/pulso.js` só fica pendente com
+conta iniciada. *(O laço de `jogo.js:1624` foi testado e NÃO é a causa: a CPU está a 0,2 s/10 s.)*
 
 ## O que foi DESCARTADO por medição (para não repetirem)
 GPU / aceleração de hardware · canvas 2D e `willReadFrequently` (implementado e refutado) · readback de

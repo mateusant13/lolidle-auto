@@ -1,0 +1,12 @@
+const list = await (await fetch('http://127.0.0.1:9430/json/list')).json();
+const pg = list.find(t => t.type === 'page' && /lolidle/.test(t.url));
+const ws = new WebSocket(pg.webSocketDebuggerUrl);
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method: m, params: p || {} })); setTimeout(() => r({ __t: true }), 20000); });
+await send('Runtime.enable');
+const r = await send('Runtime.evaluate', { expression: "(async function(){ try { if (!navigator.serviceWorker) return 'sem navigator.serviceWorker'; var rs = await navigator.serviceWorker.getRegistrations(); var out = rs.map(function(x){ return x.scope; }); var c = await caches.keys(); return JSON.stringify({ registos: out, caches: c }); } catch(e) { return 'erro: ' + e; } })()", returnByValue: true, awaitPromise: true });
+console.log('=== SERVICE WORKERS / CACHES em lolidle.com ===');
+console.log(r.__t ? '  sem resposta' : '  ' + String(r.result?.result?.value));
+ws.close(); process.exit(0);

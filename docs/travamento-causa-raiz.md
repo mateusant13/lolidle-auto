@@ -664,3 +664,37 @@ Nao isolei a aba do jogo. Uma medicao anterior (sondando a aba congelada) sugeri
 **Para fechar isto falta**: mapear o target CDP da aba do jogo para o PID do renderer
 (`SystemInfo.getProcessInfo`, que exige porta de debug no Chrome do dono) e medir SO esse processo,
 com as abas de video pausadas como controlo.
+## MECANISMO AFINADO (2026-10-16) — thread BLOQUEADA (0 CPU), nao em espiral
+
+### Medicao decisiva (perfil minimo, UMA so aba: o jogo)
+```
+renderers deste Chrome: 4
+t=0:  3,28 s de CPU | t=10: 3,38 s | t=20: 3,55 s   -> delta ~0,2 s de CPU em 10 s
+```
+**A thread esta BLOQUEADA, nao a calcular.** Isto REFUTA a hipotese da espiral em `jogo.js:1624`.
+E resolve a contradicao anterior: os ~10,7 s/10 s medidos no Chrome do dono eram as **abas de video**.
+
+### O que muda entre logado e deslogado (captura de rede, mesmo perfil)
+```
+DESLOGADO: 94 pedidos, 93 concluidos | pulso.js NUNCA pedido | pagina RESPONDE
+LOGADO:   152 pedidos, 151 concluidos | pulso.js PEDIDO e PENDENTE para sempre | pagina CONGELADA
+```
+**O jogo so chega ao `new Worker('js/pulso.js')` (jogo.js:1611) com conta — e e ai que bloqueia.**
+
+### Hipoteses adicionais testadas e REFUTADAS
+- **Service Worker** a interceptar: `navigator.serviceWorker.getRegistrations()` -> `[]` e `caches.keys()` -> `[]`.
+  Nao ha service worker nem cache em `lolidle.com`.
+- **Espiral do laco de recuperacao** (`jogo.js:1624`): refutada pela medicao de CPU (0,2 s/10 s).
+- **MIME do `pulso.js`**: correcto e estavel (`text/javascript; charset=utf-8`, 6/6 leituras).
+- **Pedido bloqueado por extensao**: bloqueado falharia com `ERR_BLOCKED_BY_CLIENT`; ele fica PENDENTE.
+
+### Mecanismo mais provavel (a confirmar pelos devs)
+O `pulso.js` faz `setInterval(() => postMessage(0), 250)` — existe para **acordar** a thread principal.
+Se o jogo bloqueia a thread principal a espera do primeiro sinal do Worker (por exemplo com
+`Atomics.wait` num `SharedArrayBuffer`) e o **pedido do Worker nunca completa**, a thread fica presa
+**para sempre, a 0% de CPU** — exactamente o que se mede.
+
+**Pedido concreto aos devs:**
+1. Ver se o arranque bloqueia a thread a espera do Worker (`Atomics.wait` / espera sincrona).
+2. Se sim, **nunca bloquear a thread principal a espera de um Worker** — usar `onmessage` assincrono.
+3. E investigar por que o pedido de `js/pulso.js` fica pendente so com conta iniciada.
