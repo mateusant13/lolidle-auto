@@ -1,0 +1,1 @@
+(function(){try{var n=0;setInterval(function(){try{n++;var o={n:n,t:Date.now(),v:(document.querySelector('#hud-vida-txt')||{}).textContent||'-'};localStorage.setItem('__beat', JSON.stringify(o));}catch(e){}},1000);}catch(e){}})();

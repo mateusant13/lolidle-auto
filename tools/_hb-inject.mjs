@@ -1,0 +1,22 @@
+import fs from 'node:fs';
+const hb = fs.readFileSync('I:/!lolidle.com/tools/_hb2.js', 'utf8');
+const list = await (await fetch('http://127.0.0.1:9224/json/list')).json();
+for (const t of list.filter(x => x.type === 'page' && /lolidle/.test(x.url))) { /* nao fecho as do dono nesta fase */ }
+const ws = new WebSocket('ws://127.0.0.1:9224/cdp');
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p, sid) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify(sid ? { id: i, method: m, params: p||{}, sessionId: sid } : { id: i, method: m, params: p||{} })); setTimeout(() => r({ __t: true }), 15000); });
+const nt = await send('Target.createTarget', { url: 'about:blank' });
+const s = (await send('Target.attachToTarget', { targetId: nt.result.targetId, flatten: true })).result?.sessionId;
+console.log('aba nova + attach: ' + (s ? 'ok' : 'FALHOU'));
+if (!s) process.exit(0);
+await send('Page.enable', {}, s);
+const r = await send('Page.addScriptToEvaluateOnNewDocument', { source: hb }, s);
+console.log('batimento registado: ' + (r.result ? 'ok' : JSON.stringify(r.error).slice(0, 60)));
+const nav = await send('Page.navigate', { url: 'https://lolidle.com/jogar' }, s);
+console.log('navegacao: ' + (nav.__t ? 'sem resposta' : 'ok'));
+await new Promise(r => setTimeout(r, 8000));
+console.log('--- a DESLIGAR a minha sessao (o batimento continua sozinho) ---');
+ws.close();
+process.exit(0);
