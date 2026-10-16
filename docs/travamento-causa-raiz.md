@@ -607,3 +607,43 @@ Se confirmar, o problema esta resolvido sem mexer em GPU, settings do Chrome, Wi
 A prova e forte (o pedido pendente exacto + a extensao a falhar no mesmo instante + a consistencia com
 todas as copias), mas **nao fiz o A/B final** (desligar a extensao -> o jogo deixa de travar) porque a
 copia que usei se partiu ao editar o `Secure Preferences` por script. **O dono confirma em 1 minuto.**
+## CAUSA (2026-10-16) — O travamento e do LADO DO JOGO, nao do Chrome
+
+A/B FINAL, mesma copia, mesmo Chrome, mesmo GPU, com a VPN REMOVIDA:
+```
+COM token (logado):   0 vivas / 9 mudas  -> CONGELA
+SEM token (deslogado): 8 vivas / 0 mudas -> o jogo RENDERIZA o menu (Mapa/Fonte/Status/VIP)
+```
+Fecha tudo: perfil novo funciona porque nao esta logado; reiniciar nao cura porque continua logado;
+as copias completas travavam (tinham o token) e as selectivas nao.
+
+Onde esta o bloqueio (codigo lido, REGRA 1): jogo.js:40 `await conectar()` -> jogo.js:65 `carregar()` ->
+jogo.js:77 `M.migrar(e)`; e jogo.js:3001 carrega o mercado/inventario da conta (/api/mercado, Bearer).
+jogo.js:1611 cria `new Worker('js/pulso.js')` — o pulso.js era apenas ONDE o jogo parava, nao a causa.
+
+### O que fazer
+E um bug do jogo com os dados desta conta; nao se resolve no Chrome do dono.
+a) Reportar ao jogo com esta evidencia (com conta o boot congela aos ~2 s; deslogado corre; reproduz-se numa copia limpa).
+b) Entrar DESLOGADO (funciona) e tentar o login pela via do menu.
+c) Se nada resultar, e do lado do servidor com esta conta.
+
+### TEORIAS MINHAS REFUTADAS (registadas para nao se repetirem)
+- Pasta `Local Storage/Local Storage` (18 MB): removida do perfil do dono e o jogo continuou a travar.
+- Extensao VPN VeePN a bloquear o `pulso.js`: copia SEM a VPN travou igual e nem pediu o pulso.js.
+- `--disable-gpu` como cura: nao e a causa; o travamento nao depende do GPU (GPU fresco, crash=0, travou).
+
+### ERROS MEUS (7, todos assumidos)
+1. Windhawk acusado por um dump de OUTRA instancia -> parei o servico -> congelei o Windows do dono. Restaurado.
+2. Medicao contaminada por mim (matar o GPU faz o Chrome contar crash).
+3. Fix do canvas implementado antes de testado; nao funcionava. Refutado ao vivo e removido.
+4. Disse que reiniciei o Chrome quando so tinha registado o estado.
+5. Confundi 'a pagina responde' com 'o jogo funciona' (sondas 8/8 com local:null/vida:null).
+6. Removi a pasta julgando ser resto duplicado -> DESLOGUEI o dono. RESTAURADA do backup (18,17 MB).
+7. Acusei a VPN por correlacao sem testar sem ela. Falso positivo.
+
+### LICOES
+- Medir se o componente esta NO processo afectado antes de o acusar (Get-Process -Module).
+- Num A/B, garantir que a variavel manipulada nao muda outra coisa (apagar Local Storage apaga o token).
+- Verificar o efeito NO JOGO (HUD presente?), nao so 'a pagina responde'.
+- Nunca tratar um dump como sendo da instancia certa sem confirmar o perfil de origem.
+- Um pedido PENDENTE nao e um pedido bloqueado: bloqueado falha, pendente significa que o renderer parou.
