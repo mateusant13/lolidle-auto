@@ -429,3 +429,28 @@ produz efeito depois de reiniciar. **Não existe cura sem relançar**, e o dono 
    restaura as abas com `--restore-last-session`);
 2. ou arrancar uma vez com `--disable-gpu`.
 **Depois disso o jogo deixa de congelar** (já provado 3x no Chrome dele).
+## CORRECÇÃO Nº 2 (2026-10-16) — a prova do "GPU crashou" está CONTAMINADA por mim
+
+**Medição de agora (40 s, sem abrir o jogo):**
+```
+GPU PID=67244  crash-count=1  cpu=122,7s -> 122,8s -> 123,0s   (estável, ocioso)
+```
+O processo GPU **não está a crashar em ciclo**. E há um detalhe que **invalida** a leitura anterior:
+**quando EU mato o processo GPU, o Chrome conta-o como crash** e escreve `--gpu-recent-crash-count=N+1`
+no processo novo. Como o primeiro valor que vi (`crash-count=1`) apareceu **depois** de eu ter morto o
+processo à mão, a conclusão *"o GPU crashou organicamente"* **não está provada — pode ser artefacto meu**.
+O mesmo vale para os renderers com 629 s/118 s de CPU: é **CPU acumulada** desde o arranque, e um jogo com
+canvas usa CPU naturalmente — **não é prova de software rendering**.
+
+### O que continua SÓLIDO (não depende de eu ter mexido em nada)
+1. **O jogo congela ~3 s depois de carregar** — medido com o batimento no `localStorage` **lido do disco**,
+   **comigo desligado da página** (`n=3`). É a observação mais limpa de toda esta sessão.
+2. **`--disable-gpu` evita o congelamento** no Chrome dele (10/10 sondas, 25 s).
+3. **Uma cópia do perfil dele, ao mesmo tempo, corre o jogo bem** (8/8 sondas, com as 8 abas dele).
+4. O relay funciona — as abas YouTube/anime dele respondem sempre.
+
+### Conclusão honesta
+**A causa NÃO está identificada.** Está provado **onde não está**: perfil, extensões, Windhawk, carga de GPU,
+readback de canvas, versão do Chrome, número de abas. E está provado o **mecanismo do sintoma**: thread
+principal presa, abaixo do motor de JS, com o jogo a aparecer carregado. **Falta apanhar um crash/dump
+ORGÂNICO** do Chrome do dono — sem eu provocar nada — e lê-lo. Sem isso, qualquer "causa" é palpite.
