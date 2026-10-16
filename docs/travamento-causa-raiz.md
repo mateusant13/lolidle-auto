@@ -647,3 +647,20 @@ c) Se nada resultar, e do lado do servidor com esta conta.
 - Verificar o efeito NO JOGO (HUD presente?), nao so 'a pagina responde'.
 - Nunca tratar um dump como sendo da instancia certa sem confirmar o perfil de origem.
 - Um pedido PENDENTE nao e um pedido bloqueado: bloqueado falha, pendente significa que o renderer parou.
+## MEDICAO DE CPU (2026-10-16) — apoia a hipotese da espiral, mas NAO a prova
+```
+renderers do dono: 34
+t=0:  932,1 s (soma de CPU)
+t=10: 943,1 s   -> delta 11,0 s em 10 s
+t=20: 953,8 s   -> delta 10,7 s em 10 s
+```
+Os renderers queimam ~10,7 s de CPU por cada 10 s de tempo real (>1 nucleo ocupado). Isto e compativel
+com o laco de recuperacao de `jogo.js:1624` em espiral.
+
+**MAS NAO E PROVA**: sao 34 renderers e as abas de video do dono (YouTube/anime) tambem consomem CPU.
+Nao isolei a aba do jogo. Uma medicao anterior (sondando a aba congelada) sugeria ~0% de CPU, o que
+**contradiz** a espiral. As duas medicoes nao foram reconciliadas.
+
+**Para fechar isto falta**: mapear o target CDP da aba do jogo para o PID do renderer
+(`SystemInfo.getProcessInfo`, que exige porta de debug no Chrome do dono) e medir SO esse processo,
+com as abas de video pausadas como controlo.
