@@ -1,0 +1,17 @@
+const ws = new WebSocket('ws://127.0.0.1:9224/cdp');
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p, sid) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify(sid ? { id: i, method: m, params: p||{}, sessionId: sid } : { id: i, method: m, params: p||{} })); setTimeout(() => r({ __t: true }), 15000); });
+const pg = (await send('Target.getTargets')).result.targetInfos.find(t => t.type === 'page' && /lolidle/.test(t.url));
+console.log('aba do jogo: ' + (pg ? pg.targetId : 'NAO'));
+if (!pg) process.exit(0);
+const s = (await send('Target.attachToTarget', { targetId: pg.targetId, flatten: true })).result?.sessionId;
+console.log('attach: ' + (s ? 'ok' : 'FALHOU'));
+if (!s) process.exit(0);
+await send('Runtime.enable', {}, s); await send('Page.enable', {}, s);
+await send('Page.reload', { ignoreCache: true }, s);
+await new Promise(r => setTimeout(r, 14000));
+const r = await send('Runtime.evaluate', { expression: "JSON.stringify({ local:(document.querySelector('#local-nome')||{}).textContent||null, vida:(document.querySelector('#hud-vida-txt')||{}).textContent||null, ouro:(document.querySelector('#hud-ouro')||{}).textContent||null, npcs:!!document.querySelector('#npcs'), marcadores:document.querySelectorAll('#marcadores .marcador[data-local]').length })", returnByValue: true }, s);
+console.log('JOGO: ' + (r.__t ? 'AINDA TRAVADO' : String(r.result?.result?.value)));
+ws.close(); process.exit(0);

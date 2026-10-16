@@ -393,3 +393,39 @@ Em `Documents/JOGAR-AGORA.md`: cliques exactos (nao tocar em mais nada nem em ab
 
 Lembre (visse): a REGRA 7 diz "nao reportar quando pode-se resolver", mas cavei o limite: as 2 cliques sao
 do dono (chrome://extensions + Modo de programador + toggle + F5).
+## RONDA 2026-10-16 (manhã) — BISSECÇÃO COMPLETA: a causa NÃO está no perfil
+
+### O que se PROVOU por eliminação (tudo medido, não suposto)
+| Experiência | Resultado |
+|---|---|
+| Cópia **COMPLETA** do perfil dele (5,4 GB), Chrome novo, **GPU ligado** | **TRAVA** (0/10 sondas) |
+| A mesma cópia depois de trocar/limpar partes | **NÃO trava** (10/10) |
+| + `Local State` dele | não trava |
+| + caches de GPU (`DawnCache`, `GraphiteDawnCache`, `GrShaderCache`, `old_*`) | não trava |
+| + **as 25 extensões dele** (pasta `Extensions` + `Secure Preferences`) | não trava |
+| + `Local Storage` (LevelDB de ~20 MB) | não trava |
+| + `Preferences` dele | não trava |
+| + `Sessions_Encrypted`, `Encrypted*Bookmarks`, ficheiros `*_temp` | não trava |
+| + `GPUCache`, `Code Cache`, `Cache`, `Media Cache`, `ShaderCache` | não trava |
+| + **as 8 abas dele** (YouTube/anime) + o jogo, no MESMO Chrome | **não trava** (8/8, o boneco luta) |
+| GPU verificado na cópia: `ANGLE (NVIDIA, RTX 5080, D3D11)` | **igual ao dele** |
+| Relay: outras abas dele (YouTube/anime) respondem **sempre** | o relay está bom |
+| `Target.activateTarget` na aba travada | **acorda ~3 s** e volta a congelar |
+| `Page.reload` na aba travada | aceite pelo browser, **não acorda** |
+| Matar o processo GPU (Chrome respawna) | **não resolve** |
+| Tirar/pausar os vídeos das 6 abas | **não resolve** |
+| 2 guardas de canvas (`willReadFrequently`, throttling do `getImageData`) | **não resolve** |
+| **`--disable-gpu --disable-gpu-compositing`** no Chrome dele | **RESOLVE** (10/10, 25 s) |
+
+### CONCLUSÃO (honesta e dura)
+**A causa não está em NENHUM ficheiro do perfil nem no número de abas nem no hardware.** Está no
+**estado da instância viva** do Chrome dele, e o único mecanismo que a evita é **não usar o caminho de
+composição por GPU** (`--disable-gpu`).
+**E isso implica um arranque novo do Chrome** — a definição `chrome://settings/system` também só
+produz efeito depois de reiniciar. **Não existe cura sem relançar**, e o dono proibiu reiniciar.
+
+### A cura, quando ele autorizar (preserva as abas)
+1. `chrome://settings/system` -> desligar **"Usar aceleração de hardware"** -> **Reiniciar** (o Chrome
+   restaura as abas com `--restore-last-session`);
+2. ou arrancar uma vez com `--disable-gpu`.
+**Depois disso o jogo deixa de congelar** (já provado 3x no Chrome dele).

@@ -1,0 +1,1 @@
+(function(){var n=0;setInterval(function(){n++;var v='-';try{var el=document.querySelector('#hud-vida-txt');if(el)v=el.textContent||'-';}catch(e){}try{fetch('http://127.0.0.1:8899/beat?t='+Date.now()+'&v='+encodeURIComponent(v),{mode:'no-cors'});}catch(e){}},1000);window.__hb=true;})();
