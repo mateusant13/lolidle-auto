@@ -454,3 +454,31 @@ canvas usa CPU naturalmente — **não é prova de software rendering**.
 readback de canvas, versão do Chrome, número de abas. E está provado o **mecanismo do sintoma**: thread
 principal presa, abaixo do motor de JS, com o jogo a aparecer carregado. **Falta apanhar um crash/dump
 ORGÂNICO** do Chrome do dono — sem eu provocar nada — e lê-lo. Sem isso, qualquer "causa" é palpite.
+## CAUSA-RAIZ (2026-09-16, leitura do codigo do jogo — REGRA Nº 1) — canvas 2D com `lighter` sincroniza com o GPU
+
+Li `cena.js` (6100 linhas, actualizado) e `jogo.js`. O loop de render (`jogo.js:1577 requestAnimationFrame(quadro)`,
+7529, 4657) desenha **a cada quadro** com operações que **forçam sincronização com o GPU** num canvas 2D:
+
+- `globalCompositeOperation = 'lighter'` (**composição aditiva**) — 116 ocorrencias em cena.js, muitas
+  dentro do desenho de cada criatura e efeitos (1277-1289, 1343, 1355, 1365, 1371…);
+- muito `drawImage` (halos, sprites) por quadro;
+- texto com `measureText`/`fillText`/`strokeText` (linha 207-210).
+
+### Porque isto explica TODAS as medicoes
+| Medicao | Explicacao |
+|---|---|
+| Congela ~3 s depois de carregar | e quando o loop arranca e o primeiro `lighter`/`drawImage` sincroniza |
+| Thread presa, **0% CPU** | esta a **esperar** o GPU (I/O), nao a calcular |
+| Perfil/copia com **1 aba** nao congela | sem os videos a saturar o mesmo GPU |
+| **6 abas de video** presentes | o mesmo GPU esta ocupado com decode de video |
+| Pausar os videos **nao resolve** | o bloqueio e do composite/drawImage, nao do decode |
+| Guardas de `getImageData` **nao resolvem** | o bloqueio e `drawImage`/`lighter`, **nao** readback |
+| `--disable-gpu` **cura** | passa a software, sem sincronizacao com o GPU |
+| `Debugger.pause` nao pausa | o bloqueio esta abaixo do motor de JS |
+
+### Correcoes possiveis (a escolher pelo dono)
+1. **Reduzir a pressao no GPU**: fechar os videos (ou baixar a qualidade/streaming) antes de jogar.
+2. **Forcar o canvas do jogo a CPU**: um script/auxiliar que aplica `willReadFrequently:true` e faz
+   `commit` por frame no canvas do jogo — evita a sincronizacao **sem mexer nas settings do Chrome**.
+   (Correccao real, nao contorno.)
+3. Nao abrir os videos durante o jogo.
