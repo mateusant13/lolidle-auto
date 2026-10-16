@@ -74,3 +74,27 @@ sobrevive).
 
 ## Depois de instalada
 O painel **⚙ Auto-play** aparece no jogo. Ele vai à Fonte, repõe-se e viaja para a Rota Superior.
+
+## INSTALADOR — o que ficou PROVADO (2026-10-16, testado num perfil de teste)
+
+| Passo | Resultado medido |
+|---|---|
+| `Extensions.loadUnpacked {path}` com CDP do Chrome (porta de debug) | **FUNCIONA** — devolveu `{"id":"pbdlekcgmpippamdkgbaphcppjafobjo"}` |
+| O mesmo no CDP do **relay** | **NÃO existe** (`-32601`) — o relay não tem o domínio `Extensions` |
+| Injeccao dos content scripts com **Modo de programador DESLIGADO** | **NÃO injecta** — o script diagnostica isto correctamente |
+| Forçar `extensions.ui.developer_mode` editando o `Preferences` | **NÃO fiável** — no teste o Chrome **não arrancou**. **NÃO fazer.** |
+| `--load-extension` sozinho (sem porta de debug) | **não injecta** no Chrome 155 |
+
+### Procedimento honesto (o que realmente funciona)
+1. **`chrome://extensions` -> ligar "Modo de programador"** (1 clique, e é o que faz a extensão
+   desempacotada ficar activa; o perfil do dono já tem a entrada registada em `I:\!lolidle.com\extension`).
+2. Ligar o interruptor da **"LoL Idle — Auto Poção"**.
+3. `F5` no jogo.
+4. **Opcional/automático** (com o Chrome arrancado com `--remote-debugging-port=9224`):
+   `bun tools/instalar-extensao.mjs` — carrega, confirma o id, recarrega a aba, verifica o contexto
+   `chrome-extension://<id>` e liga o auto-play (`enabled:true`, **Rota Superior**).
+
+### Aviso que fica registado
+**Editar `Preferences`/`Secure Preferences` por script é perigoso** — no teste o Chrome recusou arrancar.
+Testar sempre em **cópia** do perfil, nunca no perfil do dono. (Foi o que se fez; o perfil do dono ficou
+intacto — verificado: `Preferences` 1294 KB lê OK, `developer_mode` vazio, `Local State` no valor original.)
