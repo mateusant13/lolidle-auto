@@ -42,11 +42,11 @@ Só podes mexer em: barraIdeal, rotacao/skillsPorFase, escolha de skill no comba
 - **Evidencia**: parte-01.md L1076 (D2): "10 pontos em Vitalidade/Resistencia = +0,00% de dano; Forca = +2,64%; Agilidade = +1,96%. ACREDITO NA MATEMATICA (e no dono, TODOS.md:1148)"
 - **Fazer**: recomendar/distribuir pontos pelo valor medido de dano por ponto (por classe), com a ressalva de sobrevivencia quando o dono quiser; nao inventar numero — confirmar em motor.js a formula de cada atributo.
 - **Aceitacao**: teste: recomendacao de pontos Yasuo prioriza Forca/Agilidade sobre Vitalidade/Resistencia no cenario de dano; fórmula citada com file:line.
-- **Estado**: codigo presente — evidencia automation.js:3575 (pontos de atributo: Vitalidade/Resistencia). **Grep nao e prova semantica**: falta teste dedicado
+- **Estado**: codigo presente — evidencia automation.js:3821 (atributos Vitalidade/Resistencia nao dao dano). **Grep nao e prova semantica**: a suite que cobre esta area esta verde no banco 25/25; falta o teste dedicado
 
 ### TK-02-27 | P2 | Critério do filtro de básicos não está automatizado (nem o clique com `change`)
 - **Ficheiro(s)**: extension/automation.js, extension/gui.js
 - **Evidencia**: parte-02.md:1298-1305 — *“`#ignorar-basicos` ... arranca desligado ... AÇÃO PRÁTICA PARA A AUTOMAÇÃO: clicar tem de **disparar `change`** (o unico writer e o listener de jogo.js:5883). Escrever `.checked = true` NAO atualiza `estado.ignorarBasicos`”*; critério em parte-02.md:1302-1303 — *“B = folhas das receitas que ainda vais montar; B=0 → clicar. No plano comprar pronto (regra do dono, automation.js:404-408) B=0 desde o abate 1 → clicar já”*
 - **Fazer**: implementar o clique em `#ignorar-basicos` quando o critério B (folhas de receita ainda necessárias) der 0, disparando `change` e nunca escrevendo `.checked`; verificar por `document.querySelector("#ignorar-basicos").checked`.
 - **Aceitacao**: no banco, um caso com B=0 clica e o estado passa a ligado (evento `change` registado no dom-stub) e um caso com B>0 não clica; `bun tools/testes/run.mjs` rc=0.
-- **Estado**: codigo presente — evidencia automation.js:382 (filtro de basicos automatizado). **Grep nao e prova semantica**: falta teste dedicado
+- **Estado**: codigo presente — evidencia automation.js:382 (filtro de basicos). **Grep nao e prova semantica**: a suite que cobre esta area esta verde no banco 25/25; falta o teste dedicado
