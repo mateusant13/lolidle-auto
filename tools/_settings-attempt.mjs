@@ -1,0 +1,12 @@
+const ws = new WebSocket('ws://127.0.0.1:9224/cdp');
+let id = 0; const pend = new Map();
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id !== undefined && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+await new Promise(r => ws.addEventListener('open', r, { once: true }));
+const send = (m, p, sid) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify(sid ? { id: i, method: m, params: p||{}, sessionId: sid } : { id: i, method: m, params: p||{} })); setTimeout(() => r({ __t: true }), 15000); });
+const nt = await send('Target.createTarget', { url: 'chrome://settings/system' });
+const tid = nt.result && nt.result.targetId;
+console.log('aba settings: ' + (tid ? 'criada' : 'FALHOU'));
+if (!tid) process.exit(0);
+const s = (await send('Target.attachToTarget', { targetId: tid, flatten: true })).result?.sessionId;
+console.log('attach: ' + (s ? 'ok' : 'FALHOU (sem accesso a chrome://)'));
+ws.close(); process.exit(0);
