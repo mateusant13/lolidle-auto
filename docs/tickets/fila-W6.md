@@ -48,14 +48,14 @@ Só podes mexer em extension/gui.js. NÃO mexas em automation.js, inject.js, con
 - **Evidencia**: parte-02.md:178 — *"quero auto farm sozinho, auto farm pra item onde escolho todos os itens que quero dropar"*; distribuido em parte-02.md:208
 - **Fazer**: duas secções de farm na GUI — "auto farm sozinho" e "auto farm por item" com multi-selecção de itens — ligadas ao `planejar(ids)` (depois de TK-02-03, para não prometer regiões que não dropam).
 - **Aceitacao**: render sem erro no smoke test da GUI e secções minimizáveis; seleccionar um item mostra a região/drops-hora coerentes com a classe do campeão ao vivo.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia gui.js:38 (GUI: seccoes de farm). **Grep nao e prova semantica**: falta teste dedicado
 
 ### TK-02-11 | P2 | Bloco "Build por fase" no topo da GUI não minimiza em aba nenhuma
 - **Ficheiro(s)**: extension/gui.js
 - **Evidencia**: parte-02.md:8 e 617 — *"o bloco do topo (`ap-build-fase`, 5 referências) está lá — é o mesmo de que o dono se queixou"*; encaminhado ao `0066c422` em parte-02.md:627
 - **Fazer**: tornar o bloco minimizável e/ou movê-lo para dentro do sistema de abas (merge de abas por assunto), sem o deixar fora do contentor.
 - **Aceitacao**: marcador discriminante na GUI (id/classe do bloco novo) + interacção real a minimizar; GUI só desenha a aba activa — clicar na aba antes de verificar (REGRA Nº 4).
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia gui.js:42 (GUI: bloco build por fase minimizavel). **Grep nao e prova semantica**: falta teste dedicado
 
 ### TK-02-19 | P2 | Texto da GUI em pt-PT e a citar o histórico do projecto em vez de ser genérico
 - **Ficheiro(s)**: extension/gui.js
@@ -69,20 +69,20 @@ Só podes mexer em extension/gui.js. NÃO mexas em automation.js, inject.js, con
 - **Evidencia**: parte-02.md:926-967 — semântica lida em `automation.js:5363-5391`: *"PAUSAR congela as ACÇÕES, continua a OBSERVAR; DESLIGAR para TUDO e LIMPA o estado activo; KILL igual a desligar, mas PERSISTIDO"*; tabela dos 4 estados em parte-02.md:944-948 e o design proposto em 958-965; encaminhado como `b1ea8ce6`
 - **Fazer**: implementar um indicador de estado + **um** botão cujo rótulo depende do estado (Observação/Ligado/Pausado/Desligado → "Ligar auto-play"/"Desligar"/"Retomar"/"Religar"), com Pausar e Parar-tudo como acções secundárias distintas; nunca os três ao mesmo tempo sem dizer o que diferem.
 - **Aceitacao**: cada um dos 4 estados tem rótulo e acção distintos e verificáveis ao vivo (clicar em cada transição muda o rótulo como na tabela); marcador discriminante no botão novo.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia gui.js:865 (GUI: Desligado vs Retomar (estados distintos)). **Grep nao e prova semantica**: falta teste dedicado
 
 ### TK-02-45 | P2 | UX da GUI: switch à direita, do tamanho da janela inteira, texto truncado/ilegível
 - **Ficheiro(s)**: extension/gui.js, extension/popup.css
 - **Evidencia**: parte-02.md:1877 — *“a user experience da gui ta uma merda. tira print voce mesmo e arruma cada aba. e tem coisa que nao ta legivel ou truncada”*; e parte-02.md:1880 — *“faz o switch de habilitar coisas do painel na esquerda, nao na direita. e é completamente ESTUPIDO que o switch seja do tamanho da gui inteira”*
 - **Fazer**: passar os interruptores do painel para a **esquerda**, com tamanho de interruptor (não full-width); varrer cada aba atrás de texto truncado ou ilegível (medir no DOM, não a olho) e corrigir; rever uma aba de cada vez com print real.
 - **Aceitacao**: print de cada aba (aberta pelo caminho real de abertura — ver TK-02-46) sem texto cortado; interruptores à esquerda e com largura de interruptor; marcador discriminante nas classes novas.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia gui.js:67 (GUI: switch/UX). **Grep nao e prova semantica**: falta teste dedicado
 
 ### TK-02-46 | P2 | Painel da GUI não abre por `classList.add(on)` — caminho real é o `abrir()` interno
 - **Ficheiro(s)**: extension/gui.js
 - **Evidencia**: parte-02.md:1927 — *“O painel não apareceu na captura. Eu abri-o com classList.add(on), e isso não é o caminho real de abertura — o painel só renderiza quando o abrir() interno corre (hover no lançador ou F8 pelo handler). A captura mostra o jogo, não a GUI. Não consigo fazer a revisão visual que pediste até acertar no caminho de abertura.”*
 - **Fazer**: usar o caminho real de abertura (hover no lançador ou F8 pelo handler) nas ferramentas de print/verificação; se o painel não depender de JS para renderizar, garantir que o render não dependa de interacção escondida.
 - **Aceitacao**: print do painel com conteúdo real (painelLen > 1.000 caracteres medido no DOM) pelo caminho real; marcador discriminante; documentar o caminho de abertura no README/docs para os próximos agentes.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia gui.js:9 (GUI: caminho real de abrir o painel). **Grep nao e prova semantica**: falta teste dedicado
 
 ---

@@ -36,42 +36,42 @@ Só podes mexer em: fuga/fugir, _regiaoAntesDaBase, supervisarBase, viajarPara, 
 - **Evidencia**: parte-01.md L370-371 (F-7): "viajarPara (:1339-1347) sem verificacao/retry: 2 cliques com if silencioso e timings 700/400ms; todos os chamadores assumem sucesso (supervisarBase :3346 marca marcarAtiva ANTES de viajar → re-tenta so em 3 min)"
 - **Fazer**: viajarPara devolve resultado verificado (local lido depois da viagem) com retry e backoff; marcarAtiva so depois da confirmacao; logar falha de viagem.
 - **Aceitacao**: teste com viagem falhada (stub) → retry acontece e marcarAtiva nao e chamada antes do exito; teste de controle com viagem ok.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:2810 (viajarPara devolve {ok,motivo,destino}). **Grep nao e prova semantica**: falta teste dedicado
 
 ### TK-01-13 | P2 | regiaoIdeal() null e silencioso — sintoma "parado na base" sem pista
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-01.md L373-374 (F-8): "regiaoIdeal() null e silencioso (:3268, :3343-3344): se META.locais/monstros nao chega, nunca sai da base e nao loga nada — sintoma exato do 'parado na Fonte'"; ll.mjs:67 passa local atual → previaSet acha {mob:null,...} em silencio (F-13, L378)
 - **Fazer**: logar explicitamente quando regiaoIideal devolve null e porquê (qual campo falta); ll.mjs passa a aceitar --regiao.
 - **Aceitacao**: teste: com META vazio aparece evento de log com motivo; ll.mjs dps --regiao dragao corre sem depender da localizacao atual.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:7467 (regiaoIdeal null LOGA o motivo (nao silencioso)). **Grep nao e prova semantica**: falta teste dedicado
 
 ### TK-01-46 | P2 | pausar() em memoria faz a automacao ficar parada em silencio (3a vez do mesmo padrao)
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-01.md L4415-4449: "gold 77.100 -> 63.800 (falling) | nivel 13 -> 14 (rising) | pausado: true... pausar() is in-memory state: if the next step fails, times out, or stays pending... the pause sticks, and the auto-play stops silently"; L4449: "A pausarPor(ms) — pause with automatic expiry... The structural correction; not yet implemented" (implementado e verificado em L4482-4488 — confirmar deploy)
 - **Fazer**: usar pausarPor(ms) em TODAS as operacoes de base (Ornn/mercado/forja) para a pausa nunca ficar presa; rever pontos que ainda chamam pausar() sem expiracao.
 - **Aceitacao**: grep: nenhuma operacao de base usa pausar() sem pausarPor; teste ao vivo: operacao abortada a meio -> automacao retoma sozinha em <= ms.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:7398 (pausarPor(ms) auto-retoma (nao fica parada em silencio)). **Grep nao e prova semantica**: falta teste dedicado
 
 ### TK-01-14 | P2 | trava de 15min de pocao gravada antes do recall dar certo
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-01.md L372: "trava de 15min de poco antes do recall dar certo (:3298-3302)"
 - **Fazer**: mover a gravacao da trava para depois do recall confirmado (ou anular em falha); nenhuma trava sobrevive a um recall falhado.
 - **Aceitacao**: teste: recall falhado nao deixa trava; recall com exito deixa trava com ts do exito.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:7549 (trava da reposicao (reporAte)). **Grep nao e prova semantica**: falta teste dedicado
 
 ### TK-01-16 | P2 | acumular: fallback de poco escrito na variavel errada (curaPocao)
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-01.md L375 (LOW): "acumular:1173 escreve fallback na variavel errada (curaPocao)"
 - **Fazer**: escrever o fallback na variavel certa e cobrir com teste numerico (valor da poco = curaPocao esperada).
 - **Aceitacao**: teste: acumular() sem cura conhecida usa o fallback correto (nao zero, nao undefined).
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:930 (fallback da cura da pocao). **Grep nao e prova semantica**: falta teste dedicado
 
 ### TK-01-17 | P2 | proximoGiro em loop infinito se o texto nao for exatamente 'Fonte'
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-01.md L375 (LOW): "proximoGiro loop infinito se texto != 'Fonte' exato (:3014)"
 - **Fazer**: comparacao por localId normalizado (nao string exata) + limite de iteracoes com log de saida.
 - **Aceitacao**: teste: local 'Fonte (nucleo)'/'fonte com acento' nao entra em loop; ha contador de seguranca.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:6893 (proximoGiro com TECTO de voltas (nao loop infinito)). **Grep nao e prova semantica**: falta teste dedicado
 
 
 ## TICKETS NOVOS (P0, acrescentados pelo Lead às 21:50)

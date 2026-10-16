@@ -55,21 +55,21 @@ Só podes mexer em: decisão de guardar/vender épicos, autoEquip, mercado (poll
 - **Evidencia**: parte-01.md L998: "M5/M6 (market cycle, refine-by-essential-item) haven't been touched"; datas snapshot docs/snapshots/market.json (58 B = vazio)
 - **Fazer**: O CICLO JA FUNCIONA (L1748-1749 verificou comprarNoMercado na base lendo precos reais 3172=350.000/3085=180.000; L2076-2077 reserva corrigida para base medida; L2196-2200 o mercado so abre no Mercador da Fonte). Falta: (a) garantir que corre SOZINHO a cada visita a base (throttle 10 min, L1745); (b) registar no log quando nao ha ofertas para os itens da build (L2200) em vez de devolver compras:[] sem explicacao; (c) o produto comprado tem de cair para a build/componentes (proteccao em venderBase — historico L4310-4321, componentesDaBuild()).
 - **Aceitacao**: 3 visitas a base consecutivas com o ciclo a correr sem intervencao; log com motivo explicito quando compras:[]; compra real registada quando houver oferta.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:4688 (M5 ciclo de mercado implementado). **Grep nao e prova semantica**: falta teste dedicado
 
 ### TK-01-27 | P2 | M6: refino por item essencial
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-01.md L998: "M5/M6 ... haven't been touched"; ordem do dono: "refinar item essencial A+ ate +2/+3" (L10-11)
 - **Fazer**: escolher o item essencial da build ativa e refinar primeiro esse (A+ → +2/+3), com a guarda do TK-01-23 e limites de risco definidos.
 - **Aceitacao**: teste: com 3 itens refinaveis, o essencial da build e escolhido; refinamento para quando o risco de rebaixar e inaceitavel.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:5741 (M6 refino por essencial implementado). **Grep nao e prova semantica**: falta teste dedicado
 
 ### TK-01-45 | P2 | Ornn: receita escolhida por dado (custo esperado + componentes na mochila) e nao ao acaso
 - **Ficheiro(s)**: extension/automation.js
 - **Evidencia**: parte-01.md L3486-3519: "receitasOrnn() works — 40 recipes read at zero cost... tentativasMedias: 83"; L3523: "Assembly can now be chosen by data: which recipes serve the build, which have components, and what each costs on average"
 - **Fazer**: ranking de receitas por (serve a build) x (custo esperado = ouro/tentativa x tentativasMedias) x (tem componentes), com teto de ouro da reserva; escolher a mais barata que sirva a build.
 - **Aceitacao**: teste: com 3 receitas serve-build e custos diferentes, a escolhida e a de menor custo esperado com componentes; log mostra o porque.
-- **Estado**: pendente
+- **Estado**: codigo presente — evidencia automation.js:3589 (Ornn: receita escolhida por dado). **Grep nao e prova semantica**: falta teste dedicado
 
 
 ## TICKETS NOVOS (P0, acrescentados pelo Lead às 21:50)
