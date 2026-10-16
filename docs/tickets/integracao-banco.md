@@ -774,3 +774,26 @@ fail-closed), TK-01-07 (regex k/M), TK-02-78 (`valorEquip` escala qualidade/refi
 `AGENTS.md` (um documento que acusa codigo ja corrigido). **A prova actual e o BANCO: 0 falhas / 25/25 suites.**
 **Proximo passo honesto:** verificar ticket a ticket contra a suite que o testa (cada um tem uma) e marcar o
 `Estado` com a prova. Fiz os 4 que arrumei nesta sessao; os outros 85 precisam do mesmo trabalho.
+## CORRECCAO 2026-10-15 (noite) — o TK-02-36: actualizar a fonte NAO parte o banco
+**Eu escrevi antes que *"actualizar os 21 ficheiros derruba o banco para 0 suites"*. Isso estava ERRADO.**
+A corrida que deu "0 suites reportadas" foi uma **falha transitoria do runner** (a mesma classe de
+interrupcao que matou o meu proprio script a meio), nao o conteudo novo. Refiz a verificacao **ficheiro a
+ficheiro** e depois **todos juntos**:
+
+```
+jogo.js (7073 -> 7588)          -> banco 25/25 verde
+cena.js (5904 -> 6100)          -> banco 25/25 verde
+17 pequenos (arena, itens, ...) -> banco 25/25 verde
+runeterra.js (343 -> 344)       -> banco 25/25 verde
+pixel.js (3444 -> 3941)         -> banco 25/25 verde
+TODOS OS 21 JUNTOS              -> banco 25/25 verde
+```
+
+**Os 21 ficheiros de `docs/game-src/` estao agora ACTUALIZADOS do servidor** (blockchain de hashes
+comparada no inicio desta ronda) e o projecto passou a ler o jogo **actual**: +515 linhas no `jogo.js`,
++196 no `cena.js` (com o `import { gerarFreljord }` — a Dungeon do Braum), +497 no `pixel.js`.
+Backup do que la estava: `docs/game-src-BACKUP-2026-10-15/`.
+
+**Licao (2.a vez hoje):** uma corrida unica que falha NAO prova que a mudanca esta errada — pode ser o
+runner. **Medir 2x e isolar por partes antes de reverter.** Eu reverti por causa de UMA corrida anomala
+e quase perdi o trabalho todo.

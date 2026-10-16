@@ -22,17 +22,19 @@ export const PK_BONUS = 0.4;
 export const ZONAS_PK = [
   { id: 'clareira', nome: 'Clareira Sangrenta', x: 28 * ESC, y: 40 * ESC, r: 6.5 * ESC, zona: 'lobos' },
   { id: 'renegados', nome: 'Arena dos Renegados', x: 91 * ESC, y: 82 * ESC, r: 6.5 * ESC, zona: 'vermelho' },
-  { id: 'ruinas', nome: 'Ruínas em Guerra', x: 116 * ESC, y: 87 * ESC, r: 6.5 * ESC, zona: 'dragao' },
-  { id: 'abismo', nome: 'Abismo Sangrento', x: 119 * ESC, y: 47 * ESC, r: 6.5 * ESC, zona: 'barao' },
+  { id: 'ruinas', nome: 'Ruínas em Guerra', x: 116 * ESC, y: 87 * ESC, r: 6.5 * ESC, zona: 'dragao', semCap: true },
+  { id: 'abismo', nome: 'Abismo Sangrento', x: 119 * ESC, y: 47 * ESC, r: 6.5 * ESC, zona: 'barao', semCap: true },
   { id: 'uivos', nome: 'Covil dos Uivos', x: 67 * ESC, y: 88 * ESC, r: 6.5 * ESC, zona: 'lobos' },
   { id: 'laminas', nome: 'Campo das Lâminas', x: 73 * ESC, y: 63 * ESC, r: 6.5 * ESC, zona: 'azul' },
   { id: 'duelos', nome: 'Vale dos Duelos', x: 53 * ESC, y: 43 * ESC, r: 6.5 * ESC, zona: 'azul' },
   { id: 'escarlate', nome: 'Mata Escarlate', x: 7 * ESC, y: 19 * ESC, r: 6.5 * ESC, zona: 'vermelho' },
   { id: 'vau', nome: 'Vau Sangrento', x: 63 * ESC, y: 13 * ESC, r: 6.5 * ESC, zona: 'rio' },
   { id: 'discordia', nome: 'Margem da Discórdia', x: 94 * ESC, y: 35 * ESC, r: 6.5 * ESC, zona: 'rio' },
-  { id: 'cinzas', nome: 'Cinzas da Batalha', x: 109 * ESC, y: 66 * ESC, r: 6.5 * ESC, zona: 'dragao' },
-  { id: 'carnificina', nome: 'Fenda da Carnificina', x: 103 * ESC, y: 7 * ESC, r: 6.5 * ESC, zona: 'barao' },
+  { id: 'cinzas', nome: 'Cinzas da Batalha', x: 109 * ESC, y: 66 * ESC, r: 6.5 * ESC, zona: 'dragao', semCap: true },
+  { id: 'carnificina', nome: 'Fenda da Carnificina', x: 103 * ESC, y: 7 * ESC, r: 6.5 * ESC, zona: 'barao', semCap: true },
 ];
+// semCap (p689): Zona de Guerra vermelha, sem limite de nível no PvP entre quem está dentro; as outras são laranjas
+export const corZonaPk = (z, a = 1) => z.semCap ? `rgba(210,25,25,${a})` : `rgba(235,125,20,${a})`;
 export const zonaPkEm = (x, y) => ZONAS_PK.find((z) => Math.hypot(x - z.x, (y - z.y) * 1.1) < z.r) || null;
 
 // as zonas de caça são anéis em volta de Demacia: quanto mais longe, mais fortes os monstros.
@@ -339,4 +341,3 @@ export function mundoLogico() {
 export const chegadaCidade = (id) => { const c = CIDADE[id] || CIDADES[0]; return { x: c.x + 0.5, y: c.y + 2.8 }; };
 // a cidade "de casa" para o nível do jogador
 export const cidadeDoNivel = (nivel) => [...CIDADES].reverse().find((c) => nivel >= c.faixa[0]) || CIDADES[0];
-

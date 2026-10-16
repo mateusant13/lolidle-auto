@@ -556,6 +556,12 @@ function poro(p, a, dir, f) {
   p.r(12 + dx, 17.5 + pulo, 2, 2.5, '#1a1a2a'); p.r(18.5 + dx, 17.5 + pulo, 2, 2.5, '#1a1a2a');
   p.r(12.5 + dx, 17.5 + pulo, 1, 1, '#ffffff'); p.r(19 + dx, 17.5 + pulo, 1, 1, '#ffffff');
   p.r(15 + dx, 21 + pulo, 2.5, 1.2, '#3a2a2a'); p.r(15.5 + dx, 22.2 + pulo, 2, 3, '#ff7a9a');
+  if (a.bigode) {             // Poro de Bigode: o bigode do Braum, com as pontas curvadas para cima
+    const b = a.bigode, bE = tom(b, 0.7), bC = tom(b, 1.3), y = 21.2 + pulo;
+    p.bola(13.2 + dx, y, 3, 1.4, b); p.bola(19.4 + dx, y, 3, 1.4, b); p.bola(16.2 + dx, y - 0.6, 1.6, 1, b);
+    p.bola(10 + dx, y - 1, 1.2, 1.3, b); p.bola(22.6 + dx, y - 1, 1.2, 1.3, b); p.r(9.4 + dx, y - 2.6, 1.2, 1.4, bE); p.r(22.4 + dx, y - 2.6, 1.2, 1.4, bE);
+    p.r(12 + dx, y - 0.8, 2.4, 0.6, bC); p.r(18.2 + dx, y - 0.8, 2.4, 0.6, bC);
+  }
 }
 
 // Darius: armadura noxiana pesada, ombreiras com espinhos, capa vermelha, cabelo curto raspado dos lados e o machadão.
@@ -2205,7 +2211,491 @@ function ornnForja(p, f) {
   p.r(23, 21, 5, 1.2, k === 2 ? '#fff4c0' : lavaC); p.r(23, 21.6, 5, 0.8, lava);
 }
 
-const GERADORES = { darius, ezreal, lux, yasuo, katarina, taric, zac, humanoide, fera, golem, verme, dragao, torre, ornn, poro, aranha, tropa, mago, cerco, arraia, olhoVazio, javali, sentinela, npc, burro, montaria };
+// ---------- Dungeon do Braum (Freljord) ----------
+// Boneco de Neve Enfurecido: três bolas de neve, olhos de carvão em brasa, nariz de cenoura, braços de galho, cachecol e
+// lascas de gelo nas costas. Quadros: 0 parado, 1 pulando (sobe), 2 aterrissando (amassa), 3 golpe com a bola de neve
+function bonecoNeve(p, a, dir, f) {
+  const N = a.neve || '#eef4fb', ND = tom(N, 0.78), NDD = tom(N, 0.6), NL = '#ffffff';
+  const gelo = a.gelo || '#8ad4ff', geloC = tom(gelo, 1.45), geloE = tom(gelo, 0.62);
+  const carvao = '#1c1a22', brasa = a.olho || '#ff3a2a', galho = '#5a3a22', galhoC = '#7a5232', cachecol = a.cachecol || '#c8303a', cenoura = '#f08a2a';
+  const sobe = f === 1 ? -1 : 0, amassa = f === 2 ? 1 : 0, golpe = f === 3;
+  const dy = sobe + amassa * 0.6;
+  // bola de neve com sombra azulada embaixo, brilho em cima e pontinhos de neve
+  const bolaNeve = (x, y, rx, ry) => {
+    p.o(x, y, rx, ry, NDD); p.o(x - rx * 0.1, y - ry * 0.14, rx * 0.9, ry * 0.84, ND); p.o(x - rx * 0.18, y - ry * 0.26, rx * 0.78, ry * 0.66, N);
+    p.o(x - rx * 0.38, y - ry * 0.48, rx * 0.3, ry * 0.22, NL);
+    for (const [kx, ky] of [[0.5, 0.3], [-0.6, 0.45], [0.2, 0.62], [0.68, -0.1]]) p.px(x + rx * kx, y + ry * ky, NDD);
+  };
+  const lasca = (x0, y0, x1, y1, larg) => {
+    const ang = Math.atan2(y1 - y0, x1 - x0), nx = -Math.sin(ang) * larg, ny = Math.cos(ang) * larg;
+    p.poli([[x0 - nx, y0 - ny], [x1, y1], [x0 + nx, y0 + ny]], geloE);
+    p.poli([[x0 - nx * 0.55, y0 - ny * 0.55], [x1, y1], [x0 + nx * 0.2, y0 + ny * 0.2]], gelo);
+    p.l(x0 + (x1 - x0) * 0.35 - nx * 0.25, y0 + (y1 - y0) * 0.35 - ny * 0.25, x0 + (x1 - x0) * 0.8, y0 + (y1 - y0) * 0.8, geloC, 0.34);
+    p.px(x1 - (x1 - x0) * 0.08, y1 - (y1 - y0) * 0.08, NL);
+  };
+  // braço de galho com dois raminhos e três "dedos" na ponta
+  const braco = (x0, y0, x1, y1, escuro) => {
+    const c = escuro ? tom(galho, 0.7) : galho;
+    p.l(x0, y0, x1, y1, c, 1);
+    const mx = x0 + (x1 - x0) * 0.55, my = y0 + (y1 - y0) * 0.55;
+    p.l(mx, my, mx + (y1 - y0) * 0.22, my - (x1 - x0) * 0.22 - 1, c, 0.67);
+    const ang = Math.atan2(y1 - y0, x1 - x0);
+    for (const d of [-0.7, 0, 0.7]) p.l(x1, y1, x1 + Math.cos(ang + d) * 2.2, y1 + Math.sin(ang + d) * 2.2, c, 0.67);
+    if (!escuro) p.l(x0 + (x1 - x0) * 0.2, y0 + (y1 - y0) * 0.2 - 0.34, x0 + (x1 - x0) * 0.5, y0 + (y1 - y0) * 0.5 - 0.34, galhoC, 0.34);
+  };
+  const bolaNaMao = (x, y) => { p.o(x, y, 2.6, 2.4, NDD); p.o(x - 0.3, y - 0.3, 2.2, 2, N); p.px(x - 1, y - 1, NL); for (const [kx, ky] of [[3.4, -1], [3, 1.6], [-3, 2]]) p.px(x + kx, y + ky, N); };
+  const olhoBrasa = (x, y) => { p.o(x, y, 1.3, 1.2, carvao); p.r(x - 0.5, y - 0.34, 1, 0.67, brasa); p.px(x - 0.34, y - 0.34, '#ffd0a0'); p.px(x + 0.67, y + 0.34, tom(brasa, 0.6)); };
+  const bocaSerrilhada = (x0, x1, y) => { let k = 0; for (let x = x0; x <= x1; x += 0.67, k++) p.r(x, y + (k % 2 ? 0.67 : 0), 0.67, 0.67, carvao); };
+  // a base amassa ao aterrissar e estica ao pular
+  const rxB = 8.2 + amassa * 0.8 - (sobe ? 0.3 : 0), ryB = 6 - amassa * 0.7 + (sobe ? 0.3 : 0), yB = 23.6 + dy + amassa * 0.4;
+  if (dir === DIR.L) {
+    // lascas de gelo nas costas e o braço de trás
+    lasca(11.4, 15 + dy, 5.6, 9.6 + dy, 1.9); lasca(12.6, 11.6 + dy, 9.4, 5.6 + dy, 1.5); lasca(10.4, 20 + dy, 4.6, 17.8 + dy, 1.6);
+    braco(13.4, 15.4 + dy, golpe ? 9 : 8.6, golpe ? 12 : 7.6 + dy, true);
+    bolaNeve(15, yB, rxB - 0.9, ryB);
+    bolaNeve(15.6, 15.6 + dy, 5.4, 4.6);
+    p.px(18.6, 14.6 + dy, carvao); p.px(19.4, 17 + dy, carvao);
+    // cachecol com a ponta voando para trás
+    p.r(12.4, 11.4 + dy, 7.4, 1.8, cachecol); p.r(12.4, 11.4 + dy, 7.4, 0.5, tom(cachecol, 1.3)); p.r(12.4, 12.9 + dy, 7.4, 0.34, tom(cachecol, 0.6));
+    p.poli([[12.6, 12 + dy], [8.6, 14.4 + dy - (sobe ? 1.2 : 0)], [9.4, 16.4 + dy - (sobe ? 1.2 : 0)], [13.4, 13.4 + dy]], cachecol);
+    p.l(9.4, 15.4 + dy - (sobe ? 1.2 : 0), 12.6, 13.2 + dy, tom(cachecol, 0.65), 0.34);
+    bolaNeve(16.4, 8.4 + dy, 4.2, 3.8);
+    // sobrancelha brava, olho de carvão aceso, cenoura apontando para a frente e a boca serrilhada
+    p.l(16.8, 5.8 + dy, 19.6, 6.8 + dy, carvao, 0.67);
+    olhoBrasa(18.6, 7.8 + dy);
+    p.poli([[19.4, 8.6 + dy], [25.8, 9.8 + dy], [19.4, 10.6 + dy]], cenoura); p.l(19.6, 8.9 + dy, 23.4, 9.6 + dy, '#ffb060', 0.34);
+    p.px(21.4, 10 + dy, '#a8501a'); p.px(23.4, 9.8 + dy, '#a8501a');
+    bocaSerrilhada(16.8, 19.6, 11 + dy);
+    // braço da frente: erguido, ou batendo para a frente com a bola de neve
+    if (golpe) { braco(17.6, 15 + dy, 25.4, 16.6, false); bolaNaMao(27.4, 16.4); }
+    else braco(19.4, 15.4 + dy, 25.2, 11 + dy, false);
+    return;
+  }
+  const costas = dir === DIR.N;
+  // lascas de gelo saindo dos ombros e das costas (de costas elas ficam na frente)
+  const lascas = () => {
+    lasca(11.4, 13.4 + dy, 7, 8 + dy, 1.8); lasca(20.6, 13.4 + dy, 25, 8 + dy, 1.8);
+    lasca(13.4, 11.6 + dy, 11.4, 5.4 + dy, 1.4); lasca(18.6, 11.6 + dy, 20.6, 5.4 + dy, 1.4);
+    if (costas) { lasca(16, 18 + dy, 16, 9.4 + dy, 1.6); lasca(12.4, 22 + dy, 8.6, 17.4 + dy, 1.1); lasca(19.6, 22 + dy, 23.4, 17.4 + dy, 1.1); }
+  };
+  if (!costas) lascas();
+  // braços de galho erguidos (no golpe descem para a frente com a bola de neve)
+  if (golpe && !costas) { braco(10.6, 15.4 + dy, 6.4, 21, false); braco(21.4, 15.4 + dy, 25.4, 21.4, false); }
+  else { braco(10.6, 15 + dy, 4.4, 7.4 + dy, costas); braco(21.4, 15 + dy, 27.6, 7.4 + dy, costas); }
+  bolaNeve(16, yB, rxB, ryB);
+  bolaNeve(16, 15.6 + dy, 6, 4.6);
+  if (!costas) { p.px(16, 14.4 + dy, carvao); p.px(16, 16.6 + dy, carvao); p.px(16, 18.8 + dy, carvao); }
+  // cachecol (a ponta cai na frente; de costas, o nó e a ponta caem nas costas)
+  p.r(11, 11.6 + dy, 10, 1.8, cachecol); p.r(11, 11.6 + dy, 10, 0.5, tom(cachecol, 1.3)); p.r(11, 13.1 + dy, 10, 0.34, tom(cachecol, 0.6));
+  const px0 = costas ? 13.4 : 18.4;
+  p.poli([[px0, 12.6 + dy], [px0 + 2, 12.6 + dy], [px0 + 2.6, 18 + dy], [px0 + 0.6, 18.4 + dy]], cachecol); p.l(px0 + 1, 13.4 + dy, px0 + 1.6, 18 + dy, tom(cachecol, 0.65), 0.34);
+  for (const k of [0, 0.8, 1.6]) p.r(px0 + 0.7 + k, 18.4 + dy, 0.34, 0.8, tom(cachecol, 0.8));
+  bolaNeve(16, 8.4 + dy, 4.6, 4);
+  if (costas) { lascas(); return; }
+  // rosto: sobrancelhas bravas, olhos de carvão em brasa, cenoura e a boca serrilhada de carvão
+  p.l(12.6, 5.6 + dy, 15.2, 6.6 + dy, carvao, 0.67); p.l(19.4, 5.6 + dy, 16.8, 6.6 + dy, carvao, 0.67);
+  olhoBrasa(14, 7.8 + dy); olhoBrasa(18, 7.8 + dy);
+  p.poli([[15.2, 8.8 + dy], [17, 8.8 + dy], [17.4, 11.4 + dy]], cenoura); p.px(16, 9.2 + dy, '#ffb060');
+  bocaSerrilhada(13.4, 18.6, 10.6 + dy);
+  if (golpe) { bolaNaMao(25.6, 22.4); for (const [x, y] of [[22.6, 25.4], [28.4, 25], [24, 26.6]]) p.px(x, y, NL); }
+}
+
+// Braum, o Coração de Freljord (chefe da Dungeon; redesenhado no p671): homenzarrão de pele rosada, careca com a trança
+// castanha nas costas, o bigodão castanho que cai e se curva para fora, sorriso largo, peito nu e peludo com a alça de couro,
+// tatuagem azul no braço, calça e botas de pele e a porta de cofre redonda de aço (com o Poro no meio, rebites, a argola e
+// gelo) como escudo. Quadros: 0 parado (peito estufado), 1 e 2 passos pesados, 3 golpe com o escudo, 4 Mordida do Inverno
+// (empurra o escudo e solta gelo), 5 Inquebrável (escudo erguido na frente), 6 no ar (salto), 7 Fissura Glacial (bate o
+// escudo no chão). Os quadros 4 a 7 passam direto pelo sprite() (formas fora de MONSTROS_NOVOS recebem o número cru).
+function braum(p, a, dir, f) {
+  const pele = a.pele || '#f0b498', peleE = tom(pele, 0.8), peleEE = tom(pele, 0.62), peleC = tom(pele, 1.25), rosa = '#e57a6a';
+  const cab = a.cabelo || '#9a7652', cabE = tom(cab, 0.66), cabEE = tom(cab, 0.45), cabC = tom(cab, 1.35);
+  const big = a.bigode || '#ab875c', bigE = tom(big, 0.66), bigC = tom(big, 1.4);
+  const olho = '#2a1a14', branco = '#f6f2ea', boca = '#6e2420', dente = '#fbf8f0', lingua = '#d65c56';
+  const couro = '#6a4428', couroE = '#40261a', couroC = '#93633c', bronze = '#c4903e', bronzeE = '#7a5222', bronzeC = '#ecc070';
+  const pelo = '#dccfb6', peloE = '#a4927a', calca = a.calca || '#6e5038', calcaE = tom(calca, 0.7), calcaC = tom(calca, 1.25);
+  const tatu = '#2f7ad8', tatuC = '#6ab0ff';
+  const aco = '#5a6674', acoE = '#363e4a', acoEE = '#20262e', acoC = '#9eacba', face = '#46515e', faceE = '#323b46', rebite = '#d8e0e8';
+  const geada = '#d6f2ff', gelo = '#8ad4ff', geloE = '#4a9ad0';
+  const passo = f === 1 ? 1 : f === 2 ? -1 : 0, bob = passo ? 0.67 : 0, estufa = f === 0 ? 0.34 : 0;
+
+  // traço grosso com volume: círculos ao longo de uma linha quebrada, o raio indo de r0 a r1
+  const tira = (pts, r0, r1, cor, dx = 0, dy = 0) => {
+    let tot = 0; const seg = [];
+    for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(d); tot += d; }
+    let acc = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], n = Math.max(1, Math.ceil(seg[i - 1] / 0.3));
+      for (let k = 0; k <= n; k++) { const t = k / n, r = r0 + (r1 - r0) * ((acc + seg[i - 1] * t) / (tot || 1)); p.o(x0 + (x1 - x0) * t + dx, y0 + (y1 - y0) * t + dy, r, r, cor); }
+      acc += seg[i - 1];
+    }
+  };
+  const linha = (pts, cor, esp = 0.34) => { for (let i = 1; i < pts.length; i++) p.l(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], cor, esp); };
+  // o bigodão: sombra, corpo e o brilho por cima, com fios mais escuros
+  const bigode = (pts, r0, r1) => {
+    tira(pts, r0, r1, bigE, 0.2, 0.4); tira(pts, r0 * 0.92, r1 * 0.9, big);
+    linha(pts.slice(0, -1).map(([x, y], i) => [x, y - r0 * (0.55 - i * 0.06)]), bigC);
+    for (let i = 1; i < pts.length - 2; i++) p.px(pts[i][0], pts[i][1] + 0.34, bigE);
+  };
+  const tufos = (x0, x1, y, cor, cor2, ry = 0.9) => { for (let x = x0, k = 0; x < x1; x += 0.9, k++) p.o(x + 0.45, y + (k % 2 ? 0.3 : 0), 0.8, ry, k % 2 ? cor2 : cor); };
+  const punho = (x, y, r = 1.9) => {
+    p.o(x, y, r, r * 0.92, peleEE); p.o(x - 0.25, y - 0.25, r * 0.86, r * 0.78, pele); p.o(x - r * 0.4, y - r * 0.42, r * 0.34, r * 0.26, peleC);
+    for (const k of [-0.7, 0, 0.7]) p.px(x + k * r * 0.62, y + r * 0.42, peleE);
+  };
+  // braço enorme: ombro redondo, bíceps com a tatuagem azul, antebraço com a braçadeira de couro e pele
+  const braco = (ox, oy, mx, my, hx, hy, escuro = false, tatuagem = true) => {
+    const c = escuro ? peleE : pele, e = escuro ? peleEE : peleE;
+    tira([[ox, oy], [mx, my]], 2.6, 2.1, e, 0.3, 0.3); tira([[ox, oy], [mx, my]], 2.4, 1.9, c);
+    tira([[mx, my], [hx, hy]], 2.0, 1.7, e, 0.3, 0.3); tira([[mx, my], [hx, hy]], 1.8, 1.5, c);
+    if (!escuro) p.o(ox - 0.9, oy - 0.9, 1.2, 0.8, peleC);
+    if (tatuagem && !escuro) {              // tatuagem: três faixas em "v" no bíceps
+      for (let k = 0; k < 3; k++) {
+        const t = 0.3 + k * 0.17, x = ox + (mx - ox) * t, y = oy + (my - oy) * t;
+        p.l(x - 1.2, y - 0.4, x, y + 0.3, tatu, 0.5); p.l(x, y + 0.3, x + 1.2, y - 0.4, tatu, 0.5); p.px(x - 0.67, y - 0.2, tatuC);
+      }
+    }
+    const bx = mx + (hx - mx) * 0.62, by = my + (hy - my) * 0.62;
+    p.o(bx, by, 2.1, 1.3, couroE); p.o(bx, by - 0.2, 1.9, 1, couro); p.r(bx - 1.5, by - 0.6, 3, 0.34, couroC);
+    tufos(bx - 2, bx + 1.6, by - 1.1, pelo, peloE, 0.6);
+  };
+  // a porta de cofre redonda: aro de aço com rebites, o anel de bronze com o Poro no meio, a argola, as travas e o gelo.
+  // rx menor = vista de lado (fica achatada e mostra a grossura); costas = alças de couro
+  const escudo = (cx, cy, rx, ry, modo = 'frente') => {
+    const lado = modo === 'lado', costas = modo === 'costas';
+    if (lado) { p.o(cx - 1.3, cy + 0.3, rx + 0.4, ry + 0.4, acoEE); p.o(cx - 1, cy, rx, ry, acoE); }
+    p.o(cx, cy + 0.4, rx + 0.5, ry + 0.5, acoEE);
+    p.o(cx, cy, rx, ry, acoE); p.o(cx - 0.3, cy - 0.3, rx - 0.5, ry - 0.5, aco);
+    p.o(cx, cy, rx * 0.8, ry * 0.8, acoEE); p.o(cx + 0.1, cy + 0.1, rx * 0.76, ry * 0.76, costas ? faceE : face);
+    p.o(cx - rx * 0.3, cy - ry * 0.42, rx * 0.36, ry * 0.16, tom(aco, 1.18));        // brilho do aço
+    // rebites no aro
+    for (let k = 0; k < 14; k++) {
+      const an = (k / 14) * Math.PI * 2, x = cx + Math.cos(an) * rx * 0.9, y = cy + Math.sin(an) * ry * 0.9;
+      if (lado && Math.cos(an) < -0.2) continue;
+      p.r(x - 0.34, y - 0.34, 0.67, 0.67, rebite); p.px(x, y, acoE);
+    }
+    if (costas) {
+      for (const fy of [cy - ry * 0.3, cy + ry * 0.25]) { p.r(cx - rx * 0.62, fy, rx * 1.24, 1.34, couroE); p.r(cx - rx * 0.62, fy, rx * 1.24, 0.5, couro); }
+      p.r(cx - 0.9, cy - ry * 0.32, 1.8, ry * 0.6, couroE); p.r(cx - 0.6, cy - ry * 0.3, 0.6, ry * 0.55, couroC);
+    } else {
+      // travas de cofre saindo do lado (fora do corpo)
+      if (!lado) for (const ty of [cy - ry * 0.35, cy + ry * 0.25]) { p.r(cx + rx - 0.6, ty, 1.8, 1.4, acoE); p.r(cx + rx - 0.6, ty, 1.6, 0.6, acoC); p.px(cx + rx + 0.4, ty + 0.8, rebite); }
+      // anel de bronze e o Poro gravado no meio
+      const ex = cx + (lado ? rx * 0.12 : 0), er = Math.min(rx, ry) * 0.46, erx = lado ? rx * 0.42 : er;
+      p.o(ex, cy - 0.4, erx + 0.5, er + 0.5, bronzeE); p.o(ex - 0.15, cy - 0.55, erx + 0.2, er + 0.2, bronze); p.o(ex, cy - 0.4, erx - 0.3, er - 0.3, faceE);
+      p.l(ex - erx * 0.6, cy - er * 0.95, ex - erx * 0.1, cy - er * 1.05, bronzeC, 0.34);
+      const kx = erx / er;
+      p.bola(ex, cy - 0.2, er * 0.72 * kx, er * 0.64, '#e8eef4');
+      p.poli([[ex - er * 0.55 * kx, cy - er * 0.4], [ex - er * 0.85 * kx, cy - er * 0.95], [ex - er * 0.25 * kx, cy - er * 0.6]], '#c8a070');
+      p.poli([[ex + er * 0.55 * kx, cy - er * 0.4], [ex + er * 0.85 * kx, cy - er * 0.95], [ex + er * 0.25 * kx, cy - er * 0.6]], '#c8a070');
+      p.r(ex - er * 0.38 * kx, cy - er * 0.25, 0.67, 0.8, '#1a1a2a'); p.r(ex + er * 0.2 * kx, cy - er * 0.25, 0.67, 0.8, '#1a1a2a');
+      p.r(ex - 0.34, cy + er * 0.12, 0.8, 0.9, '#ff7a9a');
+      // a argola grande pendurada embaixo do anel
+      const ay = cy + er + 0.6;
+      p.o(ex, ay, 1.9 * (lado ? 0.6 : 1), 1.7, bronzeE); p.o(ex - 0.15, ay - 0.15, 1.6 * (lado ? 0.6 : 1), 1.4, bronze); p.o(ex, ay + 0.1, 0.95 * (lado ? 0.6 : 1), 0.8, faceE);
+      p.px(ex - 0.9 * (lado ? 0.6 : 1), ay - 0.6, bronzeC);
+    }
+    // gelo: crosta no arco de cima, placas no rosto da porta e pingentes embaixo
+    for (let t = 0.06; t <= 0.94; t += 0.05) {
+      const an = Math.PI + t * Math.PI; if (lado && Math.cos(an) < -0.3) continue;
+      const gx = cx + Math.cos(an) * (rx - 0.2), gy = cy + Math.sin(an) * (ry - 0.2), g = 0.4 + 0.8 * Math.sin(t * Math.PI) * (0.6 + 0.4 * Math.sin(t * 21));
+      p.o(gx, gy + g * 0.3, 0.5 + g * 0.5, 0.4 + g * 0.45, geada); if (Math.sin(t * 29) > 0.4) p.px(gx - 0.34, gy - 0.2, '#ffffff');
+    }
+    for (const [kx, ky, r] of [[-0.55, 0.3, 0.9], [0.5, -0.45, 0.7], [0.35, 0.55, 0.8]]) { if (lado && kx < 0) continue; p.o(cx + rx * kx, cy + ry * ky, r * 1.3, r * 0.8, tom(geada, 0.85)); p.px(cx + rx * kx - 0.34, cy + ry * ky - 0.34, '#ffffff'); }
+    for (const kx of [-0.45, -0.1, 0.3, 0.55]) {
+      if (lado && kx < -0.2) continue;
+      const x = cx + rx * kx, y = cy + ry * Math.sqrt(1 - kx * kx) - 0.3;
+      p.poli([[x - 0.45, y], [x + 0.45, y], [x, y + 1.6 + Math.abs(kx) * 0.8]], geada); p.px(x - 0.2, y + 0.3, '#ffffff');
+    }
+  };
+  // gelo voando (Mordida do Inverno) e estacas de gelo saindo do chão (Fissura)
+  const lascas = (pts) => { for (const [x, y, w, h] of pts) { p.poli([[x - w, y], [x, y - h], [x + w, y]], geloE); p.poli([[x - w * 0.5, y], [x, y - h], [x + w * 0.2, y - 0.2]], gelo); p.px(x - 0.2, y - h + 0.6, '#ffffff'); } };
+  const cristal = (x, y, r) => { p.poli([[x, y - r], [x + r * 0.7, y], [x, y + r], [x - r * 0.7, y]], gelo); p.poli([[x, y - r], [x + r * 0.7, y], [x, y]], '#ffffff'); };
+  const vento = (pts) => { for (const [x, y, c] of pts) p.l(x, y, x + c, y, '#ffffff', 0.34); };
+
+  // ---------------- de frente / de costas ----------------
+  const cabecaFrente = (hx, hy) => {
+    p.o(hx - 3.5, hy + 1.2, 1.1, 2.4, cabE); p.o(hx + 3.5, hy + 1.2, 1.1, 2.4, cabE);              // costeletas
+    p.o(hx, hy + 0.4, 3.8, 4.4, peleE); p.o(hx - 0.2, hy + 0.1, 3.5, 4.1, pele); p.o(hx - 1.2, hy - 2.4, 1.5, 0.9, peleC); p.px(hx - 1.6, hy - 2.7, '#ffffff');
+    for (const l of [-1, 1]) { p.o(hx + l * 3.6, hy + 0.6, 0.8, 1.2, peleE); p.o(hx + l * 3.6, hy + 0.6, 0.4, 0.7, rosa); }
+    // sobrancelhas grossas e alegres
+    for (const l of [-1, 1]) p.poli([[hx + l * 0.5, hy - 1.1], [hx + l * 1.6, hy - 1.9], [hx + l * 3.1, hy - 1.6], [hx + l * 3.2, hy - 0.9], [hx + l * 1.7, hy - 1.2], [hx + l * 0.6, hy - 0.5]], cabE);
+    // olhos abertos, com o brilho e a ruguinha do sorriso
+    for (const l of [-1, 1]) {
+      const ox = hx + l * 1.6 - 0.5;
+      p.r(ox - 0.17, hy - 0.4, 1.34, 0.9, branco); p.r(ox + 0.2, hy - 0.4, 0.8, 0.9, olho); p.px(ox + 0.3, hy - 0.34, '#ffffff');
+      p.l(ox - 0.3, hy + 0.7, ox + 1.2, hy + 0.7, peleE, 0.34);
+    }
+    p.o(hx - 2.4, hy + 1.4, 0.9, 0.6, rosa); p.o(hx + 2.4, hy + 1.4, 0.9, 0.6, rosa);
+    // o sorriso largo, com os dentes
+    p.o(hx, hy + 5.4, 1.7, 0.6, peleE);
+    p.o(hx, hy + 4.2, 2.1, 1.25, boca); p.r(hx - 1.7, hy + 3.2, 3.4, 0.8, dente); p.o(hx, hy + 4.9, 1, 0.45, lingua);
+    // nariz de batata
+    p.o(hx, hy + 1.3, 1.2, 1, peleEE); p.o(hx - 0.2, hy + 1.1, 1, 0.85, pele); p.px(hx - 0.6, hy + 0.7, peleC); p.px(hx - 0.67, hy + 1.8, peleEE); p.px(hx + 0.4, hy + 1.8, peleEE);
+    // o bigodão: sai de baixo do nariz, cai pelos cantos da boca e as pontas se curvam para fora e para cima
+    for (const l of [-1, 1]) bigode([[hx + l * 0.2, hy + 2.1], [hx + l * 2.1, hy + 2.2], [hx + l * 3.9, hy + 3.1], [hx + l * 5.2, hy + 4.4], [hx + l * 6.4, hy + 4.1], [hx + l * 6.9, hy + 2.9], [hx + l * 6.4, hy + 2.2]], 1.35, 0.45);
+  };
+  const cabecaCostas = (hx, hy) => {
+    for (const l of [-1, 1]) bigode([[hx + l * 3.6, hy + 3.4], [hx + l * 5.2, hy + 4.4], [hx + l * 6.4, hy + 4.1], [hx + l * 6.9, hy + 2.9]], 0.9, 0.45);
+    p.o(hx, hy, 3.6, 4, peleE); p.o(hx - 0.2, hy - 0.4, 3.3, 3.5, pele); p.o(hx - 1.2, hy - 2.4, 1.4, 0.9, peleC);
+    for (const l of [-1, 1]) p.o(hx + l * 3.6, hy + 0.6, 0.8, 1.2, peleE);
+    // a coroa de cabelo em volta da nuca e a trança grossa descendo pelas costas
+    p.o(hx, hy + 1.8, 3.4, 2.2, cabE); p.o(hx, hy + 1.5, 3.1, 1.8, cab); for (const k of [-2, -1, 0, 1, 2]) p.l(hx + k * 1.1, hy + 0.4, hx + k * 1.2, hy + 3, cabE, 0.34);
+    for (let k = 0; k < 6; k++) { const y = hy + 3.6 + k * 1.4, x = hx + (k % 2 ? 0.3 : -0.3); p.o(x, y, 1.2 - k * 0.06, 0.9, cabE); p.o(x - 0.2, y - 0.2, 1 - k * 0.06, 0.7, cab); p.px(x - 0.4, y - 0.4, cabC); }
+    p.r(hx - 0.8, hy + 12, 1.6, 0.8, couro); p.o(hx, hy + 13.4, 0.8, 0.9, cab);
+  };
+  const pernas = (dy, modo) => {
+    // modo: 'anda' (passo), 'agacha' (pernas abertas), 'ar' (encolhidas)
+    const lA = passo > 0 ? 0.67 : 0, lB = passo < 0 ? 0.67 : 0;
+    const perna = (x, y0, alt, lev, escuro) => {
+      p.r(x, y0 + dy - lev, 4.6, alt, escuro ? calcaE : calca); p.r(x, y0 + dy - lev, 1, alt, escuro ? calca : calcaC);
+      for (let k = 1; k < alt; k += 1.5) p.l(x + 1.4, y0 + dy - lev + k, x + 3.6, y0 + dy - lev + k + 0.3, calcaE, 0.34);       // faixas de couro
+      const by = y0 + dy - lev + alt;
+      p.o(x + 2.3, by + 1.4, 3, 2, peloE); p.o(x + 2.1, by + 1.1, 2.8, 1.7, pelo);                      // bota de pele
+      for (const k of [0, 1.4, 2.8]) p.px(x + 0.6 + k, by + 1.8, peloE);
+      p.r(x - 0.4, by + 2.6, 5.4, 0.8, couroE);                                                       // sola
+    };
+    if (modo === 'ar') { perna(7.4, 22.6, 2.6, 0, false); perna(14.6, 22.6, 2.6, 0, false); return; }
+    if (modo === 'agacha') { perna(5.6, 23.6, 3.6, 0, false); perna(16.4, 23.6, 3.6, 0, false); return; }
+    perna(7.6, 23, 4.6, lA, false); perna(14.4, 23, 4.6, lB, false);
+  };
+  // o tronco (y0 = altura dos ombros); de frente o peito nu e peludo, de costas as costas largas com a alça
+  const tronco = (dy, costas) => {
+    const y = dy;
+    p.r(10.6, 9.6 + y, 4.8, 2.6, peleE);                                                              // pescoço
+    p.poli([[4.6, 11 + y], [21.4, 11 + y], [19.6, 22.4 + y], [6.4, 22.4 + y]], peleEE);
+    p.poli([[5.2, 11.3 + y], [20.8, 11.3 + y], [19.1, 22 + y], [6.9, 22 + y]], costas ? peleE : pele);
+    if (costas) {
+      p.o(9.4, 14.6 + y, 3.6, 2.6, pele); p.o(16.6, 14.6 + y, 3.6, 2.6, pele); p.o(8.6, 13.8 + y, 1.6, 0.8, peleC);
+      p.l(13, 12 + y, 13, 21 + y, peleEE, 0.5);
+      p.l(6, 12 + y, 19.6, 21.4 + y, couroE, 1.5); p.l(6, 11.6 + y, 19.6, 21 + y, couro, 0.67);
+    } else {
+      // peitoral e barriga
+      p.o(9.4, 16 + y - estufa, 3.6, 1.4, peleE); p.o(16.6, 16 + y - estufa, 3.6, 1.4, peleE);
+      p.o(9.4, 14.4 + y - estufa, 3.8, 2.4, pele); p.o(16.6, 14.4 + y - estufa, 3.8, 2.4, pele);
+      p.o(8.6, 13.6 + y - estufa, 1.8, 0.9, peleC); p.o(15.8, 13.6 + y - estufa, 1.8, 0.9, peleC);
+      p.o(13, 19.6 + y, 4.8, 2.6, pele); p.o(12.2, 18.8 + y, 2.4, 1.1, peleC); p.o(13, 20.6 + y, 0.5, 0.4, peleEE);
+      // pelos do peito: tufos castanhos no meio e a trilha até o umbigo
+      for (const [x, yy] of [[12.2, 13.2], [13.4, 13.6], [12.8, 14.6], [11.8, 14.4], [14, 14.6], [13, 15.6], [12.4, 16.6], [13.6, 16.4]]) p.l(x, yy + y, x + 0.6, yy + y + 0.67, cabE, 0.34);
+      for (let k = 0; k < 3; k++) p.px(13, 17.6 + k * 0.9 + y, cabE);
+      // a alça de couro cruzando o peito, com a fivela
+      p.l(6.2, 11.6 + y, 19.4, 21.6 + y, couroE, 1.6); p.l(6.2, 11.2 + y, 19.4, 21.2 + y, couro, 0.8); p.l(6.6, 11.2 + y, 19.6, 21.1 + y, couroC, 0.34);
+      p.r(11.6, 14.6 + y, 1.8, 1.8, bronzeE); p.r(11.8, 14.8 + y, 1.4, 1.4, bronze); p.px(11.9, 14.9 + y, bronzeC);
+    }
+    // cinto largo com a fivela redonda e a pele pendurada
+    p.r(6.2, 21.4 + y, 13.6, 2, couroE); p.r(6.2, 21.4 + y, 13.6, 0.67, couro);
+    if (!costas) { p.o(13, 22.4 + y, 1.5, 1.4, bronzeE); p.o(12.9, 22.2 + y, 1.2, 1.1, bronze); p.px(12.6, 21.8 + y, bronzeC); }
+    tufos(6.4, 19.4, 23.8 + y, pelo, peloE);
+  };
+  const frente = (o) => {
+    const dy = o.dy || 0, hy = 6.6 + dy + (o.hdy || 0);
+    pernas(o.pernasDy ?? 0, o.pernas || 'anda');
+    if (o.escudoAtras) escudo(...o.escudoAtras, 'frente');
+    // braço do escudo (lado esquerdo dele, à direita na tela): quase sempre fica atrás da porta
+    braco(21, 12.6 + dy, o.bE ? o.bE[0] : 23.2, o.bE ? o.bE[1] : 16.6 + dy, o.bE ? o.bE[2] : 24, o.bE ? o.bE[3] : 19.6 + dy, false, false);
+    tronco(dy, false);
+    // ombreira de pele no ombro do escudo
+    p.o(20.6, 11.6 + dy, 2.8, 1.6, peloE); p.o(20.4, 11.3 + dy, 2.6, 1.3, pelo); tufos(18, 23, 12.6 + dy, pelo, peloE, 0.7);
+    const [mx, my, hx2, hy2] = o.bD || [3.2, 17.4 + dy, 3.4 - passo * 0.4, 22.2 + dy];
+    braco(5, 12.6 + dy, mx, my, hx2, hy2); punho(hx2, hy2 + 0.6, 2);
+    if (!o.cabecaDepois) cabecaFrente(13, hy);
+    if (o.escudo) escudo(...o.escudo, 'frente');
+    if (o.cabecaDepois) cabecaFrente(13, hy);
+    if (o.maoNoEscudo) punho(...o.maoNoEscudo, 1.9);
+  };
+
+  if (dir === DIR.N) {
+    const pulo = f === 6 ? -2.6 : 0, agacha = f === 7 ? 1.4 : 0, dy = bob + pulo + agacha;
+    escudo(f === 5 ? 8.4 : 6.6, (f === 6 ? 12.6 : 18) + bob + agacha, 7, 7.8, 'costas');
+    pernas(pulo, f === 6 ? 'ar' : f === 7 ? 'agacha' : 'anda');
+    tronco(dy, true);
+    p.o(20.6, 11.6 + dy, 2.8, 1.6, peloE); p.o(5.4, 11.6 + dy, 2.8, 1.6, peloE); p.o(5.6, 11.3 + dy, 2.6, 1.3, pelo);
+    // braço livre (à direita na tela, de costas)
+    const sobe = f === 3 || f === 4 || f === 6;
+    if (sobe) { braco(21, 12.6 + dy, 24.6, 9 + dy, 25, 4.6 + dy); punho(25, 4 + dy, 2); }
+    else { braco(21, 12.6 + dy, 23, 17.4 + dy, 22.6 + passo * 0.4, 22.2 + dy); punho(22.6 + passo * 0.4, 22.8 + dy, 2); }
+    cabecaCostas(13, 6.6 + dy);
+    if (f === 7) lascas([[3, 31, 0.9, 3.4], [7, 31.4, 0.7, 2.4], [20, 31.4, 0.8, 2.8], [26, 31, 1, 3.6], [29.4, 31.4, 0.7, 2.2]]);
+    return;
+  }
+
+  if (dir === DIR.S) {
+    switch (f) {
+      case 3:       // golpe: empurra a porta para a frente e puxa o punho para trás
+        frente({ dy: bob, escudo: [22.4, 19.2, 7.6, 8.4], bD: [2.6, 15.6, 4.6, 12.6], bE: [21.8, 16.4, 21, 19] });
+        vento([[0.4, 21, 2], [0.8, 24, 1.4], [29.6, 8.8, 2], [30, 28.4, 1.6]]);
+        return;
+      case 4:       // Mordida do Inverno: a porta solta uma rajada de gelo
+        frente({ dy: 0, escudo: [21.6, 19.4, 7.8, 8.6], bD: [2.4, 15.2, 4.2, 11.6], bE: [21.8, 16.4, 21, 19] });
+        for (const [x, y, r] of [[13.6, 26.6, 1.3], [29.6, 13, 1.1], [28.6, 27.4, 1.4], [16, 10.6, 0.9], [30.6, 21, 0.9]]) cristal(x, y, r);
+        for (const [x, y] of [[14.6, 23], [31, 17], [27, 30], [18.4, 12.4], [12.4, 29.6]]) p.px(x, y, '#ffffff');
+        return;
+      case 5: {     // Inquebrável: a porta erguida na frente do corpo, só a cara e as pontas do bigode aparecendo
+        frente({ dy: 0.4, escudo: [14.2, 19, 9, 9.6], bD: [3, 15.2, 4.4, 18.4], maoNoEscudo: [5.6, 18.6] });
+        for (const [x, y, r] of [[3, 9, 0.8], [27.6, 8, 1], [29.6, 20, 0.8], [2.4, 27, 0.9]]) cristal(x, y, r);
+        return;
+      }
+      case 6:       // no ar: pernas encolhidas, a porta erguida de lado e o punho para cima
+        p.g.translate(0, Math.round(-2.6 * p.s));
+        frente({ dy: 0, pernas: 'ar', escudo: [24, 15.2, 6.8, 7.6], bE: [23.2, 13, 24.4, 15], bD: [2.6, 9.4, 3.4, 5] });
+        return;
+      case 7:       // Fissura Glacial: agachado, bate a porta no chão e o gelo racha para os lados
+        frente({ dy: 1.6, pernas: 'agacha', escudo: [14.4, 25.2, 7.8, 6.2], cabecaDepois: true, bD: [3.6, 19, 7.6, 22.4], bE: [22, 18, 19.6, 22.6] });
+        lascas([[1.8, 31.6, 1, 3.8], [4.6, 31.6, 0.7, 2.4], [24.6, 31.6, 0.8, 2.8], [27.4, 31.6, 1.1, 4.2], [30.4, 31.6, 0.7, 2.4]]);
+        for (const [x, y] of [[6, 30.4], [23, 30.6], [9, 31.4], [20, 31.4]]) p.l(x, y, x + (x < 15 ? -2.4 : 2.4), y + 0.6, geloE, 0.34);
+        return;
+      default:      // parado e andando: a porta ao lado, segurada pelo braço esquerdo
+        frente({ dy: bob, escudo: [24.8, 18.8 + bob, 6.9, 7.8] });
+    }
+    return;
+  }
+
+  // ---------------- de lado (virado para a direita) ----------------
+  const cabecaLado = (hx, hy) => {
+    // trança grossa caindo pelas costas
+    for (let k = 0; k < 7; k++) { const x = hx - 3 - k * 0.42, y = hy + 0.6 + k * 1.35; p.o(x, y, 1.25 - k * 0.06, 0.95, cabE); p.o(x - 0.2, y - 0.2, 1.05 - k * 0.06, 0.72, cab); p.px(x - 0.5, y - 0.4, cabC); }
+    p.r(hx - 6.4, hy + 9.6, 1.6, 0.8, couro); p.o(hx - 5.8, hy + 11, 0.8, 0.9, cab);
+    p.o(hx, hy, 3.6, 4, peleE); p.o(hx + 0.2, hy - 0.3, 3.3, 3.7, pele); p.o(hx - 0.4, hy - 2.4, 1.6, 0.9, peleC); p.px(hx - 0.8, hy - 2.7, '#ffffff');
+    p.o(hx - 1.8, hy + 1.2, 1.5, 2.6, cabE); p.o(hx - 1.6, hy + 1, 1.2, 2.2, cab);                    // cabelo do lado
+    p.o(hx - 0.6, hy + 0.4, 0.9, 1.2, peleE); p.o(hx - 0.6, hy + 0.4, 0.45, 0.7, rosa);                 // orelha
+    p.poli([[hx + 0.8, hy - 1.4], [hx + 2.2, hy - 2], [hx + 3.6, hy - 1.6], [hx + 3.4, hy - 0.9], [hx + 1, hy - 0.8]], cabE);   // sobrancelha
+    p.r(hx + 2, hy - 0.4, 1.1, 0.9, branco); p.r(hx + 2.5, hy - 0.4, 0.67, 0.9, olho); p.px(hx + 2.6, hy - 0.34, '#ffffff');
+    p.o(hx + 2, hy + 1.4, 0.9, 0.6, rosa);
+    p.o(hx + 2.4, hy + 3.2, 1.3, 1, boca); p.r(hx + 1.6, hy + 2.5, 1.8, 0.6, dente); p.o(hx + 1.8, hy + 4.5, 1.5, 0.6, peleE);
+    p.o(hx + 3.7, hy + 1.2, 1.1, 1, peleEE); p.o(hx + 3.5, hy + 1, 0.95, 0.85, pele); p.px(hx + 3.2, hy + 0.7, peleC);     // nariz
+    // bigode: a parte de trás vai para a bochecha; a da frente cai e a ponta se curva para a frente e para cima
+    bigode([[hx + 3.2, hy + 2.1], [hx + 1.6, hy + 2.8], [hx + 0.2, hy + 4], [hx - 0.6, hy + 3.4]], 1.1, 0.5);
+    bigode([[hx + 3.4, hy + 2.1], [hx + 4.6, hy + 3], [hx + 5.6, hy + 4.4], [hx + 6.8, hy + 4.2], [hx + 7.3, hy + 3], [hx + 6.8, hy + 2.3]], 1.3, 0.45);
+  };
+  const lado = (o) => {
+    const dy = o.dy || 0, x0 = o.dx || 0;
+    const lA = passo > 0 ? 0.67 : 0, lB = passo < 0 ? 0.67 : 0;
+    const perna = (x, alt, lev, escuro, yb = 23) => {
+      p.r(x, yb + (o.pernasDy || 0) - lev, 4.6, alt, escuro ? calcaE : calca); p.r(x, yb + (o.pernasDy || 0) - lev, 1, alt, escuro ? calca : calcaC);
+      for (let k = 1; k < alt; k += 1.5) p.l(x + 1.4, yb + (o.pernasDy || 0) - lev + k, x + 3.6, yb + (o.pernasDy || 0) - lev + k + 0.3, calcaE, 0.34);
+      const by = yb + (o.pernasDy || 0) - lev + alt;
+      p.o(x + 2.8, by + 1.4, 3.2, 2, peloE); p.o(x + 2.6, by + 1.1, 3, 1.7, escuro ? tom(pelo, 0.85) : pelo);
+      p.r(x - 0.4, by + 2.6, 6.2, 0.8, couroE);
+    };
+    if (o.ar) { perna(9.6 + x0, 2.6, 0, true, 22.6); perna(13.6 + x0, 2.6, 0, false, 22.6); }
+    else if (o.agacha) { perna(7.4 + x0, 3.6, 0, true, 23.6); perna(15.6 + x0, 3.6, 0, false, 23.6); }
+    else { perna(9.6 + x0 - passo * 1.2, 4.6, lB, true); perna(13.4 + x0 + passo * 1.2, 4.6, lA, false); }
+    // tronco de barril, o peito para a frente
+    const tx = 13.4 + x0;
+    p.o(tx, 17 + dy, 6.6, 6.6, peleEE); p.o(tx - 0.3, 16.7 + dy, 6.2, 6.2, peleE);
+    p.o(tx + 2.6, 14.6 + dy - estufa, 3.8, 3, pele); p.o(tx + 2, 19.4 + dy, 4.2, 3.2, pele); p.o(tx + 1.8, 13.6 + dy, 1.8, 0.9, peleC);
+    for (const [x, y] of [[4.6, 14], [5.4, 15.4], [4.4, 16.6], [3.6, 15.2]]) p.l(tx + x, y + dy, tx + x + 0.5, y + dy + 0.67, cabE, 0.34);
+    p.l(tx - 4.6, 12 + dy, tx + 3.4, 22.6 + dy, couroE, 1.6); p.l(tx - 4.6, 11.6 + dy, tx + 3.4, 22.2 + dy, couro, 0.8);
+    p.r(tx - 6.4, 21.4 + dy, 13.6, 2, couroE); p.r(tx - 6.4, 21.4 + dy, 13.6, 0.67, couro); p.o(tx + 4.4, 22.4 + dy, 1.3, 1.3, bronze);
+    tufos(tx - 6.2, tx + 6, 23.8 + dy, pelo, peloE);
+    p.o(tx - 2, 11.6 + dy, 3, 1.6, peloE); p.o(tx - 2.2, 11.3 + dy, 2.8, 1.3, pelo);             // pele no ombro
+    cabecaLado(14.4 + x0 + (o.hdx || 0), 6.6 + dy);
+    // braço de perto (livre, com a tatuagem) e a porta na frente
+    const [mx, my, hx, hy] = o.bP || [tx - 1.2, 17.6 + dy, tx + 0.6 - passo * 1.4, 22 + dy];
+    if (o.bracoAntes) { braco(tx - 1.6, 13 + dy, mx, my, hx, hy); punho(hx, hy + 0.6, 2); }
+    if (o.escudo) escudo(...o.escudo, 'lado');
+    if (!o.bracoAntes) { braco(tx - 1.6, 13 + dy, mx, my, hx, hy); punho(hx, hy + 0.6, 2); }
+  };
+  switch (f) {
+    case 3:
+      lado({ dy: bob, dx: 1, hdx: 0.6, escudo: [27, 18.6, 4.4, 8.6], bP: [12.4, 17.4, 9.6, 15.6] });
+      vento([[29.6, 8, 2], [30, 14, 1.6], [29.4, 27.4, 2]]);
+      return;
+    case 4:
+      lado({ dy: 0, dx: 1, hdx: 0.6, escudo: [26.4, 18.6, 4.4, 8.6], bP: [12.2, 17.2, 9.4, 15.2] });
+      for (const [x, y, r] of [[30.6, 10.6, 1.2], [31, 18.4, 1.5], [30.4, 26, 1.2]]) cristal(x, y, r);
+      for (const [x, y] of [[29, 14], [29.6, 22.6], [31.4, 7]]) p.px(x, y, '#ffffff');
+      return;
+    case 5:
+      lado({ dy: 0.8, escudo: [24, 18.4, 4.6, 9.4], bracoAntes: true, bP: [16, 17.6, 19.6, 17.4] });
+      for (const [x, y, r] of [[29.4, 9, 0.9], [30, 25, 1]]) cristal(x, y, r);
+      return;
+    case 6:
+      p.g.translate(0, Math.round(-2.6 * p.s));
+      lado({ dy: 0, ar: true, escudo: [24.6, 14.6, 4, 7.6], bP: [12.6, 10.4, 14.4, 6.2] });
+      return;
+    case 7:
+      lado({ dy: 1.6, agacha: true, escudo: [23.6, 25.4, 4.4, 6.4], bracoAntes: true, bP: [16.6, 19.4, 21, 21.2] });
+      lascas([[28, 31.6, 1, 4], [30.8, 31.6, 0.7, 2.6], [19, 31.6, 0.7, 2.2], [2.4, 31.6, 0.8, 2.6]]);
+      return;
+    default:
+      lado({ dy: bob, escudo: [26, 18.6 + bob, 4.6, 8.6] });
+  }
+}
+
+// Poro Enfurecido (estágio 2 da Dungeon do Braum): um poro grande e bravo, de pelo branco-azulado ericado com cristais de
+// gelo, chifres com geada, sobrancelhas franzidas, olhos vermelhos e a bocarra com os dentes. Quadros: 0 parado, 1 pulando
+// (sobe e estica), 2 aterrissando (amassa), 3 mordida (boca escancarada)
+function poroBravo(p, a, dir, f) {
+  const pelo = a.pelo || '#e6f0fa', peloE = tom(pelo, 0.8), peloEE = tom(pelo, 0.62), peloC = '#ffffff';
+  const gelo = a.gelo || '#8ad4ff', geloE = tom(gelo, 0.6), chifre = a.chifre || '#c8a070', chifreE = tom(chifre, 0.68);
+  const olho = a.olho || '#ff3030', escuro = '#1e1a2a', boca = '#5a1c24', dente = '#fbf8f0', lingua = '#ff7a9a';
+  const sobe = f === 1 ? -1.8 : 0, amassa = f === 2 ? 1 : 0, morde = f === 3;
+  const dy = sobe + amassa * 0.8 + (morde ? 0.4 : 0);
+  const rx = 10.4 + amassa * 1 - (sobe ? 0.5 : 0), ry = 8.6 - amassa * 0.9 + (sobe ? 0.6 : 0), cy = 20.4 + dy;
+  const pelagem = (cx, cy0, rx0, ry0) => {
+    p.o(cx, cy0, rx0, ry0, peloEE); p.o(cx - rx0 * 0.08, cy0 - ry0 * 0.1, rx0 * 0.93, ry0 * 0.88, peloE); p.o(cx - rx0 * 0.15, cy0 - ry0 * 0.2, rx0 * 0.82, ry0 * 0.74, pelo);
+    p.o(cx - rx0 * 0.38, cy0 - ry0 * 0.48, rx0 * 0.3, ry0 * 0.2, peloC);
+    for (const [kx, ky] of [[0.55, 0.35], [-0.6, 0.4], [0.15, 0.7], [-0.25, 0.55], [0.7, -0.1]]) p.l(cx + rx0 * kx, cy0 + ry0 * ky, cx + rx0 * kx + 0.5, cy0 + ry0 * ky + 0.8, peloE, 0.34);
+  };
+  // tufos ericados em volta do corpo (triângulos), com uns cristais de gelo no meio
+  const ericado = (cx, cy0, rx0, ry0, de, ate) => {
+    for (let t = de, k = 0; t <= ate; t += 0.11, k++) {
+      const an = Math.PI + t * Math.PI, bx = cx + Math.cos(an) * rx0 * 0.92, by = cy0 + Math.sin(an) * ry0 * 0.92;
+      const len = 2.2 + (k % 3) * 0.6, ox = Math.cos(an) * len, oy = Math.sin(an) * len, nx = -Math.sin(an) * 1.1, ny = Math.cos(an) * 1.1;
+      const c = k % 4 === 1 ? gelo : pelo, ce = k % 4 === 1 ? geloE : peloEE;
+      p.poli([[bx - nx, by - ny], [bx + ox, by + oy], [bx + nx, by + ny]], ce);
+      p.poli([[bx - nx * 0.5, by - ny * 0.5], [bx + ox * 0.9, by + oy * 0.9], [bx + nx * 0.2, by + ny * 0.2]], c);
+      if (k % 4 === 1) p.px(bx + ox * 0.7, by + oy * 0.7, '#ffffff');
+    }
+  };
+  const chifreEm = (x, y, l) => {
+    p.poli([[x - l * 1.3, y + 1], [x + l * 1.2, y + 0.6], [x + l * 2.4, y - 3.6], [x + l * 1.4, y - 5.6], [x + l * 0.8, y - 3]], chifreE);
+    p.poli([[x - l * 0.8, y + 0.6], [x + l * 0.8, y + 0.4], [x + l * 1.8, y - 3.4], [x + l * 1.3, y - 5]], chifre);
+    p.o(x + l * 1.4, y - 5, 0.8, 0.7, '#e8f6ff'); p.px(x + l * 1.2, y - 5.3, '#ffffff');
+  };
+  const pes = (xs) => { for (const x of xs) { p.o(x, 28.6 + Math.min(0, sobe), 2.2, 1.3, peloEE); p.o(x - 0.2, 28.3 + Math.min(0, sobe), 1.9, 1, peloE); } };
+  const olhoBravo = (x, y, l) => {
+    p.poli([[x - 1.6, y - 0.4 + (l > 0 ? 0.6 : -0.6)], [x + 1.6, y - 0.4 + (l > 0 ? -0.6 : 0.6)], [x + 1.4, y + 1.6], [x - 1.4, y + 1.6]], escuro);
+    p.r(x - 1, y + 0.1, 2, 1.2, olho); p.r(x - 0.6, y + 0.3, 1.2, 0.67, '#ff8a6a'); p.px(x - 0.4 * l, y + 0.2, '#ffd0c0'); p.px(x + 0.5, y + 0.7, tom(olho, 0.6));
+  };
+  const sobrancelha = (x, y, l) => p.poli([[x + l * 2.2, y - 1.8], [x - l * 1.8, y + 0.4], [x - l * 1.8, y + 1.3], [x + l * 2.2, y - 0.7]], '#3a3a54');
+  const bocarra = (x, y, w, h) => {
+    p.o(x, y, w, h, boca); p.o(x, y + h * 0.4, w * 0.6, h * 0.4, tom(boca, 0.7));
+    if (!morde) p.o(x + w * 0.3, y + h * 0.5, w * 0.35, h * 0.4, lingua);
+    // dentes de cima e de baixo, as presas maiores nos cantos
+    const nd = Math.round(w * 1.2);
+    for (let k = 0; k < nd; k++) {
+      const tx = x - w * 0.82 + (k * w * 1.64) / Math.max(1, nd - 1), pr = k === 0 || k === nd - 1 ? 1.5 : 0.9;
+      p.poli([[tx - 0.5, y - h * 0.82], [tx + 0.5, y - h * 0.82], [tx, y - h * 0.82 + pr]], dente);
+      if (k % 2) p.poli([[tx - 0.45, y + h * 0.85], [tx + 0.45, y + h * 0.85], [tx, y + h * 0.85 - 0.9]], dente);
+    }
+  };
+  if (dir === DIR.L) {
+    const cx = 14.6;
+    pes([10, 18.6]);
+    ericado(cx, cy, rx, ry, 0.02, 0.62);
+    pelagem(cx, cy, rx, ry);
+    chifreEm(cx + 3, cy - ry + 1.2, 1); chifreEm(cx - 2, cy - ry + 1.6, -1);
+    p.l(cx - rx + 0.8, cy + 0.4, cx - rx - 1.2, cy - 1.4, peloEE, 1); p.o(cx - rx - 1.2, cy - 1.6, 1.2, 1, pelo);   // rabinho
+    sobrancelha(cx + 6.4, cy - 4.6, -1); olhoBravo(cx + 6.6, cy - 3, 1);
+    if (morde) bocarra(cx + 7.4, cy + 2.4, 3, 3); else bocarra(cx + 7, cy + 2.4, 2.4, 1.6);
+    p.px(cx + 9.4, cy - 0.8, peloEE);
+    if (morde) for (const [x, y] of [[29, 18 + dy], [30, 24 + dy], [29.4, 28]]) p.l(x, y, x + 1.6, y, '#ffffff', 0.34);
+    return;
+  }
+  pes([10, 22]);
+  ericado(16, cy, rx, ry, 0.02, 0.98);
+  pelagem(16, cy, rx, ry);
+  chifreEm(10.6, cy - ry + 1.6, -1); chifreEm(21.4, cy - ry + 1.6, 1);
+  for (const [x, y] of [[6.6, cy + 2], [25, cy + 3]]) { p.poli([[x, y - 1.4], [x + 0.9, y], [x, y + 1.4], [x - 0.9, y]], gelo); p.px(x, y - 0.67, '#ffffff'); }
+  if (dir === DIR.N) { p.o(16, cy + ry - 1.4, 1.4, 1.2, pelo); return; }
+  sobrancelha(12.6, cy - 4.4, -1); sobrancelha(19.4, cy - 4.4, 1);
+  olhoBravo(12.4, cy - 2.6, -1); olhoBravo(19.6, cy - 2.6, 1);
+  if (morde) bocarra(16, cy + 3, 5.4, 3.6); else bocarra(16, cy + 2.8, 4.4, 2.1);
+  // bafo gelado na mordida
+  if (morde) for (const [x, y] of [[8.4, 28.6], [24, 29], [16, 31]]) p.px(x, y, '#ffffff');
+}
+
+const GERADORES = { darius, ezreal, lux, yasuo, katarina, taric, zac, humanoide, fera, golem, verme, dragao, torre, ornn, poro, aranha, tropa, mago, cerco, arraia, olhoVazio, javali, sentinela, npc, burro, montaria, bonecoNeve, braum, poroBravo };
 
 // Aparências: o motor só conhece nomes; aqui cada inimigo vira um "looktype"
 export const APARENCIAS = {
@@ -2257,11 +2747,19 @@ export const APARENCIAS = {
   Poro: { forma: 'poro', mini: 0.62 },
   Krugzinho: { forma: 'golem', cor: '#8c7a5e', olho: '#ffb040', mini: 0.55 },
   'Dragãozinho': { forma: 'dragao', cor: '#c2452a', asa: '#7a2618', olho: '#ffe23a', barriga: '#f0a060', mini: 0.55 },
+  'Poro de Bigode': { forma: 'poro', mini: 0.66, pelo: '#f8f0e2', sombra: '#cfc0aa', bigode: '#8a6440' },      // o poro do Braum (p675)
   Aranhinha: { forma: 'aranha', cor: '#3b2f52', marca: '#8afff0', olho: '#ff5ae0', pata: '#7a68a8', mini: 0.72 },
   'Torre Externa': { forma: 'torre', cor: '#8a8478', cristal: '#58b8ff', grande: true, parada: true },
   'Arauto do Vale': { forma: 'golem', cor: '#7a2f8a', olho: '#ff9af0', cristal: '#d88aff', grande: true },
   'Dragão Infernal': { forma: 'dragao', cor: '#c2452a', asa: '#7a2618', olho: '#ffe23a', barriga: '#f0a060', grande: true, escala: 1.5 },
   'Barão Nashor': { forma: 'verme', cor: '#6a3a9a', olho: '#ff5ae0', espinhos: '#c8a0ff', grande: true, escala: 1.5 },
+  // Dungeon do Braum (Freljord)
+  'Lobo do Gelo': { forma: 'fera', cor: '#b4c6d6', olho: '#7ae8ff', barriga: '#eef6fc', juba: '#e4eff8', escala: 1.75 },
+  'Troll do Gelo': { forma: 'golem', cor: '#6c8296', olho: '#a8f0ff', musgo: '#eef6fc', cristal: '#8ad8ff', escala: 1.75 },
+  'Xamã do Gelo': { forma: 'mago', robe: '#4a86bc', capuz: '#d8e6f2', orbe: '#bff4ff', ouro: '#d8eefa', escala: 1.2 },
+  'Boneco de Neve Enfurecido': { forma: 'bonecoNeve', escala: 1.9 },
+  'Braum': { forma: 'braum', grande: true, escala: 1.5 },
+  'Poro Enfurecido': { forma: 'poroBravo', escala: 1.8 },      // p671: o estágio 2 da Dungeon
 };
 // cores de cada skin do Darius aplicadas sobre a aparência padrão
 export const PALETAS_SKIN = {
@@ -3359,7 +3857,7 @@ function tropaNova(p, a, dir, f) {
 function magoNovo(p, a, dir, f) {
   const k = f >= 70 ? f - 70 : -1, q = f >= 70 ? 0 : f;
   const robe = a.robe, robeE = tom(robe, 0.66), robeC = tom(robe, 1.25), capuz = a.capuz || tom(robe, 0.8), capuzC = tom(capuz, 1.35), capuzE = tom(capuz, 0.7);
-  const ouro = '#e8c048', ouroE = '#a07a28', orbe = a.orbe, sombra = '#0c0a16', cajado = '#6a4628', olho = k === 2 ? tom(orbe, 0.6) : orbe;
+  const ouro = a.ouro || '#e8c048', ouroE = a.ouro ? tom(a.ouro, 0.62) : '#a07a28', orbe = a.orbe, sombra = '#0c0a16', cajado = '#6a4628', olho = k === 2 ? tom(orbe, 0.6) : orbe;
   const ataque = q === 3, m = marcha(q), bob = m.bA * 0.8 + (k === 1 || k === 3 ? -0.5 : 0), barra = m.balanco * 1.2, resp = k === 1 || k === 2 ? 0.5 : 0;
   const giro = ((k >= 0 ? k : q) / 4) * Math.PI * 2;
   const orbeEm = (x, y, r) => { p.bola(x, y, r + 1, r + 1, tom(orbe, 0.55)); p.bola(x, y, r, r, orbe); p.bola(x - r * 0.3, y - r * 0.3, r * 0.45, r * 0.45, tom(orbe, 1.35)); p.px(x - r * 0.45, y - r * 0.55, '#ffffff');
@@ -3440,4 +3938,3 @@ export function iconeChave(zona) {
   cacheChaves.set(zona, c);
   return c;
 }
-
