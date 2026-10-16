@@ -335,3 +335,32 @@ ou reiniciar o Chrome (o GPU reinicia, mas as abas voltam a satura-lo).
 `diag-trav.mjs` (CSP do documento, excepcoes, CPU por processo) · `probe-alvo.mjs` (sonda de vida) ·
 `stack.ps1` (stack nativa sem WinDbg, dbghelp+psapi) · `wpr -start GPU -filemode` (ETL; falta o WPA).
 O `Tracing` por CDP nao e suportado pelo relay.
+## RONDA 2026-10-15 (noite) — a CURA do travamento: `--disable-gpu`, provado 2x hoje
+
+### O que ja esta PROVADO (medicoes desta sessao)
+| Experiencia | Resultado |
+|---|---|
+| Chrome DO DONO com `--disable-gpu --disable-gpu-compositing` | **10/10 sondas respondem durante 25 s — NAO TRAVA** |
+| Chrome do dono sem as flags | congela a t~4-10 s (8+ medicoes) |
+| Guarda `willReadFrequently:true` em todos os `getContext('2d')` | **continua a congelar** (2 vivas / 12 mudas em 35 s) |
+| Guarda que limita o `getImageData` a 1x/250 ms | **continua a congelar** (3 vivas / 9 mudas) |
+| Videos das 6 abas do dono PAUSADOS (sem fechar nenhuma aba) | **continua a congelar** (1 viva / 13 mudas) |
+| Perfil COPIADO (mesmas extensoes, GPU novo) | nunca congelou |
+
+### Conclusao desta ronda (honesta)
+- **NAO e carga do GPU** (pausar os 6 videos nao mudou nada) e **NAO e o readback do canvas**
+  (duas guardas diferentes falharam): o que cura e **tirar o GPU da equacao** (`--disable-gpu`).
+- O renderer do dono e **ANGLE / D3D11 / NVIDIA GeForce RTX 5080** — ou seja, o bloqueio esta na
+  camada de aceleracao do proprio Chrome, abaixo do motor de JS (o `Debugger.pause` nao pausa).
+- `getContextAttributes()` na pagina devolve `willReadFrequently:false` — o jogo pede um contexto
+  GPU-backed, mas forca-lo a CPU **nao resolveu**, logo o bloqueio nao vem dai.
+
+### A CURA PRATICA (no navegador do dono, sem reiniciar)
+**`chrome://settings/system` -> desligar "Usar aceleracao de hardware"** (equivalente ao `--disable-gpu`
+provado). E o unico passo que falta e **nao consigo dalo por CDP**: o relay nao injecta em paginas
+`chrome://` e o Chrome do dono nao tem porta de debug.
+
+### Ferramentas deixadas
+`tools/_teste-guarda.mjs` · `tools/_teste-guarda2.mjs` · `tools/_teste-guardab.mjs` ·
+`tools/_pausar-videos.mjs` (pausa os videos SEM fechar abas do dono) · `tools/_gpu-estado2.mjs`
+(le o renderer WebGL: ANGLE/D3D11/NVIDIA).

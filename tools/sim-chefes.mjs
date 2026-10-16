@@ -315,11 +315,6 @@ export const fatorDanoJogador = (pjNivel, mobNivel) => M.fatorDanoJogador({ nive
 /** Stats do chefe num nível — CURVA do motor × espécie (motor.js:1083). */
 export function statsBossFiel(nome, nivel) {
   const m = MONSTROS[nome]; if (!m) return null;
-  return { nome, nivel, hpMax: CURVA_FIEL.hp(nivel) * m.hp, ad: CURVA_FIELD.ad(nivel) * m.ad, as: m.as,
-    armadura: CURVA_FIELD.armadura(nivel) * m.armadura, magico: !!m.magico, chefe: !!m.chefe };
-}
-export function statsBossFiel(nome, nivel) {
-  const m = MONSTROS[nome]; if (!m) return null;
   return { nome, nivel, hpMax: CURVA_FIEL.hp(nivel) * m.hp, ad: CURVA_FIEL.ad(nivel) * m.ad, as: m.as,
     armadura: CURVA_FIEL.armadura(nivel) * m.armadura, magico: !!m.magico, chefe: !!m.chefe };
 }
