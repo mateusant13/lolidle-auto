@@ -146,6 +146,23 @@
     // -> 1.500.000 de ouro, configurável. Sem isto o anúncio era PULADO ("sem referência de
     // preço") ou caía no MÍNIMO do jogo — que é muito baixo e vendia barato.
     precoSemComparavel: 1500000,
+    // ===== WATCH-LIST DO MERCADO (PEDIDO DO DONO, 2026-10-18, verbatim): =====================
+    //   "faz um subagent fazer auto compra no mercado, detectando em TEMPO REAL o mercado
+    //    sobre os itens q eu quero dar watch. e por nome de player."
+    // O dono vai testar com o nome 'srdog' (um amigo). A deteccao le o mercado do SERVIDOR
+    // (GET /api/mercado -> jogo.js:2513/rede.mercado; a mesma rota leve de jogo.js:3001)
+    // para ver TODAS as ofertas com vendedor em tempo real; a compra sai pelo MERCADO do
+    // jogo (clique em [data-comprar]) para o 'estado' da conta ficar sincronizado
+    // (jogo.js:2954-2960 -> operarServidor -> POST /api/mercado/comprar, jogo.js:2825).
+    autoVigiarMercado: true,   // interruptor proprio (arvore: vigiarMercado, pai manutencao)
+    mercadoWatch: {
+      itens: [],        // watch por id-base ("3031"), id completo ("3071+2~S") ou NOME ("Gume do Infinito")
+      vendedores: [],   // watch por NOME de jogador (sem distinguir maiusculas, ex.: 'srdog')
+      precoMax: null,   // tecto de preco por oferta (em OURO); null = so a reserva de ouro
+      tetoCompra: 500000,   // gasto maximo por passagem do poller (em OURO)
+      cadenciaMs: 5000,     // cadencia do poller em tempo real
+    },
+    // ===== WATCH-LIST DO MERCADO (fim) ========================================================
     // PENALIZAÇÃO de item da CLASSE OPOSTA no SCORING. O motor do jogo NÃO restringe itens por
     // classe (isso só existe nas TABELAS DE DROP, motor.js:408) — esta penalização é da extensão.
     // Estava em 0.12 (8,3x) e INVERTIA diferenças medidas: a build AD/crítico da Katarina faz +38%
@@ -712,7 +729,18 @@
   }
 
   /** Ritmo dos mobs: tempo por wave e tempo de 3 waves (base p/ decidir a ultimate). */
+  let _ritmoEmCurso = false;
+  let _ritmoReentradas = 0;
   function ritmoMobs() {
+    // GUARDA DE RE-ENTRÂNCIA (2026-10-18): `ritmoMobs` fecha o ciclo
+    //   ... -> killsMinAoVivo -> ritmoMobs -> agregar -> curaGiroS -> ... -> killsMinAoVivo -> ritmoMobs
+    // A guarda do `agregar` já corta o ciclo; esta é a segunda porta. Devolve `null` = "sem medida"
+    // (nunca se inventa um ritmo).
+    if (_ritmoEmCurso) { _ritmoReentradas++; return null; }
+    _ritmoEmCurso = true;
+    try { return _ritmoMobsCorpo(); } finally { _ritmoEmCurso = false; }
+  }
+  function _ritmoMobsCorpo() {
     const aw = analisarWaves();
     // B2 (TK-01-08): mobs/wave é a MÉDIA do motor (`mediaWaveDe`, motor.js:1137), NÃO a `base` (o MÍNIMO).
     // A versão antiga usava a base e deixava o `seg3` 33% baixo — a ultimate nunca saía nos mobs.
@@ -2577,8 +2605,26 @@ const CFG_VER = 1;
     return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaRv, curaGiroS, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
   }
 
-  /** Agrega os ciclos observados por região (médias por minuto + mortes). */
+  /** Agrega os ciclos observados por região (médias por minuto + mortes).
+   *
+   *  GUARDA DE RE-ENTRÂNCIA (2026-10-18) — sem isto o JOGO CONGELA. Existe um CICLO REAL:
+   *    agregar -> curaGiroS -> dpsPorHabilidade -> cdVoraz -> killsMinAoVivo -> ritmoMobs -> agregar
+   *  Provado ao vivo, no browser do dono, com `Debugger.pause`: a stack tinha centenas de frames
+   *  deste ciclo repetidos, o main thread nunca mais respondeu e a página morreu (CPU baixa — a
+   *  pilha rebentava em `RangeError`, os `try/catch` do caminho engoliam-no, e a recursão
+   *  recomeçava de cada vez). Quem re-entra recebe o ÚLTIMO resultado (ou `[]`, no primeiro
+   *  cálculo) e NUNCA recomputa. Preferir isto a `try/catch`: engolir o estouro da pilha é o que
+   *  transformava a recursão num bloqueio eterno em vez de um erro visível. */
+  let _agregarEmCurso = false;
+  let _agregarUltimo = [];
+  let _agregarReentradas = 0;
   function agregar() {
+    if (_agregarEmCurso) { _agregarReentradas++; return _agregarUltimo; }
+    _agregarEmCurso = true;
+    try { _agregarUltimo = _agregarCorpo(); return _agregarUltimo; }
+    finally { _agregarEmCurso = false; }
+  }
+  function _agregarCorpo() {
     const por = {};
     for (const c of farm.cycles || []) {
       const r = (por[c.region] = por[c.region] || { region: c.region, n: 0, janelas: [], g: 0, x: 0, p: 0, gp: 0, hs: 0, hp: 0, k: 0, hpm: null, chs: 0, chn: 0, chp: 0, chpn: 0, m: 0, deaths: 0, boss: null, bossMs: 0, bossN: 0, bpoc: 0, bpc: 0 });
@@ -2603,6 +2649,9 @@ const CFG_VER = 1;
     }
     const pl = player();
     const cp = curaPocaoMax();
+    // `curaGiroS()` NÃO depende da região: calcular UMA vez, fora do `.map`. Lá dentro era uma
+    // chamada por região — e é exactamente ela que entra no ciclo de recursão da guarda acima.
+    const _giroS = curaGiroS();
     const arr = Object.values(por).map((r) => {
       const d = r.m || 1;
       const rm = (r.region || '').match(/(\d+)\s*[–-]\s*(\d+)/);
@@ -2617,7 +2666,7 @@ const CFG_VER = 1;
       if (!curaPocaoChefe) curaPocao = cp * 0.6; // região nova: estimativa conservadora
       // CURA DO GIRO (motor.js:2188-2193): a Katarina cura sozinha enquanto gira. O `risco` e
       // o numero que decide se a regiao e segura (e quantas pocoes gasta) — tinha de a levar.
-      const _giroS = curaGiroS();
+      // `_giroS` vem de FORA do map (não depende da região): ver o topo de `_agregarCorpo`.
       const risco = r.boss && nivelChefe ? avaliar(r.boss, nivelChefe, pl, { skill: curaSkillChefe, pocao: curaPocaoChefe || cp * 0.6, giro: _giroS }) : null;
       return { region: r.region, n: r.n, janelas: r.janelas, deaths: r.deaths, boss: r.boss, goldMin: r.g / d, xpMin: r.x / d, killsMin: r.k / d, mobHpMinRel: r.hpm, potMin: r.p / d, goldPotionMin: r.gp / d, healSkillS: curaSkill, healSkillChefeS: curaSkillChefe, healPotionS: curaPocao, bossMs: r.bossN ? r.bossMs / r.bossN : null, potChefe: r.bpc ? r.bpoc / r.bpc : null, risco: risco ? { nivel: nivelChefe, hp: risco.hp, dps: risco.dpsTomado, danoGolpe: risco.danoGolpe, intervalo: risco.intervalo, nPocoes: risco.nPocoes, curaSkill: risco.curaSkill, curaPocao: risco.curaPocao, curaTotal: risco.curaTotal, liquido: risco.liquido, mixTxt: risco.mixTxt, custoPocaoS: risco.custoPocaoS, tMorrer: risco.tMorrer, fM: risco.fM, piorMec: risco.piorMec, mecFatalNome: risco.mecFatalNome, mortal: risco.mortal, morre: risco.morre } : null };
     });
@@ -3420,6 +3469,10 @@ const CFG_VER = 1;
     // autoplay (esse depende do contexto de luta, é jogar).
     skillsPorFase:{ pai: 'manutencao', cfg: 'skillsPorFase' },
     rotacao:      { pai: 'manutencao', cfg: 'rotacaoSkills' },
+    // WATCH-LIST DO MERCADO (pedido do dono, 2026-10-18): vigiar itens e jogadores em tempo
+    // real e auto-comprar. Pende da MANUTENCAO (recurso base, funciona em qualquer campeao),
+    // com o seu proprio liga/desliga. A compra exige estar no Mercador (naBase()).
+    vigiarMercado: { pai: 'manutencao', cfg: 'autoVigiarMercado' },
   };
   /** Este interruptor pode agir AGORA? Sobe a cadeia de pais e avalia a excepcao.
    *  Devolve { pode, porque } — o `porque` e para a GUI poder dizer PORQUE esta desligado. */
@@ -6048,8 +6101,18 @@ const CFG_VER = 1;
       const txt = (card?.textContent || '').replace(/\s+/g, ' ');
       const img = card?.querySelector('img')?.getAttribute('src') || '';
       const mq = txt.match(/\[([A-Z]{1,2})\]/);
+      // VENDEDOR e MOEDA passam a ser lidos do DOM, como o JOGO os desenha (jogo.js:2667-2668):
+      // o nome em .mj-vend b e o preco/moeda em .preco. Sem isto a watch por NOME DE JOGADOR
+      // nao tinha como ver o vendedor (o banco WATCH cobre isto com oferta do 'srdog').
+      const vend = card?.querySelector('.mj-vend b');
+      const prEl = card?.querySelector('.preco');
+      const precoTxt = (prEl?.textContent || '').replace(/\s+/g, ' ').trim();
       const pr = txt.match(/([\d.,]+\s*[kKmM]?)\s*ouro/i);
-      return { id: b.dataset.comprar, base: (img.match(/\/(\d+)\.png/) || [])[1] || null, qual: mq ? mq[1] : null, preco: pr ? parseBig(pr[1]) : null, txt: txt.slice(0, 120) };
+      const mnum = precoTxt.match(/([\d.,]+\s*[kKmM]?)/i);
+      const preco = mnum ? parseBig(mnum[1]) : pr ? parseBig(pr[1]) : null;
+      const moeda = /💠/.test(precoTxt) ? 'orbs' : /💎/.test(precoTxt) ? 'diamante' : 'ouro';
+      const vendedor = ((vend && vend.textContent) || '').trim() || null;
+      return { id: b.dataset.comprar, base: (img.match(/\/(\d+)\.png/) || [])[1] || null, qual: mq ? mq[1] : null, preco, moeda, vendedor, txt: txt.slice(0, 120) };
     }).filter((o) => o.preco);
   }
 
@@ -6734,6 +6797,199 @@ const CFG_VER = 1;
     } finally { ocupado = false; }
   }
 
+  // =====================================================================================
+  // WATCH-LIST DO MERCADO — DETECCAO EM TEMPO REAL E AUTO-COMPRA
+  // (PEDIDO DO DONO, 2026-10-18, verbatim): "faz um subagent fazer auto compra no mercado,
+  // detectando em TEMPO REAL o mercado sobre os itens q eu quero dar watch. e por nome de player."
+  //
+  // FONTE (lida em docs/game-src/jogo.js, Regra No 1):
+  //   - a oferta do mercado tem id/item/preco/moeda/vendedor: o ecra desenha o.vendedor em
+  //     .mj-vend b (jogo.js:2667), o.preco/o.moeda em .preco (jogo.js:2631,2668) e o botao
+  //     [data-comprar="<o.id>"] (jogo.js:2669).
+  //   - o.item e "<base>[+refino][~qualidade]", "gema:<id>:<qtd>" (jogo.js:198) ou
+  //     "mascote:<id>" (motor.js:130).
+  //   - o mercado COMPLETO (ofertas + vendedor) vem do servidor por /api/mercado
+  //     (rede.mercado -> jogo.js:2513; a variante leve com ?leve=1 em jogo.js:3001).
+  //   - COMPRAR e clique em [data-comprar] -> operarServidor('comprar',{id})
+  //     (jogo.js:2954-2960; jogo.js:2825) — passa pelo servidor e sincroniza o estado.
+  //
+  // SEMANTICA DA WATCH: UNIAO. Casa se o ITEM esta na lista OU o VENDEDOR esta na lista
+  // (o dono pediu as duas coisas em separado: itens que quer, e por nome de player).
+  // NUNCA casa oferta minha (o.minha) nem reservada a outro (o.para sem o.paraMim).
+  // A AUTO-COMPRA so gasta OURO (nunca Gemas/diamantes — dinheiro a serio); com TetO de
+  // preco (cfg.mercadoWatch.precoMax) e com a RESERVA de ouro das pocoes que o resto da
+  // extensao ja usa (nunca zera o ouro).
+  // =====================================================================================
+  /** Base de um o.item (aceita item, lote de runas e mascote). */
+  function baseDoItemMercado(item) {
+    const s = String(item == null ? '' : item);
+    if (/^gema:/.test(s)) return s;            // lote de runas: casa pelo item inteiro
+    if (/^mascote:/.test(s)) return s;         // mascote: casa pelo item inteiro
+    try { const p = parseSlotId(s); if (p && p.base) return String(p.base); } catch { /* ignore */ }
+    return baseDe(s);
+  }
+  /** Este o.item casa com a watch-list de ITENS? (id completo, id-base ou nome). */
+  function itemNaWatch(item, itens) {
+    const s = String(item == null ? '' : item);
+    const base = baseDoItemMercado(s);
+    let nome = '';
+    try { nome = String((infoItem(base) || {}).nome || '').toLowerCase(); } catch { nome = ''; }
+    for (const raw of (itens || [])) {
+      const w = String(raw == null ? '' : raw).trim(); if (!w) continue;
+      const wl = w.toLowerCase();
+      if (s === w) return true;                                       // id completo exato
+      if (s.split('~')[0] === w) return true;                         // com refino, sem qualidade
+      if (base === w) return true;                                    // id-base
+      if (nome && nome === wl) return true;                           // nome exato
+      if (nome && wl.length >= 3 && nome.indexOf(wl) >= 0) return true;   // nome parcial
+    }
+    return false;
+  }
+  /** CASA as ofertas do servidor com a watch-list. PURA (testavel sem browser/rede). */
+  function casarOfertas(ofertas, watch) {
+    const w = watch || {};
+    const itens = (w.itens || []).filter((x) => String(x == null ? '' : x).trim());
+    const vendedores = (w.vendedores || []).map((x) => String(x == null ? '' : x).trim().toLowerCase()).filter(Boolean);
+    if (!itens.length && !vendedores.length) return [];
+    const out = [];
+    for (const o of (ofertas || [])) {
+      if (!o || typeof o !== 'object') continue;
+      if (o.minha) continue;
+      if (o.para && o.paraMim !== true) continue;
+      const quem = String(o.vendedor == null ? '' : o.vendedor).trim().toLowerCase();
+      const casaItem = itens.length ? itemNaWatch(o.item, itens) : false;
+      const casaVendedor = vendedores.length ? vendedores.indexOf(quem) >= 0 : false;
+      if (casaItem || casaVendedor) out.push(Object.assign({}, o, { casaItem: casaItem, casaVendedor: casaVendedor }));
+    }
+    return out;
+  }
+  /** LE o mercado do SERVIDOR (so leitura) — a MESMA rota do jogo (jogo.js:2513, 3001). */
+  async function lerMercadoServidor() {
+    if (typeof fetch !== 'function') return { ok: false, motivo: 'sem fetch' };
+    let token = '';
+    try { token = localStorage.getItem('lol-idle-token') || ''; } catch { /* ignore */ }
+    try {
+      const r = await fetch('/api/mercado', { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+      if (!r || !r.ok) return { ok: false, motivo: 'http ' + (r && r.status) };
+      const d = await r.json();
+      if (!d || !Array.isArray(d.ofertas)) return { ok: false, motivo: 'resposta sem ofertas' };
+      return { ok: true, ofertas: d.ofertas, taxa: d.taxa, limite: d.limite };
+    } catch (e) { return { ok: false, motivo: String((e && e.message) || e) }; }
+  }
+  /** Reserva de ouro: o MESMO calculo de comprarNoMercado (nunca zera o ouro — pocoes). */
+  function reservaOuroWatch() {
+    try {
+      const minP = cfg.minPotion || { vida: 200, vidaF: 100, vidaS: 30 };
+      const custoMin = (minP.vida || 0) * PRECO_POCAO.vida + (minP.vidaF || 0) * PRECO_POCAO.vidaF + (minP.vidaS || 0) * PRECO_POCAO.vidaS;
+      return Math.max(20000, custoMin * 2);
+    } catch { return 20000; }
+  }
+  /** Decide se uma oferta da watch pode ser comprada AGORA (tecto + reserva + saldo). PURA. */
+  function podeComprarOfertaWatch(oferta, ouro, watch) {
+    const w = watch || {};
+    const of = oferta || {};
+    const preco = Number(of.preco);
+    const moeda = of.moeda || 'ouro';
+    if (!(preco >= 1)) return { ok: false, motivo: 'sem preco' };
+    if (moeda !== 'ouro') return { ok: false, motivo: 'moeda ' + moeda + ' (a auto-compra so gasta ouro)' };
+    const teto = w.precoMax != null && Number(w.precoMax) > 0 ? Number(w.precoMax) : null;
+    if (teto != null && preco > teto) return { ok: false, motivo: 'acima do tecto (' + preco + ' > ' + teto + ')' };
+    const tetoPass = Number(w.tetoCompra) > 0 ? Number(w.tetoCompra) : Infinity;
+    if (preco > tetoPass) return { ok: false, motivo: 'acima do tecto por passagem (' + preco + ' > ' + tetoPass + ')' };
+    const disp = Math.max(0, Math.floor((Number(ouro) || 0) - reservaOuroWatch()));
+    if (preco > disp) return { ok: false, motivo: 'reserva/saldo (' + preco + ' > ' + disp + ')' };
+    return { ok: true };
+  }
+  /** Encontra a FICHA (.mj-card[data-grupo]) de uma oferta: pelo o.item exato, pela base. */
+  function acharCardWatch(m, oferta) {
+    if (!m) return null;
+    const item = String((oferta && oferta.item) || '');
+    const base = baseDoItemMercado(item);
+    const cards = [...m.querySelectorAll('.mj-card[data-grupo]')];
+    let c = cards.find((x) => String((x.dataset && x.dataset.grupo) || '') === item);
+    if (c) return c;
+    return cards.find((x) => String((x.dataset && x.dataset.grupo) || '').split('~')[0] === base) || null;
+  }
+  /** Compra UMA oferta da watch pelo MERCADO do jogo (clique): estado sincronizado. */
+  async function comprarOfertaWatch(oferta) {
+    if (!oferta) return { ok: false, motivo: 'sem oferta' };
+    if (cfg.autoVigiarMercado === false) return { ok: false, motivo: 'vigiar desligado' };
+    if (!podeFazer('vigiarMercado').pode) return { ok: false, motivo: 'bloqueado pela hierarquia' };
+    if (!naBase()) return { ok: false, motivo: 'so no Mercador (base)' };
+    if (ocupado) return { ok: false, motivo: 'ocupado' };
+    const pode = podeComprarOfertaWatch(oferta, readGold(), cfg.mercadoWatch);
+    if (!pode.ok) return { ok: false, motivo: pode.motivo };
+    ocupado = true;
+    try {
+      const mm = mercadoEl(true); if (!mm) return { ok: false, motivo: 'sem mercado' };
+      if (mm.hidden) { press('j'); await esperar(600); }
+      mm.querySelector('[data-aba="comprar"]')?.click(); await esperar(550);
+      const sel = '#janela-mercado [data-comprar="' + oferta.id + '"]';
+      let b = q1(sel);
+      if (!b) { const card = acharCardWatch(mm, oferta); if (card) { card.click(); await esperar(550); b = q1(sel); } }
+      if (!b) return { ok: false, motivo: 'oferta nao esta no ecra (item nao encontrado)' };
+      if (b.disabled) return { ok: false, motivo: 'botao desativado (saldo/reserva do jogo)' };
+      b.click(); await esperar(550);
+      clicarDialogo(/^\s*comprar\s*$|^\s*sim\s*$/i); await esperar(700);
+      logEvent('mercado', { acao: 'watch-comprar', id: oferta.id, vendedor: oferta.vendedor, item: oferta.item, preco: oferta.preco, moeda: oferta.moeda });
+      return { ok: true, id: oferta.id, vendedor: oferta.vendedor, preco: oferta.preco, ouroDepois: readGold() };
+    } finally { ocupado = false; }
+  }
+  /** VARREDURA pelo DOM (fallback sem rede): le as ofertas ABERTAS no mercado, com vendedor. */
+  function ofertasWatchDoDom() {
+    const m = q1('#janela-mercado'); if (!m) return [];
+    return [...m.querySelectorAll('[data-comprar]')].map((b) => {
+      const card = b.closest('.mj-oferta, article, li, div') || b.parentElement;
+      const txt = ((card && card.textContent) || '').replace(/\s+/g, ' ').trim();
+      const img = (card && card.querySelector('img') && card.querySelector('img').getAttribute('src')) || '';
+      const vend = card && card.querySelector('.mj-vend b');
+      const pr = card && card.querySelector('.preco');
+      const precoTxt = ((pr && pr.textContent) || '').replace(/\s+/g, ' ').trim();
+      const mnum = precoTxt.match(/([\d.,]+\s*[kKmM]?)/i);
+      return {
+        id: b.dataset.comprar,
+        item: b.dataset.item || (img.match(/\/(\d+)\.png/) || [])[1] || null,
+        base: (img.match(/\/(\d+)\.png/) || [])[1] || null,
+        vendedor: ((vend && vend.textContent) || '').trim() || null,
+        preco: mnum ? parseBig(mnum[1]) : null,
+        moeda: /💠/.test(precoTxt) ? 'orbs' : /💎/.test(precoTxt) ? 'diamante' : 'ouro',
+        txt: txt.slice(0, 140),
+      };
+    }).filter((o) => o.vendedor || o.base);
+  }
+  /** PASSO do poller: le o mercado, casa com a watch e (na base) compra a mais barata que caiba. */
+  let _watchAt = 0, _watchTentou = 0, _watchAchados = [], _watchUltimaCompra = null;
+  async function vigiarMercadoPasso() {
+    _watchTentou = Date.now();
+    if (cfg.autoVigiarMercado === false) return { ok: false, motivo: 'desligado' };
+    const w = cfg.mercadoWatch || {};
+    if (!((w.itens || []).length || (w.vendedores || []).length)) return { ok: false, motivo: 'sem watch' };
+    const r = await lerMercadoServidor();
+    if (!r.ok) return r;
+    const achados = casarOfertas(r.ofertas, w);
+    _watchAchados = achados;
+    _watchAt = Date.now();
+    if (!achados.length) return { ok: true, achados: [], comprou: null, n: r.ofertas.length };
+    logEvent('mercado', { acao: 'watch', n: achados.length, primeiro: { id: achados[0].id, vendedor: achados[0].vendedor, item: achados[0].item, preco: achados[0].preco, moeda: achados[0].moeda } });
+    if (!naBase()) return { ok: true, achados: achados, comprou: null, motivo: 'achou, mas so no Mercador (base)' };
+    let comprou = null;
+    const cands = achados.slice().sort((a, b) => Number(a.preco) - Number(b.preco)).slice(0, 5);
+    for (const o of cands) { comprou = await comprarOfertaWatch(o); if (comprou.ok) break; }
+    _watchUltimaCompra = comprou;
+    return { ok: true, achados: achados, comprou: comprou };
+  }
+  /** ESTADO para a GUI: a watch actual e o ultimo achado (sem rede de novo). */
+  function mercadoWatchEstado() {
+    const w = cfg.mercadoWatch || {};
+    return {
+      ligado: cfg.autoVigiarMercado !== false,
+      itens: (w.itens || []).slice(), vendedores: (w.vendedores || []).slice(),
+      precoMax: w.precoMax == null ? null : w.precoMax,
+      tetoCompra: w.tetoCompra == null ? null : w.tetoCompra,
+      cadenciaMs: w.cadenciaMs == null ? null : w.cadenciaMs,
+      at: _watchAt, achados: _watchAchados.slice(0, 20), ultimaCompra: _watchUltimaCompra,
+    };
+  }
   // --------------------------------------------- troca de itens por CONTEXTO
   let ultimoCtxItens = null, itensBusy = false, itensAt = 0;
   const itemDisponivel = (base) => readEquip().some((e) => e.base === String(base)) || (() => { try { const b = scanBag(); return (b?.items || []).some((i) => i.kind === 'item' && i.base === String(base)); } catch { return false; } })();
@@ -8077,6 +8333,12 @@ const CFG_VER = 1;
     penKitDe, penKitCampeao, rankKitDe, statsSet, aplicarKit,
     // ---- CURA DO GIRO (TK-02-130): a cura propria da Katarina, por rank da D ---
     curaGiroDe, curaGiroS, cdVorazMotor, _larvasInvoca: () => _larvasInvoca.slice(),
+    // ---- PROVA DAS GUARDAS DE RE-ENTRANCIA (2026-10-18): o ciclo
+    //   agregar -> curaGiroS -> dpsPorHabilidade -> cdVoraz -> killsMinAoVivo -> ritmoMobs -> agregar
+    // so' e' cortado por estas guardas. Sem elas a pagina CONGELA. O banco le estes contadores
+    // para provar que a guarda existe E que o caminho a usa (mutation: retirar a guarda -> 0).
+    agregarReentradas: () => _agregarReentradas,
+    ritmoReentradas: () => _ritmoReentradas,
     // ---- HEMORRAGIA DO DARIUS (TK-02-149) ----
     bonusPoderDe, danoSangueDe, hemorragiaDe, bonusAdDe, adBaseCampeao,
     // ---- BUILD POR FASE (mob × chefe) e AS QUATRO FONTES ----
@@ -8089,14 +8351,26 @@ const CFG_VER = 1;
     primeiraVez: primeiraVezEstado, primeiraVezPasso,
     auditoriaPassivas,
     PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
-    getMeta: () => META, getFarm: () => farm, getConfig: () => cfg };
+    getMeta: () => META, getFarm: () => farm, getConfig: () => cfg,
+    // ---- WATCH-LIST DO MERCADO (2026-10-18): deteccao em tempo real + auto-compra ----
+    casarOfertas, itemNaWatch, baseDoItemMercado, lerMercadoServidor, reservaOuroWatch,
+    podeComprarOfertaWatch, acharCardWatch, comprarOfertaWatch, ofertasWatchDoDom,
+    vigiarMercadoPasso, mercadoWatchEstado };
 
   // AUTO-LIMPEZA: se o script JÁ rodou (reinjeção), cancela os timers antigos.
   // Sem isso cada injeção empilha outro conjunto de loops e TRAVA o jogo.
   const _T = (window.__lolidleAutoTimers = window.__lolidleAutoTimers || []);
   for (const t of _T) { try { clearInterval(t); clearTimeout(t); } catch { /* ignore */ } }
   _T.length = 0;
-  const every = (ms, fn) => { const id = setInterval(fn, ms); _T.push(id); return id; };
+  // ATENCAO (bug PROVADO ao vivo, 2026-10-18): este helper estava a ser chamado com os argumentos
+  // TROCADOS. A definicao era `(ms, fn)` mas o bloco de arranque chama `every(fn, ms)` — logo
+  // `setInterval(3000, loop)`: o PRIMEIRO argumento e um NUMERO. O browser converte-o em string e
+  // tenta AVALIA-LO como JavaScript; o mundo isolado da extensao tem CSP sem 'unsafe-eval' -> o
+  // erro que o dono viu na consola ("Evaluating a string as JavaScript violates ... 'unsafe-eval'
+  // is not an allowed source ... The action has been blocked") e — pior — a callback REAL nunca
+  // corria: TODOS os loops do arranque (loop/accumulate/checarRotacao/supervisarBase/checarPocoes/
+  // checarItens/mercado) estavam MORTOS. Aceita agora as duas ordens, para nao voltar a partir.
+  const every = (a, b) => { const fn = typeof a === 'function' ? a : b; const ms = typeof a === 'function' ? b : a; const id = setInterval(fn, ms); _T.push(id); return id; };
   if (window.__lolidleAutoObs) { try { window.__lolidleAutoObs.disconnect(); } catch { /* ignore */ } }
 
   loadConfig();
@@ -8107,6 +8381,20 @@ const CFG_VER = 1;
   every(checarRotacao, 2000);
   every(() => { checarFiltroBasicos().catch(() => { /* ignore */ }); }, 30000);
   every(supervisarBase, 5000);
+  // WATCH-LIST DO MERCADO (pedido do dono, 2026-10-18): POLLER EM TEMPO REAL. A cadencia e do
+  // dono (cfg.mercadoWatch.cadenciaMs); o tique e curto e so le o servidor quando passa a
+  // cadencia. A deteccao corre em qualquer sitio; a COMPRA so age no Mercador (naBase()) e
+  // com o interruptor vigiarMercado ligado (podeFazer, dentro de comprarOfertaWatch).
+  every(() => {
+    try {
+      if (cfg.autoVigiarMercado === false) return;
+      const w = cfg.mercadoWatch || {};
+      if (!((w.itens || []).length || (w.vendedores || []).length)) return;
+      const ms = Math.max(1500, Number(w.cadenciaMs) || 5000);
+      if (Date.now() - _watchTentou < ms) return;
+      vigiarMercadoPasso().catch(() => { /* ignore */ });
+    } catch { /* ignore */ }
+  }, 1500);
   every(checarPocoes, 5000);
   every(() => { checarItens().catch(() => { /* ignore */ }); }, 5000);
   cuidarNovidades();

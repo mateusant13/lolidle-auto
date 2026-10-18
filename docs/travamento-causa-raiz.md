@@ -627,6 +627,75 @@ a) Reportar ao jogo com esta evidencia (com conta o boot congela aos ~2 s; deslo
 b) Entrar DESLOGADO (funciona) e tentar o login pela via do menu.
 c) Se nada resultar, e do lado do servidor com esta conta.
 
+---
+
+## CAUSA-RAIZ FINAL (2026-10-18) — ERA A **NOSSA** EXTENSAO: RECURSÃO INFINITA NO `automation.js`
+
+**A conclusão anterior ("e do LADO DO JOGO, nao do Chrome") esta' REFUTADA.** Nao era o jogo, nao era
+a VPN, nao era o token. Era a **nossa** extensao: um **ciclo de chamadas** em `automation.js` que
+bloqueia o *main thread* — e o *main thread* e' o mesmo para a pagina e para o content script.
+
+### Como se provou (o metodo, para a proxima vez)
+
+Nao se adivinhou: **interrompeu-se a thread e leu-se a PILHA**. Uma thread a queimar CPU nao responde a
+`Runtime.evaluate`... mas o V8 verifica interrupcoes nas arestas de ciclo, logo `Debugger.pause` entra
+mesmo dentro de uma recursao. Ferramenta: `tools/_sonda-stack.mjs` (attach-only, REGRA Nº 12).
+
+```
+hs = Runtime.evaluate('1+1') -> timeout 2,5 s (BLOQUEADO) x17/18 amostras
+Debugger.pause -> Debugger.paused  (a pilha, com o scriptId)
+```
+
+A pilha tinha **centenas de frames do MESMO ciclo, repetido**:
+
+```
+renderTudo -> renderPainel -> renderAuto -> ler -> chamar -> regiaoIdeal
+  -> estimarRegiao -> meuDps -> agregar
+       -> curaGiroS -> dpsPorHabilidade -> cdVoraz -> killsMinAoVivo -> ritmoMobs -> agregar  ...
+```
+
+### O ciclo, com file:linha (é isto que estava mal)
+
+| passo | ficheiro:linha | chamada |
+|---|---|---|
+| 1 | `automation.js:2637` (antes do fix) | `agregar()` chama `curaGiroS()` **por regiao** |
+| 2 | `automation.js:1879` | `curaGiroS()` chama `dpsPorHabilidade()` |
+| 3 | `automation.js:2253` | `dpsPorHabilidade()` chama `cdVoraz(...)` por skill |
+| 4 | `automation.js:1934` | `cdVoraz()` chama `killsMinAoVivo()` |
+| 5 | `automation.js:1891` | `killsMinAoVivo()` chama `ritmoMobs()` |
+| 6 | `automation.js:740` | `ritmoMobs()` chama **`agregar()`** ← **FECHA O CICLO** |
+
+Porque e' que os `try/catch` do caminho **nao** salvaram: o `RangeError` de pilha era **engolido** e a
+recursao **recomecava** em cada nivel — em vez de um erro visivel, um bloqueio eterno. Foi por isso que
+o CPU ficava baixo e parecia "o jogo pendurado".
+
+### Porque era so' com a conta dele (e nao numa aba deslogada)
+
+O ciclo **so' se forma quando as duas condicoes existem**: um campeao com **giro/cura** (`curaGiroDe().tem`,
+i.e. a Katarina) **e** a **Voracidade** por abate (`voracidadeDe()`). Deslogado nao ha build -> o
+`agregar()` nao entra no `curaGiroS` -> nao ha ciclo. As observacoes antigas ("com token congela,
+sem token corre") explicam-se por isto, **nao** por um bug do servidor com a conta.
+
+### O que ficou corrigido (a prova esta' no proprio banco)
+
+- `automation.js`: **guarda de re-entrancia** no `agregar()` (devolve o ULTIMO resultado a quem
+  re-entra; nunca recomputa) + segunda porta no `ritmoMobs()`. `curaGiroS()` saiu de dentro do `.map`
+  (nao depende da regiao).
+- Banco: suite **`w1-guardas`** (`tools/testes/regiao.test.mjs`), com o **kit vivo** da Katarina
+  (`docs/game-src/kit-katarina-vivo.json`, REGRA Nº 3) e o arsenal real no DOM. 10 checks, `rc=0`.
+- **Prova por mutacao**: desligar a guarda (`if (false && _agregarEmCurso)`) faz a suite **nao terminar
+  em 45 s** — a mesma assinatura do congelamento ao vivo. Com a guarda: `0/16 bloqueios` na pagina.
+
+### A licao (e a regra que fica)
+
+**O `Debugger.pause` e' a sonda que faltava.** Todas as conclusoes anteriores ("e do jogo", "e a VPN")
+vieram de **correlacao** (com token vs sem token; aba viva vs muda) — nunca da leitura da pilha. Um
+*ciclo de chamadas* entre funcoes de analise (agregar <-> medicao ao vivo) e' **invisivel** a favor de
+"o jogo travou": ve-se a pagina muda e conclui-se mal. Antes de acusar o jogo, **leia a pilha**. E note-se
+que o `try/catch` que existia (comentado como proteccao, `automation.js:740`) era o que **escondia** o
+defeito.
+
+
 ### TEORIAS MINHAS REFUTADAS (registadas para nao se repetirem)
 - Pasta `Local Storage/Local Storage` (18 MB): removida do perfil do dono e o jogo continuou a travar.
 - Extensao VPN VeePN a bloquear o `pulso.js`: copia SEM a VPN travou igual e nem pediu o pulso.js.
@@ -698,3 +767,49 @@ Se o jogo bloqueia a thread principal a espera do primeiro sinal do Worker (por 
 1. Ver se o arranque bloqueia a thread a espera do Worker (`Atomics.wait` / espera sincrona).
 2. Se sim, **nunca bloquear a thread principal a espera de um Worker** — usar `onmessage` assincrono.
 3. E investigar por que o pedido de `js/pulso.js` fica pendente so com conta iniciada.
+## CORRECÇÃO (2026-10-18, noite) — o erro de CSP é NOSSO, e tem causa concreta
+
+**O erro que o dono viu ("Evaluating a string as JavaScript violates ... 'unsafe-eval' ... blocked")
+foi REPRODUZIDO num perfil Chrome NOVO, com APENAS esta extensão carregada, DESLOGADO, em
+`https://lolidle.com/`.** Logo não é de outra extensão, não é do perfil do dono, não é do relay.
+
+### Fonte exacta (capturada por `Log.entryAdded` com url + stack)
+```
+url: chrome-extension://pbdlekcgmpippamdkgbaphcppjafobjo/automation.js line: 8326
+stack: every @ automation.js:8326:41 <- (anon) @ 8331/8332/8333 <- (anon) @ 8388
+```
+10 ocorrências = 10 chamadas (as 10 do bloco de arranque).
+
+### A causa
+`automation.js:8327` define `const every = (ms, fn) => setInterval(fn, ms)` mas o bloco de arranque
+chama `every(loop, 3000)`, `every(accumulate, 1000)`, … — ou seja **(fn, ms)**. Resultado:
+`setInterval(3000, loop)`: o 1.º argumento é um NÚMERO, o browser converte-o em string e tenta
+AVALIÁ-LO como JavaScript. O mundo isolado da extensão tem CSP sem `'unsafe-eval'` -> bloqueado.
+**E a callback real nunca corria: todos os timers do arranque estavam MORTOS.**
+
+**Prova do "mortos" (A/B, mesma extensão, perfil novo, 26 s):**
+
+| variante | chaves em `chrome.storage.local` |
+|---|---|
+| `every` antigo `(ms, fn)` | só `:meta` -> o timer de 15 s (AGG_KEY) NÃO correu |
+| `every` corrigido (aceita as duas ordens) | `:meta` + `:agregado` -> o timer correu |
+
+### O UUID da CSP NÃO é de uma extensão
+`chrome-extension://<uuid>/` no directive é a origem SINTÉTICA que o Chrome dá ao mundo isolado do
+content script, e é **aleatória por perfil**: dono `47066ccb-…`, laboratório `bc0ac5c8-…`,
+medições antigas `d167b952-…`/`09bc4ccc-…`. A conclusão anterior ("fomos nós que pusemos lá")
+está errada: aquilo é do Chrome, não nosso. O servidor continua a mandar só
+`content-security-policy-report-only`.
+
+### O que ISTO NÃO prova
+Com a extensão (mesmo a quebrada) num perfil novo DESLOGADO, a página ficou **20/20 viva** (1–4 ms).
+O bug NÃO congela sozinho; cada timer dispara UMA vez (10 erros em 14 s, não é tempestade). O
+congelamento continua dependente do estado LOGADO — e esse teste não se pode fazer sem a conta do dono.
+
+### Correção
+`automation.js`: `every` passou a aceitar as duas ordens (`typeof a === 'function'` decide quem é
+a callback). `node --check` ok; banco 0 falhas (UNSTUBBED 0); no perfil de laboratório o erro de CSP
+desapareceu (0 ocorrências) e o timer de 15 s passou a escrever `:agregado`.
+
+Ferramentas desta prova (fora do repo, em `G:\Temp\opencode`): `lab-test.mjs`, `lab-csp.mjs`,
+`lab-ext-check.mjs`. Perfis de laboratório: `lab-chrome`/`lab-chrome2` (fechados).

@@ -11,7 +11,9 @@
  * CONTRATO: t.check(rotulo, condicao) so passa com condicao === true (nao ha truthy solto).
  */
 
-import { criarMundo, carregarAutomation, alimentarCatalogo, definirCampeao, alimentarMeta } from './dom-stub.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { criarMundo, carregarAutomation, alimentarCatalogo, definirCampeao, alimentarMeta, RAIZ } from './dom-stub.mjs';
 
 export const suite = {
   nome: 'regiao',
@@ -47,6 +49,92 @@ export const suite = {
     /* ---- R4: entrada invalida nao pode ganhar a escolha da regiao. */
     t.check('R4: entrada nula pontua -Infinity (nunca e escolhida)', auto.scoreRegiao(null, 'xp') === -Infinity);
   },
+};
+
+/* ====================================================================================== *
+ * E — GUARDA DE RE-ENTRANCIA (2026-10-18). O JOGO CONGELAVA.
+ *
+ * PORQUE ESTA SUITE EXISTE: com a Katarina (Voracidade + giro) o `renderTudo` da GUI entrava
+ * num CICLO INFINITO de chamadas e o main thread nunca mais respondia — provado ao vivo, no
+ * browser do dono, com `Debugger.pause` (a stack tinha centenas de frames do ciclo repetido).
+ *
+ *   agregar -> curaGiroS -> dpsPorHabilidade -> cdVoraz -> killsMinAoVivo -> ritmoMobs -> agregar
+ *
+ * A guarda corta o ciclo no `agregar` (e no `ritmoMobs`): quem re-entra recebe o ULTIMO
+ * resultado, nunca recomputa. Os contadores contam as re-entradas — so' existem para o banco
+ * poder PROVAR que a guarda existe E que o caminho a atravessa (mutacao: retirar a guarda -> 0).
+ * ====================================================================================== */
+
+/** Kit da Katarina REAL, lido do jogo vivo (REGRA N.o 3: o numero e' LIDO, nunca copiado).
+ *  So' existe o ciclo se o kit tiver a `curaGiro` (D) e as `recarga` (Q/W/E) — e' o que faz
+ *  `curaGiroS` chamar `dpsPorHabilidade` e este chamar `cdVoraz`. */
+function kitKatarinaVivo() {
+  const p = path.join(RAIZ, 'docs/game-src/kit-katarina-vivo.json');
+  const v = JSON.parse(fs.readFileSync(p, 'utf8').replace(/^\/\/.*$/gm, ''));
+  const kit = v && v.kit && v.kit.hab ? v.kit.hab : null;
+  if (!kit) throw new Error('kit-katarina-vivo.json sem .kit.hab: o ciclo nao pode ser exercitado');
+  return kit;
+}
+
+/** Ranks REAIS da Katarina ao nivel 29 (os mesmos do barrafase: o arsenal e' dado por isto). */
+const RANKS_KATARINA = { Q: 10, W: 6, E: 6, R: 3, G: 4, A: 2, F: 1, T: 1 };
+
+/** Mundo com o historico MEDIDO e a Katarina (Voracidade + giro) — as duas condicoes do ciclo. */
+function mundoCongelamento() {
+  const store = {};
+  store['lolidleAutoPotion:farm'] = {
+    cycles: [{
+      region: 'Fosso do Dragao', gold: 3000, xp: 9000, fase: 'mobs', janela: 'jE',
+      mobFase: { startedAt: 0, durMs: 60000, perMin: { gold: 3000, xp: 9000, kills: 30, potions: 0, goldPotion: 0, healSkill: 0, healPotion: 0 }, gold: 3000, xp: 9000, kills: 30 },
+    }],
+    log: [], issues: [], deaths: [],
+  };
+  const m = criarMundo({ storage: store });
+  const auto = carregarAutomation(m);
+  alimentarCatalogo(m);
+  definirCampeao(m, 'katarina', { kit: kitKatarinaVivo(), magia: true });
+  m.montar('#hud-nivel', [m.el({ label: 'hud-nivel', textContent: '29' })]);
+  m.montar('#st-nivel', [m.el({ label: 'st-nivel', textContent: '29' })]);
+  m.montar('#hud-vida-txt', [m.el({ label: 'hud-vida-txt', textContent: '4188 / 4188' })]);
+  // O ARSENAL tem de estar no DOM: o `dpsPorHabilidade` le `#hab-ativas .hab[data-t]` (readSkills).
+  // Sem ele o loop das skills nao corre, o `cdVoraz` nunca e' chamado, e o ciclo nao se forma.
+  m.montar('#hab-ativas .hab[data-t]', Object.keys(RANKS_KATARINA).map((tt) => m.el({
+    tag: 'div', label: 'hab-' + tt, className: 'hab', dataset: { t: tt },
+    textContent: RANKS_KATARINA[tt] + ' / 10',
+  })));
+  alimentarMeta(m, { locais: LOCAIS_W1, monstros: MONSTROS_W1, grupoSpawn: { base: 2, rand: 3 } });
+  return { m, auto };
+}
+
+async function provaGuardas(t) {
+  const { auto } = mundoCongelamento();
+  await new Promise((r) => setTimeout(r, 30));
+  t.check('E: a guarda do agregar esta exposta (agregarReentradas)', typeof auto.agregarReentradas === 'function');
+  t.check('E: a guarda do ritmoMobs esta exposta (ritmoReentradas)', typeof auto.ritmoReentradas === 'function');
+  // A prova dura: SEM a guarda isto e' recursao infinita e o processo NUNCA chega a esta linha.
+  // As duas checagens abaixo provam que o CENARIO e' real (kit vivo com giro + Voracidade):
+  // sem elas, uma configuracao que nao formasse o ciclo passaria sem exercitar nada.
+  const d0 = auto.curaGiroDe();
+  t.check('E: o cenario tem a cura do giro ligada (curaGiroDe().tem)', d0.tem === true);
+  t.check('E: o cenario tem kills/min medidos (a Voracidade entra no cd)', auto.killsMinAoVivo() > 0);
+  const agg = auto.agregar();
+  t.check('E: agregar() COMPLETA com a Katarina (Voracidade + giro) — antes era recursao infinita',
+    Array.isArray(agg));
+  t.check('E: o ciclo foi REALMENTE atravessado (agregar re-entrou >= 1x)', auto.agregarReentradas() >= 1);
+  const ideal = auto.regiaoIdeal();
+  t.check('E: regiaoIdeal() completa (passa pelo mesmo ciclo, nao congela)',
+    ideal === null || typeof ideal === 'string');
+  const rec = auto.recomendar();
+  t.check('E: recomendar() completa (usa agregar + ritmoMobs)',
+    rec === null || typeof rec === 'object');
+  t.check('E: agregar() devolve dados (nao foi esvaziado pela guarda)',
+    Array.isArray(agg) && agg.length >= 1 && !!agg[0].region);
+}
+
+export const suiteE = {
+  nome: 'w1-guardas',
+  titulo: 'Guardas de re-entrancia: o ciclo agregar->curaGiroS->...->ritmoMobs->agregar nao congela o jogo',
+  async run(t) { await provaGuardas(t); },
 };
 
 /* ====================================================================================== *

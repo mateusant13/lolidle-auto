@@ -43,7 +43,7 @@ import { suite as suitew10 } from './w10.test.mjs';
 // W3 (w3-barra) — passivas de estado com contexto de combate (TK-02-05).
 // W3 (w3-barra) — recomendação de pontos de atributo (TK-01-37).
 import { suite as suiteAtributos } from './atributos.test.mjs';
-import { suite as suiteRegiao, suiteW1 } from './regiao.test.mjs';
+import { suite as suiteRegiao, suiteW1, suiteE } from './regiao.test.mjs';
 import { suite as suiteMotorTabelas } from './motor-tabelas.test.mjs';
 import { suite as suiteRegrasMotor } from './regras-motor.test.mjs';
 import { suite as suiteSnapshots } from './snapshots.test.mjs'
@@ -54,6 +54,8 @@ import { suite as suiteChefe } from './chefe.test.mjs';
 import { suite as suiteFiltroBasicos } from './filtrobasicos.test.mjs';
 // W2 (w2-build) — prova de que a build vencedora fica equipada (TK-01-36).
 import { suite as suiteBuildEquipada } from './build-equipada.test.mjs';
+// WATCH DO MERCADO (2026-10-18): deteccao em tempo real por itens e por NOME DE JOGADOR + auto-compra.
+import { suite as suiteMercadoWatch } from './mercado-watch.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -74,7 +76,8 @@ if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 const SUITES = [
   suiteregras, suiteator, suitebarra, suitebarrafase, suiteobjetivo, suiteequip, suiteregiao,
   suitepontos, suiteinterruptores, suitecofre, suitehud, suiteintegracao, suitenumeros, suitescore, suiteplanejar, suiterefinar, suitew10, suiteAtributos,
-  suiteRegiao, suiteW1, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteChefe, suiteFiltroBasicos, suiteBuildEquipada,
+  suiteRegiao, suiteW1, suiteE, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteChefe, suiteFiltroBasicos, suiteBuildEquipada,
+  suiteMercadoWatch,
 ];
 const checks = [];
 const notas = [];
@@ -168,7 +171,10 @@ const sha = crypto.createHash('sha256').update(fs.readFileSync(AUTOMATION_PATH))
 const rc = falhas.length ? 1 : 0;
 
 console.log('LoL Idle - banco de regressao: automation.js REAL em vm com DOM stubado (sem browser/CDP)');
-console.log('FONTE ' + AUTOMATION_REL + '  bytes=' + bytes + '  sha256=' + sha);
+// HONESTIDADE (2026-10-18): imprime o caminho REALMENTE carregado, nao o rotulo fixo. Com
+// LOLIDLE_AUTOMATION=<copia mutada> a linha dizia sempre 'extension/automation.js' e so a sha256
+// provava qual ficheiro correu (um mutante chegou a passar por 'real' a primeira vista).
+console.log('FONTE ' + AUTOMATION_PATH + '  bytes=' + bytes + '  sha256=' + sha);
 const nSuites = visiveis.filter((c) => c.origem === 'suite').length;
 const nHarness = visiveis.length - nSuites;
 console.log('POPULATION ' + visiveis.length + '  (assercoes das suites=' + nSuites + ' + ' + nHarness + ' checagens de integridade do harness)');
