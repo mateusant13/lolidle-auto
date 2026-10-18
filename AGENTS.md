@@ -364,12 +364,10 @@ O que existe, de facto:
 isolada e (b) o número/passos que qualquer um repete. "Está medido" sem o número é opinião.
 
 > **E o travamento? (fechado em 2026-10-18, 23h).** Não era o relay, não era a VPN, não era "o jogo com
-> esta conta". Era **a NOSSA extensão**: um **ciclo de chamadas** no `automation.js`
-> (`agregar → curaGiroS → dpsPorHabilidade → cdVoraz → killsMinAoVivo → ritmoMobs → agregar`) que
-> bloqueava o *main thread*. Provado com `Debugger.pause` + `tools/_sonda-stack.mjs` (a pilha tinha
-> centenas de frames do ciclo repetido). Corrigido com guardas de re-entrância; banco `w1-guardas` e
-> `0/16 bloqueios` ao vivo. Detalhe completo: `docs/travamento-causa-raiz.md` → *CAUSA-RAIZ FINAL*.
-> **Lição:** uma página muda não diz quem a bloqueou — **lê a pilha** antes de acusar o jogo.
+> esta conta". Era **a NOSSA extensão**: um **ciclo de chamadas** no `automation.js` que bloqueava o
+> *main thread*. Provado com `Debugger.pause` (`tools/_sonda-stack.mjs`). **A regra e a receita de
+> diagnóstico completas estão na REGRA Nº 15** — ler a pilha antes de acusar o jogo. Detalhe
+> histórico: `docs/travamento-causa-raiz.md` → *CAUSA-RAIZ FINAL*.
 
 ### 10.5 Repositório: camuflado, sem README, sem descrição
 
@@ -879,3 +877,118 @@ merece ser vista.
 `node tools/recarregar-extensao.mjs reload|activar|desactivar|estado` — passos 1 a 6 numa só chamada
 (REGRA Nº 13). Quem escrever um novo caminho que toque no browser do dono, **passa pela lista acima
 antes**, ou não o escreve.
+
+---
+
+## REGRA Nº 15 — UMA PÁGINA MUDA NÃO DIZ QUEM A BLOQUEOU: **LÊ A PILHA** (2026-10-18)
+
+> Esta regra existe porque o travamento do `lolidle.com` foi mal diagnosticado **três vezes** — sempre
+> por **correlação**, nunca por leitura. Conclusões escritas que caíram: "é do relay" (refutado pelo A/B
+> do dono, §10.4), "é a VPN a interceptar o `pulso.js`", "é do LADO DO JOGO com os dados desta conta".
+> Todas as três eram plausíveis e todas as três eram **falsas**. A causa era **nossa**, e estava à
+> espera de uma pilha que ninguém tinha lido.
+
+### A regra
+
+**Uma página que não responde é um sintoma, não uma acusação.** Antes de dizer "é o jogo", "é o
+Chrome", "é o relay" ou "é a conta", **lê a pilha no instante do bloqueio**. Um `main thread` bloqueado
+não responde a `Runtime.evaluate` — mas isso só diz *que* travou, nunca *quem*.
+
+### Porque é que `Debugger.pause` funciona num loop apertado
+
+Parece que não devia: se a thread está presa, como é que ela atende o CDP? Porque o protocolo não é
+atendido pela thread de JS: o **inspector do V8** injeta uma *interrupção* que o V8 verifica nas
+**arestas de ciclo** do código compilado. Logo `Debugger.pause` **entra mesmo dentro de uma recursão
+infinita** e devolve `Debugger.paused` com a pilha completa. Foi assim que o ciclo apareceu — sem
+adivinhação.
+
+### A receita (2 ficheiros, já prontos)
+
+```
+python I:\!manager\tools\bg-window.py open --url <url> --label sonda   # janela invisível (REGRA 12)
+node tools\_sonda-alvo.mjs   <target_id> 15     # 1. LIVENESS: 0/N bloqueios ou N/N
+node tools\_sonda-stack.mjs  <target_id> 8      # 2. STACK: Debugger.pause + CPU por processo
+python I:\!manager\tools\bg-window.py close --target <target_id>
+```
+
+`_sonda-stack.mjs` faz quatro coisas que a sonda simples não faz: (1) `Debugger.enable` +
+`Debugger.pause` quando a thread deixa de responder → **pilha**; (2) escuta
+`Page.javascriptDialogOpening` (um diálogo modal bloqueia a thread **sem** queimar CPU);
+(3) escuta `Runtime.exceptionThrown` e `Inspector.targetCrashed`; (4) `SystemInfo.getProcessInfo`
+(nível browser, não precisa da thread) para distinguir **loop a queimar CPU** de **thread parada**
+(deadlock/diálogo/frozen). CPU baixa com a thread muda = não é loop a queimar — é pilha a rebentar ou
+thread parada.
+
+### Como se lê o resultado (o caso real)
+
+```
+t=1s BLOQUEADO (2510ms timeout Runtime.evaluate)   x17/18
+Debugger.pause -> Debugger.paused
+  renderTudo -> renderPainel -> renderAuto -> ler -> chamar -> regiaoIdeal
+    -> estimarRegiao -> meuDps -> agregar
+         -> curaGiroS -> dpsPorHabilidade -> cdVoraz -> killsMinAoVivo -> ritmoMobs -> agregar  ⟲
+```
+
+**Centenas de frames do MESMO ciclo.** É um **ciclo de chamadas**, não um `while` — um `grep` por
+`while (`/`for (;;)` **não o encontra** (foi o primeiro erro: procurei loops e não havia nenhum).
+
+### O ciclo, com `file:linha` (números lidos depois do fix, REGRA Nº 1)
+
+| # | âncora | chamada |
+|---|---|---|
+| 1 | `automation.js:2654` | `agregar()` chama `curaGiroS()` (era **dentro do `.map`**, uma por região) |
+| 2 | `automation.js:1890` | `curaGiroS()` chama `dpsPorHabilidade()` |
+| 3 | `automation.js:2253` | `dpsPorHabilidade()` chama `cdVoraz(..., h.t)` por skill |
+| 4 | `automation.js:1934` | `cdVoraz()` chama `killsMinAoVivo()` (e `:1959` no `cdVorazMotor`) |
+| 5 | `automation.js:1902` | `killsMinAoVivo()` chama `ritmoMobs()` |
+| 6 | `automation.js:751` | `ritmoMobs()` chama **`agregar()`** ← **FECHA O CICLO** |
+
+E o `automation.js:2284` dá uma aresta extra (`contextoDeDano` → `killsMinAoVivo`). **O padrão a
+vigiar:** uma função de **AGREGAÇÃO** (lê o histórico e produz o resumo) que chama, pelo caminho, uma
+função de **MEDIÇÃO AO VIVO** — e a medição ao vivo que, para se calibrar, chama a agregação de volta.
+`agregar` ↔ `killsMinAoVivo` é exactamente esse par.
+
+### Porque é que o `try/catch` não salvou (e é o que mais engana)
+
+O `ritmoMobs` tinha `try { ... agregar() ... } catch { /* ignore */ }` com um comentário a dizer que
+assim evitava a recursão. **Evitava uma aresta e ignorava a outra.** Pior: o `catch` **engolia o
+`RangeError`** do estouro da pilha e a recursão **recomeçava** em cada nível. O resultado não é um erro
+visível — é um **bloqueio eterno com CPU baixa**, que se parece exactamente com "o jogo pendurou".
+**Um `catch` que engole o estouro da pilha transforma um bug num mistério.**
+
+### A correcção (o padrão a reutilizar)
+
+**Guarda de re-entrância** na função de agregação — quem re-entra, não recomputa:
+
+```js
+let _agregarEmCurso = false, _agregarUltimo = [], _agregarReentradas = 0;
+function agregar() {
+  if (_agregarEmCurso) { _agregarReentradas++; return _agregarUltimo; }  // automation.js:2618-2625
+  _agregarEmCurso = true;
+  try { _agregarUltimo = _agregarCorpo(); return _agregarUltimo; }
+  finally { _agregarEmCurso = false; }
+}
+```
+
+Segunda porta em `ritmoMobs()` (`automation.js:732-741`, devolve `null` = "sem medida"). E `curaGiroS()`
+**saiu de dentro do `.map`** (`:2654`) — não depende da região, calcular uma vez corta o leque.
+
+### Como isto fica provado (e não "verde")
+
+1. **Ao vivo, com marcador discriminante** (REGRA Nº 4): `tools/_sonda-alvo.mjs` em
+   `https://lolidle.com/jogar` → **`0/25 bloqueios`** (antes: 17/18), com `painel:true` e
+   `pulsoFix:true`.
+2. **Banco, suíte `w1-guardas`** (`tools/testes/regiao.test.mjs`): kit **vivo** da Katarina
+   (`docs/game-src/kit-katarina-vivo.json`, REGRA Nº 3) + arsenal real no DOM. **10 checks, `rc`=0.**
+   Os contadores `agregarReentradas`/`ritmoReentradas` (`:8340-8341`) provam que o ciclo é
+   **realmente atravessado** — sem eles, uma configuração que não formasse o ciclo passaria sem
+   exercitar nada.
+3. **Mutação:** desligar a guarda (`if (false && _agregarEmCurso)`) faz a suíte **não terminar em 45 s**
+   — a mesma assinatura do travamento. **Verde sem mutação não é prova** (REGRA Nº 6).
+
+### A lição, em uma linha
+
+**Correlação diz "acontece junto"; a pilha diz "foi isto".** "Com token trava, deslogado não" era
+verdade e apontava para o lado errado: a diferença real era *ter campeão com giro + Voracidade*, que é
+o que fecha o ciclo. Se uma variável A/B **não nomeia o mecanismo**, o diagnóstico ainda não está feito.
+
