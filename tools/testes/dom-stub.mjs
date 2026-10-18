@@ -116,6 +116,8 @@ export const SELETORES_CONHECIDOS = [
   // (jogo.js:1449 -> cena.andarPara/arena.mandarAndar). Usado por andarParaCima()/subirNaFonte()
   // em automation.js para subir ate a Tesoureira na Fonte. Sem ele aqui, seria UNSTUBBED.
   '#tela',
+  // w3-barra (TK-02-27): o filtro de básicos do jogo (checkbox do HUD, jogo.js:5882-5886)
+  '#ignorar-basicos',
   // ---- HUD lido pela extensao (2026-10-14, frente OBSERVABILIDADE) ----
   // stats que o painel do jogo escreve POR ID (jogo.js:6463-6465): chance de critico,
   // multiplicador de critico e reducao de recarga. A regex por rotulo ('.st') nao os apanha.
@@ -249,6 +251,11 @@ export function criarMundo(opts) {
       title: spec.title || '',
       hidden: !!spec.hidden,
       disabled: !!spec.disabled,
+      // CAIXA de seleção (w3-barra, TK-02-27): `spec.checkbox: true` dá ao elemento um
+      // `.checked` real e o `click()` passa a alterná-lo e a registar o evento `change` —
+      // que é como o jogo funciona (jogo.js:5883) e como a automação tem de clicar.
+      checked: !!spec.checkbox ? !!spec.checked : undefined,
+      _checkbox: !!spec.checkbox,
       value: spec.value != null ? String(spec.value) : '',
       children: spec.children || [],
       parentNode: null,
@@ -285,7 +292,14 @@ export function criarMundo(opts) {
     };
     el.matches = () => false;
     el.contains = () => false;
-    el.click = () => { estado.clicks.push(el.label); return true; };
+    el.click = () => {
+      estado.clicks.push(el.label);
+      if (el._checkbox) {
+        el.checked = !el.checked;                       // o browser alterna a caixa...
+        estado.eventos.push({ label: el.label, tipo: 'change', button: 0, clientX: 0, clientY: 0 });   // ...e dispara o change
+      }
+      return true;
+    };
     // EVENTOS registados (2026-10-14): antes eram descartados e nao havia como provar ONDE o
     // automation.js clicou no canvas #tela (andarParaCima/subirNaFonte). Registar nao muda nada
     // para quem so quer o "true" de volta.

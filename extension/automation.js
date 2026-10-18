@@ -378,6 +378,46 @@
    *  Uso: ordenação (quanto maior, melhor). QUALIDADE DESCONHECIDA ('?') = 1 (sem multiplicador). */
   const tierDe = (i) => (1 + BONUS_REFINO * (i.refino || 0)) * (QUAL_MULT[String(i.qual || 'B').toUpperCase()] || 1);
 
+  /** FOLHAS DE RECEITA que ainda faltam para montar a build (B do critério do filtro).
+   *  TK-02-27 / parte-02.md:1302-1303: "B = folhas das receitas que ainda vais montar;
+   *  B=0 → clicar". No plano COMPRAR PRONTO (cfg.autoComprar — comprar o item montado em
+   *  vez de o montar) não há receita a montar: B=0 desde o abate 1 → clicar já.
+   *  A expansão das receitas é a do `basicosDaBuild` (catálogo do motor, `de` de cada item);
+   *  o que já tenho na mochila sai da conta. */
+  function folhasDeReceitaFaltando() {
+    if (cfg.autoComprar) return 0;               // plano comprar pronto: nada a montar
+    try {
+      const nec = basicosDaBuild(META.champAtual);
+      const tenho = {};
+      const bag = scanBag(true);          // força a releitura: a mochila muda entre abates
+      for (const i of ((bag && bag.items) || [])) {
+        if (i.kind !== 'item' || !i.base) continue;
+        tenho[String(i.base)] = (tenho[String(i.base)] || 0) + 1;
+      }
+      let faltam = 0;
+      for (const id of Object.keys(nec)) faltam += Math.max(0, nec[id] - (tenho[id] || 0));
+      return faltam;
+    } catch { return 0; }
+  }
+  /** CLICA no filtro de básicos do jogo quando o critério B dá 0 (TK-02-27).
+   *  MECÂNICA LIDA (não adivinhada): o ÚNICO writer do estado é o listener de `change`
+   *  do jogo (jogo.js:5883-5886) — escrever `.checked` NÃO actualiza `estado.ignorarBasicos`.
+   *  Logo: CLICAR (o browser dispara o change sozinho) e NUNCA escrever `.checked`.
+   *  Efeito de ligar, lido no motor: motor.js:1794 `if (estado.ignorarBasicos &&
+   *  raridade(infoItem(id)) === 'basico') continue;` — o básico é descartado DEPOIS do
+   *  sorteio (não mexe em espólios/gemas/ouro/XP e corta também o básico de chefe).
+   *  Verificação (a do próprio jogo): `document.querySelector('#ignorar-basicos').checked`. */
+  async function clicarIgnorarBasicos() {
+    const el = document.querySelector('#ignorar-basicos');
+    if (!el) return { ok: false, motivo: 'sem checkbox no ecra' };
+    if (el.checked) return { ok: false, motivo: 'ja ligado' };
+    const B = folhasDeReceitaFaltando();
+    if (B > 0) return { ok: false, motivo: 'faltam folhas de receita', B };
+    el.click();                                   // dispara o change do jogo — nunca .checked
+    const ligou = !!el.checked;
+    logEvent('filtro-basicos', { B, clicado: true, ligou });
+    return { ok: true, B, ligou };
+  }
   /** BÁSICOS necessários p/ montar a build ideal (expande `de` recursivamente até a folha). */
   function basicosDaBuild(champ) {
     const byId = new Map((META.itens || []).map((i) => [String(i.id), i]));
@@ -5791,14 +5831,16 @@ const CFG_VER = 1;
       return essenciais.includes(String(e.base));
     });
     // OBSERVABILIDADE: TODAS as saidas (inclusive as de falha) levam o diagnostico.
-    const diag = { essenciais, fonteEssenciais, medido, divergenciaMedido };
+    const diag = { alvos: alvos.map((a) => a.base), essenciais, fonteEssenciais, medido, divergenciaMedido };
     // O DIAG TEM DE SAIR: sem `...diag` o `medido`/`divergenciaMedido` nunca chegavam ao teste (e a
     // observabilidade que o dono pede ficava a zero). Era o defeito do R0/R2 do refinar.test.mjs.
     if (!alvos.length) return { ok: true, refinados: [], motivo: 'nenhum item ESSENCIAL da build, LENDARIO A+ abaixo de +' + ((cfg.refinoMax != null ? cfg.refinoMax : 2)), ...diag };
     fecharJanelas(); await humano(300);
-    if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn' };
+    // os ALVOS e a lista de essenciais viajam em TODOS os retornos: quem chamou tem de ver
+    // O QUE ia ser refinado e PORQUÊ, mesmo quando o passo falha (é o log do dono).
+    if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn', ...diag };
     const bt = await waitFor('#janela-npc [data-palavra="forjar"]', 4000);
-    if (!bt) return { ok: false, motivo: 'sem opcao forjar' };
+    if (!bt) return { ok: false, motivo: 'sem opcao forjar', ...diag };
     bt.click(); await humano(650);
     const feitos = [];
     for (const e of alvos) {
@@ -7143,6 +7185,15 @@ const CFG_VER = 1;
     return { fase, dificil, usarUlt: true, temUlt, vagas, ritmo: ritmoMobs(), antes, desejadas, mudou, aplicado };
   }
 
+  let _filtroBasicosAt = 0;   // throttle do filtro de básicos (TK-02-27)
+  /** Actor do filtro de básicos (TK-02-27): clica em `#ignorar-basicos` quando o critério B
+   *  (folhas de receita ainda necessárias) dá 0. Manutenção, não auto-play: é a mochila. */
+  async function checarFiltroBasicos() {
+    if (!podeFazer('manutencao').pode || pausado) return;
+    if (Date.now() - _filtroBasicosAt < 30000) return;      // 30 s: o critério muda devagar
+    _filtroBasicosAt = Date.now();
+    try { await clicarIgnorarBasicos(); } catch { /* ignore */ }
+  }
   let _rotBusy = false;
   let _ultimaRotacao = 0;      // cadência própria da barra (ver `cfg.barraCadenciaMs`)
   async function checarRotacao() {
@@ -7730,6 +7781,7 @@ const CFG_VER = 1;
     try { supervisarBase(); feito.push('supervisarBase'); } catch (e) { logIssue('tick:base', { erro: String(e) }); }
     try { checarPocoes(); feito.push('checarPocoes'); } catch (e) { logIssue('tick:pocoes', { erro: String(e) }); }
     try { checarRotacao(); feito.push('checarRotacao'); } catch (e) { logIssue('tick:rotacao', { erro: String(e) }); }
+    try { checarFiltroBasicos().catch(() => { /* ignore */ }); feito.push('checarFiltroBasicos'); } catch (e) { logIssue('tick:filtro-basicos', { erro: String(e) }); }
     try { checarItens().catch(() => { /* ignore */ }); feito.push('checarItens'); } catch (e) { logIssue('tick:itens', { erro: String(e) }); }
     if (teste && !pausado) { try { passoTeste().catch(() => { /* ignore */ }); feito.push('passoTeste'); } catch (e) { /* ignore */ } }
     return { feito, at: _ultimoTick };
@@ -8011,7 +8063,7 @@ const CFG_VER = 1;
     return cfg;
   }
 
-  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
+  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
     podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
@@ -8053,6 +8105,7 @@ const CFG_VER = 1;
   every(() => { if (teste && !pausado) passoTeste().catch(() => { /* ignore */ }); }, 1000);   // mob exato (1 s)
   every(accumulate, 1000);
   every(checarRotacao, 2000);
+  every(() => { checarFiltroBasicos().catch(() => { /* ignore */ }); }, 30000);
   every(supervisarBase, 5000);
   every(checarPocoes, 5000);
   every(() => { checarItens().catch(() => { /* ignore */ }); }, 5000);

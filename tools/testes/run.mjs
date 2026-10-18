@@ -50,6 +50,10 @@ import { suite as suiteSnapshots } from './snapshots.test.mjs'
 import { suite as suiteFuga } from './fuga.test.mjs';
 // W3 (w3-barra) — integração com o inject.js (TK-INT-01).
 import { suite as suiteChefe } from './chefe.test.mjs';
+// W3 (w3-barra) — filtro de básicos (TK-02-27).
+import { suite as suiteFiltroBasicos } from './filtrobasicos.test.mjs';
+// W2 (w2-build) — prova de que a build vencedora fica equipada (TK-01-36).
+import { suite as suiteBuildEquipada } from './build-equipada.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -70,7 +74,7 @@ if (iF >= 0) filtro = String(argv[iF + 1] || '').toLowerCase();
 const SUITES = [
   suiteregras, suiteator, suitebarra, suitebarrafase, suiteobjetivo, suiteequip, suiteregiao,
   suitepontos, suiteinterruptores, suitecofre, suitehud, suiteintegracao, suitenumeros, suitescore, suiteplanejar, suiterefinar, suitew10, suiteAtributos,
-  suiteRegiao, suiteW1, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteChefe,
+  suiteRegiao, suiteW1, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteChefe, suiteFiltroBasicos, suiteBuildEquipada,
 ];
 const checks = [];
 const notas = [];

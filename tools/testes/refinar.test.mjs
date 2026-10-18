@@ -94,6 +94,14 @@ export const suite = {
     t.check('R3: e os itens NAO medidos da teorica deixam de ser essenciais',
       ['2001', '2004'].every((b) => (r3.essenciais || []).indexOf(b) < 0));
     t.check('R3: o refino corre na Fonte e devolve o que fez', r3.ok === true && Array.isArray(r3.refinados));
+    // w2-build (TK-01-36 / observabilidade): os ALVOS viajam no retorno em QUALQUER saida.
+    // NOTA (limite do fixture, medido): o catalogo do stub NAO tem os ids da lista MEDIDA
+    // (3089/3001..3004), logo o gate do M6 (`META.itens.raridade==='lendario'`, motor-driven)
+    // recusa todos e `alvos` sai vazio aqui. O que esta assercao prova e a PROPAGACAO:
+    // o campo existe em TODAS as saidas (aqui, a de "nenhum alvo") e e subconjunto dos essenciais.
+    t.check('R3: os ALVOS viajam no retorno (array em todas as saidas; nenhum alvo fora dos essenciais)',
+      Array.isArray(r3.alvos) && r3.alvos.every((b) => (r3.essenciais || []).indexOf(b) >= 0),
+      'alvos=' + JSON.stringify(r3.alvos));
 
     t.check('Z: nenhum seletor desconhecido foi usado (stub honesto)', m.unstubbed().length === 0);
   },
