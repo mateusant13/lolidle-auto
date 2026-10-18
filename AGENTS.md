@@ -234,3 +234,127 @@ No `dsh`, a costura existe: o backend `fork` semeia o filho com **todas as ronda
 
 **5. O objectivo manda.** Sobrou ticket P0/P1 sem dono? A frente não está fechada. O dono deu um
 objectivo e uma hora: hoje, antes da meia-noite, esta extensão fica **SOLVED** — não "quase".
+
+---
+
+## REGRA Nº 9 — NÃO MEXER NO CHROME DO DONO (o incidente de 2026-10-18)
+
+**O que aconteceu, sem eufemismo:** para ligar o debug remoto no perfil real do dono, criei um atalho
+de diretório (`C:\chrome-perfil-dono` → `...\Chrome\User Data` real) e assumi que o Chrome o trataria
+como o mesmo perfil. Não trata. O Chrome amarra sessão, `Secure Preferences`, extensões e tokens ao
+**caminho resolvido do perfil**. Resultado: login Google invalidado, extensões marcadas como estranhas
+e, ao correr com `--disable-extensions` nesse caminho alternativo, **os binários das extensões foram
+apagados** da pasta `Default\Extensions`. Os dados ficaram (histórico, senhas, `Local Extension
+Settings`, IndexedDB), mas sem os binários e sem login o Chrome não reconstrói sozinho. A forcelist no
+registro (`ExtensionInstallForcelist`) listou as 25 extensões mas **não substitui sync nem login**. No meio
+disto ainda desinstalei o VeePN (`majdfhpaihoncoakbjgbdhglocklcgno`) a pedido do dono, com backup em
+`I:\!lolidle.com\.veepn-backup-20261018`. O Chrome do dono teve de ser relançado várias vezes e ele
+ficou deslogado, com o browser "resetado". Foi erro meu, não do jogo.
+
+### Proibido, salvo ordem explícita do dono
+
+- **Nunca abrir o perfil do dono por caminho diferente**: sem junction, sem symlink, sem cópia com
+  escrita, sem `--user-data-dir` a apontar (ainda que por alias) para o `User Data` real. Caminho
+  diferente = identidade diferente = sessão e `Secure Preferences` invalidados.
+- **Nunca `--disable-extensions` no perfil do dono.** Apaga binários de `Default\Extensions`.
+  Teste de extensão faz-se num **perfil de laboratório separado**, nunca no perfil real.
+- **Nunca editar/criar**: `HKCU\Software\Google\Chrome\Extensions`,
+  `HKCU\Software\Policies\Google\Chrome\ExtensionInstallForcelist`, `Preferences`,
+  `Secure Preferences`, `Local State`, `Sessions`, `Login Data`, `Cookies`, `History` do perfil real.
+  Estas escritas não substituem login/sync e deixam rasto.
+- **Nunca `--remote-debugging-port` no browser do dono.** Desde o Chrome 136+, debug remoto no
+  diretório-padrão é bloqueado/instável (`/json` dá 404, o WebSocket entrelaça-se). Se for preciso CDP,
+  usa-se um Chrome de laboratório com perfil próprio e porta própria — **sem tocar no browser do dono**.
+- **Login Google e sync são do dono, sempre.** Nenhum script reloga, reativa sync ou rebaixa extensões
+da Web Store. Se o browser ficar deslogado por culpa do agente, diz-se isso por extenso e entrega-se
+o browser limpo: processo normal, sem flags, sem alias, sem policies.
+
+### Se o dono autorizar reiniciar o Chrome dele
+
+1. Levantar estado só a ler (processo, janela, `EXT_DIRS`, policies) — sem mexer.
+2. **Um reinício de cada vez**, com fecho gracioso (`CloseMainWindow`) antes de forçar.
+3. Relançar **normal**: sem `--user-data-dir`, sem debug, com `--restore-last-session` mais
+   `http://127.0.0.1:3080/` (o chat com o dono reabre-se sempre).
+4. Verificar: janela visível e a responder, extensões e login intactos. Se algo se perdeu, **parar
+   e dizer** — não "compensar" com registro, forcelist ou reinstalação forçada.
+5. Diagnóstico no browser do dono é **só leitura de ficheiros**; experiência ativa faz-se no laboratório.
+
+**Lição de uma linha:** o perfil do dono não é bancada de testes. Bancada é perfil separado; perfil
+real toca-se o mínimo, com backup antes e verdade depois.
+
+---
+
+## REGRA Nº 10 — INSTALAR E VERIFICAR A EXTENSÃO (UIA) E O RELAY (2026-10-18)
+
+### 10.1 Instalar/recarregar no perfil REAL sem porta de debug
+
+`install/instalar-extensao-uia.ps1` (copiado do VOD.RIP — `backend/scripts/cookie_extension_auto_install.ps1`,
+a fonte é `docs/instalar-extensao-uia.md`). Faz **exactamente o fluxo manual**, por UI Automation:
+
+1. Abre uma janela `--new-window` **alpha-0** (invisível, mas ON-SCREEN — off-screen o Chrome trata como
+   ocluída e o WebUI não expõe nós ao UIA).
+2. Navega até `chrome://extensions` pelo omnibox (UIA `SetValue` + Enter **postado**; o Chrome 151+
+   deixa cair `chrome://` da linha de comandos).
+3. Liga o dev mode (`devMode`) e clica **Carregar sem compactação** (`loadUnpacked`).
+4. Conduz o picker de pasta (`ValuePattern.SetValue` no edit `1152`/`Pasta:` + `Invoke` em
+   `Selecionar pasta`).
+5. **Verifica pelo PERFIL**, não pela página: lê `Secure Preferences` → `extensions.settings` e procura
+   uma entrada cujo `path` == a pasta.
+6. Fecha a janela que criou. Zero roubo de foco, zero teclado no foreground.
+
+```
+powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File install\instalar-extensao-uia.ps1 \
+  -ExtensionDir "I:\!lolidle.com\extension" -Browser chrome
+```
+
+**Dois defeitos corrigidos aqui (2026-10-18), e valem para a próxima vez:**
+- O hook de WinEvent instalado antes do spawn apanha às vezes uma **janela transitória de título vazio**;
+  aceitá-la faz o `DrivePicker` devolver `DIALOG_GONE` **sem nunca procurar o picker verdadeiro**. O
+  handle só é aceite se **parecer mesmo o picker** (título não-vazio a casar `Selecionar o diretório`/
+  `Selecionar pasta`/`Select Folder`). Sem isto, a instalação falha em silêncio.
+- `-KeepWindow` foi acrescentado para deixar a janela aberta e poder inspeccionar a página quando falha.
+
+**Prova (2026-10-18):** instalou `I:\!lolidle.com\extension` → `{"ok":true,"extension_id":"pbdlekcgmpippamdkgbaphcppjafobjo","installed":true}`
+e confirmado em `Secure Preferences` (`location:4`, `disable_reasons:[]`). Instalou também o prelude do
+relay (`jdphdacdpdgbfdcolnnlangmpfajejno`).
+
+### 10.2 Porque NÃO se usa porta de debug no perfil real
+
+Fonte primária (`developer.chrome.com/blog/remote-debugging-port`, 2025-03-17, Will Harris): desde o
+Chrome 136 `--remote-debugging-port`/`--remote-debugging-pipe` **"will no longer be respected if
+attempting to debug the default Chrome data directory"** — obriga a `--user-data-dir` **não-padrão**.
+**Medido neste PC (2026-10-18):** com `--user-data-dir` a apontar para o caminho real, a porta 9222 fica
+à escuta mas `/json/version` dá **404** e o WebSocket **expira**. Não é configuração: é bloqueio por
+desenho. Não insistir, não reiniciar o browser do dono por isto.
+
+### 10.3 Prova AO VIVO sem tocar no perfil do dono
+
+Perfil de **laboratório** (dir próprio, porta própria) → a porta de debug funciona porque o dir é
+não-padrão → `Extensions.loadUnpacked` instala a mesma pasta → carregar a página → ler o marcador.
+Receita pronta: `node tools/_prova-lab.mjs`.
+
+**Prova (2026-10-18):** no mundo isolado da extensão, `folhasDeReceitaFaltando` e `clicarIgnorarBasicos`
+— funções que **só existem no código novo** — devolveram `function`. É o marcador discriminante da
+Regra Nº 4, sem relay e sem tocar no perfil real.
+
+### 10.4 O RELAY CONGELA O JOGO — e isto está medido
+
+`JOGAR-SEM-RELAY.cmd` (escrito antes desta sessão) já o dizia: *"o relay (omp browser-relay) e a causa
+do travamento (biseccao: mesmo perfil, mesmas 58 extensoes, mesmo Chrome 155 -> sem relay NAO trava;
+com relay trava a t=4s)"*. **Reconfirmado 2026-10-18:** com o relay ligado (`omp ... relay serve -p 9224`),
+a aba do jogo queimava um core inteiro e o CDP expirava; morto o relay (porta 9224 fechada) e aberta
+aba nova → **nenhum renderer a queimar** e o jogo voltou.
+
+Consequências práticas:
+- **O relay não é gratuito.** Usar só quando é preciso conduzir o browser do dono, e saber que o jogo
+  congela enquanto ele estiver de pé. **Matar o relay antes de carregar o jogo.**
+- O relay precisa do prelude instalado (`omp browser-relay install` escreve em
+  `~/.omp/browser-relay/extension`; instalar com o script de 10.1). Sem prelude, `/json` em 9224 dá 503.
+- Helpers: `tools/_reload-lolidle.mjs`, `tools/_prova-live.mjs` (falam com 9224).
+
+### 10.5 Repositório: camuflado, sem README, sem descrição
+
+**Ordem do dono (2026-10-18):** o repo público fica com **nome camuflado**, **sem README** e **sem
+descrição** (*"nao precisa de descricao nem nada, nao queremos seo"*). Estado actual:
+`github.com/mateusant13/web-ext-utils` (público, sem README, sem descrição, sem topics).
+**Não acrescentar README nem descrição. Não fazer SEO.**
