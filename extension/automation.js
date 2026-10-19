@@ -4462,16 +4462,20 @@ const CFG_VER = 2;
     const abriu = await abrirCofreTesoureira();
     if (!abriu || !abriu.ok) return { ok: false, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
     const base = String(alvo && alvo.base != null ? alvo.base : '').replace(/[+~].*$/, '');
-    const qual = alvo && alvo.qual ? String(alvo.qual).toUpperCase() : null;
-    const refino = alvo && alvo.refino ? +alvo.refino : 0;
+    // TRIPLA EXACTA — sem wildcards: refino 0 casa só o +0, qual null casa só o sem qualidade.
+    const qual = alvo && alvo.qual != null ? String(alvo.qual).toUpperCase() : '';
+    const refino = alvo && alvo.refino != null ? +alvo.refino : 0;
     const lido = lerCofreSlots().find((s) =>
       String(s.base || '') === base &&
-      (qual == null || String(s.qual || '').toUpperCase() === qual) &&
-      (refino === 0 || (s.refino || 0) === refino) &&
+      String(s.qual || '').toUpperCase() === qual &&
+      (s.refino || 0) === refino &&
       (s.acao === 'retirar' || s.acao === 'sacar'));
     if (!lido) return { ok: false, motivo: 'sem slot de ' + base + (qual ? ' ' + qual : '') + ' no cofre' };
+    // O DOM tem a MESMA classe .cofre-slot e o MESMO data-k na mochila (guardar) e no cofre
+    // (retirar) — jogo.js:5633-5634. Filtrar por acao para nunca clicar no slot da mochila.
     const slot = [...document.querySelectorAll('.cofre-slot[data-k]')]
-      .find((s) => String(s.dataset.k) === String(lido.k));
+      .find((s) => String(s.dataset.k) === String(lido.k)
+        && (s.dataset.cofre === 'retirar' || s.dataset.cofre === 'sacar'));
     if (!slot) return { ok: false, motivo: 'sem slot ' + lido.k + ' no cofre' };
     const antes = ((scanBag(true) || {}).items || []).length;
     slot.click();

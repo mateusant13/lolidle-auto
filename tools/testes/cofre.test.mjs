@@ -70,6 +70,37 @@ function montarGradeCofre(m, slots) { return m.montar('.cofre-slot[data-k]', slo
  *  item à mochila e re-renderiza os restantes com os novos índices. Se `semSaque` for true,
  *  o clique não remove nem adiciona (simula mochila cheia / servidor recusou). O label é
  *  estável por spec (base~qual) para as asserções poderem procurar o slot certo. */
+/** Monta o #npc-troca como o jogo (jogo.js:5605-5638): a mochila (guardar) e o cofre
+ *  (retirar) usam a MESMA classe .cofre-slot e o MESMO data-k (indice do array de cada lado).
+ *  O clique no slot da mochila regista 'guardar'; o do cofre adiciona o item a mochila. */
+function montarNpcTroca(m, mochilaSpecs, cofreSpecs) {
+  const mochila = mochilaSpecs.map((s, i) => {
+    const img = m.el({ tag: 'img', label: 'troca-img-m:' + i, attrs: { src: 'assets/img/itens/' + s.base + '.png' } });
+    const el = m.el({
+      tag: 'button', label: 'troca-mochila:' + s.base + '~' + s.qual, className: 'cofre-slot r-' + (s.rar || 'basico'),
+      dataset: { k: String(i), nome: s.nome, cofre: 'guardar', id: s.base + '~' + s.qual, dica: s.dica || '' },
+      find: { img: [img] },
+    });
+    el.click = () => { m.estado.clicks.push(el.label); return true; };
+    return el;
+  });
+  const cofre = cofreSpecs.map((s, i) => {
+    const img = m.el({ tag: 'img', label: 'troca-img-c:' + i, attrs: { src: s.refino ? 'assets/img/itens/ref/' + s.base + '-' + s.refino + '.png' : 'assets/img/itens/' + s.base + '.png' } });
+    const el = m.el({
+      tag: 'button', label: 'troca-cofre:' + s.base + '~' + (s.qual || 'C') + '+' + (s.refino || 0), className: 'cofre-slot r-' + (s.rar || 'basico'),
+      dataset: { k: String(i), nome: s.nome, cofre: 'retirar', id: s.base + '~' + (s.qual || 'C'), dica: s.dica || '' },
+      find: { img: [img] },
+    });
+    el.click = () => {
+      m.estado.clicks.push(el.label);
+      const mo = m.estado.montados.get('#mochila')[0];
+      if (mo) mo.children.push(m.el({ tag: 'button', label: 'mochila:' + el.dataset.id, className: 'slot ' + (s.rar || 'basico'), attrs: { 'data-id': el.dataset.id, 'data-dica': el.dataset.dica || '' } }));
+      return true;
+    };
+    return el;
+  });
+  m.montar('.cofre-slot[data-k]', [...mochila, ...cofre]);
+}
 function montarGradeCofreMotor(m, specs, opts) {
   opts = opts || {};
   let vivos = specs.slice();
@@ -402,6 +433,50 @@ export const suite = {
         cofreFinal.length === 1 && cofreFinal[0].dataset.k === '0' && cofreFinal[0].dataset.nome === 'Lendario Fraco [S]');
       const ev = (auto.getFarm().log || []).find((e) => e.type === 'cofre' && e.acao === 'vender-lixo');
       t.check('C14: logEvent cofre/vender-lixo com 3 vendidos', !!ev && ev.vendidos.join(',') === '1005,4001,4002');
+    }
+
+    /* ============ C14a — DOM filtrado por acao: mochila e cofre com o MESMO data-k ======== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      montarMochila(m, []);
+      // A mochila (guardar) e o cofre (retirar) usam a MESMA classe .cofre-slot e o MESMO
+      // data-k (jogo.js:5627/5634). O sacarSlotDoCofre tem de clicar no do COFRE, nunca no
+      // da mochila — sem o filtro de acao no find do DOM, o primeiro k=0 (mochila) ganha.
+      montarNpcTroca(m,
+        [{ base: '1001', qual: 'C', nome: 'Espada Longa [C]', rar: 'basico', dica: 'Espada Longa (basico)' }],
+        [{ base: '1005', qual: 'C', nome: 'Adaga Inutil [C]', rar: 'basico', dica: 'Adaga Inutil (basico)' }]);
+      const r = await auto.sacarSlotDoCofre({ base: '1005', qual: 'C', refino: 0 });
+      const clicks = m.estado.clicks;
+      t.check('C14a: sacarSlotDoCofre correu', r.ok === true);
+      t.check('C14a: clicou no slot do COFRE (retirar)', clicks.indexOf('troca-cofre:1005~C+0') >= 0);
+      t.check('C14a: NUNCA clicou no slot da mochila (guardar)', clicks.indexOf('troca-mochila:1001~C') < 0);
+      t.check('C14a: o item entrou na mochila', m.estado.montados.get('#mochila')[0].children.length === 1);
+    }
+
+    /* ============ C14b — sem wildcard de refino: o +0 e lixo, o +2 fica ================== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      montarMochila(m, []);
+      // cofre com 1005+2 (melhor copia, PROTEGIDA) e 1005+0 (lixo). O alvo e o +0. Com o
+      // wildcard (refino===0 aceita qualquer refino), o find apanhava o +2 primeiro.
+      montarNpcTroca(m, [], [
+        { base: '1005', qual: 'C', refino: 2, nome: 'Adaga Inutil +2 [C]', rar: 'basico', dica: 'Adaga Inutil +2 (basico)' },
+        { base: '1005', qual: 'C', refino: 0, nome: 'Adaga Inutil [C]', rar: 'basico', dica: 'Adaga Inutil (basico)' },
+      ]);
+      const r = await auto.sacarSlotDoCofre({ base: '1005', qual: 'C', refino: 0 });
+      const clicks = m.estado.clicks;
+      t.check('C14b: sacarSlotDoCofre correu', r.ok === true);
+      t.check('C14b: clicou no +0 (o lixo)', clicks.indexOf('troca-cofre:1005~C+0') >= 0);
+      t.check('C14b: NUNCA clicou no +2 (a melhor copia protegida)', clicks.indexOf('troca-cofre:1005~C+2') < 0);
+      t.check('C14b: o +2 ficou no cofre', (auto.lerCofreSlots() || []).some((s) => String(s.base) === '1005' && (s.refino || 0) === 2));
     }
 
     /* ============ C15 - SAQUE NAO CONFIRMADO: mochila cheia / servidor recusou ========== */
