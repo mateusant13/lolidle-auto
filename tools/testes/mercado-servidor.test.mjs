@@ -32,15 +32,58 @@ export const suite = {
   titulo: 'Mercado so-leitura: servidor decide, a UI so para acoes (TK-01)',
 
   async run(t) {
-    /* ---- M1 - `obterItem` le a oferta DO SERVIDOR e NAO abre o mercado (criterio 3) ---- */
+    /* ---- M1a - oferta no servidor, SEM #janela-mercado: nao abre UI e nao finge cancelamento
+     * (TK-05: antes devolvia ok:true, de:"mercado" sem cancelar nada) ---- */
     {
       const m = criarMundo();
       stubFetch(m, [{ id: '77', item: '2001~A', preco: 3000, minha: true }]);
       const auto = carregarAutomation(m);
       const teclas = contadorDeTeclas(m);
       const r = await auto.obterItem('2001');
-      t.check('M1: a oferta vem do SERVIDOR (de:"mercado"), sem abrir a UI', r.ok === true && r.de === 'mercado');
-      t.check('M1: press("j") NAO foi chamado (zero keydown) — o mercado nao abriu', teclas.length === 0);
+      t.check('M1a: sem #janela-mercado -> ok:false e de:"mercado" (nao finge cancelamento)',
+        r.ok === false && r.de === 'mercado');
+      t.check('M1a: motivo declarado = mercado-nao-montado', r.motivo === 'mercado-nao-montado');
+      t.check('M1a: press("j") NAO foi chamado (zero keydown)', teclas.length === 0);
+    }
+
+    /* ---- M1b - janela montada e escondida + botao [data-cancelar]: cancela e fecha ---- */
+    {
+      const m = criarMundo();
+      stubFetch(m, [{ id: '77', item: '2001~A', preco: 3000, minha: true }]);
+      const auto = carregarAutomation(m);
+      m.montar('#janela-mercado', [m.el({ label: 'janela-mercado', hidden: true })]);
+      const cancelados = [];
+      const btn = m.el({ tag: 'button', label: 'cancelar:77', dataset: { cancelar: '77' } });
+      btn.click = () => { cancelados.push('77'); m.estado.clicks.push(btn.label); };
+      m.montar('#janela-mercado [data-cancelar="77"]', [btn]);
+      const fechamentos = [];
+      const fechar = m.el({ tag: 'button', label: 'fechar:mercado' });
+      fechar.click = () => { fechamentos.push('fechar'); m.estado.clicks.push(fechar.label); };
+      m.montar('#janela-mercado [data-fechar]', [fechar]);
+      const teclas = contadorDeTeclas(m);
+      const r = await auto.obterItem('2001');
+      t.check('M1b: a oferta vem do SERVIDOR e cancela (de:"mercado")', r.ok === true && r.de === 'mercado');
+      t.check('M1b: o botao [data-cancelar="77"] foi clicado UMA vez', cancelados.length === 1);
+      t.check('M1b: a janela foi fechada ([data-fechar] clicado)', fechamentos.length === 1);
+      t.check('M1b: o keydown de abrir (j) e permitido', teclas.length === 1);
+    }
+
+    /* ---- M1c - janela montada mas SEM botao de cancelar: nao confirma, mas fecha ---- */
+    {
+      const m = criarMundo();
+      stubFetch(m, [{ id: '77', item: '2001~A', preco: 3000, minha: true }]);
+      const auto = carregarAutomation(m);
+      m.montar('#janela-mercado', [m.el({ label: 'janela-mercado', hidden: true })]);
+      const fechamentos = [];
+      const fechar = m.el({ tag: 'button', label: 'fechar:mercado' });
+      fechar.click = () => { fechamentos.push('fechar'); m.estado.clicks.push(fechar.label); };
+      m.montar('#janela-mercado [data-fechar]', [fechar]);
+      const teclas = contadorDeTeclas(m);
+      const r = await auto.obterItem('2001');
+      t.check('M1c: sem botao de cancelar -> ok:false', r.ok === false);
+      t.check('M1c: motivo = cancelamento-nao-confirmado', r.motivo === 'cancelamento-nao-confirmado');
+      t.check('M1c: o clique de fechar continua a acontecer', fechamentos.length === 1);
+      t.check('M1c: o keydown de abrir (j) e permitido', teclas.length === 1);
     }
 
     /* ---- M2 - SEM oferta minha: ok:false e tambem NAO abre o mercado ---- */
@@ -118,11 +161,13 @@ export const suite = {
       t.check('M7: sem fetch, press("j") NAO foi chamado — o mercado nao abriu para LER', teclas.length === 0);
     }
 
-    /* ---- M8 - P0: `obterItem` com fetch a falhar NAO abre o mercado ---- */
+    /* ---- M8 - P0: `obterItem` com fetch a falhar NAO abre o mercado (janela montada) ---- */
     {
       const m = criarMundo();
       m.sandbox.fetch = async () => { throw new Error('cookie expirado'); };
       const auto = carregarAutomation(m);
+      // janela montada e escondida: mesmo assim a leitura falha ANTES de abrir — zero keydown
+      m.montar('#janela-mercado', [m.el({ label: 'janela-mercado', hidden: true })]);
       const teclas = contadorDeTeclas(m);
       const r = await auto.obterItem('2001');
       t.check('M8: fetch a falhar -> obterItem devolve ok:false (sem rebentar)', r.ok === false);

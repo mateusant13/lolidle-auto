@@ -5294,11 +5294,17 @@ const CFG_VER = 2;
       const r = await lerMercadoServidor();
       const o = r && r.ok ? (r.ofertas || []).find((x) => x && x.minha === true && String(baseDoItemMercado(x.item)) === String(base)) : null;
       if (o) {
-        const m = mercadoEl(true);   // só para cancelar; sem janela montada NAO há press('j')
-        if (m) {
-          try { cancelarOferta(o.id); await humano(500); }
-          finally { try { q1('#janela-mercado [data-fechar]')?.click(); } catch { /* ignore */ } }
-        }
+        // TK-05: a UI so abre para CANCELAR (uma acao concreta). Sem janela montada NAO ha
+        // press('j') — e nao se pode fingir que cancelou: devolve ok:false, nunca de:'mercado'.
+        const m = mercadoEl(true);
+        if (!m) return { ok: false, de: 'mercado', motivo: 'mercado-nao-montado', tentou: o.id };
+        // O resultado de `cancelarOferta` e o que decide: so `true` (achou o botao e clicou)
+        // conta como cancelamento. Um clique que nao saiu (botao em falta, slot disabled) tem
+        // de voltar ok:false — senao o motor acredita que o item voltou a mochila sem ele voltar.
+        let cancelou = false;
+        try { cancelou = cancelarOferta(o.id) === true; await humano(500); }
+        finally { try { q1('#janela-mercado [data-fechar]')?.click(); } catch { /* ignore */ } }
+        if (!cancelou) return { ok: false, de: 'mercado', motivo: 'cancelamento-nao-confirmado', tentou: o.id };
         return { ok: true, de: 'mercado', nome: String(baseDoItemMercado(o.item)) };
       }
     } catch { /* ignore */ }
