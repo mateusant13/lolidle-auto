@@ -1509,7 +1509,6 @@
   /** Marca dos switches com EXCEÇÃO. O motor já manda o texto (`excecaoTxt` em
    *  `arvoreInterruptores()`, automation.js:2293); este mapa é só o recurso para um motor antigo. */
   const ARV_EXCECAO = {
-    autoplay: 'só corre no campeão alvo',
     vender: 'skippado em Runeterra',
     cofre: 'skippado em Runeterra',
     anunciar: 'skippado em Runeterra',
@@ -1615,11 +1614,11 @@
     // por isso somá-los aqui faria a contagem mentir (eles têm o seu próprio alerta no topo).
     const agindo = lista.length - bloq.length - semChave.length;
     const mestre = porNome.autoplay;
-    const alvo = c.champAlvo === undefined ? 'yasuo' : (c.champAlvo || 'qualquer campeão');
-    // O CASO A DESTACAR: ligado no switch e mesmo assim sem agir.
+    // O CASO A DESTACAR: ligado no switch e mesmo assim sem agir. O auto-play NÃO tem mais
+    // excepção de campeão (TK-01): a mensagem não cita "alvo".
     const alerta = (mestre && mestre.pode === false && c.enabled !== false)
       ? '<p class="aviso warn">O switch mestre está <b>LIGADO</b> mas <b>skippado</b> agora: ' + esc(arvExc('autoplay', mestre))
-        + ' (alvo: <b>' + esc(alvo) + '</b>). Enquanto for assim, nenhum switch abaixo age — nem vender, nem equipar.</p>'
+        + '. Enquanto for assim, nenhum switch abaixo age - nem vender, nem equipar.</p>'
       : '';
     const alertaMotor = semChave.length
       ? '<p class="aviso err">⚠ <b>' + String(semChave.length) + ' switch(es) sem chave própria no motor</b> ('
@@ -1632,7 +1631,7 @@
       + '<p class="hint">' + String(lista.length) + ' switches · <b>' + String(agindo) + ' ligados e agindo</b> · '
       + String(desligados) + ' desligados por você · ' + String(inerte.length) + ' ligados mas <b>inertes</b> (o pai está desligado) · '
       + String(skip.length) + ' skippados por exceção.</p>'
-      + '<p class="hint"><b>Tudo (auto-play)</b> é o switch que faz o motor jogar. <b>Manutenção</b> é o recurso base (vender, equipar, mercado, pontos, cofre) e funciona em qualquer campeão — são dois ramos independentes, como o motor os declara.</p>'
+      + '<p class="hint"><b>Tudo (auto-play)</b> é o único mestre: desligá-lo desliga tudo. <b>Manutenção</b> é o ramo de recurso base (vender, equipar, mercado, pontos, cofre), filho do auto-play; os switches dentro dele servem para desligar só uma capacidade sem parar o farm.</p>'
       + '<div class="arv">' + raizes.map((x) => arvNo(x, ramos, 0)).join('') + '</div>'
       + '<p class="hint">Ligar uma capacidade <b>não</b> liga o switch mestre, e o mestre desligado <b>não</b> desliga os filhos: eles ficam <b>inertes</b> (ligados, sem agir). '
       + 'A linha verde diz o que o switch cobre; a vermelha, o que deixa de acontecer com ele desligado.</p>'));
@@ -1667,8 +1666,8 @@
       if (!s.cfg) {                                   // motor antigo: erro visível, nunca switch falso
         return '<div class="erro-motor">⚠ <b>' + esc(rotulo) + '</b> — motor antigo: recarregue (F5) para este interruptor ganhar chave.</div>';
       }
-      // `autoAtrib` nasce DESLIGADO (contrato TK-01); os restantes nascem LIGADOS (recurso base).
-      const padrao = s.cfg === 'autoAtrib' ? false : true;
+      // `autoAtrib` e `autoHab` nascem DESLIGADOS (contrato TK-01); os restantes nascem LIGADOS.
+      const padrao = (s.cfg === 'autoAtrib' || s.cfg === 'autoHab') ? false : true;
       const on = c[s.cfg] === undefined ? padrao : (c[s.cfg] !== false);
       return tgCfg('ap-cfg-' + s.cfg, s.cfg, rotulo, ajuda, on);
     }).join('');
@@ -1787,27 +1786,16 @@
     // N.º 3); o motor ainda não a pode ter quando este render corre, e por isso este cartão
     // redesenha SEMPRE (fora do "constrói uma vez"). Sem alvos (null/vazio) = qualquer campeão.
     {
-      const alvos = (() => { const v = ler('campeoesAlvo', []); return Array.isArray(v) ? v : []; })();
-      const lista = (() => { const v = ler('campeoesDoJogo', []); return Array.isArray(v) ? v : []; })();
-      const qualquer = !alvos.length;
+      // TK-01: o auto-play NÃO tem mais lista de campeões. A excepção `champAlvo` foi removida
+      // do motor; manter aqui "katarina alvo: yasuo, ryze" era uma mentira visual (o dono
+      // reportou exactamente isso). Este cartão passa a ser só informação do campeão actual.
       const ident = identidade() || {};
-      const champId = String(ident.id || '').trim().toLowerCase();
-      const alvoAtual = lista.find((ch) => String(ch.id) === champId) || (champId ? { id: champId, nome: capNome(champId) } : null);
-      setHtml('ap-auto-champ', card('Em que campeões jogar', 'fora desta lista o motor só observa — não joga',
-        '<p class="aviso ' + (alvoAtual ? 'ok' : 'warn') + '">Campeão atual: <b>' + esc(ident.nome || (alvoAtual ? alvoAtual.nome : '—')) + '</b>'
-        + (alvoAtual ? (alvos.length ? (alvos.some((a) => String(a).toLowerCase() === champId) ? ' — <b>está na lista</b>' : ' — <b>não está na lista</b> (o motor só observa)') : ' — <b>está liberado</b> (sem restrição)') : ' — o motor ainda não identificou o campeão (F5 se demorar).')
-        + '</p>'
-        + (alvoAtual ? '<div class="acoes">' + acao('ap-champ-add-atual', '＋ Incluir o campeão atual', 'Adiciona ' + esc(alvoAtual.nome) + ' à lista de campeões do auto-play (cfg.champAlvo).', 'sec') + '</div>' : '')
-        + (lista.length
-          ? '<div class="grid2">'
-            + tg('ap-champ-any', 'Qualquer campeão', 'Corre em qualquer campeão (desliga a restrição de alvos).', qualquer)
-            + lista.map((ch) => tg('ap-champ-' + ch.id, ch.nome || capNome(ch.id), 'Joga sozinho com ' + (ch.nome || ch.id) + '.', !qualquer && alvos.indexOf(ch.id) >= 0)).join('')
-            + '</div>'
-          : '<p class="vazio">O motor ainda não leu a lista de campeões do jogo. Ela chega com o catálogo (F5 se demorar).</p>')
-        + '<p class="hint">' + (qualquer
-          ? 'Sem restrição: o auto-play corre em <b>qualquer campeão</b>.'
-          : 'O motor só joga com <b>' + esc(alvos.map(capNome).join(', ') || '—') + '</b>; nos outros fica só a observar.')
-        + ' Isto <b>não</b> liga o auto-play — quem liga é o switch mestre.</p>'));
+      const nomeAtual = ident.nome || capNome(ident.id) || '—';
+      setHtml('ap-auto-champ', card('Campeão actual', 'o auto-play corre em qualquer campeão',
+        '<p class="aviso ' + (ident.id ? 'ok' : 'warn') + '">Campeão actual: <b>' + esc(nomeAtual) + '</b>'
+        + (ident.id ? '' : ' — o motor ainda não identificou o campeão (F5 se demorar).') + '</p>'
+        + '<p class="hint">Não há lista de alvos: o motor joga com o campeão que estiver na conta. '
+        + 'Trocar de campeão não exige mudar nenhum switch. Isto <b>não</b> liga o auto-play — quem liga é o switch mestre.</p>'));
     }
     // valores dinâmicos
     const obj = $('ap-obj'); if (obj && obj.value !== (c.objetivo || 'xp')) obj.value = c.objetivo || 'xp';
@@ -2979,7 +2967,7 @@
       ['Auto-play', 'O motor que joga por você: escolhe a região, luta, usa poções, volta à base e organiza o inventário.'],
       ['Auto-poção', 'Só a parte das poções: usa a mais fraca que chega para você sobreviver, em vez de gastar sempre a Suprema.'],
       ['Switch pai (hierarquia)', 'Os switches estão em ÁRVORE: o auto-play é o mestre e cada um depende de outro. Desligar um pai fecha tudo o que está por baixo dele — a aba Painel mostra quem manda em quem, indentado.'],
-      ['Skippado (exceção)', 'O switch está ligado mas o motor não age naquele sítio. Exemplo: no mapa de Runeterra o motor não vende nem mexe no cofre; fora do campeão alvo o auto-play inteiro não age.'],
+      ['Skippado (exceção)', 'O switch está ligado mas o motor não age naquele sítio. Exemplo: no mapa de Runeterra o motor não vende nem mexe no cofre.'],
       ['Mob', 'Monstro comum do mapa.'],
       ['Chefe', 'Monstro forte da região; ao ser derrotado fecha o ciclo.'],
       ['Ciclo', 'Uma passagem completa: farmar mobs na região até matar o chefe.'],
