@@ -1,44 +1,57 @@
-# Resposta: Luden 4.º item, Ryze ideal vs ranking, melhores 4 skills
+# Resposta: Luden, Ryze ideal vs ranking e as melhores 4 skills
 
 **Data:** 2026-10-19. **Fonte:** `docs/game-src/motor.js` + `tools/harness.mjs` (seed=1).
 **Método:** `node tools/harness.mjs lutar --champ=... --nivel=32 --alvo="Barão Nashor" --nv=32 --barra=... --itens=... --maxSeg=120 --seed=1 --json`.
-Estes números foram lidos do motor em 2026-10-19; se o jogo mudar, o harness acompanha.
+
+> **Qualidade importa.** Todos os números abaixo usam qualidade/refino explícitos (`+5~A`, `+4~B`, …).
+> O harness, sem sufixo, usa o padrão e os tempos sobem muito: a mesma build ideal do Ryze faz
+> **25,7 s com `+5~A`** e **54,2 s sem sufixo**. Comparar sempre na mesma qualidade.
 
 ---
 
 ## 1. O Eco de Luden (6655) é o melhor 4.º item?
 
-**Resposta: NÃO.** A Perdição de Lich (3100) é melhor para Katarina e para Ryze.
+**Resposta: NÃO — contra chefe de alvo único, a Perdição de Lich (3100) ganha por muito.**
 
-**Porquê (motor):** Lich arma-se em cada habilidade (`motor.js:2064`) e dispara no ataque seguinte (`motor.js:1803`, `0.75 × AP`). Luden dispara 1×/6 s em até 3 alvos (`motor.js:2065-2069`, `100 + 0.1 × AP`). Katarina/Ryze spammam habilidades → Lich dispara muito mais vezes.
+**Porquê (motor):** Lich arma em cada habilidade (`motor.js:2064`) e dispara no ataque seguinte,
+`0,75 × AP` (`motor.js:1803`). Luden dispara **1×/6 s** em até 3 alvos, `100 + 0,1 × AP`
+(`motor.js:2065-2069`). Katarina e Ryze spammam habilidades: Lich dispara muitas vezes, Luden
+quase sempre uma vez por 6 s contra um chefe.
 
 ### Katarina (conta, Barão nv32, barra Q,A,W,E, seed=1)
 
 | Build (5 itens) | mataSeg | AP | penMag | poções |
 |---|---|---|---|---|
 | conta: 3175+4~B, 3089+2~B, 4629+3~B, 3135+4~B, **664644+0~B** | 59,1 | 816,53 | 0,55 | 3 |
-| Luden>Coroa: ..., **6655+0~B** | 58,3 | 810,81 | 0,55 | 3 |
-| **Lich>Coroa: ..., 3100+0~B** | **47,3** | 810,81 | 0,55 | 2 |
+| Luden no lugar da Coroa: **6655+0~B** | 58,3 | 810,81 | 0,55 | 3 |
+| **Lich no lugar da Coroa: 3100+0~B** | **47,3** | 810,81 | 0,55 | 2 |
 
 Comando: `node tools/harness.mjs lutar --champ=katarina --nivel=32 --alvo="Barão Nashor" --nv=32 --barra="Q,A,W,E" --itens="3175+4~B,3089+2~B,4629+3~B,3135+4~B,3100+0~B" --maxSeg=120 --seed=1 --json`
 
+O Luden é **0,8 s melhor que a Coroa** e **11,8 s pior que o Lich**. Não é o melhor 4.º.
+
 ### Ryze (Barão nv32, barra Q,R,W,E, seed=1)
 
-| Build (5 itens) | mataSeg | AP | penMag | poções |
+| Build (5 itens, todos `+5~A`) | mataSeg | AP | penMag | poções |
 |---|---|---|---|---|
-| **Lich ideal: 3100+5~A, 3135+5~A, 664644+5~A, 3089+5~A, 3171+5~A** | **28,55** | 1541,04 | 0,40 | 0 |
-| Lich+Luden: 6655+5~A, 3135+5~A, 664644+5~A, 3089+5~A, 3171+5~A | 35,0 | 1693,76 | 0,40 | 0 |
-| top6 Luden: 3175+5~A, 3003+5~A, 664644+5~A, 3089+5~A, 3135+5~A | 48,25 | 1837,02 | 0,55 | 0 |
+| **Ideal: 3171 + 3003 + 3089 + 3100 + 3135** | **25,7** | 1715,65 | 0,40 | 0 |
+| Lich + Coroa (sem Anjo): 3100 + 3135 + 664644 + 3089 + 3171 | 28,55 | 1541,04 | 0,40 | 0 |
+| Luden no lugar do Lich: 3171 + 3003 + 3089 + **6655** + 3135 | 36,75 | 1916,85 | 0,40 | 0 |
+| Top-1 do ranking: 3175 + 3003 + 664644 + 3089 + 3135 | 48,25 | 1837,02 | 0,55 | 0 |
 
-**Condição em que o Luden ganha:** nenhuma medido para Katarina/Ryze. Em chefe (Barão) Lich ganha sempre. Em multi-alvo o harness não discrimina (4× Tropa morre em ~7 s em qualquer build; 6× Dragão Infernal não termina em 120 s). O Luden só ganharia em campeões auto-atackers, não em spammers de habilidades.
+Comando da ideal: `node tools/harness.mjs lutar --champ=ryze --nivel=32 --alvo="Barão Nashor" --nv=32 --itens="3171+5~A,3003+5~A,3089+5~A,3100+5~A,3135+5~A" --maxSeg=120 --seed=1 --json`
+
+**Quando o Luden ganha:** em farm multi-alvo (3 alvos), porque o proc bate nos 3. O harness luta
+**1 alvo** (`qtd:1`); contra o Barão o Luden é 11 s mais lento que o Lich. Para chefe, Luden não é
+o 4.º item — é item de farm.
 
 ---
 
-## 2. Ryze: build ideal vs top-6 do ranking
+## 2. Ryze: build ideal vs os top-6 do ranking
 
-**Resposta: a build ideal (Lich, 28,55 s) é muito melhor que as top-6 (38–48,25 s).**
+**Resposta: a ideal (Lich, 25,7 s) é 12–22 s mais rápida que todas as top-6 (38–48,25 s).**
 
-### Top-6 do ranking (`perfis-ryze.json`), corridas a nv32, Barão, seed=1
+### Top-6 do ranking (`perfis-ryze.json`), a nv32, Barão, seed=1, `+5~A`
 
 | # | Jogador (nv) | Itens | mataSeg | AP | penMag |
 |---|---|---|---|---|---|
@@ -46,63 +59,76 @@ Comando: `node tools/harness.mjs lutar --champ=katarina --nivel=32 --alvo="Barã
 | 2 | Shiizuy (33) | 664644, 3171, 3003, 3089, 6655 | 38,0 | 2179,31 | 0 |
 | 3 | ryze da gabi (33) | 3089, 3003, 3171, 664644, 6655 | 38,0 | 2179,31 | 0 |
 | 4 | Endorsiring (31) | 6655, 664644, 3089, 3171, 3003 | 38,0 | 2179,31 | 0 |
-| 5 | H0ly WratH (31) | 3171+5~B, 664644, 3135, 3003, 3089+5~B | 38,55 | 1869,07 | 0,40 |
-| 6 | RYZE (30) | 3089+5~B, 664644, 3003, 3171, 6655+4~A | 39,9 | 2098,92 | 0 |
-| — | **LICH ideal** | **3100, 3135, 664644, 3089, 3171** | **28,55** | **1541,04** | **0,40** |
+| 5 | H0ly WratH (31) | 3171, 664644, 3135, 3003, 3089 | 38,55 | 1869,07 | 0,40 |
+| 6 | RYZE (30) | 3089, 664644, 3003, 3171, 6655 | 39,9 | 2098,92 | 0 |
+| — | **IDEAL** | **3171, 3003, 3089, 3100, 3135** | **25,7** | **1715,65** | **0,40** |
 
-Comando (ex.): `node tools/harness.mjs lutar --champ=ryze --nivel=32 --alvo="Barão Nashor" --nv=32 --barra="Q,R,W,E" --itens="3100+5~A,3135+5~A,664644+5~A,3089+5~A,3171+5~A" --maxSeg=120 --seed=1 --json`
+### Atributos da ideal (`atributos ryze 32`)
 
-### Atributos do Ryze (motor, `atributos`)
-
-| Build | AP | Mana | CDR (`reducaoRecarga`) | penMag |
+| AP | Mana | CDR (`reducaoRecarga`) | penMag | Vida |
 |---|---|---|---|---|
-| Lich ideal | 1541,04 | 6465 | 0,276 | 0,40 |
-| top6 Luden | 1837,02 | 7017 | 0 | 0,55 |
+| 1715,65 | 6465 | 0,276 | 0,40 | 4464 |
 
-**Nota de divergência:** o ticket esperava core ~36,75 s / Lich ~26,65 s / Lich+Void ~25,7 s. O harness mede top-6 38–48,25 s e Lich 28,55 s. O ticket diz "repetir, não copiar; os valores podem mudar com o motor" — reporto os valores medidos.
+**Porque a ideal ganha com AP menor:** o Ryze usa habilidades sem parar (37 usos na luta de 28,6 s),
+logo o Lich rende um proc de `0,75 × AP` por uso; a Void (3135) dá 40% de penetração mágica
+(`motor.js`, item 3135) e o Anjo (3003) dá mana → AP pela passiva dele. O ranking mede **poder**
+(AP 2179), não **segundos até matar** — por isso nenhum top-6 usa Lich.
+
+**Custo:** a ideal não usou poção (0 de ouro) e recebeu **0** de dano na simulação; a top-1
+(48,25 s) recebeu 754 e também não usou poção. A ideal é mais rápida e mais barata em desgaste.
 
 ---
 
-## 3. Katarina: melhores 4 skills desbloqueadas
+## 3. Katarina: as melhores 4 skills desbloqueadas
 
-**Resposta: Q/A/W/E** (segundo o estado da conta: barra Q/W/E/A, R rank 3 fora). A R fica de fora.
+**Resposta curta:** com a build actual (sem Lich) e farm a ~25 abates/min: **Q, T, W, A**.
+Com o Lich equipado (build ideal) e o mesmo ritmo: **Q, E, W, T** — o Shunpo entra por causa do Lich.
+A R fica de fora em mobs fáceis; no chefe a regra do motor permite a R, mas ela continua com o pior DPS.
 
-### DPS por habilidade (conta, ranks Q10/W4/E10/R3/A1, AP 816,53, km=25)
+### DPS por habilidade — conta, ranks Q10/W4/E10/R3/A1/T1, AP 810,81, km=25
 
-| Skill | Rank | Dano | CD (s) | DPS | Alvos |
+| Skill | Rank | Dano | CD (s) | DPS sem Lich | DPS com Lich |
 |---|---|---|---|---|---|
-| Q (Lâmina Bumerangue) | 10 | 2480 | 3,36 | **739** | 3 |
-| T (Chuva de Adagas) | 1 | 4878 | 19,1 | 255 | 1 |
-| W (Preparação) | 4 | 1497 | 6,27 | 239 | 1 |
-| A (Adaga) | 1 | 2077 | 9,55 | 217 | 1 |
-| E (Shunpo) | 10 | 677 | 3,14 | 216 | 1 |
-| R (Lótus da Morte) | 3 | 5244 | 44,4 | **107** | 3 |
-| G | 1 | 275 | 15,92 | 17 | 1 |
-| F | 1 | 0 | 12,74 | 0 | 1 |
+| Q (Lâmina Bumerangue) | 10 | 2480 | 3,36 | **739** | **921** |
+| T (Chuva de Adagas) | 1 | 4878 | 19,1 | 255 | 287 |
+| W (Preparação) | 4 | 1497 | 6,27 | 239 | 336 |
+| A (Adaga) | 1 | 2077 | 9,55 | 217 | 281 |
+| E (Shunpo) | 10 | 677 | 3,14 | 216 | **410** |
+| R (Lótus da Morte) | 3 | 4667 | 43,78 | 107 | 121 |
 
-Fonte: `G:\Temp\opencode\kat-dps.mjs` (replica `dpsPorHabilidade`, `automation.js:2254`, com Voracidade `motor.js:777`/`:1909`).
+Fonte: `G:\Temp\opencode\kat-dps.mjs` (replica `dpsPorHabilidade`, `automation.js:2254`, com a
+Voracidade `motor.js:777`/`:1909`). A coluna “com Lich” soma `0,75 × 810,81 = 608` por uso, dividido
+pela recarga — a mesma conta de `automation.js:2297-2303`.
 
-### Por que a R fica de fora
+### Porque o Shunpo entra com Lich
 
-R rank 3 tem recarga base **55 s** (`motor.js:787`, `recarga: [75, 65, 55, 48, 42]`). Mesmo rank 5 são 42 s. Nunca < 35 s. Em mobs fáceis não se lança com frequência → pior DPS (107).
+O Lich dá **608 de dano por uso**. O E usa a cada **3,14 s** (194 DPS só de Lich); o T usa a cada
+**19,1 s** (32 DPS de Lich). Sem Lich o E é o 5.º (216); com Lich sobe a 2.º (410) e tira o lugar ao
+T/A. É exactamente o caso que o dono descreveu: *“Lich Bane proccando mais com o Shunpo”*.
 
-### O caso "removi uma skill e entrou o Shunpo"
+### Porque a R fica de fora
 
-Entre {Q, W, A, E, R} o ranking por DPS × alvos é **Q > W > A > E > R**. O E (Shunpo) é o **4.º**. Quando abriu um slot (R fora), o E entrou — a matemática escolhe, não a ordem da barra.
+R rank 3 tem recarga base **55 s** (`motor.js:787`, `recarga: [75, 65, 55, 48, 42]`); 15 golpes em
+3 alvos = 4667 de dano, ou **107 DPS** (121 com Lich). É o pior das habilidades de dano. Em mobs
+fáceis a `barraIdeal` filtra a R (`automation.js:7939`: só entra em chefe ou fase difícil); no chefe
+ela é permitida, mas continua atrás de Q/T/W/A/E.
 
-### Nota importante: o T (Chuva de Adagas)
+### O ranking muda com o ritmo de abates (Voracidade)
 
-O T desbloqueia no **nv 28** (`motor.js:801`). No nv32 está desbloqueado. Se estiver **aprendido** na conta (rank ≥ 1), a luta medida diz que o T bate a W:
-- Barão: Q,A,T,E = 52,8 s vs Q,A,W,E = 59,1 s
-- 4 mobs: Q,A,T,E = 1,95 s vs Q,A,W,E = 2,15 s
-
-O ticket não lista o T entre as skills da conta (barra Q/W/E/A, R fora). Se o T estiver aprendido, a melhor barra passa a ser **Q/A/T/E**. Confirmar no jogo se o T tem rank ≥ 1.
+A Voracidade corta a recarga de Q/W/E a cada abate (`motor.js:1789`). Com **km=5** (chefe, poucos
+abates) o W cai de 239 para 165 e o E de 216 para 150; a ordem sem Lich passa a **Q, T, A, W/E**.
+A `barraIdeal` usa o `killsMinAoVivo` real, por isso a lista certa é a que ela calcula no momento —
+não uma lista fixa.
 
 ---
 
 ## Limitações
 
-- **Ranks da conta ao vivo não lidos** (REGRA Nº 16: sem browser/relay/CDR). Os ranks Q/W/E/A vêm do `subirAutomatico` do motor; R=3 do ticket. Se os ranks reais diferirem, os números mudam.
-- **Qualidade dos itens ~B** (harness). A conta real pode ter qualidade diferente → AP/CDR diferentes.
-- **Multi-alvo não discrimina** no harness (mobs morrem rápido ou não terminam). Só o chefe (Barão) é fiável para comparar itens.
-- **`montarBuildDe`/`scoreSet`** não correm no harness (precisam de DOM/META). O "ideal" foi medido por `mataSeg` (menor tempo).
+- **Ranks da conta ao vivo não lidos** (REGRA Nº 16: sem browser/relay/CDP). Os ranks vêm do
+  `subirAutomatico` do motor; R=3 do ticket. Se os ranks reais forem outros, os números mudam.
+- **Qualidade da conta** usada na Katarina é `+4~B/+2~B/+3~B/+0~B` (a do probe), não
+  necessariamente a da conta neste instante.
+- **Multi-alvo do Luden não é medido** no harness (luta 1 alvo); a vantagem de 3 alvos é lida no
+  motor (`motor.js:2067`), não simulada.
+- **`montarBuildDe`/`scoreSet`** não correm no harness (precisam de DOM/META); a build ideal foi
+  medida por `mataSeg` (menor tempo), não imposta por uma heurística.
