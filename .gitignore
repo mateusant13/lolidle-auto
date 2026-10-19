@@ -1,3 +1,10 @@
 node_modules/
 *.log
 .dsh-spill/
+# Backups de perfil/extensoes do dono (REGRA 9): NUNCA versionar.
+.perfil-backup-*/
+.veepn-backup-*/
+# Lixo de ferramentas (nao e do repo).
+_dsh-dump.txt
+# Binarios do Windows que um script meteu aqui por env var nao-expandida.
+%SystemDrive%/
