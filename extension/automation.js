@@ -8119,11 +8119,19 @@ const CFG_VER = 1;
 
   /** Fecha sozinha a janela de novidades quando ela abre SEM clique do usuário (pós-reinício). */
   let novidadesCliqueEm = 0;
+  // GUARDA DE REENTRÂNCIA (2026-10-18): o `.fechar` de novidades, o observer e o listener de clique
+  // ficavam SEM referência — numa reinjeção (o script JÁ rodou) o `_T` limpava os timers, mas este
+  // observer (documentElement + subtree) e este intervalo empilhavam: cada mutação da página passava
+  // a disparar N `tentar()` (cada um um `querySelector` no documento inteiro). É um vazamento que
+  // agrava a FPS. Agora as três coisas ficam em `window.__lolidleNov*` e são desligadas no arranque.
   function cuidarNovidades() {
-    document.addEventListener('click', (e) => {
+    const clicar = (e) => {
       const t = e.target;
       if (t && t.closest && t.closest('#abrir-novidades')) novidadesCliqueEm = Date.now();
-    }, true);
+    };
+    if (window.__lolidleNovClique) { try { document.removeEventListener('click', window.__lolidleNovClique, true); } catch { /* ignore */ } }
+    document.addEventListener('click', clicar, true);
+    window.__lolidleNovClique = clicar;
     const tentar = () => {
       const f = document.querySelector('.novidades-fundo');
       if (!f || f.dataset.lolidleAuto) return;
@@ -8132,8 +8140,16 @@ const CFG_VER = 1;
       const btn = f.querySelector('header .fechar') || f.querySelector('.fechar') || f.querySelector('.novidades-ok');
       if (btn) { logEvent('novidades', { acao: 'auto-fechada', motivo: 'abriu sozinha (pós-reinício)' }); btn.click(); }
     };
-    new MutationObserver(tentar).observe(document.documentElement, { childList: true, subtree: true });
-    setInterval(tentar, 1500);
+    if (window.__lolidleNovObs) { try { window.__lolidleNovObs.disconnect(); } catch { /* ignore */ } }
+    window.__lolidleNovObs = new MutationObserver(tentar);
+    // CUSTO POR MUTAÇÃO (2026-10-18): observar `documentElement` com `subtree` fazia o `tentar()`
+    // (um `querySelector` no documento inteiro) correr a CADA mutação da página — e o jogo mexe no
+    // DOM a ~5-20 Hz (HUD a cada 0,2 s, #log, chat). O diálogo de novidades é acrescentado DIRETO ao
+    // `<body>` (jogo.js:7547 `document.body.append(fundo)`), logo `body` + `childList` chega e é
+    // ordens de magnitude mais barato (só os filhos diretos do body). O intervalo é o fallback.
+    window.__lolidleNovObs.observe(document.body, { childList: true });
+    if (window.__lolidleNovT) { try { clearInterval(window.__lolidleNovT); } catch { /* ignore */ } }
+    window.__lolidleNovT = setInterval(tentar, 1500);
   }
 
   // =======================================================================================

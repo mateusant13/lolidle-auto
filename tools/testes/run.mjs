@@ -58,6 +58,8 @@ import { suite as suiteBuildEquipada } from './build-equipada.test.mjs';
 import { suite as suiteMercadoWatch } from './mercado-watch.test.mjs';
 // TK-X2 (P0): a barra de CHEFE reserva um lugar para o atordoamento (interrompe a mecanica).
 import { suite as suiteStunChefe } from './stun-chefe.test.mjs';
+// DIAGNOSTICO DE FPS (2026-10-18): observer de novidades barato (body+childList) e sem empilhar na reinjecao.
+import { suite as suiteObservers } from './observers.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -81,6 +83,7 @@ const SUITES = [
   suiteRegiao, suiteW1, suiteE, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteChefe, suiteFiltroBasicos, suiteBuildEquipada,
   suiteMercadoWatch,
   suiteStunChefe,
+  suiteObservers,
 ];
 const checks = [];
 const notas = [];

@@ -166,6 +166,11 @@ let config = structuredClone(DEFAULT_CONFIG);
   const _CT = (window.__lolidleContentTimers = window.__lolidleContentTimers || []);
   for (const t of _CT) { try { clearInterval(t); clearTimeout(t); } catch { /* ignore */ } }
   _CT.length = 0;
+  // LISTENERS de storage: anónimos, não passam pelo `_CT` (que só limpa timers) — numa reinjeção
+  // empilhavam e reagiam todos a cada escrita. Guardam-se para os remover no arranque seguinte.
+  const _CS = (window.__lolidleContentStoreListeners = window.__lolidleContentStoreListeners || []);
+  for (const l of _CS) { try { chrome.storage.onChanged.removeListener(l); } catch { /* ignore */ } }
+  _CS.length = 0;
   const every = (ms, fn) => { const id = setInterval(fn, ms); _CT.push(id); return id; };
 
   const hudEl = document.querySelector('#hud') || document.body;
@@ -237,7 +242,10 @@ let config = structuredClone(DEFAULT_CONFIG);
     return m;
   }
 
-  window.addEventListener('message', (e) => {
+  // GUARDA (2026-10-18): este listener era anónimo e nunca removido — numa reinjeção ficavam DOIS
+  // handlers a processar cada mensagem (o dano era contado a dobrar). Remove o antigo antes de repor.
+  if (window.__lolidleMsg) { try { window.removeEventListener('message', window.__lolidleMsg); } catch { /* ignore */ } }
+  window.__lolidleMsg = (e) => {
     if (e.source !== window || !e.data) return;
     if (e.data.__lolidleAuto) {
       const ft = lerFuriaT(e.data);
@@ -270,7 +278,8 @@ let config = structuredClone(DEFAULT_CONFIG);
     if (e.data.__lolidle === 'heal') { push(ev.heal, now, v); rlog({ at: now, t: 'heal', v }); hpush({ at: now, t: 'heal', v }); }
     else if (e.data.__lolidle === 'shield') { push(ev.shield, now, v); rlog({ at: now, t: 'shield', v }); hpush({ at: now, t: 'shield', v }); }
     else if (e.data.__lolidle === 'dmg') { push(ev.dmg, now, v); rlog({ at: now, t: 'dmg', v, dir: dirDano(e.data.color), cor: e.data.color, x: e.data.x, y: e.data.y }); hpush({ at: now, t: 'dmg', v, dir: dirDano(e.data.color) }); }
-  });
+  };
+  window.addEventListener('message', window.__lolidleMsg);
 
   function readBoss() {
     const now = Date.now();
@@ -600,9 +609,10 @@ let config = structuredClone(DEFAULT_CONFIG);
   function loadConfig() {
     try {
       chrome.storage.local.get(STORAGE_KEY, (res) => { if (res?.[STORAGE_KEY]) config = merge(res[STORAGE_KEY]); });
-      chrome.storage.onChanged.addListener((ch, area) => {
+      const onCh = (ch, area) => {
         if (area === 'local' && ch[STORAGE_KEY]) { config = merge(ch[STORAGE_KEY].newValue); log('config atualizada', config); }
-      });
+      };
+      chrome.storage.onChanged.addListener(onCh); _CS.push(onCh);
     } catch (e) { log('storage indisponível', e); }
   }
 
@@ -611,7 +621,8 @@ let config = structuredClone(DEFAULT_CONFIG);
     const aplicar = (m) => { const p = m && m.pocoes; if (p) for (const k of ORDER) if (p[k] && p[k].cura) META[k].heal = p[k].cura; };
     try {
       chrome.storage.local.get('lolidleAutoPotion:meta', (res) => aplicar(res && res['lolidleAutoPotion:meta']));
-      chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch['lolidleAutoPotion:meta']) aplicar(ch['lolidleAutoPotion:meta'].newValue); });
+      const onCh = (ch, area) => { if (area === 'local' && ch['lolidleAutoPotion:meta']) aplicar(ch['lolidleAutoPotion:meta'].newValue); };
+      chrome.storage.onChanged.addListener(onCh); _CS.push(onCh);
     } catch { /* ignore */ }
   }
 

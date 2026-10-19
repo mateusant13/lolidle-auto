@@ -97,6 +97,12 @@ export const SELETORES_CONHECIDOS = [
   '[data-escolher]',
   '[data-anunciar]',
   '[data-comprar]',
+  // WATCH DO MERCADO (2026-10-18): o vendedor (.mj-vend b, jogo.js:2667) e o preco/moeda
+  // (.preco, jogo.js:2631,2668) das ofertas de compra, lidos por lerOfertasCompra() e
+  // ofertasWatchDoDom() para a watch por nome de jogador (caso 'srdog').
+  '.mj-oferta',
+  '.mj-vend b',
+  '.preco',
   '[data-aceitar-diaria]',
   '.mj-card[data-grupo]',
   '#mj-minimo',
@@ -155,7 +161,10 @@ export const PADROES_CONHECIDOS = [
   /^\[data-forjar="[^"]+"\](\[data-vezes="1"\])?$/,
   /^#janela-npc \[data-qtd="[^"]+"\]$/,
   /^#janela-npc \[data-comprar="[^"]+"\]$/,
-  /^#janela-mercado \[data-cancelar="[^"]+"\]$/,
+  /^#janela-mercado \[data-cancelar="[^"]+"]$/,
+  // WATCH DO MERCADO (2026-10-18): comprarOfertaWatch() compra pelo id exacto da oferta
+  // ([data-comprar="<o.id>"], jogo.js:2669).
+  /^#janela-mercado \[data-comprar="[^"]+"]$/,
   // bancada do Ornn (montarItem/receitasOrnn) — seletores dinamicos por id de receita
   /^#janela-npc button\[data-receita="[^"]+"\]$/,
   /^#janela-npc \[data-montar="[^"]+"\]$/,
@@ -170,7 +179,11 @@ const ESCOPADOS_CONHECIDOS = [
   /^:scope > \.hud-cd$/, /^:scope > em$/,
   /^\.mais$/, /^\.mk-nome$/,
   /^header \.fechar$/, /^\.fechar$/, /^\.novidades-ok$/, /^article,li,div$/,
+  // WATCH DO MERCADO (2026-10-18): queries escopadas ao cartao da oferta (jogo.js:2665-2670).
+  /^\.mj-oferta$/, /^\.mj-vend b$/, /^\.preco$/,
+  /^\.mj-oferta, article, li, div$/,
 ];
+
 
 export function seletorConhecido(sel) {
   const s = String(sel);
@@ -333,10 +346,15 @@ export function criarMundo(opts) {
     createTextNode: (t) => ({ textContent: String(t) }),
     addEventListener: (t, fn) => {
       const arr = estado.domListeners.get(t) || [];
-      arr.push(fn);
+      if (arr.indexOf(fn) < 0) arr.push(fn);
       estado.domListeners.set(t, arr);
     },
-    removeEventListener: () => {},
+    removeEventListener: (t, fn) => {
+      const arr = estado.domListeners.get(t);
+      if (!arr) return;
+      const i = arr.indexOf(fn);
+      if (i >= 0) arr.splice(i, 1);
+    },
     dispatchEvent: (ev) => {
       const arr = estado.domListeners.get(ev && ev.type) || [];
       for (const fn of arr) { try { fn(ev); } catch (e) { estado.erros.push('listener ' + (ev && ev.type) + ': ' + String(e)); } }
