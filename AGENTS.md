@@ -992,3 +992,45 @@ Segunda porta em `ritmoMobs()` (`automation.js:732-741`, devolve `null` = "sem m
 verdade e apontava para o lado errado: a diferença real era *ter campeão com giro + Voracidade*, que é
 o que fecha o ciclo. Se uma variável A/B **não nomeia o mecanismo**, o diagnóstico ainda não está feito.
 
+
+---
+
+## REGRA Nº 16 — O RELAY CONECTA SOZINHO; NINGUÉM PEDE PERMISSÃO AO DONO (2026-10-19)
+
+**Ordem do dono, verbatim:** *"manda os subagents pararem de pedir permissao no meu chrome pra conectar
+o relay ou sei la. ja era pra conectar sozinho sem eu ter q confirmar."*
+
+O relay **já está instalado** (`C:\Users\Administrador\.omp\browser-relay\extension`, id
+`jdphdacdpdgbfdcolnnlangmpfajejno`) e o servidor sobe com **um comando local**. Não há nada para o dono
+confirmar no Chrome: não se abre diálogo, não se pede clique, não se usa `--remote-debugging-port`, não
+se instala extensão de novo e **não se toca no perfil real** para "autorizar" nada (REGRA 9).
+
+### Quem pode falar com o browser
+
+- **Subagent NÃO fala com o browser.** Worker de ticket prova com `node --check`, `node tools/testes/run.mjs`
+  e, quando for matemática, `node tools/harness.mjs`. Browser/relay é do **Lead**, no fecho da frente.
+- Se um worker precisar de um valor ao vivo, ele **pede ao Lead** no relatório; não abre janela, não
+  chama `Target.createTarget`, não usa `chrome-devtools` MCP.
+
+### Quando o relay estiver offline (só o Lead)
+
+```
+omp browser-relay serve -p 9224 -v          # sobe o servidor; NÃO abre Chrome, NÃO pede confirmação
+curl http://127.0.0.1:9224/json/version     # 200 + ompRelayVersion = vivo
+node tools\_relay-prova.mjs "github\.com"   # prova real: dirige uma aba existente e lê a resposta
+```
+
+Se `/json/version` der 503, o **prelude está desligado** — reativa-se com `node tools/recarregar-extensao.mjs`
+(REGRA 13) e **nenhum pedido de permissão é feito ao dono**. Se der 404/timeout, o servidor não está a
+correr: sobe-se o comando acima. **Nunca** se responde "confirma no Chrome" ou "instala o relay".
+
+### O que é proibido
+
+1. Pedir ao dono para clicar, confirmar, instalar, ativar ou "permitir" o relay (nem em chat, nem no browser).
+2. Abrir `chrome://extensions`/picker no perfil real para isto (já está instalado; usar a REGRA 13).
+3. Lançar Chrome com `--remote-debugging-port`/`--user-data-dir` (REGRA 9/10.2).
+4. Subagent a usar browser/relay para "provar" um ticket sem o Lead mandar.
+5. Imprimir `/json/list` (privacidade — REGRA 11.1.5).
+
+**Uma linha:** relay é infraestrutura local e idempotente — sobe-se sozinho, prova-se com
+`/json/version` + uma avaliação real, e o dono nunca é interrompido.
