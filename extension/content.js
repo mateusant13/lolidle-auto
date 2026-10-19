@@ -48,19 +48,11 @@
   };
   const ORDER = ['vidaS', 'vidaF', 'vida']; // mais forte -> mais fraca
 
-  // ============ AUTOPLAY SÓ NO YASUO (regra do dono, 2026-10-14) ============
-// O `content.js` NÃO tinha UMA ÚNICA referência a campeão, e `DEFAULT_CONFIG.enabled = true`:
-// a auto-poção corria em QUALQUER campeão — incluindo a Katarina, onde o dono proibiu.
-// O campeão lê-se do retrato do HUD: `#hud-retrato[data-qual]` = "<champ>:<skin>" (ex.: 'yasuo:0').
-// Sem leitura do retrato NÃO bloqueia (fail-open): um seletor que mude não pode desligar tudo.
-const CHAMP_ALVO = 'yasuo';
-function campeaoAtual() {
-  try {
-    const q = (document.querySelector('#hud-retrato') || {}).dataset?.qual || '';
-    return String(q).split(':')[0].trim().toLowerCase();
-  } catch { return ''; }
-}
-const campeaoCerto = () => { const c = campeaoAtual(); return !c || c === CHAMP_ALVO; };
+  // ============ AUTO-POÇÃO EM QUALQUER CAMPEÃO (2026-10-19) ============
+// REMOVIDO A PEDIDO DO DONO (2026-10-19): o gate `CHAMP_ALVO`/`campeaoCerto()` fazia o
+// `tick()` sair cedo em qualquer campeão fora o Yasuo — a auto-poção é uma REDE DE
+// SEGURANÇA e tem de correr em QUALQUER campeão (incluindo a Katarina, onde nunca chegava).
+// Fail-open mantido por design: um seletor que mude não pode desligar a rede de segurança.
 
 let config = structuredClone(DEFAULT_CONFIG);
   let lastClickAt = 0;
@@ -125,6 +117,23 @@ let config = structuredClone(DEFAULT_CONFIG);
     return { name, level: Number.isFinite(lvl) ? lvl : null, boss: /👑/.test(el.textContent) };
   }
 
+  // MAPA ATUAL → Runeterra (PvP)? O jogo escreve o local em `#local-nome` (jogo.js:7021):
+  // dentro de Runeterra o texto leva "Runeterra" (jogo.js:7004 — mundo aberto, arena+mundo
+  // e fora de aram); fora dela (Rift/base) leva o nome da zona ("Rio", "Covil do Barão") ou
+  // "Fonte" — nenhuma contém "runeterra", logo o substring é seguro. Fonte da leitura:
+  // automation.js:256-260 (readLocation). `#rastreio-mapa`/`#mapa`: verificações extra, se
+  // existirem no DOM (hoje não existem — null-safe). Normalizado (minúsculas, sem acentos)
+  // para casar "Runeterra" em qualquer grafia.
+  const normTxt = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  function emRuneterra() {
+    try {
+      for (const sel of ['#local-nome', '#rastreio-mapa', '#mapa']) {
+        if (normTxt(document.querySelector(sel)?.textContent).includes('runeterra')) return true;
+      }
+    } catch { /* sem DOM */ }
+    return false;
+  }
+
   function potionButton(k) {
     return document.querySelector(`#hud-pocoes [data-pocao="${k}"]`)
       || document.querySelector(`#pocoes [data-pocao="${k}"]`);
@@ -147,6 +156,8 @@ let config = structuredClone(DEFAULT_CONFIG);
   const runLog = (window.__lolidleRunLog = window.__lolidleRunLog || []);
   const rlog = (e) => { if (e.at == null) e.at = Date.now(); runLog.push(e); if (runLog.length > 5000) runLog.splice(0, runLog.length - 5000); };
   window.__lolidleRlog = rlog;
+  // MARCADOR DISCRIMINANTE (Regra Nº 4): prova ao vivo que o código NOVO está carregado.
+  window.__lolidlePocaoV2 = true;
   // cores do canvas: separa MEU dano (out) do dano TOMADO (in) — cena.js (2026-10-13)
   const COR_OUT = new Set(['#ff3030', '#ff7a30', '#ff9a5a', '#e8c840', '#d8a050', '#ffd040', '#ffae00', '#c07cff', '#b01010', '#ff5a3a']);
   const COR_IN = new Set(['#ff6a3a', '#c070ff', '#ffffff']);
@@ -381,25 +392,37 @@ let config = structuredClone(DEFAULT_CONFIG);
       if (k) return { k, reason: `emergência (ttd ${ttd === Infinity ? '∞' : ttd.toFixed(1)}s)` };
     }
 
-    // SMART (padrão): cobre o dano real. Se não conseguir decidir (sem medição), cai pro normal.
-    if (config.smart !== false) {
+    // PvP (Runeterra) = LIMIAR DE HP, não smart — pedido do dono, 2026-10-19:
+    //   Runeterra é o mapa de PvP (mundo aberto). Lá a poção é outra: cura 30% e a
+    //   exaustão é 6 s (motor.js:44, POCAO_PVP) — o smart, que mede DPS recebido / cura
+    //   das skills, não se aplica bem a PvP. A decisão em PvP é por LIMIAR DE HP: em
+    //   Runeterra entramos SEMPRE no ramo 'strongest', mesmo com config.mode === 'bands',
+    //   e saltamos o smart. A rede de emergência (acima) e a margem de chefe
+    //   (lostOf/triggerHp) continuam valendo.
+    const emPvpMapa = emRuneterra();
+    const pvp = config.mode === 'strongest' || emPvpMapa;
+
+    // SMART (PvE, padrão): cobre o dano real. Se não conseguir decidir (sem medição), cai pro limiar.
+    // SEMPRE ligado (pedido do dono, 2026-10-19): não há interruptor — um `smart:false`
+    // antigo do storage não o desliga (o merge força out.smart = true).
+    if (!pvp) {
       let d = null;
       try { d = window.__lolidleAuto && window.__lolidleAuto.decidirPocao && window.__lolidleAuto.decidirPocao(); } catch { d = null; }
       if (d) {
         if (d.k && available(d.k)) return { k: d.k, reason: d.reason };
         if (!d.k) return null;                       // decidiu: cura das skills cobre → sem poção
       }
-      // d === null → não decidiu (sem HP medido) → cai pro normal (segurança)
+      // d === null → não decidiu (sem HP medido) → cai pro limiar (segurança)
     }
 
-    // Normal (aba PvP): por HP perdido
-    if (config.mode === 'strongest') {
+    // Limiar de HP (modo 'strongest' OU Runeterra/PvP): da mais forte para a mais fraca
+    if (pvp) {
       for (const k of ORDER) {
         if (!config.potions[k]?.enabled) continue;
-        if (hp <= triggerHp(k, max, ctx.boss) && available(k)) return { k, reason: `mais forte (HP ≤ ${Math.round(triggerHp(k, max, ctx.boss))})` };
+        if (hp <= triggerHp(k, max, ctx.boss) && available(k)) return { k, reason: `${emPvpMapa ? 'PvP ' : ''}mais forte (HP ≤ ${Math.round(triggerHp(k, max, ctx.boss))})` };
       }
       if (config.combine && available('vida') && available('vidaF') && hp <= triggerHp('vidaS', max, ctx.boss)) {
-        return { k: chainNext(), reason: 'combina normal+forte (suprema bloqueada)' };
+        return { k: chainNext(), reason: `${emPvpMapa ? 'PvP ' : ''}combina normal+forte (suprema bloqueada)` };
       }
       return null;
     }
@@ -414,7 +437,7 @@ let config = structuredClone(DEFAULT_CONFIG);
         // PEDIDO DO DONO (2026-10-14, verbatim): "usar pocoes em sequencia e burro. deixa a unica
         // opcao de usar pocoes sendo a smart, a mais avancada." -> o modo SMART nunca encadeia
         // normal+forte. O encadeamento sobrevive SO no ramo PvP (mode === 'strongest', acima),
-        // que o dono mandou manter IGUAL.
+        // que o dono mandou manter IGUAL — e desde 2026-10-19 também em Runeterra (pvp).
         const s = strongest(ctx); return s ? { k: s, reason: 'topo (fallback)' } : null;
       }
       if (available(k)) return { k, reason: `${META[k].label} (HP ≤ ${Math.round(thr)})` };
@@ -558,8 +581,6 @@ let config = structuredClone(DEFAULT_CONFIG);
   }
 
   function tick() {
-    // GATE DE CAMPEÃO: nada de poção fora do Yasuo (regra do dono).
-    if (!campeaoCerto()) return;
     const now = Date.now();
     const hp = readHP();
     if (hp && Number.isFinite(hp.cur)) { push(ev.hp, now, hp.cur); trackHits(now, hp.cur, bossState.active); }
@@ -603,6 +624,13 @@ let config = structuredClone(DEFAULT_CONFIG);
     const s = saved && typeof saved === 'object' ? saved : {};
     const out = { ...DEFAULT_CONFIG, ...s, potions: {} };
     for (const k of ORDER) out.potions[k] = { ...DEFAULT_CONFIG.potions[k], ...(s.potions?.[k] || {}) };
+    // SMART SEMPRE LIGADO (pedido do dono, 2026-10-19): sem interruptor, sem toggle na GUI —
+    // um `smart: false` num storage antigo NÃO pode desligar a decisão smart.
+    out.smart = true;
+    // O modo 'strongest' era um interruptor da GUI antiga. O PvP (Runeterra) passou a ser
+    // detectado pelo mapa e usa o limiar automaticamente; um storage antigo com 'strongest'
+    // não pode transformar o PvE inteiro em "sempre a mais forte".
+    out.mode = 'bands';
     return out;
   }
 
