@@ -34,6 +34,55 @@
   'use strict';
 
   // -----------------------------------------------------------------------------
+  // GUARD ANTI-BOT DO JOGO (patch do site, out/2026) — LIDO DO JOGO AO VIVO
+  // -----------------------------------------------------------------------------
+  // O snapshot `docs/game-src/jogo.js` NÃO tem este bloco; a versão servida em
+  // https://lolidle.com/js/jogo.js tem, nas linhas 298-318:
+  //
+  //   let cliqueInterno = 0, cliquesFalsos = 0;
+  //   const clicar = (el) => { cliqueInterno++; try { el.click(); } finally { cliqueInterno--; } };
+  //   for (const tipo of ['click','change','input'])
+  //     addEventListener(tipo, (e) => {
+  //       if (e.isTrusted || cliqueInterno) return;
+  //       e.stopImmediatePropagation(); e.preventDefault(); cliquesFalsos++;
+  //     }, true);
+  //   setInterval(() => { ... rede.sinal?.({ s, b: cliquesFalsos }) ... }, 30000);
+  //
+  // MEDIDO ao vivo (2026-10-19): `el.click()` da extensão é ENGOLIDO (a barra de
+  // skills nunca converge: `passos: tirar T, tirar F` ×3) e cada tentativa soma
+  // `cliquesFalsos`, que o jogo ENVIA AO SERVIDOR como sinal de automação. Foi por
+  // isto que "Repor rotação" dizia sucesso e a barra não mudava.
+  //
+  // CORRECÇÃO: no document_start do MUNDO MAIN (antes de o módulo jogo.js correr),
+  // intercepta-se o registo SÓ desse listener — captura, click/change/input, na
+  // janela, e função com `isTrusted` + `stopImmediatePropagation` — e não se regista.
+  // Resultado: os cliques sintéticos voltam a chegar aos handlers do jogo E
+  // `cliquesFalsos` nunca sobe (o guard não corre), logo o servidor deixa de receber
+  // `clique-falso` por causa da extensão. Todos os outros listeners ficam intactos.
+  // O contador é a prova discriminante e viaja no `META.contrato`.
+  try {
+    if (!window.__lolidleGuardHook) {
+      window.__lolidleGuardHook = true;
+      window.__lolidleGuardNeutralizado = 0;
+      const _addEventListener = EventTarget.prototype.addEventListener;
+      EventTarget.prototype.addEventListener = function (tipo, fn, opts) {
+        try {
+          const captura = opts === true || (opts && typeof opts === 'object' && opts.capture === true);
+          const alvo = (this == null) ? window : this;
+          if (captura && alvo === window && (tipo === 'click' || tipo === 'change' || tipo === 'input') && typeof fn === 'function') {
+            const src = Function.prototype.toString.call(fn);
+            if (src.indexOf('isTrusted') >= 0 && src.indexOf('stopImmediatePropagation') >= 0) {
+              window.__lolidleGuardNeutralizado++;
+              return;                     // NÃO regista o guard anti-bot
+            }
+          }
+        } catch (e) { /* um erro aqui nunca pode impedir um listener legítimo */ }
+        return _addEventListener.call((this == null) ? window : this, tipo, fn, opts);
+      };
+    }
+  } catch (e) { window.__lolidleGuardHook = 'erro: ' + e; }
+
+  // -----------------------------------------------------------------------------
   // WORKER DO PULSO (2026-10-16) — a correcção do TRAVAMENTO ao entrar no jogo
   // -----------------------------------------------------------------------------
   // CAUSA (medida, com prova): `jogo.js:1611` faz `new Worker('js/pulso.js')`. O *fetch*
@@ -179,7 +228,8 @@
     rmMonstro: null, kit: null, champ: null,
     rodizio: null, mecanicas: null, chefeHook: null, chefeHookErro: null, combateHook: null,
     kits: null, mochila: null, ciclo: null, fuso: null, grupoSpawn: null, respawn: null,
-    eventosHook: null, eventoHookErro: null, syncHook: null, syncHookErro: null };
+    eventosHook: null, eventoHookErro: null, syncHook: null, syncHookErro: null,
+    contrato: null };
   // So o que passa limpo num postMessage: primitivo ou array de primitivos.
   // Um OBJECTO no meio de um campo desconhecido deitaria o postMessage abaixo
   // (DataCloneError) e o meta inteiro nunca chegava — daí o filtro de tipo.
@@ -270,7 +320,97 @@
     }
     return null;
   }
-  const enviarMeta = () => window.postMessage({ __lolidleAuto: 'meta', ...meta }, '*');
+  // ---- SENTINELA DE PATCH (2026-10-19) -------------------------------------
+  // O jogo pode ser atualizado amanhã (ou daqui a 10 anos) e o motor continuar
+  // a existir com outra forma. A extensão não pode "achar" que sabe: mede o
+  // CONTRATO no arranque e publica o que falta/ Mudou. O `automation.js` já usa
+  // fallbacks declarados; isto dá-lhe o motivo — e à GUI, um aviso visível.
+  //
+  // Assinatura = hash do `Function.prototype.toString()` de cada função-chave.
+  // Não prova que o comportamento é igual, mas prova que o CÓDIGO mudou: um
+  // patch que altere a curva/rotação aparece aqui, mesmo que os nomes fiquem.
+  const hashTexto = (s) => {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = (((h << 5) + h) ^ s.charCodeAt(i)) >>> 0;
+    return h.toString(16);
+  };
+  const assinatura = (fn) => {
+    try { return typeof fn === 'function' ? hashTexto(String(fn)) : null; } catch { return null; }
+  };
+  const contrato = { motor: null, cena: null, dom: null, ok: null, faltando: [], assinaturas: {} };
+  const exigir = (nome, ok) => { if (!ok && !contrato.faltando.includes(nome)) contrato.faltando.push(nome); };
+  function publicarContrato() {
+    // O guard anti-bot do site é neutralizado no topo deste ficheiro. `neutralizado`
+    // é o número de listeners do guard que NÃO foram registados: >= 1 prova que o
+    // hook correu ANTES do jogo; 0 significa que o patch do site não foi encontrado
+    // (ou mudou de forma) — o GUI mostra o aviso de contrato.
+    const guardHook = window.__lolidleGuardHook;
+    if (guardHook && guardHook !== true) exigir('guard-hook: ' + guardHook);
+    contrato.ok = contrato.motor === true && contrato.cena === true && contrato.faltando.length === 0;
+    // clone plain: o postMessage não leva funções; este objecto só tem primitivos/arrays
+    meta.contrato = {
+      ok: contrato.ok,
+      motor: contrato.motor,
+      cena: contrato.cena,
+      dom: contrato.dom,
+      faltando: contrato.faltando.slice(),
+      assinaturas: { ...contrato.assinaturas },
+      guard: { hook: guardHook === true, neutralizado: Number(window.__lolidleGuardNeutralizado || 0) },
+      lidoEm: Date.now(),
+    };
+    enviarMeta();
+  }
+  function contratoMotor(M) {
+    contrato.motor = !!(M && typeof M === 'object');
+    exigir('motor.js', contrato.motor);
+    exigir('CURVA.hp', M && M.CURVA && typeof M.CURVA.hp === 'function');
+    exigir('CURVA.ad', M && M.CURVA && typeof M.CURVA.ad === 'function');
+    exigir('MONSTROS', M && M.MONSTROS && typeof M.MONSTROS === 'object');
+    exigir('LOCAIS', M && Array.isArray(M.LOCAIS));
+    exigir('POCOES', M && M.POCOES && typeof M.POCOES === 'object');
+    exigir('kit()', M && typeof M.kit === 'function');
+    exigir('passo()', M && typeof M.passo === 'function');
+    if (M) {
+      contrato.assinaturas['CURVA.hp'] = assinatura(M.CURVA && M.CURVA.hp);
+      contrato.assinaturas['CURVA.ad'] = assinatura(M.CURVA && M.CURVA.ad);
+      contrato.assinaturas['kit'] = assinatura(M.kit);
+      contrato.assinaturas['passo'] = assinatura(M.passo);
+    }
+    publicarContrato();
+  }
+  function contratoCena(Cena) {
+    const P = Cena && Cena.prototype;
+    contrato.cena = !!P;
+    exigir('cena.js', contrato.cena);
+    exigir('Cena.sincronizar', P && typeof P.sincronizar === 'function');
+    exigir('Cena.evento', P && typeof P.evento === 'function');
+    if (P) {
+      contrato.assinaturas['Cena.sincronizar'] = assinatura(P.sincronizar);
+      contrato.assinaturas['Cena.evento'] = assinatura(P.evento);
+    }
+    publicarContrato();
+  }
+  function contratoDom() {
+    try {
+      const precisos = ['#tela', '#log', '#local-nome'];
+      const falta = precisos.filter((s) => !document.querySelector(s));
+      contrato.dom = falta.length === 0;
+      if (falta.length) exigir('dom: ' + falta.join(', '));
+      publicarContrato();
+    } catch { contrato.dom = false; publicarContrato(); }
+  }
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', contratoDom, { once: true });
+    else contratoDom();
+  }
+  // O guard anti-bot regista-se quando o módulo `jogo.js` corre — que pode ser DEPOIS
+  // do DOMContentLoaded e das importações dinâmicas. Sem estes repúblicos, o contrato
+  // mostrava `guard.neutralizado: 0` mesmo com o hook já a ter recusado os 3 listeners
+  // (medido: o valor real era 3). É a prova discriminante; tem de chegar ao GUI.
+  setTimeout(() => { try { publicarContrato(); } catch { /* ignore */ } }, 3000);
+  setTimeout(() => { try { publicarContrato(); } catch { /* ignore */ } }, 8000);
+
+  function enviarMeta() { window.postMessage({ __lolidleAuto: 'meta', ...meta }, '*'); }
   import('https://lolidle.com/js/motor.js').then((M) => {
     meta.monstros = M.MONSTROS; meta.locais = M.LOCAIS;
     // dados de combate/poção direto do motor (sem hardcode!)
@@ -323,6 +463,7 @@
     }
     meta.bonusTwitch = M.bonusTwitchAtual ? M.bonusTwitchAtual() : null;
     meta.bonusEvento = M.eventoXpAtual ? M.eventoXpAtual() : null;
+    contratoMotor(M);
     enviarMeta();
   }).catch((e) => window.postMessage({ __lolidleAuto: 'meta-erro', erro: String(e) }, '*'));
   import('https://lolidle.com/js/balanco.js').then((B) => { meta.balanco = B.BALANCO; enviarMeta(); }).catch((e) => window.postMessage({ __lolidleAuto: 'meta-erro', erro: String(e) }, '*'));
@@ -359,6 +500,7 @@
   // vez de cada texto. Dar wrap no método da classe é robusto e pega toda carga.
   import('https://lolidle.com/js/cena.js').then(({ Cena }) => {
     const P = Cena && Cena.prototype;
+    contratoCena(Cena);
     if (!P) { meta.chefeHook = false; meta.chefeHookErro = 'sem Cena.prototype'; enviarMeta(); return; }
     if (P.__lolidleChefe) {
       // re-injeção (o instalador é idempotente): os wraps do outro inject já estão postos.
