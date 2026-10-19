@@ -40,6 +40,9 @@ function mundoBarra() {
     R: { nivel: 6, max: 5, base: [500], ratio: [0], recarga: [75, 65, 55, 48, 42] },
   };
   definirCampeao(m, 'aptest', { kit, magia: false });
+  // REGRA DA ULTIMATE (dono, 2026-10-19): por defeito a ultimate SAI da barra de MOBS. Esta
+  // suite testa disponibilidade/espalha (não a regra nova), por isso força "sempre em mobs".
+  auto.setConfig({ ultEmMobs: true });
   m.montar('#hud-nivel', [m.el({ label: 'hud-nivel', textContent: '29' })]);
   m.montar('.st', [m.el({ label: 'st-dano', textContent: 'Dano 300' })]);
   m.montar('#hab-ativas .hab[data-t]', ['F', 'Q', 'A', 'E', 'B', 'R'].map((tt) => m.el({

@@ -65,6 +65,9 @@ export const suite = {
 
   async run(t) {
     const { auto, arsenal } = montarMundo(kitComStun);
+    // REGRA DA ULTIMATE (2026-10-19): por defeito a ultimate sai da barra de MOBS. Esta suite
+    // testa a RESERVA DE ATORDOAMENTO (com a ultimate presente para comparar), logo força-a em mobs.
+    auto.setConfig({ ultEmMobs: true });
     const mobs = auto.barraIdeal({ arsenal: arsenal.map((h) => ({ ...h })) }, 'mobs');
     const chefe = auto.barraIdeal({ arsenal: arsenal.map((h) => ({ ...h })) }, 'boss');
 
@@ -81,6 +84,7 @@ export const suite = {
 
     /* ---- S4: sem `atordoa` no kit, nada muda (o comportamento antigo continua) ---- */
     const sem = montarMundo(kitSemStun);
+    sem.auto.setConfig({ ultEmMobs: true });   // mesma razão de cima (testa atordoamento, não a regra)
     const mobs2 = sem.auto.barraIdeal({ arsenal: sem.arsenal.map((h) => ({ ...h })) }, 'mobs');
     const chefe2 = sem.auto.barraIdeal({ arsenal: sem.arsenal.map((h) => ({ ...h })) }, 'boss');
     t.check('S4: sem atordoa no kit, a barra de CHEFE == a de MOBS',

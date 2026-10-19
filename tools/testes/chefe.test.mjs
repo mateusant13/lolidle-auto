@@ -263,6 +263,9 @@ export const suite = {
      * ===================================================================== */
     {
       const { auto } = mundo('aptest');
+      // REGRA DA ULTIMATE (2026-10-19): por defeito a ultimate sai da barra de MOBS. Este bloco
+      // testa disponibilidade/anti-oscilação com a ultimate PRESENTE, logo força-a em mobs.
+      auto.setConfig({ ultEmMobs: true });
       t.check('H1: barraPorDisponibilidade nasce LIGADA (pedido do dono)',
         auto.getConfig().barraPorDisponibilidade === true);
       // 4 skills: Q e R prontas (cd 0), A a 3s e F a 7s de recarga. A barra actual tem as 4.

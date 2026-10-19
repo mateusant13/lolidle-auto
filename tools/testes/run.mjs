@@ -60,6 +60,9 @@ import { suite as suiteMercadoWatch } from './mercado-watch.test.mjs';
 import { suite as suiteAlvosEstado } from './alvos-estado.test.mjs';
 // TK-X2 (P0): a barra de CHEFE reserva um lugar para o atordoamento (interrompe a mecanica).
 import { suite as suiteStunChefe } from './stun-chefe.test.mjs';
+// REGRA DA ULTIMATE POR FASE + PORTAO DO MERCADO (2026-10-19): a ultimate so entra em fase dificil
+// ou no chefe; comprar a build e auto-play (nao manutencao).
+import { suite as suiteUltFase } from './ult-fase.test.mjs';
 // DIAGNOSTICO DE FPS (2026-10-18): observer de novidades barato (body+childList) e sem empilhar na reinjecao.
 import { suite as suiteObservers } from './observers.test.mjs';
 
@@ -85,6 +88,7 @@ const SUITES = [
   suiteRegiao, suiteW1, suiteE, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteChefe, suiteFiltroBasicos, suiteBuildEquipada,
   suiteMercadoWatch,
   suiteStunChefe,
+  suiteUltFase,
   suiteObservers,
   suiteAlvosEstado,
 ];

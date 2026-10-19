@@ -1520,6 +1520,7 @@
         + tg('ap-cfg-autoAtrib', 'Distribuir pontos de atributo', 'Gasta sozinho os pontos de atributo livres pelo modelo escolhido na aba Personagem.', !!c.autoAtrib)
         + tg('ap-cfg-autoRefino', 'Refinar no Ornn', 'Refina os seus LENDÁRIOS já tier A ou melhor até +3 (acima de +2 pode descer).', !!c.autoRefino)
         + tg('ap-cfg-barraDisp', 'Barra pelas habilidades PRONTAS', 'Põe na barra as habilidades DISPONÍVEIS e as que ficam prontas mais cedo (o dono: "usava tudo disponivel ... o tempo inteiro"). Desligado, a barra fica presa às 4 de maior dano.', c.barraPorDisponibilidade !== false)
+        + tg('ap-cfg-ultMobs', 'Ultimate nas lutas de mobs', 'LIGADO: a ultimate entra na barra também nos mobs (gasta a recarga longa em qualquer luta). DESLIGADO (recomendado): a ultimate só entra quando a fase é DIFÍCIL (lenta/limite de dano/acima do nível) ou é o CHEFE — nos mobs fáceis o lugar vai para uma habilidade que volta muito antes (recarga base >35 s).', c.ultEmMobs === true)
         + '</div>'));
 
       const pc = (k) => Object.assign({ enabled: true, mode: 'pct', value: k === 'vidaS' ? 60 : k === 'vidaF' ? 43 : 21 }, (config && config.potions && config.potions[k]) || {});
@@ -1625,6 +1626,7 @@
     const setChk = (id, v) => { const e = $(id); if (e && e.checked !== !!v) e.checked = !!v; };
     setChk('ap-cfg-autoEquip', c.autoEquip); setChk('ap-cfg-trocaItens', c.trocaItens);
     setChk('ap-cfg-autoAtrib', c.autoAtrib); setChk('ap-cfg-autoRefino', c.autoRefino);
+    setChk('ap-cfg-barraDisp', c.barraPorDisponibilidade !== false); setChk('ap-cfg-ultMobs', c.ultEmMobs === true);
     // o que falta fazer na base (checklist viva)
     const fb3 = faltasBase();
     if (fb3) {
@@ -3370,6 +3372,11 @@
     },
     'ap-cfg-autoAtrib': (el) => { definirCfg({ autoAtrib: el.checked }); fb('ok', 'Distribuir pontos de atributo automaticamente: ' + (el.checked ? 'ligado' : 'desligado') + '.'); },
     'ap-cfg-autoRefino': (el) => { definirCfg({ autoRefino: el.checked }); fb('ok', 'Refinar no Ornn automaticamente: ' + (el.checked ? 'ligado' : 'desligado') + '.'); },
+    // DEFEITO CORRIGIDO (2026-10-19): `ap-cfg-barraDisp` era desenhado mas NÃO tinha handler —
+    // o interruptor não fazia nada. Agora escreve a chave do motor.
+    'ap-cfg-barraDisp': (el) => { definirCfg({ barraPorDisponibilidade: !!el.checked }); fb('ok', 'Barra pelas PRONTAS: ' + (el.checked ? 'ligada (usa tudo disponível, reavalia a cada 2 s)' : 'desligada (fixa nas 4 de maior dano)') + '.'); ultimoRender = 0; },
+    // REGRA DA ULTIMATE (dono, 2026-10-19): desligado (default) = ultimate só em fase difícil/chefe.
+    'ap-cfg-ultMobs': (el) => { definirCfg({ ultEmMobs: !!el.checked }); fb('ok', el.checked ? 'Ultimate SEMPRE em mobs (ignora a regra da fase).' : 'Ultimate só em fase DIFÍCIL ou no chefe.'); ultimoRender = 0; },
     'ap-pc-strongest': (el) => { salvarTopo({ mode: el.checked ? 'strongest' : 'bands' }); fb('ok', 'Regra das poções: ' + (el.checked ? 'usa sempre a mais forte disponível' : 'faixas por vida perdida') + '.'); },
     'ap-pc-smart': (el) => { salvarTopo({ smart: !!el.checked }); fb('ok', 'Decisão inteligente: ' + (el.checked ? 'ligada (gasta menos poções)' : 'desligada (usa só as faixas)') + '.'); },
     'ap-min-vida': (el) => guardarMin('vida', el.value),

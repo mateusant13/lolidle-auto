@@ -3464,7 +3464,12 @@ const CFG_VER = 2;
     irBase:       { pai: 'manutencao', cfg: null },
     vender:       { pai: 'irBase',    cfg: null,   excecao: () => ehRuneterra(), excecaoTxt: 'skippado em Runeterra' },
     repor:        { pai: 'irBase',    cfg: null },
-    comprar:      { pai: 'irBase',    cfg: 'autoComprar' },
+    // COMPRAR A BUILD E AUTO-PLAY (regra do dono, 2026-10-19, verbatim): "auto play desligado
+    // nao devia abrir o mercado por mim pra pesquisar items a comprar. isso e autoplay."
+    // Estava só sob `irBase`/`manutencao`, e a manutencao é ligada por defeito e corre em
+    // QUALQUER campeao — por isso a Katarina (autoplay off, fora do alvo) abria o mercado à
+    // mesma. Agora herda a excepção de campeão do auto-play: sem alvo, NÃO abre o mercado.
+    comprar:      { pai: 'irBase',    cfg: 'autoComprar', excecao: () => !podeFazer('autoplay').pode, excecaoTxt: 'comprar a build e auto-play (so no campeao alvo)' },
     refino:       { pai: 'irBase',    cfg: 'autoRefino' },
     montar:       { pai: 'irBase',    cfg: 'autoMontar' },
     cofre:        { pai: 'irBase',    cfg: null,   excecao: () => ehRuneterra(), excecaoTxt: 'skippado em Runeterra' },
@@ -3668,7 +3673,8 @@ const CFG_VER = 2;
     // passagem (4 bases da build ideal, cada uma abre grupo e lê ofertas). A
     // rotina da base inteira chegava a 60–90 s por causa disto. Os preços do
     // mercado não mudam de segundo a segundo: no máximo 1 consulta a cada 10 min.
-    n.comprar = (Date.now() - _ultimaCompra) > 600000;
+    n.comprar = podeFazer('comprar').pode && (Date.now() - _ultimaCompra) > 600000
+      && (naBase() || mercadoTemDaBuild() !== false);     // fora da base só recorda se HÁ algo da build à venda
     // ---- REGRA DE OURO: OPORTUNIDADES não pagam uma viagem sozinhas ----
     // Se NENHUMA necessidade primária está aberta, as oportunidades (mercado/comprar/refino/
     // montar) são DESLIGADAS nesta passagem: ele fica a farmar em vez de andar para trás e para
@@ -6834,6 +6840,12 @@ const CFG_VER = 2;
     ocupado = true;
     try {
       const mm = mercadoEl(true); if (mm && mm.hidden) { press('j'); await esperar(600); }
+      // NÃO digitar onde os botões estão DESACTIVADOS: o jogo desliga o [data-comprar] longe do
+      // Mercador (jogo.js:2621 `bloq`) e mostra `#mercado-fora`. Sem este portão a extensão
+      // digitava "Eco de Luden", ficava sem ofertas clicáveis e prendia-se (queixa do dono,
+      // 2026-10-19: "ficando PARADO apos essa pesquisa").
+      const fora = q1('#mercado-fora');
+      if (fora && fora.hidden === false) { return { ok: false, motivo: 'nao esta no Mercador (botoes desactivados)' }; }
       mm?.querySelector('[data-aba="comprar"]')?.click(); await esperar(650);
       const ofertas = lerOfertasCompra();
       if (!ofertas.length) { /* os grupos carregam sob demanda — segue mesmo assim */ }
@@ -6884,7 +6896,13 @@ const CFG_VER = 2;
       }
       logEvent('mercado', { acao: 'comprar', compras });
       return { ok: true, compras };
-    } finally { ocupado = false; }
+    } finally {
+      // FECHAR SEMPRE (queixa do dono: "ele nao fecha o mercado e volta"). A janela era aberta
+      // com `press('j')` e NUNCA fechada — ficava à frente com a busca preenchida ("Eco de Luden")
+      // e o boneco parado. `fecharMercado` clica o `[data-fechar]` da própria janela.
+      try { fecharMercado(); } catch { /* ignore */ }
+      ocupado = false;
+    }
   }
 
   // =====================================================================================
@@ -6965,6 +6983,35 @@ const CFG_VER = 2;
       if (!d || !Array.isArray(d.ofertas)) return { ok: false, motivo: 'resposta sem ofertas' };
       return { ok: true, ofertas: d.ofertas, taxa: d.taxa, limite: d.limite };
     } catch (e) { return { ok: false, motivo: String((e && e.message) || e) }; }
+  }
+  // ---- PRE-CHECAGEM DO MERCADO (2026-10-19) — LER de QUALQUER sitio, sem ir à base -------------
+  // Dono, verbatim: "ele nao deve voltar pra base so pra ver o mercado. pode pesquisar fora da
+  // base." O JOGO já deixa OLHAR o mercado de qualquer lugar e só COMPRAR no Mercador
+  // (docs/game-src/jogo.js:2544 "Olhar dá de qualquer lugar; comprar e vender, com o Mercador";
+  // jogo.js:2621 desliga o [data-comprar] longe do Mercador). Logo o mercado NÃO é razão para
+  // recordar: só conta como necessidade quando a pré-checagem (rota do servidor, de qualquer
+  // lugar) viu algo da BUILD à venda. Sem leitura (desconhecido) NÃO bloqueia — fail-open.
+  let _mercadoServidor = { at: 0, ok: false, ofertas: [] };
+  function mercadoTemDaBuild() {
+    if (!_mercadoServidor.ok) return null;                 // desconhecido -> não bloquear
+    try {
+      const ideal = new Set((cfg.buildPorFase !== false ? buildDaFase(faseAtual()) : buildIdeal()).map(String));
+      for (const o of _mercadoServidor.ofertas) {
+        if (!o || o.minha || (o.para && o.paraMim !== true)) continue;
+        const base = baseDoItemMercado(o.item);
+        if (base && ideal.has(String(base))) return true;
+      }
+      return false;
+    } catch { return null; }
+  }
+  function atualizarMercadoServidor() {
+    if (!podeFazer('autoplay').pode) return;              // sem auto-play não há compra: não gasta rede
+    if (Date.now() - _mercadoServidor.at < 30000) return;
+    _mercadoServidor.at = Date.now();
+    try {
+      lerMercadoServidor().then((r) => { _mercadoServidor = { at: Date.now(), ok: !!(r && r.ok), ofertas: (r && r.ofertas) || [] }; })
+        .catch(() => { /* ignore */ });
+    } catch { /* ignore */ }
   }
   /** Reserva de ouro: o MESMO calculo de comprarNoMercado (nunca zera o ouro — pocoes). */
   function reservaOuroWatch() {
@@ -7394,7 +7441,7 @@ const CFG_VER = 2;
    *  (motor.js:899 `ORDEM_HAB`). Só entram rank > 0 (motor.js:2837 recusa rank 0) e não
    *  passivas (motor.js:2842 recusa passivas). */
   const ORDEM_HAB_FB = ['Q', 'W', 'E', 'R', 'G', 'A', 'D', 'F', 'T', 'B', 'M', 'N'];
-  function barraIdeal(s, fase) {
+  function barraIdeal(s, fase, dificil) {
     s = s || readSkills();
     const dpsDe = {};
     try { for (const h of dpsPorHabilidade().habs) dpsDe[h.t] = h.dps || 0; } catch { /* ignore */ }
@@ -7436,7 +7483,24 @@ const CFG_VER = 2;
     // usa). Skill fora da barra não tem recarga legível → cdDe = 0 → pronta.
     const pronto = (t) => cdDe(t) <= 0.5;
     const idxAtual = (t) => { const i = (s.bar || []).map((b) => b.t).indexOf(t); return i < 0 ? 99 : i; };
-    const cand = (s.arsenal || []).filter((h) => h.rank > 0 && !(KAT[h.t] && KAT[h.t].passiva));
+    // ---- REGRA DO DONO (2026-10-19): a ULTIMATE só entra na barra quando a fase o justifica ----
+    // Verbatin: "as skills tem uma regra: caso a fase esteja facil de fazer/nao demorada, nao use
+    // ultimates. ultimates tem 35 plus seconds. BASE. nao apos cdr e etc. caso a fase seja
+    // dificil, sendo boss OU NAO, ai pode usar. ja, sendo boss, tem que usar de certeza todas as
+    // skills."
+    // A recarga BASE é longa (>35 s), logo gastá-la numa fase curta é desperdício. Então:
+    //   CHEFE (boss)      -> SEMPRE entra (usar "todas as skills");
+    //   MOBS dificil      -> entra (a fase não é curta: DPS-limitada / lenta / acima do nível);
+    //   MOBS facil/curta  -> NÃO entra (o lugar vai para a próxima melhor, que volta muito antes).
+    // `dificil` é INJECTÁVEL (testes); sem ele, a dificuldade é MEDIDA (`areaDificil`/`valeUlt`),
+    // nunca adivinhada — e sem medida NÃO se promove a ultimate.
+    const ehChefe = String(fase || '').toLowerCase() !== 'mobs';
+    const faseDificil = (typeof dificil === 'boolean') ? dificil
+      : (() => { try { return !!(areaDificil() || valeUlt()); } catch { return false; } })();
+    const usarUlt = ehChefe || faseDificil || cfg.ultEmMobs === true;
+    let cand = (s.arsenal || []).filter((h) => h.rank > 0 && !(KAT[h.t] && KAT[h.t].passiva));
+    // Fora de chefe e sem dificuldade medida, a ultimate SAI da disputa por um lugar.
+    if (!usarUlt) cand = cand.filter((h) => !ehUltimateFixa(h.t));
     // Peso com que a skill CONCORRE A UM LUGAR na fase atual (multi-alvo em mobs, alvo único
     // no chefe). É o que faz a barra de mobs diferir da de chefe quando o kit tem skills de
     // área — e o que deixa a da Katarina IGUAL quando o kit dela já quer as mesmas 4 nas duas
@@ -7550,23 +7614,24 @@ const CFG_VER = 2;
     if (!ok) logIssue('barra:nao-converge', { alvo, barra: fim.tipos, vagas: fim.vagas, passos });
     return { ok, barra: fim.tipos, vagas: fim.vagas, passos, tentativas: tent };
   }
-  /** ROTAÇÃO DA BARRA — estável e sempre com a ULTIMATE.
+  /** ROTAÇÃO DA BARRA — estável e com a ULTIMATE só quando a fase a justifica.
    *  `desejadas` vem da `barraIdeal` (determinística): enquanto o alvo não mudar, `mudou` é
-   *  false e NÃO se clica em nada. Era este o defeito: a versão antiga ordenava por `pronto`
-   *  (recarga) e por isso a barra mudava a cada 2 s; e excluía a ultimate fora de chefe
-   *  (`usarUlt`), o que a deitava fora — o dono viu a barra errada várias vezes. */
+   *  false e NÃO se clica em nada. A antiga ordenação por `pronto` (recarga) fazia a barra mudar
+   *  a cada 2 s — o dono quis essa parte de volta ("usava tudo disponivel"), logo ela voltou
+   *  (ver `barraPorDisponibilidade`). A ultimate só entra em fase DIFÍCIL ou no chefe (regra do
+   *  dono, 2026-10-19 — ver `barraIdeal`); `usarUlt` é o ESPELHO dessa decisão (não mais `true`). */
   async function rotacaoSkills(dry) {
     const fase = faseAtual();
     const dificil = areaDificil();
     const s = readSkills();
-    const desejadas = barraIdeal(s, fase);          // barra POR FASE (cfg.skillsPorFase)
+    const desejadas = barraIdeal(s, fase, dificil);   // barra POR FASE + regra da ultimate
     const antes = (s.bar || []).map((b) => b.t);
     const mudou = !mesmaBarra(antes, desejadas);
     let aplicado = null;
     if (!dry && mudou) aplicado = await aplicarBarra(desejadas);
     const temUlt = desejadas.some((t) => ehUltimateFixa(t));
     const vagas = lerBarra().vagas;
-    return { fase, dificil, usarUlt: true, temUlt, vagas, ritmo: ritmoMobs(), antes, desejadas, mudou, aplicado };
+    return { fase, dificil: !!dificil, usarUlt: temUlt, temUlt, vagas, ritmo: ritmoMobs(), antes, desejadas, mudou, aplicado };
   }
 
   let _filtroBasicosAt = 0;   // throttle do filtro de básicos (TK-02-27)
@@ -8541,7 +8606,9 @@ const CFG_VER = 2;
     // ---- WATCH-LIST DO MERCADO (2026-10-18): deteccao em tempo real + auto-compra ----
     casarOfertas, itemNaWatch, baseDoItemMercado, lerMercadoServidor, reservaOuroWatch,
     podeComprarOfertaWatch, acharCardWatch, comprarOfertaWatch, ofertasWatchDoDom,
-    vigiarMercadoPasso, mercadoWatchEstado };
+    vigiarMercadoPasso, mercadoWatchEstado,
+    // PRE-CHECAGEM do mercado (2026-10-19): ler de qualquer sitio, sem recordar só para olhar.
+    mercadoTemDaBuild, atualizarMercadoServidor };
 
   // AUTO-LIMPEZA: se o script JÁ rodou (reinjeção), cancela os timers antigos.
   // Sem isso cada injeção empilha outro conjunto de loops e TRAVA o jogo.
@@ -8567,6 +8634,9 @@ const CFG_VER = 2;
   every(checarRotacao, 2000);
   every(() => { checarFiltroBasicos().catch(() => { /* ignore */ }); }, 30000);
   every(supervisarBase, 5000);
+  // PRÉ-CHECAGEM do mercado (LER de qualquer sitio; NÃO recorda só para olhar). Gated pelo
+  // auto-play (sem auto-play não há compra) e throttled a 30 s dentro da própria função.
+  every(atualizarMercadoServidor, 5000);
   // WATCH-LIST DO MERCADO (pedido do dono, 2026-10-18): POLLER EM TEMPO REAL. A cadencia e do
   // dono (cfg.mercadoWatch.cadenciaMs); o tique e curto e so le o servidor quando passa a
   // cadencia. A deteccao corre em qualquer sitio; a COMPRA so age no Mercador (naBase()) e

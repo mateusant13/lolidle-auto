@@ -31,6 +31,11 @@ export const suite = {
     const m = criarMundo();
     const auto = carregarAutomation(m);
     alimentarCatalogo(m);
+    // REGRA DA ULTIMATE (dono, 2026-10-19): por defeito a ultimate SAI da barra de MOBS (recarga
+    // BASE > 35 s). Esta suite testa o PESO DA FASE (multi-alvo vs alvo único), não a regra nova;
+    // força "sempre ultimate em mobs" para comparar as barras com o mesmo conjunto. A regra em si
+    // é provada em `ult-fase.test.mjs`.
+    auto.setConfig({ ultEmMobs: true });
 
     /* ---- kit de áreas de teste: Q com alvos 3 e 3 skills de alvo único mais fortes ---- */
     // Os números (base/ratio/recarga) são de TESTE; o que tem de ser real é o campo

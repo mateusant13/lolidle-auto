@@ -27,13 +27,18 @@ const clon = () => ARSENAL.map((h) => ({ t: h.t, rank: h.rank }));
 
 export const suite = {
   nome: 'barra',
-  titulo: 'Barra de habilidades (a ultimate nunca sai)',
+  titulo: 'Barra de habilidades (ordenacao, slots e fase; ultimate forçada em mobs nesta suite)',
 
   async run(t) {
     const m = criarMundo();
     const auto = carregarAutomation(m);
     alimentarCatalogo(m);
     definirCampeao(m, 'aptest');
+    // REGRA DA ULTIMATE (dono, 2026-10-19): por defeito a ultimate NÃO entra na barra de MOBS
+    // (recarga BASE > 35 s; só entra em fase DIFÍCIL ou no CHEFE). Esta suite testa a ORDENAÇÃO
+    // (slots/rank/fase), não a regra nova, por isso força "sempre ultimate em mobs" aqui. A
+    // regra em si é provada em `ult-fase.test.mjs` (com `ultEmMobs` desligado).
+    auto.setConfig({ ultEmMobs: true });
 
     /* B1 - com a ultimate desbloqueada (rank > 0) ela TEM de estar na barra e em 1.o. */
     const bar = auto.barraIdeal({ arsenal: clon() });
