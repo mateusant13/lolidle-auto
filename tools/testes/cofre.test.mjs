@@ -65,6 +65,40 @@ function slotCofre(m, { k, nome, base, refino = 0, rar = 'basico' }) {
 }
 /** Monta a grade do cofre (o selector que `lerCofreSlots`/`cofreConhecido` leem). */
 function montarGradeCofre(m, slots) { return m.montar('.cofre-slot[data-k]', slots); }
+/** Grade de cofre VIVA como o motor (motor.js:3277-3283 + jogo.js:5598/6181-6192):
+ *  `data-k` é o ÍNDICE do array; clicar num slot de retirar faz splice(k,1), adiciona o
+ *  item à mochila e re-renderiza os restantes com os novos índices. Se `semSaque` for true,
+ *  o clique não remove nem adiciona (simula mochila cheia / servidor recusou). O label é
+ *  estável por spec (base~qual) para as asserções poderem procurar o slot certo. */
+function montarGradeCofreMotor(m, specs, opts) {
+  opts = opts || {};
+  let vivos = specs.slice();
+  const pinta = () => {
+    const els = vivos.map((s, i) => {
+      const img = m.el({ tag: 'img', label: 'cofre-img:' + s.base + i, attrs: { src: s.refino ? `assets/img/itens/ref/${s.base}-${s.refino}.png` : `assets/img/itens/${s.base}.png` } });
+      const el = m.el({
+        tag: 'button', label: 'cofre-slot:' + s.base + '~' + (s.qual || 'C'), className: 'cofre-slot r-' + (s.rar || 'basico'),
+        dataset: { k: String(i), nome: s.nome, cofre: 'retirar', id: `${s.base}~${s.qual || 'C'}`, dica: s.dica || '' },
+        find: { img: [img] },
+      });
+      el.click = () => {
+        m.estado.clicks.push(el.label);
+        const idx = vivos.indexOf(s);
+        if (idx < 0) return false;
+        vivos.splice(idx, 1);                   // motor.js:3277-3283
+        if (!opts.semSaque) {
+          const mo = m.estado.montados.get('#mochila')[0];
+          if (mo) mo.children.push(m.el({ tag: 'button', label: 'mochila:' + el.dataset.id, className: 'slot ' + (s.rar || 'basico'), attrs: { 'data-id': el.dataset.id, 'data-dica': el.dataset.dica || '' } }));
+        }
+        pinta();                                 // jogo.js:6181-6192 mostrarCofre()
+        return true;
+      };
+      return el;
+    });
+    montarGradeCofre(m, els);
+  };
+  pinta();
+}
 
 export const suite = {
   nome: 'cofre',
@@ -322,6 +356,84 @@ export const suite = {
       t.check('C13: base lido do src refinado (1005, NAO o data-k 3)', lido.length === 1 && String(lido[0].base) === '1005');
       t.check('C13: refino lido do src refinado (+2)', lido.length === 1 && lido[0].refino === 2);
       t.check('C13: qualidade lida do data-nome ([C])', lido.length === 1 && lido[0].qual === 'C');
+    }
+
+    /* ============ C14 - INDICE A MEXER: o splice reordena o cofre (motor.js:3277-3283) ==== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      m.montar('#equip > button.slot[data-id]', [
+        m.el({ tag: 'button', label: 'equip:2007', className: 'slot lendario', attrs: { 'data-id': '2007~S', 'data-dica': 'Botas AD (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2001', className: 'slot lendario', attrs: { 'data-id': '2001~S', 'data-dica': 'Lendario AD 1 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2004', className: 'slot lendario', attrs: { 'data-id': '2004~S', 'data-dica': 'Lendario AD 2 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2005', className: 'slot lendario', attrs: { 'data-id': '2005~S', 'data-dica': 'Lendario AD 3 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2006', className: 'slot lendario', attrs: { 'data-id': '2006~S', 'data-dica': 'Lendario AD 4 (lendario)' } }),
+      ]);
+      montarMochila(m, []);
+      // 4 slots: 3 lixos (1005 C, 4002 C, 4001 C) + 1 LENDARIO (9500 S) — este e o que a
+      // releitura protege: apos cada splice o k muda, e o lendario passa a ocupar o indice
+      // que o lixo tinha. Se o codigo usasse o k antigo, sacava o lendario.
+      montarGradeCofreMotor(m, [
+        { base: '1005', qual: 'C', nome: 'Adaga Inutil [C]', rar: 'basico', dica: 'Adaga Inutil (basico)' },
+        { base: '4002', qual: 'C', nome: 'Couraca Epica [C]', rar: 'epico', dica: 'Couraca Epica (epico)' },
+        { base: '4001', qual: 'C', nome: 'Refugo Epico [C]', rar: 'epico', dica: 'Refugo Epico (epico)' },
+        { base: '9500', qual: 'S', nome: 'Lendario Fraco [S]', rar: 'lendario', dica: 'Lendario Fraco (lendario)' },
+      ]);
+      montarLojista(m, [
+        { id: '1005~C', dica: 'Adaga Inutil (basico)' },
+        { id: '4002~C', dica: 'Couraca Epica (epico)' },
+        { id: '4001~C', dica: 'Refugo Epico (epico)' },
+      ]);
+      const r = await auto.venderLixoDoCofre();
+      const clicks = m.estado.clicks;
+      t.check('C14: venderLixoDoCofre correu', r.ok === true);
+      t.check('C14: vendidos = [1005, 4001, 4002] (exactamente os 3 lixos, ordem numerica de Object.keys)',
+        Array.isArray(r.vendidos) && r.vendidos.length === 3 && r.vendidos.join(',') === '1005,4001,4002');
+      t.check('C14: clicou nos 3 slots de lixo',
+        clicks.indexOf('cofre-slot:1005~C') >= 0 && clicks.indexOf('cofre-slot:4002~C') >= 0 && clicks.indexOf('cofre-slot:4001~C') >= 0);
+      t.check('C14: o LENDARIO (9500) NUNCA foi clicado', clicks.indexOf('cofre-slot:9500~S') < 0);
+      const mo = m.estado.montados.get('#mochila')[0];
+      t.check('C14: a mochila cresceu 3', mo.children.length === 3);
+      const cofreFinal = m.estado.montados.get('.cofre-slot[data-k]') || [];
+      t.check('C14: o cofre ficou so com o lendario (re-render com k actual)',
+        cofreFinal.length === 1 && cofreFinal[0].dataset.k === '0' && cofreFinal[0].dataset.nome === 'Lendario Fraco [S]');
+      const ev = (auto.getFarm().log || []).find((e) => e.type === 'cofre' && e.acao === 'vender-lixo');
+      t.check('C14: logEvent cofre/vender-lixo com 3 vendidos', !!ev && ev.vendidos.join(',') === '1005,4001,4002');
+    }
+
+    /* ============ C15 - SAQUE NAO CONFIRMADO: mochila cheia / servidor recusou ========== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      m.montar('#equip > button.slot[data-id]', [
+        m.el({ tag: 'button', label: 'equip:2007', className: 'slot lendario', attrs: { 'data-id': '2007~S', 'data-dica': 'Botas AD (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2001', className: 'slot lendario', attrs: { 'data-id': '2001~S', 'data-dica': 'Lendario AD 1 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2004', className: 'slot lendario', attrs: { 'data-id': '2004~S', 'data-dica': 'Lendario AD 2 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2005', className: 'slot lendario', attrs: { 'data-id': '2005~S', 'data-dica': 'Lendario AD 3 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2006', className: 'slot lendario', attrs: { 'data-id': '2006~S', 'data-dica': 'Lendario AD 4 (lendario)' } }),
+      ]);
+      montarMochila(m, []);
+      // semSaque: o clique NAO adiciona a mochila (mochila cheia / servidor recusou).
+      montarGradeCofreMotor(m, [
+        { base: '1005', qual: 'C', nome: 'Adaga Inutil [C]', rar: 'basico', dica: 'Adaga Inutil (basico)' },
+      ], { semSaque: true });
+      montarLojista(m, [{ id: '1005~C', dica: 'Adaga Inutil (basico)' }]);
+      // o banco comeca em modo observacao (DEFAULT.enabled=false); liga o mestre como a GUI faria
+      auto.setConfig({ enabled: true });
+      const n1 = auto.necessidadesBase();
+      t.check('C15: antes, n.venderLixoCofre e true (ha lixo, cadencia nao travada)', n1.venderLixoCofre === true);
+      const r = await auto.venderLixoDoCofre();
+      t.check('C15: vendidos vazios (nao confirmou o saque)', Array.isArray(r.vendidos) && r.vendidos.length === 0);
+      t.check('C15: a mochila NAO cresceu', m.estado.montados.get('#mochila')[0].children.length === 0);
+      t.check('C15: NAO registou venda', !(auto.getFarm().log || []).some((e) => e.type === 'cofre' && e.acao === 'vender-lixo'));
+      const n2 = auto.necessidadesBase();
+      t.check('C15: DEPOIS, n.venderLixoCofre continua true (cadencia NAO avancou)', n2.venderLixoCofre === true);
     }
   },
 };

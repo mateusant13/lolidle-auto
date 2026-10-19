@@ -4450,35 +4450,58 @@ const CFG_VER = 2;
     }
     return lixo;
   }
-  /** Saca UM slot do cofre (TK-03): abre o cofre se preciso, clica no slot `data-k` de retirada,
-   *  espera e confirma que o item entrou na mochila (`scanBag`). Devolve {ok, base}. */
-  async function sacarSlotDoCofre(k) {
+  /** Saca UM slot do cofre (TK-03): abre o cofre se preciso, RELÊ os slots e clica no slot
+   *  ACTUAL que casa com o alvo por {base, qual, refino} exacto. O `data-k` é o ÍNDICE do
+   *  array (jogo.js:5598) e o motor faz splice(k,1) a cada retirada (motor.js:3277-3283),
+   *  por isso NUNCA se guarda o k entre cliques: um k velho pode apontar para outro item,
+   *  inclusive um lendário/build que `lixoDoCofreLista()` protegeu. O alvo não pode bater
+   *  só na base — duas qualidades do mesmo base têm o mesmo `data-k` potencial. O saque só
+   *  conta como confirmado quando a mochila cresce (poll curto); devolve {ok:false} quando
+   *  nada sai (mochila cheia, servidor recusou, slot disabled). */
+  async function sacarSlotDoCofre(alvo) {
     const abriu = await abrirCofreTesoureira();
     if (!abriu || !abriu.ok) return { ok: false, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
+    const base = String(alvo && alvo.base != null ? alvo.base : '').replace(/[+~].*$/, '');
+    const qual = alvo && alvo.qual ? String(alvo.qual).toUpperCase() : null;
+    const refino = alvo && alvo.refino ? +alvo.refino : 0;
+    const lido = lerCofreSlots().find((s) =>
+      String(s.base || '') === base &&
+      (qual == null || String(s.qual || '').toUpperCase() === qual) &&
+      (refino === 0 || (s.refino || 0) === refino) &&
+      (s.acao === 'retirar' || s.acao === 'sacar'));
+    if (!lido) return { ok: false, motivo: 'sem slot de ' + base + (qual ? ' ' + qual : '') + ' no cofre' };
     const slot = [...document.querySelectorAll('.cofre-slot[data-k]')]
-      .find((s) => String(s.dataset.k) === String(k) && (s.dataset.cofre === 'retirar' || s.dataset.cofre === 'sacar'));
-    if (!slot) return { ok: false, motivo: 'sem slot ' + k + ' no cofre' };
-    const lido = lerCofreSlots().find((s) => String(s.k) === String(k)) || null;
-    const base = lido ? lido.base : null;
+      .find((s) => String(s.dataset.k) === String(lido.k));
+    if (!slot) return { ok: false, motivo: 'sem slot ' + lido.k + ' no cofre' };
+    const antes = ((scanBag(true) || {}).items || []).length;
     slot.click();
-    await humano(380);
-    const bag = scanBag(true);                       // o item moveu-se do cofre para a mochila
-    logEvent('cofre', { acao: 'sacar-lixo', k, base });
-    return { ok: true, base, nome: lido ? lido.nome : null, bag: !!(bag && bag.items) };
+    let depois = antes;
+    for (let i = 0; i < 6 && depois <= antes; i++) {   // poll curto: o servidor responde e o motor re-renderiza
+      await esperar(100);
+      depois = ((scanBag(true) || {}).items || []).length;
+    }
+    if (depois <= antes) return { ok: false, motivo: 'saque nao confirmado (mochila nao cresceu)' };
+    logEvent('cofre', { acao: 'sacar-lixo', k: lido.k, base });
+    return { ok: true, base, nome: lido.nome, qual: lido.qual, refino: lido.refino || 0 };
   }
   /** Vende o LIXO DO COFRE ao Lojista (TK-03, TODO §8): no máximo 8 por passagem, com cadência
-   *  (`cfg.cofreCadenciaMin`, 10 min). Abre o cofre, saca os escolhidos, fecha e chama
-   *  `venderBase()` — as regras de venda do Lojista (build/componentes/especiais/S-SS/lendário)
-   *  VALIDAM de novo, por isso o lixo é sempre um subconjunto do que o `venderBase` aceitaria. */
+   *  (`cfg.cofreCadenciaMin`, 10 min). A CADA iteração o cofre é relido dentro de
+   *  `sacarSlotDoCofre` (o k é índice e muda a cada splice) e o saque só conta quando a
+   *  mochila cresce. Se um saque falha (mochila cheia / servidor recusou), PÁRA — os
+   *  seguintes também falhariam e o item errado nunca pode ser sacado. Abre o cofre, saca
+   *  os escolhidos, fecha e chama `venderBase()` — as regras de venda do Lojista
+   *  (build/componentes/especiais/S-SS/lendário) VALIDAM de novo, por isso o lixo é sempre
+   *  um subconjunto do que o `venderBase` aceitaria. */
   async function venderLixoDoCofre() {
     const lixo = lixoDoCofreLista();
     if (!lixo.length) return { ok: true, vendidos: [] };
     const abriu = await abrirCofreTesoureira();
     if (!abriu || !abriu.ok) return { ok: false, motivo: (abriu && abriu.motivo) || 'sem cofre aqui', vendidos: [] };
     const vendidos = [];
-    for (const s of lixo.slice(0, 8)) {
-      const r = await sacarSlotDoCofre(s.k);
-      if (r && r.ok) vendidos.push(String(s.base));
+    for (const alvo of lixo.slice(0, 8)) {
+      const r = await sacarSlotDoCofre(alvo);
+      if (r && r.ok) vendidos.push(String(alvo.base));
+      else break;   // saque falhou: mochila cheia / servidor recusou / slot já não existe. Pára.
       await esperar(120);
     }
     fecharJanelas();
