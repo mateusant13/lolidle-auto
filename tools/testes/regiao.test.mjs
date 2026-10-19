@@ -124,6 +124,11 @@ async function provaGuardas(t) {
   const ideal = auto.regiaoIdeal();
   t.check('E: regiaoIdeal() completa (passa pelo mesmo ciclo, nao congela)',
     ideal === null || typeof ideal === 'string');
+  // REGRESSAO (2026-10-19): o `if (!cand.length) ...; return null;` sem chavetas fazia o
+  // `return null` ser INCONDICIONAL — a GUI ficava sem regiao recomendada em modo AUTO.
+  const recAuto = auto.regiaoRecomendada();
+  t.check('E: regiaoRecomendada() devolve uma regiao quando ha candidatas seguras',
+    typeof recAuto === 'string' && recAuto.length > 0);
   const rec = auto.recomendar();
   t.check('E: recomendar() completa (usa agregar + ritmoMobs)',
     rec === null || typeof rec === 'object');

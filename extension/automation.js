@@ -8590,7 +8590,7 @@ const CFG_VER = 2;
     // inventa uma região — usa-se o conjunto inteiro.
     const emNivel = cand0.filter((x) => !abaixoDoNivel(x.l, p));
     const cand = emNivel.length ? emNivel : cand0;
-    if (!cand.length) logEvent('regiao', { motivo: 'sem regioes: META.locais vazio (sem meta)' }); return null;
+    if (!cand.length) { logEvent('regiao', { motivo: 'sem regioes: META.locais vazio (sem meta)' }); return null; }
     // NÃO MISTURAR MEDIDO COM TEORIA: a teoria SISTEMATICAMENTE sobrestima (Campo Azul mede
     // 4.719 xp/min contra 6.309 teóricos), por isso comparar as duas numa só ordenação faz a
     // teoria ganhar sempre — que era exactamente o bug. Se houver QUALQUER região com amostra
