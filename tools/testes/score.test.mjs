@@ -173,5 +173,23 @@ export const suite = {
     m.montar('.st', [stRv('Dano 0'), stRv('Vel. ataque 0'), stRv('Roubo de Vida 12%')]);
     t.check('T127d: sem auto-dano o termo de cura desaparece (so auto-ataque cura)',
       Math.abs(auto.scoreSet(['3074'], ALVO) - auto.scoreSet([], ALVO)) < 1e-6);
+
+    /* TK-02-63 - a passiva NAO e contada TRES vezes (multEsp x PESO_FASE x multRar) */
+    const v3135semFase = auto.valorDeFase('3135', null, null);
+    const v3135chefe = auto.valorDeFase('3135', null, 'chefe');
+    t.check('T63a: a passiva do 3135 continua a valer 280 pelo TEXTO (nao mudou)',
+      auto.valorPassiva('3135') === 280);
+    t.check('T63b: a FASE continua a dar peso ao 3135 (chefe > sem fase)', v3135chefe > v3135semFase);
+    // DISCRIMINANTE (TK-02-63): o `bonusItemFase` (1,35 no 3135) multiplica SO a passiva, NAO
+    // o item inteiro. Com o defeito (o `bonus` no exterior) dava `chefe === semFase x 1,35`,
+    // logo o delta era `semFase x 0,35`. Agora o delta e `0,35 x passiva x multClasse x multRar`,
+    // sempre MENOR que `semFase x 0,35` (o `semFase` inclui stats + passiva + sinergia).
+    t.check('T63c: o bónus de fase NAO multiplica o item inteiro (delta < semFase x 0,35)',
+      (v3135chefe - v3135semFase) < v3135semFase * 0.35,
+      'delta=' + (v3135chefe - v3135semFase).toFixed(1) + ' limite=' + (v3135semFase * 0.35).toFixed(1));
+    t.check('T63d: regressao - valorDeFase(3135, chefe) = 844,2 (era 1061 com o empilhamento)',
+      Math.abs(v3135chefe - 844.2) < 0.5, 'valor=' + v3135chefe);
+    t.check('T63e: a guarda de contagem dupla de passivas continua limpa',
+      auto.auditoriaPassivas().duplas.length === 0);
   },
 };

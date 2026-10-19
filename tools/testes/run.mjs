@@ -56,6 +56,8 @@ import { suite as suiteFiltroBasicos } from './filtrobasicos.test.mjs';
 import { suite as suiteBuildEquipada } from './build-equipada.test.mjs';
 // WATCH DO MERCADO (2026-10-18): deteccao em tempo real por itens e por NOME DE JOGADOR + auto-compra.
 import { suite as suiteMercadoWatch } from './mercado-watch.test.mjs';
+// TK-X2 (P0): a barra de CHEFE reserva um lugar para o atordoamento (interrompe a mecanica).
+import { suite as suiteStunChefe } from './stun-chefe.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -78,6 +80,7 @@ const SUITES = [
   suitepontos, suiteinterruptores, suitecofre, suitehud, suiteintegracao, suitenumeros, suitescore, suiteplanejar, suiterefinar, suitew10, suiteAtributos,
   suiteRegiao, suiteW1, suiteE, suiteMotorTabelas, suiteRegrasMotor, suiteSnapshots, suiteFuga, suiteChefe, suiteFiltroBasicos, suiteBuildEquipada,
   suiteMercadoWatch,
+  suiteStunChefe,
 ];
 const checks = [];
 const notas = [];

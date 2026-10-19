@@ -1826,7 +1826,7 @@ const CFG_VER = 1;
   const KAT_FB = {
     Q: { max: 10, rec: (r) => 10 - 0.35 * (r - 1), base: (r) => 80 + 35 * (r - 1), ratio: (r) => 0.45 + 0.03 * (r - 1), mult: 3, alvo: '3 alvos', adaga: true },
     E: { max: 10, rec: (r) => 10 - 0.4 * (r - 1), base: (r) => 40 + 20 * (r - 1), ratio: (r) => 0.3 + 0.02 * (r - 1), adRatio: 0.4, mult: 1 },
-    A: { max: 10, rec: (r) => 12 - 0.5 * (r - 1), base: (r) => 90 + 35 * (r - 1), ratio: (r) => 0.6 + 0.035 * (r - 1), mult: 1, adaga: true },
+    A: { max: 10, rec: (r) => 12 - 0.5 * (r - 1), base: (r) => 90 + 35 * (r - 1), ratio: (r) => 0.6 + 0.035 * (r - 1), mult: 1, adaga: true, atordoa: 1 },
     T: { max: 10, rec: (r) => 24 - 0.8 * (r - 1), base: (r) => 60 + 28 * (r - 1), ratio: (r) => 0.4 + 0.03 * (r - 1), mult: 3, alvo: '3 adagas', adaga: true },
     R: { max: 5, rec: (r) => [75, 65, 55, 48, 42][r - 1], base: (r) => [30, 44, 58, 72, 86][r - 1], ratio: (r) => [0.25, 0.28, 0.31, 0.34, 0.37][r - 1], mult: 15, alvo: '15×3' },
     G: { max: 10, rec: (r) => 20 - 0.8 * (r - 1), base: (r) => 30 + 15 * (r - 1), ratio: (r) => 0.3 + 0.015 * (r - 1), mult: 1, auto: true },
@@ -2074,6 +2074,11 @@ const CFG_VER = 1;
         // Voracidade/cura do giro da Katarina (motor.js:749-750 P; 768 D).
         curaBase: h.curaBase, curaGiro: serie(h.curaGiro), vaAdaga: serie(h.vaAdaga),
         voracidade: h.voracidade, voracidadeChefe: h.voracidadeChefe,
+        // ATORDOAMENTO do kit (motor.js:765 A da Katarina `atordoa: 1`): o jogo interrompe a
+        // mecânica CARREGADA do chefe com um atordoado (motor.js:3112) — mas só se a skill
+        // estiver na barra (motor.js:1598). Sem este campo a barra nunca reservava o stun
+        // (TK-X2). Lido do kit, nunca copiado (REGRA N.º 3).
+        atordoa: h.atordoa != null ? h.atordoa : null,
         acumMax: h.acumMax, duracaoSinistra: h.duracaoSinistra };
     }
     KAT = out;
@@ -2833,10 +2838,12 @@ const CFG_VER = 1;
    *  e foge de QUALQUER coisa que mata (golpe injogável, região que mata, luta perdida sem poções).
    *  O cooldown `cfg.fugirMs` mantém-se para não haver ping-pong.
    *
-   *  NÍVEL DO CHEFE (contexto, para não inventar): o motor faz
-   *  `Math.max(n0+2, Math.min(n1+2, nivelJogador))` (motor.js:1121). O dono falou de uma actualização
-   *  do jogo que limita o chefe a 4 níveis acima do jogador, mas essa regra NÃO está em
-   *  docs/game-src/ — fica a FÓRMULA DO CÓDIGO e a dúvida registada (nada inventado). */
+   *  NÍVEL DO CHEFE (contexto, lido da fonte — REGRA N.º 1): o motor faz
+   *  `nivelJogador == null ? n1+2 : Math.max(n0+2, Math.min(n1+2, nivelJogador+4))`
+   *  (motor.js:1134 `gerarGrupo`). A regra dos "4 níveis acima do jogador" EXISTE no motor vivo —
+   *  o reparo anterior (que dizia que não estava em `docs/game-src/`) era falso e está corrigido
+   *  (ticket `extra-W11-motor-1134`). Aqui não se recopia a fórmula: quem decide o nível do chefe
+   *  é o `nivelChefeDe(local, nivelJogador)` acima (`automation.js:1219`), que a implementa. */
   function checarChefeFatal() {
     if (pausado) return;
     if (!podeFazer('fugir').pode) return;                     // hierarquia: fugir -> manutencao (+ cfg.fugir)
@@ -5351,12 +5358,23 @@ const CFG_VER = 1;
     // BUG MEDIDO (apanhado ao validar contra o catálogo REAL): o `valorPassiva` estava FORA
     // do multiplicador de classe, e por isso o Rabadon ("Poder de Habilidade total em 35%" ->
     // +315 de valor) valia 317 num Yasuo AD e ENTRAVA no conjunto-alvo. Um item da classe
-    // errada não vale NADA: o multiplicador tem de cobrir stats + passiva + sinergia.
-    const v = (stats * multDef + valorPassiva(base) + sinergiaDe(base, ctx)) * multClasse * multRar * multEsp;
-    // BÓNUS DE FASE (só quando ligado): item que o motor lê PELO ID para mudar a regra
-    // (ex.: 3036 = +15% de dano contra CHEFES, motor.js:1214). Sem fase, é exactamente 1.
-    const bonus = fase ? bonusItemFase(base, fase) : 1;
-    return bonus === 1 ? v : v * bonus;
+    // errada não vale NADA: o multiplicador de CLASSE (`multClasse`) tem de cobrir stats +
+    // passiva + sinergia.
+    //
+    // SEM CONTAR A MESMA COISA TRÊS VEZES (TK-02-63, P1). O `multEsp` (1,25 = "item especial
+    // DA MINHA CLASSE") e o `bonusItemFase` (PESO_FASE.itens) são DUAS calibrações sobre a
+    // MESMA "especialidade" do item; estavam as DUAS a multiplicar a passiva (que também já
+    // leva `multClasse` e `multRar`). MEDIDO no catálogo real: `valorPassiva('3135')` = 280
+    // (40% × 7) e `valorDeFase('3135', null, 'chefe')` = 280 × 1,25 (multEsp) × 1,35
+    // (PESO_FASE) × 1,6 (multRar) + stats = 1061 — os tais +472 de "palpites" empilhados.
+    // A passiva entra agora como termo ADITIVO: leva `multClasse`+`multRar` e UMA só opinião
+    // extra — a da FASE (é a calibração POR ITEM que o motor lê pelo ID, ex.: 3036 vs chefes,
+    // motor.js:1214). NÃO leva `multEsp` (a classe já é coberta por `multClasse`). O `bonus`
+    // de fase também JÁ NÃO multiplica os stats: ele descreve a MECÂNICA do item (a passiva),
+    // não a soma de stats. Com `fase` nula o `bonus` é 1 e tudo isto colapsa no antigo.
+    const vPassiva = valorPassiva(base) * (fase ? bonusItemFase(base, fase) : 1);
+    const v = ((stats * multDef + sinergiaDe(base, ctx)) * multEsp + vPassiva) * multClasse * multRar;
+    return v;
   }
   /** raridade do catálogo (motor.js:47 `raridade`); null quando o item não existe. */
   function rarDe(base) {
@@ -7365,7 +7383,29 @@ const CFG_VER = 1;
       }
       return (b.rank - a.rank) || (peso(a.t) - peso(b.t));
     });
-    return cand.slice(0, BARRA_SLOTS).map((h) => h.t);
+    // ---- TK-X2 (P0): na fase de CHEFE, reserva UM lugar para o melhor ATORDOAMENTO do kit ----
+    // O jogo SÓ interrompe a mecânica CARREGADA do chefe se a skill de atordoamento estiver na
+    // BARRA: motor.js:3112 `if (i.atordoado > 0 && tipo !== 'rugido') { i.carregando = 0; i.tMec = 6; }`
+    // e motor.js:1598 `pode(t)` exige `estado.barra.includes(t)`. O próprio A() do kit ainda
+    // GUARDA o atordoamento para a investida do Arauto (motor.js:1831-1834: `if (!pode('A') ||
+    // (arauto && !(arauto.carregando > 0))) return`). Medido com o motor REAL (tools/harness.mjs
+    // lutar — Katarina nv30 vs Arauto nv20, sem poções): SEM 'A' na barra o Arauto carrega 2×,
+    // golpeia 2× e causa 1564 de dano; COM 'A' carrega 3×, INTERROMPE 2×, golpeia 1× e causa
+    // 1086 (-30,6%) — e mata no mesmo tempo. `atordoa` vem do KIT do motor (inject.js serialKit
+    // -> aplicarKit), nunca copiado (REGRA N.º 3). Não mexe na ULTIMATE (inviolável).
+    const topo = cand.slice(0, BARRA_SLOTS);
+    const temStun = (t) => { const k = KAT[t]; return !!(k && k.atordoa > 0); };
+    // O argumento `fase` chega como 'chefe' no runtime (`faseAtual`, automation.js) mas como
+    // 'boss' nos testes — a convenção do ficheiro é `=== 'mobs'` para MOBS e todo o resto é chefe
+    // (é o que o `porFase` acima faz). Não se inventa uma segunda convenção.
+    if (String(fase || '').toLowerCase() !== 'mobs' && !topo.some((h) => temStun(h.t))) {
+      const stun = cand.find((h) => temStun(h.t));
+      if (stun) {
+        const pior = topo.map((h, j) => ({ h, j })).reverse().find(({ h }) => !ehUltimateFixa(h.t));
+        if (pior) topo[pior.j] = stun;
+      }
+    }
+    return topo.map((h) => h.t);
   }
   /** Coloca EXACTAMENTE `tipos` na barra — CONVERGE e PARA.
    *
