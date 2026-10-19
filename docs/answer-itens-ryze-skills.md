@@ -96,9 +96,10 @@ A R fica de fora em mobs fáceis; no chefe a regra do motor permite a R, mas ela
 | E (Shunpo) | 10 | 677 | 3,14 | 216 | **410** |
 | R (Lótus da Morte) | 3 | 4667 | 43,78 | 107 | 121 |
 
-Fonte: `G:\Temp\opencode\kat-dps.mjs` (replica `dpsPorHabilidade`, `automation.js:2254`, com a
+Fonte: `G:\Temp\opencode\kat-dps.mjs` (replica `dpsPorHabilidade`, `automation.js:2260`, com a
 Voracidade `motor.js:777`/`:1909`). A coluna “com Lich” soma `0,75 × 810,81 = 608` por uso, dividido
-pela recarga — a mesma conta de `automation.js:2297-2303`.
+pela recarga — a mesma conta de `automation.js:2300-2304` (o proc do Lich é UMA vez por uso, fora do
+`×golpes`).
 
 ### Porque o Shunpo entra com Lich
 
@@ -110,8 +111,8 @@ T/A. É exactamente o caso que o dono descreveu: *“Lich Bane proccando mais co
 
 R rank 3 tem recarga base **55 s** (`motor.js:787`, `recarga: [75, 65, 55, 48, 42]`); 15 golpes em
 3 alvos = 4667 de dano, ou **107 DPS** (121 com Lich). É o pior das habilidades de dano. Em mobs
-fáceis a `barraIdeal` filtra a R (`automation.js:7939`: só entra em chefe ou fase difícil); no chefe
-ela é permitida, mas continua atrás de Q/T/W/A/E.
+fáceis a `barraIdeal` filtra a R (`automation.js:8050-8057`: só entra em chefe ou fase difícil); no
+chefe ela é permitida, mas continua atrás de Q/T/W/A/E.
 
 ### O ranking muda com o ritmo de abates (Voracidade)
 
@@ -119,6 +120,34 @@ A Voracidade corta a recarga de Q/W/E a cada abate (`motor.js:1789`). Com **km=5
 abates) o W cai de 239 para 165 e o E de 216 para 150; a ordem sem Lich passa a **Q, T, A, W/E**.
 A `barraIdeal` usa o `killsMinAoVivo` real, por isso a lista certa é a que ela calcula no momento —
 não uma lista fixa.
+
+---
+
+## 4. O que a extensão escolhe hoje (medido, não a heurística do doc)
+
+A build acima é a **ideal medida pelo harness**. A extensão escolhe por `scoreSet`, que é outra
+função; por isso ela foi verificada ao vivo, e não assumida.
+
+**Prova ao vivo (2026-10-19, relay, campeã Katarina, conta real):**
+
+```
+buildIdeal() -> 6653, 3089, 3135, 3100, 3171
+```
+
+Avaliada no harness com a mesma qualidade (`+5~A`, Barão nv32, seed=1):
+
+| Build que a extensão escolheu | mataSeg | poções | dano recebido |
+|---|---|---|---|
+| 6653 + 3089 + 3135 + 3100 + 3171 | **36,6** | 2 | 6.544 |
+
+É **10,7 s mais rápida** que a melhor build da conta em §1 (Lich, 47,3 s) e **22,5 s** mais rápida
+que a conta com Coroa (59,1 s).
+
+**Correcção que isto expôs (commit `b1df564`):** o alvo do `scoreSet` era devolvido só com `hp`;
+sem `armadura`, a penetração valia **0** e itens como a Void (3135) perdiam para AP bruto. O alvo
+passa a levar `armadura`, `chefe` e `magico` lidos de `statsMonstro` (`automation.js:5582-5594`), e a
+build de chefe do Ryze passou a incluir a 3135. A build **ideal do Ryze** continua a ser a de 25,7 s
+medida acima; a heurística não substitui a simulação.
 
 ---
 
@@ -130,5 +159,7 @@ não uma lista fixa.
   necessariamente a da conta neste instante.
 - **Multi-alvo do Luden não é medido** no harness (luta 1 alvo); a vantagem de 3 alvos é lida no
   motor (`motor.js:2067`), não simulada.
-- **`montarBuildDe`/`scoreSet`** não correm no harness (precisam de DOM/META); a build ideal foi
-  medida por `mataSeg` (menor tempo), não imposta por uma heurística.
+- **`montarBuildDe`/`scoreSet`** e o harness são modelos diferentes: a build ideal foi medida por
+  `mataSeg` (menor tempo), não imposta pela heurística. A heurística foi verificada ao vivo (§4) e a
+  comparação com o harness é declarada; ela não prova que a extensão escolhe a ideal em todo o
+  campeão.
