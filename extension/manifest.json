@@ -36,6 +36,12 @@
       "js": ["gui.js"],
       "run_at": "document_idle",
       "all_frames": false
+    },
+    {
+      "matches": ["https://lolidle.com/*", "https://*.lolidle.com/*"],
+      "js": ["observabilidade.js"],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "action": {
