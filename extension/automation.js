@@ -3277,6 +3277,16 @@ const CFG_VER = 2;
   const VIS_A_JOGO = 11;       // cena.js:33  — "export const VIS_A = 11;"
   const ESCALA_JOGO = 2;       // cena.js:34  — "const ESCALA = 2;" (bitmap = CSS * ESCALA)
 
+  // HUMANIZAÇÃO DA CAMINHADA (TK-03, pedido do dono 2026-10-19): a caminhada na Fonte não pode ser
+  // uma linha de pixels idêntica. Cada passo escolhe um lado (alternado) e uma magnitude dentro do
+  // MESMO tile, e a deriva ACUMULADA é limitada para o boneco nunca sair da coluna da Tesoureira.
+  // Todos os valores são FRAÇÕES DE TILE (lidas do DOM: pxTile = rect.height/VIS_A), não pixels
+  // fixos — se o jogo mudar o tamanho do tile, isto acompanha sem se tocar no código (REGRA Nº 3).
+  const HUM_JX_MIN = 0.2, HUM_JX_MAX = 0.42;      // magnitude de cada passo, em tile (0,20..0,42)
+  const HUM_DRIFT_MAX = 0.45;                     // tecto da deriva acumulada, em tile (a coluna do NPC)
+  const HUM_PAUSA_MIN = 420, HUM_PAUSA_MAX = 640; // pausa entre passos, em ms (antes: fixo 500)
+  const HUM_DY_VAR = 0.12;                        // variação vertical, em tile (±0,12: sempre acima)
+
   /** Evento de rato. No jogo real tem de ser `MouseEvent` (e o unico que carrega `button`/clientX);
    *  no banco de testes (vm sem MouseEvent) cai para `Event` + as mesmas propriedades — o objecto
    *  que os listeners do jogo leem (`e.button`, `e.clientX`, `e.clientY`) fica igual. */
@@ -3302,18 +3312,39 @@ const CFG_VER = 2;
     const pxTile = r.height / VIS_A_JOGO;             // 1 tile em px de CSS (cena.js:33 + jogo.js:355-359)
     const xCentro = r.left + r.width / 2;             // o centro cai no tile do boneco (cena.js:4060)
     let tiles = 0;
+    // HUMANIZAÇÃO (TK-03, pedido do dono 2026-10-19): a caminhada na Fonte não pode ser uma linha
+    // de pixels idêntica. Cada passo (INCLUINDO o 1.º) escolhe um destino dentro do MESMO tile:
+    // lado alternado (`lado`), magnitude 0,20..0,42 tile, e a deriva ACUMULADA é limitada a
+    // ±0,45 tile para o boneco nunca sair da coluna da Tesoureira. O `humanoTile` só é ligado
+    // por `subirNaFonte` (a Fonte): o `andarParaCima` directo mantém o pixel exacto que o teste
+    // `cofre.test.mjs` C1 mede. Não há nenhum número de jogo aqui — tudo é fração de tile lida do
+    // DOM (`pxTile`), logo acompanha um tile diferente sem se tocar no código.
+    // PROVA de que os passos alternam e nunca são zero: `jx = lado*mag` e `lado` troca a cada
+    // passo; o tecto só CORTA a magnitude (nunca inverte o sinal — o corte acontece quando
+    // `drift + jx` passa de ±0,45, o que exige que `jx` aponte para FORA, logo o passo fica com o
+    // sinal de `lado`). E `passo = 0` só se `drift` já estivesse no tecto E `lado` apontasse para
+    // fora — mas chegar ao tecto (cortado ou não) deixa `lado` a apontar para DENTRO, logo nunca.
+    let drift = 0, lado = 1;
     for (let i = 0; i < pedidos; i++) {
-      // HUMANIZAÇÃO (pedido do dono, 2026-10-19): o 1.º tile é exacto (é ele que o teste
-      // `cofre.test.mjs` mede e que garante o alvo); do 2.º em diante o clique varia dentro do
-      // MESMO tile (±0,35 tile). Assim o caminho não é uma linha de pixels idêntica, mas o
-      // destino continua a ser o mesmo tile — não se arrisca passar ao lado do NPC.
-      const jx = (opts.humanoTile && i > 0) ? (Math.random() * 2 - 1) * pxTile * 0.35 : 0;
-      const x = xCentro + jx;
-      const y = r.top + r.height / 2 - pxTile;        // 1 tile acima do boneco
+      let x = xCentro, y = r.top + r.height / 2 - pxTile;   // 1 tile acima do boneco (o alvo)
+      let pausa = 500;                                       // 1 tile = 0,2 s no Rift (cena.js:316/557)
+      if (opts.humanoTile) {
+        const mag = pxTile * (HUM_JX_MIN + Math.random() * (HUM_JX_MAX - HUM_JX_MIN));
+        const jx = lado * mag;
+        let novo = drift + jx;
+        const teto = pxTile * HUM_DRIFT_MAX;
+        if (novo > teto) novo = teto; else if (novo < -teto) novo = -teto;   // tecto: nunca sai da coluna
+        drift = novo;
+        lado = -lado;
+        x = xCentro + drift;
+        // y: 1 tile acima, com variação de ±0,12 tile — NUNCA no centro (tem de subir)
+        y = r.top + r.height / 2 - pxTile + (Math.random() * 2 - 1) * pxTile * HUM_DY_VAR;
+        pausa = HUM_PAUSA_MIN + Math.random() * (HUM_PAUSA_MAX - HUM_PAUSA_MIN);
+      }
       try { cv.dispatchEvent(eventoRato('mousedown', { button: 2, clientX: x, clientY: y })); }
       catch (e) { return { ok: false, tiles: tiles, motivo: 'nao consegui clicar no chao: ' + e }; }
       tiles++;
-      await humano(500);                              // 1 tile = 0,2 s no Rift (cena.js:316/557); em Runeterra 4,4 tiles/s (arena.js:18)
+      await humano(pausa);
       if (typeof opts.ate === 'function' && opts.ate()) break;
     }
     return { ok: true, tiles: tiles };
@@ -3843,6 +3874,14 @@ const CFG_VER = 2;
       const lidoEm = Math.max(_cofreAt || 0, _ultimoLerCofre || 0);
       n.lerCofre = podeFazer('cofre').pode && (!lidoEm || (Date.now() - lidoEm) > cad);
     } catch { n.lerCofre = false; }
+    // LIXO DO COFRE -> LOJISTA (TK-03, TODO §8): há lixo conhecido (básico/épico < S, fora da
+    // build, não especial/reservado; duplicados sem a melhor cópia) E a cadência de 10 min passou.
+    // É a MESMA chave de interruptor do cofre (`autoCofre`) — não se inventa um segundo mestre.
+    // É uma acção de MANUTENÇÃO (como `vender`/`cofre`/`lerCofre`): paga a ida à Fonte sozinha.
+    try {
+      n.venderLixoCofre = podeFazer('cofre').pode && lixoDoCofreLista().length > 0
+        && (!_ultimaVendaCofre || (Date.now() - _ultimaVendaCofre) > numOr(cfg.cofreCadenciaMin, 10) * 60000);
+    } catch { n.venderLixoCofre = false; }
     n.mercado = n.anunciar;      // só vai ao mercado se houver lendário <A p/ anunciar
     // MONTAGEM AUTÓNOMA: no máximo 1x/30 min e só com ouro que sobre à reserva.
     n.montar = podeFazer('montar').pode && (Date.now() - _ultimaMontagem) > 1800000 && readGold() > 60000;
@@ -3910,6 +3949,10 @@ const CFG_VER = 2;
       return { ok: true, itens: cofre.length };
     }],
     ['lerCofre', 'ler cofre', () => { const r = lerCofreBase(); if (r && r.ok) _ultimoLerCofre = Date.now(); return r; }],
+    // TK-03: depois de LER o cofre (aí já se sabe o que é lixo) e antes do `mercado`. O passo de
+    // DEPOSITAR (`cofre`) fica ANTES do `lerCofre` na tabela — "depois de lerCofre" é a restrição
+    // que o dono impôs (só se vende o que a leitura conhece), por isso a inserção é aqui.
+    ['venderLixoCofre', 'vender lixo do cofre', () => venderLixoDoCofre()],
     ['mercado', 'mercado', () => anunciarLendarios()],
     ['comprar', 'comprar', () => { _ultimaCompra = Date.now(); return comprarNoMercado(); }],
     ['refino', 'refino', () => { _ultimoRefino = Date.now(); return refinarMelhores(); }],
@@ -4104,11 +4147,19 @@ const CFG_VER = 2;
       const txt = (s.dataset.nome || s.title || '').trim();
       const m = txt.match(/^(.*?)\s*(?:\+(\d+))?\s*(?:\[([A-Za-z]{1,2})\])?\s*(?:×(\d+))?\s*$/);
       const img = s.querySelector('img');
-      const base = (img?.getAttribute('src') || '').match(/\/(\d+)\.png/)?.[1] || (String(s.dataset.k || '').match(/\d+/) || [])[0] || null;
+      // BASE e REFINO vêm do src do ícone (jogo.js:167 `imgItem`): `.../itens/<base>.png` ou
+      // `.../itens/ref/<base>-<refino>.png`. A regex antiga `\/(\d+)\.png` NÃO casava o refinado
+      // (em `1005-2.png` há um `-2` entre o base e o `.png`) e caía no `data-k` — que é o ÍNDICE
+      // DO ARRAY do cofre (jogo.js:5598 `data-k="${g.k}"`), NÃO o base: lia-se a posição do slot e
+      // o refino perdia-se. Agora o grupo opcional leva o refino; o `data-k` é só o último recurso.
+      const srcImg = img?.getAttribute('src') || '';
+      const mm = srcImg.match(/\/(\d+)(?:-(\d+))?\.png/);
+      const base = mm?.[1] || (String(s.dataset.k || '').match(/\d+/) || [])[0] || null;
+      const refinoImg = mm && mm[2] ? +mm[2] : 0;
       // M1 (pedido do subagent da GUI): a chave do SLOT (`data-k`) nao era devolvida, logo a
       // GUI so conseguia mostrar a posicao (#N). O `salvarCofre` grava este objecto tal e qual,
       // por isso o slot passa a ficar persistido e a GUI (que ja le i.k||i.slot||i.slotId) mostra-o.
-      return { k: s.dataset.k || null, nome: (m ? m[1] : txt).trim(), base, refino: (m && m[2]) ? +m[2] : 0, qual: (m && m[3]) ? m[3].toUpperCase() : null, qtd: (m && m[4]) ? +m[4] : 1, acao: s.dataset.cofre || null };
+      return { k: s.dataset.k || null, nome: (m ? m[1] : txt).trim(), base, refino: refinoImg || ((m && m[2]) ? +m[2] : 0), qual: (m && m[3]) ? m[3].toUpperCase() : null, qtd: (m && m[4]) ? +m[4] : 1, acao: s.dataset.cofre || null };
     });
   }
   /** Salva o cofre no storage (a extensão fica sabendo o que o dono tem guardado). */
@@ -4342,6 +4393,126 @@ const CFG_VER = 2;
     return { ok: true, ...b };
   }
   const lerCofre = () => lerCofreSlots();
+
+  // --------------------------------------------- LIXO DO COFRE -> LOJISTA (TK-03, TODO §8)
+  /** Todas as cópias de um base nas QUATRO fontes (equipado, mochila, cofre) — o `ref` é o
+   *  objecto ORIGINAL (para o desempate por identidade: o `cofreConhecido()` devolve os mesmos
+   *  objectos em cada chamada dentro deste ciclo). */
+  function _copiasDoBase(base, slotsCofre) {
+    const b = String(base == null ? '' : base).replace(/[+~].*$/, '');
+    const out = [];
+    try { for (const e of readEquip()) if (String(e.base) === b) out.push({ base: b, qual: e.qual, refino: e.refino || 0, fonte: 'equipado', ref: e }); } catch { /* sem DOM */ }
+    try { for (const i of ((scanBag() || {}).items || [])) if (i.kind === 'item' && String(i.base) === b) out.push({ base: b, qual: i.qual, refino: i.refino || 0, fonte: 'mochila', ref: i }); } catch { /* sem DOM */ }
+    for (const c of (slotsCofre || [])) if (String(c.base) === b) out.push({ base: b, qual: c.qual, refino: c.refino || 0, fonte: 'cofre', ref: c });
+    return out;
+  }
+  const _melhorCopia = (a, b) => (qIdx(b.qual) - qIdx(a.qual)) || ((b.refino || 0) - (a.refino || 0));
+  /** LIXO DO COFRE: os slots que podem ir para o Lojista. Regra (do dono):
+   *   - raridade `basico` ou `epico` com qualidade < S (S/SS intocáveis);
+   *   - NÃO são da build ideal nem componente dela (`buildIdeal`/`componentesDaBuild`);
+   *   - NÃO são especiais (`ehEspecialMeu`/`mapaEspecial`) nem reservados para a troca por fase;
+   *   - LENDÁRIO NUNCA é lixo;
+   *   - duplicados: só a MELHOR cópia sobrevive (qualidade, depois refino); as outras vão ao
+   *     Lojista. Empate favorece a cópia que NÃO está no cofre (a do cofre é a que se vende). */
+  function lixoDoCofreLista() {
+    const slots = cofreConhecido();
+    if (!slots.length) return [];
+    let ideal = new Set(), comps = new Set(), especiais = new Set(), reserv = new Set();
+    try { ideal = new Set((buildIdeal() || []).map(String)); } catch { /* sem campeao */ }
+    try { comps = componentesDaBuild(); } catch { /* ignore */ }
+    try { especiais = new Set([...mapaEspecial().keys()]); } catch { /* ignore */ }
+    try { reserv = basesReservadas(); } catch { /* ignore */ }
+    const cat = (base) => (META.itens || []).find((x) => String(x.id) === String(base)) || null;
+    const cand = [];
+    for (const s of slots) {
+      if (s.acao !== 'retirar' && s.acao !== 'sacar') continue;      // só o que está NO cofre
+      const base = String(s.base == null ? '' : s.base);
+      if (!base) continue;
+      const it = cat(base);
+      const rar = it ? (it.raridade || (it.lendario ? 'lendario' : 'basico')) : rarDe(base);
+      if (rar !== 'basico' && rar !== 'epico') continue;            // LENDÁRIO NUNCA é lixo
+      if (qIdx(s.qual) >= qIdx('S')) continue;                      // S/SS intocáveis
+      if (ehEspecialMeu(base) || especiais.has(base)) continue;     // tratamento especial
+      if (ehReservado(base) || reserv.has(base)) continue;          // reservado p/ a troca por fase
+      if (ideal.has(base) || comps.has(base)) continue;             // peça da build (ou componente)
+      cand.push(s);
+    }
+    // duplicados: manter a melhor cópia; o resto (do cofre) é lixo
+    const porBase = {};
+    for (const s of cand) (porBase[String(s.base)] = porBase[String(s.base)] || []).push(s);
+    const lixo = [];
+    for (const base of Object.keys(porBase)) {
+      const doCofre = porBase[base];
+      const todas = _copiasDoBase(base, slots);
+      if (todas.length <= 1) { lixo.push(...doCofre); continue; }   // cópia única: é lixo
+      const melhor = todas.slice().sort(_melhorCopia)[0];
+      for (const s of doCofre) if (s !== melhor.ref) lixo.push(s);  // não é a melhor cópia -> lixo
+    }
+    return lixo;
+  }
+  /** Saca UM slot do cofre (TK-03): abre o cofre se preciso, RELÊ os slots e clica no slot
+   *  ACTUAL que casa com o alvo por {base, qual, refino} exacto. O `data-k` é o ÍNDICE do
+   *  array (jogo.js:5598) e o motor faz splice(k,1) a cada retirada (motor.js:3277-3283),
+   *  por isso NUNCA se guarda o k entre cliques: um k velho pode apontar para outro item,
+   *  inclusive um lendário/build que `lixoDoCofreLista()` protegeu. O alvo não pode bater
+   *  só na base — duas qualidades do mesmo base têm o mesmo `data-k` potencial. O saque só
+   *  conta como confirmado quando a mochila cresce (poll curto); devolve {ok:false} quando
+   *  nada sai (mochila cheia, servidor recusou, slot disabled). */
+  async function sacarSlotDoCofre(alvo) {
+    const abriu = await abrirCofreTesoureira();
+    if (!abriu || !abriu.ok) return { ok: false, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
+    const base = String(alvo && alvo.base != null ? alvo.base : '').replace(/[+~].*$/, '');
+    // TRIPLA EXACTA — sem wildcards: refino 0 casa só o +0, qual null casa só o sem qualidade.
+    const qual = alvo && alvo.qual != null ? String(alvo.qual).toUpperCase() : '';
+    const refino = alvo && alvo.refino != null ? +alvo.refino : 0;
+    const lido = lerCofreSlots().find((s) =>
+      String(s.base || '') === base &&
+      String(s.qual || '').toUpperCase() === qual &&
+      (s.refino || 0) === refino &&
+      (s.acao === 'retirar' || s.acao === 'sacar'));
+    if (!lido) return { ok: false, motivo: 'sem slot de ' + base + (qual ? ' ' + qual : '') + ' no cofre' };
+    // O DOM tem a MESMA classe .cofre-slot e o MESMO data-k na mochila (guardar) e no cofre
+    // (retirar) — jogo.js:5633-5634. Filtrar por acao para nunca clicar no slot da mochila.
+    const slot = [...document.querySelectorAll('.cofre-slot[data-k]')]
+      .find((s) => String(s.dataset.k) === String(lido.k)
+        && (s.dataset.cofre === 'retirar' || s.dataset.cofre === 'sacar'));
+    if (!slot) return { ok: false, motivo: 'sem slot ' + lido.k + ' no cofre' };
+    const antes = ((scanBag(true) || {}).items || []).length;
+    slot.click();
+    let depois = antes;
+    for (let i = 0; i < 6 && depois <= antes; i++) {   // poll curto: o servidor responde e o motor re-renderiza
+      await esperar(100);
+      depois = ((scanBag(true) || {}).items || []).length;
+    }
+    if (depois <= antes) return { ok: false, motivo: 'saque nao confirmado (mochila nao cresceu)' };
+    logEvent('cofre', { acao: 'sacar-lixo', k: lido.k, base });
+    return { ok: true, base, nome: lido.nome, qual: lido.qual, refino: lido.refino || 0 };
+  }
+  /** Vende o LIXO DO COFRE ao Lojista (TK-03, TODO §8): no máximo 8 por passagem, com cadência
+   *  (`cfg.cofreCadenciaMin`, 10 min). A CADA iteração o cofre é relido dentro de
+   *  `sacarSlotDoCofre` (o k é índice e muda a cada splice) e o saque só conta quando a
+   *  mochila cresce. Se um saque falha (mochila cheia / servidor recusou), PÁRA — os
+   *  seguintes também falhariam e o item errado nunca pode ser sacado. Abre o cofre, saca
+   *  os escolhidos, fecha e chama `venderBase()` — as regras de venda do Lojista
+   *  (build/componentes/especiais/S-SS/lendário) VALIDAM de novo, por isso o lixo é sempre
+   *  um subconjunto do que o `venderBase` aceitaria. */
+  async function venderLixoDoCofre() {
+    const lixo = lixoDoCofreLista();
+    if (!lixo.length) return { ok: true, vendidos: [] };
+    const abriu = await abrirCofreTesoureira();
+    if (!abriu || !abriu.ok) return { ok: false, motivo: (abriu && abriu.motivo) || 'sem cofre aqui', vendidos: [] };
+    const vendidos = [];
+    for (const alvo of lixo.slice(0, 8)) {
+      const r = await sacarSlotDoCofre(alvo);
+      if (r && r.ok) vendidos.push(String(alvo.base));
+      else break;   // saque falhou: mochila cheia / servidor recusou / slot já não existe. Pára.
+      await esperar(120);
+    }
+    fecharJanelas();
+    const venda = await venderBase();
+    if (vendidos.length) { _ultimaVendaCofre = Date.now(); logEvent('cofre', { acao: 'vender-lixo', vendidos }); }
+    return { ok: true, vendidos, venda };
+  }
 
   /** Os NPCs que abrem o cofre: a Tesoureira (Fonte) e o Burrinho de Carga (cidade) — motor.js `podeCofre`. */
   const NPCS_DO_COFRE = ['Tesoureira de Piltover', 'Burrinho de Carga'];
@@ -6962,7 +7133,7 @@ const CFG_VER = 2;
   const ehReservado = (base) => basesReservadas().has(String(base == null ? '' : base).replace(/[+~].*$/, ''));
 
   // ------------------------------------------------------------- TROCA DE BUILD POR FASE
-  let _ultimaFaseBuild = null, _ultimaBuildAplicada = null, _ultimoLerCofre = 0;
+  let _ultimaFaseBuild = null, _ultimaBuildAplicada = null, _ultimoLerCofre = 0, _ultimaVendaCofre = 0;
   /** Puxa do COFRE as bases pedidas (o cofre abre na Fonte e nas cidades — motor.js podeCofre). */
   async function puxarDoCofre(bases) {
     const abriu = await abrirCofreTesoureira();
@@ -9158,7 +9329,7 @@ const CFG_VER = 2;
     return cfg;
   }
 
-  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
+  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
     podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser

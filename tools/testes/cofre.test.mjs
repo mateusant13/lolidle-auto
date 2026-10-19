@@ -21,7 +21,7 @@
  * Sem browser, sem CDP, sem jogo. So le o automation.js e corre-o isolado.
  */
 
-import { criarMundo, carregarAutomation } from './dom-stub.mjs';
+import { criarMundo, carregarAutomation, alimentarCatalogo, CATALOGO, definirCampeao, montarMochila, montarLojista } from './dom-stub.mjs';
 
 /** Canvas `#tela` com o mesmo formato do jogo: 15 tiles de largura x 11 de altura a 32 px = 480x352
  *  px de CSS e bitmap 11*32*2 = 704 (cena.js:325 `canvas.height = VIS_A*T*ESCALA`). */
@@ -47,6 +47,89 @@ function botaoNpc(m, nome, label) {
   return b;
 }
 const soDireito = (evs) => evs.every((e) => e.tipo === 'mousedown' && e.button === 2);
+
+/** Slot de cofre no formato do jogo (jogo.js:5598 `grade`): `data-k`, `data-nome` ("Nome [QUAL]")
+ *  e o ícone com o src do jogo (jogo.js:167 `imgItem`). O `find:{img}` é OBRIGATÓRIO: o stub só
+ *  devolve `img` se ele estiver no mapa `_find` do elemento (`el.querySelector('img')`), senão a
+ *  leitura do base/refino não vê o ícone. */
+function slotCofre(m, { k, nome, base, refino = 0, rar = 'basico' }) {
+  const img = m.el({
+    tag: 'img', label: 'cofre-img:' + k,
+    attrs: { src: refino ? `assets/img/itens/ref/${base}-${refino}.png` : `assets/img/itens/${base}.png` },
+  });
+  return m.el({
+    tag: 'button', label: 'cofre-slot:' + k, className: 'cofre-slot r-' + rar,
+    dataset: { k: String(k), nome, cofre: 'retirar' },
+    find: { img: [img] },
+  });
+}
+/** Monta a grade do cofre (o selector que `lerCofreSlots`/`cofreConhecido` leem). */
+function montarGradeCofre(m, slots) { return m.montar('.cofre-slot[data-k]', slots); }
+/** Grade de cofre VIVA como o motor (motor.js:3277-3283 + jogo.js:5598/6181-6192):
+ *  `data-k` é o ÍNDICE do array; clicar num slot de retirar faz splice(k,1), adiciona o
+ *  item à mochila e re-renderiza os restantes com os novos índices. Se `semSaque` for true,
+ *  o clique não remove nem adiciona (simula mochila cheia / servidor recusou). O label é
+ *  estável por spec (base~qual) para as asserções poderem procurar o slot certo. */
+/** Monta o #npc-troca como o jogo (jogo.js:5605-5638): a mochila (guardar) e o cofre
+ *  (retirar) usam a MESMA classe .cofre-slot e o MESMO data-k (indice do array de cada lado).
+ *  O clique no slot da mochila regista 'guardar'; o do cofre adiciona o item a mochila. */
+function montarNpcTroca(m, mochilaSpecs, cofreSpecs) {
+  const mochila = mochilaSpecs.map((s, i) => {
+    const img = m.el({ tag: 'img', label: 'troca-img-m:' + i, attrs: { src: 'assets/img/itens/' + s.base + '.png' } });
+    const el = m.el({
+      tag: 'button', label: 'troca-mochila:' + s.base + '~' + s.qual, className: 'cofre-slot r-' + (s.rar || 'basico'),
+      dataset: { k: String(i), nome: s.nome, cofre: 'guardar', id: s.base + '~' + s.qual, dica: s.dica || '' },
+      find: { img: [img] },
+    });
+    el.click = () => { m.estado.clicks.push(el.label); return true; };
+    return el;
+  });
+  const cofre = cofreSpecs.map((s, i) => {
+    const img = m.el({ tag: 'img', label: 'troca-img-c:' + i, attrs: { src: s.refino ? 'assets/img/itens/ref/' + s.base + '-' + s.refino + '.png' : 'assets/img/itens/' + s.base + '.png' } });
+    const el = m.el({
+      tag: 'button', label: 'troca-cofre:' + s.base + '~' + (s.qual || 'C') + '+' + (s.refino || 0), className: 'cofre-slot r-' + (s.rar || 'basico'),
+      dataset: { k: String(i), nome: s.nome, cofre: 'retirar', id: s.base + '~' + (s.qual || 'C'), dica: s.dica || '' },
+      find: { img: [img] },
+    });
+    el.click = () => {
+      m.estado.clicks.push(el.label);
+      const mo = m.estado.montados.get('#mochila')[0];
+      if (mo) mo.children.push(m.el({ tag: 'button', label: 'mochila:' + el.dataset.id, className: 'slot ' + (s.rar || 'basico'), attrs: { 'data-id': el.dataset.id, 'data-dica': el.dataset.dica || '' } }));
+      return true;
+    };
+    return el;
+  });
+  m.montar('.cofre-slot[data-k]', [...mochila, ...cofre]);
+}
+function montarGradeCofreMotor(m, specs, opts) {
+  opts = opts || {};
+  let vivos = specs.slice();
+  const pinta = () => {
+    const els = vivos.map((s, i) => {
+      const img = m.el({ tag: 'img', label: 'cofre-img:' + s.base + i, attrs: { src: s.refino ? `assets/img/itens/ref/${s.base}-${s.refino}.png` : `assets/img/itens/${s.base}.png` } });
+      const el = m.el({
+        tag: 'button', label: 'cofre-slot:' + s.base + '~' + (s.qual || 'C'), className: 'cofre-slot r-' + (s.rar || 'basico'),
+        dataset: { k: String(i), nome: s.nome, cofre: 'retirar', id: `${s.base}~${s.qual || 'C'}`, dica: s.dica || '' },
+        find: { img: [img] },
+      });
+      el.click = () => {
+        m.estado.clicks.push(el.label);
+        const idx = vivos.indexOf(s);
+        if (idx < 0) return false;
+        vivos.splice(idx, 1);                   // motor.js:3277-3283
+        if (!opts.semSaque) {
+          const mo = m.estado.montados.get('#mochila')[0];
+          if (mo) mo.children.push(m.el({ tag: 'button', label: 'mochila:' + el.dataset.id, className: 'slot ' + (s.rar || 'basico'), attrs: { 'data-id': el.dataset.id, 'data-dica': el.dataset.dica || '' } }));
+        }
+        pinta();                                 // jogo.js:6181-6192 mostrarCofre()
+        return true;
+      };
+      return el;
+    });
+    montarGradeCofre(m, els);
+  };
+  pinta();
+}
 
 export const suite = {
   nome: 'cofre',
@@ -171,6 +254,261 @@ export const suite = {
       t.check('C8: canvas com altura fora do formato -> recusa clicar (nao adivinha a conversao)',
         r.ok === false && /nao sei converter tile->ecra/.test(String(r.motivo)));
       t.check('C8: ...e nao dispara nenhum clique no canvas', m.eventosDe('tela').length === 0);
+    }
+
+    /* ============ C9 - CAMINHADA HUMANIZADA na Fonte (TK-03, TODO §7) ============ */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      montarLocal(m, 'Fonte');
+      montarTela(m, 480, 352);                    // 352/11 = 32 px por tile; centro (240,176)
+      const r = await auto.subirNaFonte(8);
+      const evs = m.eventosDe('tela');
+      const centro = 240;
+      t.check('C9: subirNaFonte(8) corre e conta 8 tiles', r.ok === true && r.tiles === 8 && evs.length === 8);
+      // (a) o 1.º clique NAO e o centro — a caminhada humanizada desvia ja no 1.º passo
+      t.check('C9: 1.º clique NAO e o centro (a caminhada nao e uma linha exacta)', evs[0].clientX !== centro);
+      // (b) x alterna de lado: o deslocamento entre cliques consecutivos inverte o sinal
+      const xs = [centro, ...evs.map((e) => e.clientX)];
+      const deltas = [];
+      for (let i = 1; i < xs.length; i++) deltas.push(xs[i] - xs[i - 1]);
+      t.check('C9: todos os passos tem deslocamento x NAO-zero', deltas.every((d) => d !== 0));
+      t.check('C9: x alterna de lado (cada passo inverte o sinal do anterior)',
+        deltas.every((d, i) => i === 0 || d * deltas[i - 1] < 0));
+      // (c) y entre centro-1.5 tile e centro-0.5 tile (sempre acima do boneco: tem de subir)
+      t.check('C9: y > centro-1.5 tile e < centro-0.5 tile', evs.every((e) => e.clientY > 128 && e.clientY < 160));
+      // (d) todos os cliques dentro da coluna do tile alvo (meio tile = 16 px)
+      t.check('C9: todos os cliques dentro do tile alvo (|x-centro| < 16)', evs.every((e) => Math.abs(e.clientX - centro) < 16));
+      // deriva limitada a ±0,45 tile (14,4 px): nunca sai da coluna da Tesoureira
+      t.check('C9: deriva limitada a ±0,45 tile (14,4 px)', evs.every((e) => Math.abs(e.clientX - centro) <= 14.45));
+      t.check('C9: CONTROLO - todos os cliques sao mousedown do botao direito', soDireito(evs));
+    }
+
+    /* ============ C10 - LIXO DO COFRE: classificacao (TK-03, TODO §8) ============ */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      // catalogo + um item "especial" (vidaPct -> papel neutro -> `meu`) que e epico: todos os
+      // ITENS_ESPECIAIS do CATALOGO sao lendarios, e lendario ja e excluido por outra regra.
+      const CAT = CATALOGO.concat([{ id: '7001', nome: 'Amuleto Especial', raridade: 'epico', espaco: 'arma', vidaPct: 0.06, preco: 900 }]);
+      alimentarCatalogo(m, CAT);
+      definirCampeao(m, 'adtest');
+      montarMochila(m, []);
+      m.montar('#equip > button.slot[data-id]', [m.el({ tag: 'button', label: 'equip:2001', className: 'slot lendario', attrs: { 'data-id': '2001~S', 'data-dica': 'Lendario AD 1 (lendario)' } })]);
+      const L = (k, nome, base, refino, rar) => slotCofre(m, { k, nome, base, refino, rar });
+      const slots = [
+        L(1, 'Adaga Inutil [B]', '1005', 0, 'basico'),     // duplicado: a melhor copia (B) fica
+        L(2, 'Adaga Inutil [C]', '1005', 0, 'basico'),     // duplicado: so o C e lixo
+        L(3, 'Refugo Epico [S]', '4001', 0, 'epico'),      // epico S -> NUNCA e lixo
+        L(4, 'Couraca Epica [C]', '4002', 0, 'epico'),     // epico C fora da build -> lixo
+        L(5, 'Lendario Fraco [C]', '9500', 0, 'lendario'), // lendario -> NUNCA e lixo
+        L(6, 'Espada Longa [C]', '1001', 0, 'basico'),     // componente da build -> NUNCA e lixo
+        L(7, 'Amuleto Especial [C]', '7001', 0, 'epico'),  // especial -> NUNCA e lixo
+      ];
+      montarGradeCofre(m, slots);
+      const lixo = auto.lixoDoCofreLista();
+      const bases = lixo.map((s) => String(s.base)).sort();
+      t.check('C10: basico C (duplicado) e lixo', bases.includes('1005') && lixo.some((s) => String(s.base) === '1005' && s.qual === 'C'));
+      t.check('C10: epico C fora da build e lixo', bases.includes('4002'));
+      t.check('C10: epico S NAO e lixo', !lixo.some((s) => s.qual === 'S'));
+      t.check('C10: lendario NUNCA e lixo', !bases.includes('9500'));
+      t.check('C10: componente da build NAO e lixo', !bases.includes('1001'));
+      t.check('C10: especial NAO e lixo', !bases.includes('7001'));
+      t.check('C10: duplicado B+C -> so o C e lixo (o B fica)', lixo.filter((s) => String(s.base) === '1005').length === 1);
+      t.check('C10: lixo total = {1005, 4002}', lixo.length === 2 && bases.join(',') === '1005,4002');
+      // prova de que a regra da build esta a ser aplicada (1005 nao entra na build do adtest)
+      t.check('C10: CONTROLO - 1005 nao esta na build do adtest', !(auto.buildIdeal() || []).map(String).includes('1005'));
+      t.check('C10: CONTROLO - 4002 (epico fora da build) nao esta na build', !(auto.buildIdeal() || []).map(String).includes('4002'));
+    }
+
+    /* ============ C11 - VENDER O LIXO DO COFRE: caminho ponta a ponta (TK-03) ============ */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      // equipamento CHEIO (1 bota + 4 itens, todos melhores que o lixo): assim o `alvoEquip` não
+      // escolhe o básico para VESTIR (com o pool quase vazio ele enchia os 4 slots com o lixo).
+      m.montar('#equip > button.slot[data-id]', [
+        m.el({ tag: 'button', label: 'equip:2007', className: 'slot lendario', attrs: { 'data-id': '2007~S', 'data-dica': 'Botas AD (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2001', className: 'slot lendario', attrs: { 'data-id': '2001~S', 'data-dica': 'Lendario AD 1 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2004', className: 'slot lendario', attrs: { 'data-id': '2004~S', 'data-dica': 'Lendario AD 2 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2005', className: 'slot lendario', attrs: { 'data-id': '2005~S', 'data-dica': 'Lendario AD 3 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2006', className: 'slot lendario', attrs: { 'data-id': '2006~S', 'data-dica': 'Lendario AD 4 (lendario)' } }),
+      ]);
+      montarMochila(m, []);
+      const img = m.el({ tag: 'img', label: 'cofre-img:1', attrs: { src: 'assets/img/itens/1005.png' } });
+      const slot = m.el({ tag: 'button', label: 'cofre-slot:1', className: 'cofre-slot r-basico', dataset: { k: '1', nome: 'Adaga Inutil [C]', cofre: 'retirar' }, find: { img: [img] } });
+      slot.click = () => {
+        m.estado.clicks.push('cofre-slot:1');
+        const mo = m.estado.montados.get('#mochila')[0];
+        mo.children.push(m.el({ tag: 'button', label: 'mochila:1005~C', className: 'slot basico', attrs: { 'data-id': '1005~C', 'data-dica': 'Adaga Inutil (basico)' } }));
+        return true;
+      };
+      montarGradeCofre(m, [slot]);
+      montarLojista(m, [{ id: '1005~C', dica: 'Adaga Inutil (basico)' }]);
+      const r = await auto.venderLixoDoCofre();
+      t.check('C11: venderLixoDoCofre correu', r.ok === true);
+      t.check('C11: sacou o slot do cofre', m.cliqueDe('cofre-slot:1') === true);
+      t.check('C11: o item entrou na mochila', m.estado.montados.get('#mochila')[0].children.some((c) => c.getAttribute('data-id') === '1005~C'));
+      t.check('C11: passou pelo Lojista (npc -> vender -> abrir-venda -> vender-cesta)',
+        m.cliqueDe('npc-lojista') === true && m.cliqueDe('palavra-vender') === true && m.cliqueDe('abrir-venda') === true && m.cliqueDe('vender-cesta') === true);
+      t.check('C11: o slot de venda foi clicado', m.clicksDePrefixo('slot:').indexOf('1005~C') >= 0);
+      const log = auto.getFarm().log || [];
+      const ev = log.find((e) => e.type === 'cofre' && e.acao === 'vender-lixo');
+      t.check('C11: logEvent cofre/vender-lixo com vendidos=[1005]', !!ev && Array.isArray(ev.vendidos) && ev.vendidos.join(',') === '1005');
+    }
+
+    /* ============ C12 - COFRE VAZIO: nao vende nada (TK-03) ============ */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      montarMochila(m, []);
+      montarGradeCofre(m, []);
+      montarLojista(m, []);
+      const r = await auto.venderLixoDoCofre();
+      t.check('C12: cofre vazio -> nada a vender', r.ok === true && r.vendidos.length === 0);
+      t.check('C12: NAO passou pelo Lojista', m.cliqueDe('npc-lojista') !== true);
+      t.check('C12: NAO registou venda', !(auto.getFarm().log || []).some((e) => e.type === 'cofre' && e.acao === 'vender-lixo'));
+    }
+
+    /* ============ C13 - DEFEITO da leitura do cofre: base/refino do src refinado (TK-03) ============ */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      const img = m.el({ tag: 'img', label: 'cofre-img', attrs: { src: 'assets/img/itens/ref/1005-2.png' } });
+      const slot = m.el({ tag: 'button', label: 'cofre-slot:ref', className: 'cofre-slot r-basico', dataset: { k: '3', nome: 'Adaga Inutil [C]', cofre: 'retirar' }, find: { img: [img] } });
+      montarGradeCofre(m, [slot]);
+      const lido = auto.lerCofreSlots();
+      t.check('C13: base lido do src refinado (1005, NAO o data-k 3)', lido.length === 1 && String(lido[0].base) === '1005');
+      t.check('C13: refino lido do src refinado (+2)', lido.length === 1 && lido[0].refino === 2);
+      t.check('C13: qualidade lida do data-nome ([C])', lido.length === 1 && lido[0].qual === 'C');
+    }
+
+    /* ============ C14 - INDICE A MEXER: o splice reordena o cofre (motor.js:3277-3283) ==== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      m.montar('#equip > button.slot[data-id]', [
+        m.el({ tag: 'button', label: 'equip:2007', className: 'slot lendario', attrs: { 'data-id': '2007~S', 'data-dica': 'Botas AD (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2001', className: 'slot lendario', attrs: { 'data-id': '2001~S', 'data-dica': 'Lendario AD 1 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2004', className: 'slot lendario', attrs: { 'data-id': '2004~S', 'data-dica': 'Lendario AD 2 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2005', className: 'slot lendario', attrs: { 'data-id': '2005~S', 'data-dica': 'Lendario AD 3 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2006', className: 'slot lendario', attrs: { 'data-id': '2006~S', 'data-dica': 'Lendario AD 4 (lendario)' } }),
+      ]);
+      montarMochila(m, []);
+      // 4 slots: 3 lixos (1005 C, 4002 C, 4001 C) + 1 LENDARIO (9500 S) — este e o que a
+      // releitura protege: apos cada splice o k muda, e o lendario passa a ocupar o indice
+      // que o lixo tinha. Se o codigo usasse o k antigo, sacava o lendario.
+      montarGradeCofreMotor(m, [
+        { base: '1005', qual: 'C', nome: 'Adaga Inutil [C]', rar: 'basico', dica: 'Adaga Inutil (basico)' },
+        { base: '4002', qual: 'C', nome: 'Couraca Epica [C]', rar: 'epico', dica: 'Couraca Epica (epico)' },
+        { base: '4001', qual: 'C', nome: 'Refugo Epico [C]', rar: 'epico', dica: 'Refugo Epico (epico)' },
+        { base: '9500', qual: 'S', nome: 'Lendario Fraco [S]', rar: 'lendario', dica: 'Lendario Fraco (lendario)' },
+      ]);
+      montarLojista(m, [
+        { id: '1005~C', dica: 'Adaga Inutil (basico)' },
+        { id: '4002~C', dica: 'Couraca Epica (epico)' },
+        { id: '4001~C', dica: 'Refugo Epico (epico)' },
+      ]);
+      const r = await auto.venderLixoDoCofre();
+      const clicks = m.estado.clicks;
+      t.check('C14: venderLixoDoCofre correu', r.ok === true);
+      t.check('C14: vendidos = [1005, 4001, 4002] (exactamente os 3 lixos, ordem numerica de Object.keys)',
+        Array.isArray(r.vendidos) && r.vendidos.length === 3 && r.vendidos.join(',') === '1005,4001,4002');
+      t.check('C14: clicou nos 3 slots de lixo',
+        clicks.indexOf('cofre-slot:1005~C') >= 0 && clicks.indexOf('cofre-slot:4002~C') >= 0 && clicks.indexOf('cofre-slot:4001~C') >= 0);
+      t.check('C14: o LENDARIO (9500) NUNCA foi clicado', clicks.indexOf('cofre-slot:9500~S') < 0);
+      const mo = m.estado.montados.get('#mochila')[0];
+      t.check('C14: a mochila cresceu 3', mo.children.length === 3);
+      const cofreFinal = m.estado.montados.get('.cofre-slot[data-k]') || [];
+      t.check('C14: o cofre ficou so com o lendario (re-render com k actual)',
+        cofreFinal.length === 1 && cofreFinal[0].dataset.k === '0' && cofreFinal[0].dataset.nome === 'Lendario Fraco [S]');
+      const ev = (auto.getFarm().log || []).find((e) => e.type === 'cofre' && e.acao === 'vender-lixo');
+      t.check('C14: logEvent cofre/vender-lixo com 3 vendidos', !!ev && ev.vendidos.join(',') === '1005,4001,4002');
+    }
+
+    /* ============ C14a — DOM filtrado por acao: mochila e cofre com o MESMO data-k ======== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      montarMochila(m, []);
+      // A mochila (guardar) e o cofre (retirar) usam a MESMA classe .cofre-slot e o MESMO
+      // data-k (jogo.js:5627/5634). O sacarSlotDoCofre tem de clicar no do COFRE, nunca no
+      // da mochila — sem o filtro de acao no find do DOM, o primeiro k=0 (mochila) ganha.
+      montarNpcTroca(m,
+        [{ base: '1001', qual: 'C', nome: 'Espada Longa [C]', rar: 'basico', dica: 'Espada Longa (basico)' }],
+        [{ base: '1005', qual: 'C', nome: 'Adaga Inutil [C]', rar: 'basico', dica: 'Adaga Inutil (basico)' }]);
+      const r = await auto.sacarSlotDoCofre({ base: '1005', qual: 'C', refino: 0 });
+      const clicks = m.estado.clicks;
+      t.check('C14a: sacarSlotDoCofre correu', r.ok === true);
+      t.check('C14a: clicou no slot do COFRE (retirar)', clicks.indexOf('troca-cofre:1005~C+0') >= 0);
+      t.check('C14a: NUNCA clicou no slot da mochila (guardar)', clicks.indexOf('troca-mochila:1001~C') < 0);
+      t.check('C14a: o item entrou na mochila', m.estado.montados.get('#mochila')[0].children.length === 1);
+    }
+
+    /* ============ C14b — sem wildcard de refino: o +0 e lixo, o +2 fica ================== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      montarMochila(m, []);
+      // cofre com 1005+2 (melhor copia, PROTEGIDA) e 1005+0 (lixo). O alvo e o +0. Com o
+      // wildcard (refino===0 aceita qualquer refino), o find apanhava o +2 primeiro.
+      montarNpcTroca(m, [], [
+        { base: '1005', qual: 'C', refino: 2, nome: 'Adaga Inutil +2 [C]', rar: 'basico', dica: 'Adaga Inutil +2 (basico)' },
+        { base: '1005', qual: 'C', refino: 0, nome: 'Adaga Inutil [C]', rar: 'basico', dica: 'Adaga Inutil (basico)' },
+      ]);
+      const r = await auto.sacarSlotDoCofre({ base: '1005', qual: 'C', refino: 0 });
+      const clicks = m.estado.clicks;
+      t.check('C14b: sacarSlotDoCofre correu', r.ok === true);
+      t.check('C14b: clicou no +0 (o lixo)', clicks.indexOf('troca-cofre:1005~C+0') >= 0);
+      t.check('C14b: NUNCA clicou no +2 (a melhor copia protegida)', clicks.indexOf('troca-cofre:1005~C+2') < 0);
+      t.check('C14b: o +2 ficou no cofre', (auto.lerCofreSlots() || []).some((s) => String(s.base) === '1005' && (s.refino || 0) === 2));
+    }
+
+    /* ============ C15 - SAQUE NAO CONFIRMADO: mochila cheia / servidor recusou ========== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      m.montar('#equip > button.slot[data-id]', [
+        m.el({ tag: 'button', label: 'equip:2007', className: 'slot lendario', attrs: { 'data-id': '2007~S', 'data-dica': 'Botas AD (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2001', className: 'slot lendario', attrs: { 'data-id': '2001~S', 'data-dica': 'Lendario AD 1 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2004', className: 'slot lendario', attrs: { 'data-id': '2004~S', 'data-dica': 'Lendario AD 2 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2005', className: 'slot lendario', attrs: { 'data-id': '2005~S', 'data-dica': 'Lendario AD 3 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2006', className: 'slot lendario', attrs: { 'data-id': '2006~S', 'data-dica': 'Lendario AD 4 (lendario)' } }),
+      ]);
+      montarMochila(m, []);
+      // semSaque: o clique NAO adiciona a mochila (mochila cheia / servidor recusou).
+      montarGradeCofreMotor(m, [
+        { base: '1005', qual: 'C', nome: 'Adaga Inutil [C]', rar: 'basico', dica: 'Adaga Inutil (basico)' },
+      ], { semSaque: true });
+      montarLojista(m, [{ id: '1005~C', dica: 'Adaga Inutil (basico)' }]);
+      // o banco comeca em modo observacao (DEFAULT.enabled=false); liga o mestre como a GUI faria
+      auto.setConfig({ enabled: true });
+      const n1 = auto.necessidadesBase();
+      t.check('C15: antes, n.venderLixoCofre e true (ha lixo, cadencia nao travada)', n1.venderLixoCofre === true);
+      const r = await auto.venderLixoDoCofre();
+      t.check('C15: vendidos vazios (nao confirmou o saque)', Array.isArray(r.vendidos) && r.vendidos.length === 0);
+      t.check('C15: a mochila NAO cresceu', m.estado.montados.get('#mochila')[0].children.length === 0);
+      t.check('C15: NAO registou venda', !(auto.getFarm().log || []).some((e) => e.type === 'cofre' && e.acao === 'vender-lixo'));
+      const n2 = auto.necessidadesBase();
+      t.check('C15: DEPOIS, n.venderLixoCofre continua true (cadencia NAO avancou)', n2.venderLixoCofre === true);
     }
   },
 };
