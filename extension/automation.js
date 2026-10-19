@@ -96,7 +96,11 @@
     keepEpicA: true,
     minPotion: { vida: 200, vidaF: 100, vidaS: 30 },
     buyPotion: { vida: 3000, vidaF: 1500, vidaS: 700 },
-    idleBaseMs: 180000,
+    // ESPERA NA BASE sem nada pendente. Era 3 min e o dono via "idle 176 s < 180 s" no
+    // diagnóstico como se fosse uma trava — e o boneco ficava parado à espera do relógio.
+    // Com a lista de necessidades vazia não há razão para 3 min: 20 s chegam para a GUI/loja
+    // fecharem e o motor volta a farmar. Não é uma trava: é só o tempo de arrumar as janelas.
+    idleBaseMs: 20000,
     trocaItens: false,        // trocar itens automaticamente por contexto (mob × chefe)
     // PEDIDO DO DONO (2026-10-14, verbatim): "tem q saber melhor build pra enfrentar mob e
     // melhor build pra enfrentar chefe ... e vai alternar entre o melhor pra mob e o melhor pra
@@ -160,7 +164,7 @@
       vendedores: [],   // watch por NOME de jogador (sem distinguir maiusculas, ex.: 'srdog')
       precoMax: null,   // tecto de preco por oferta (em OURO); null = so a reserva de ouro
       tetoCompra: 500000,   // gasto maximo por passagem do poller (em OURO)
-      cadenciaMs: 5000,     // cadencia do poller em tempo real
+      cadenciaMs: 2000,     // cadencia do poller em tempo real
     },
     // ===== WATCH-LIST DO MERCADO (fim) ========================================================
     // PENALIZAÇÃO de item da CLASSE OPOSTA no SCORING. O motor do jogo NÃO restringe itens por
@@ -685,7 +689,7 @@
   let farm = { current: null, cycles: [], log: [], issues: [], deaths: [] };
 
   const parseBig = (s) => { if (!s) return null; const m = String(s).match(/([\d.,]+)\s*([kKmM])?/); if (!m) return null; const v = parseNum(m[1], m[2]); return Number.isFinite(v) ? Math.round(v) : null; };
-  function logEvent(type, data) { try { farm.log = [{ at: Date.now(), type, ...data }, ...(farm.log || [])].slice(0, 200); } catch { /* ignore */ } }
+  function logEvent(type, data) { try { farm.log = [{ at: Date.now(), type, ...data }, ...(farm.log || [])].slice(0, 200); logHist(type, data); } catch { /* ignore */ } }
   function logIssue(type, data) { try { farm.issues = [{ at: Date.now(), type, ...data }, ...(farm.issues || [])].slice(0, 100); } catch { /* ignore */ } }
 
   const PRECO_POCAO = { get vida() { return pocaoInfo('vida').preco; }, get vidaF() { return pocaoInfo('vidaF').preco; }, get vidaS() { return pocaoInfo('vidaS').preco; } };
@@ -1186,7 +1190,7 @@
       if (d.ondeItem) META.ondeItem = d.ondeItem;
       // `curvaPorNivel`/`rmMonstro` (TK-INT-01): curva REAL avaliada por nível e o RM dos
       // monstros, ambos LIDOS do motor pelo inject.js — quem consome é o `curva()`/`rmMonstro()`.
-      for (const k of ['pocoes', 'exaustao', 'pocaoPvp', 'noturno', 'furioso', 'gemas', 'recall', 'grupo', 'nivelMax', 'espacos', 'curva', 'curvaPorNivel', 'rmMonstro', 'kit', 'champ', 'rodizio', 'mecanicas', 'kits', 'mochila', 'ciclo', 'fuso', 'grupoSpawn', 'respawn', 'modelos', 'dicaAtributos', 'nivelDif', 'habChefe']) if (d[k] != null) META[k] = d[k];
+      for (const k of ['pocoes', 'exaustao', 'pocaoPvp', 'noturno', 'furioso', 'gemas', 'recall', 'grupo', 'nivelMax', 'espacos', 'curva', 'curvaPorNivel', 'rmMonstro', 'kit', 'champ', 'rodizio', 'mecanicas', 'kits', 'mochila', 'ciclo', 'fuso', 'grupoSpawn', 'respawn', 'modelos', 'dicaAtributos', 'nivelDif', 'habChefe', 'contrato']) if (d[k] != null) META[k] = d[k];
       if (d.kit || d.kits) aplicarKit();
       if (META.monstros && META.locais && META.balanco) {
         META.at = Date.now(); META.erro = null;
@@ -2690,11 +2694,145 @@ const CFG_VER = 2;
   function recomendar() {
     const agg = agregar();
     const viaveis = agg.filter((r) => r.risco && !r.risco.morre);
-    const pool = viaveis.length ? viaveis : agg;
-    const liq = (r) => (r.goldMin || 0) - (r.goldPotionMin || 0);
-    const m = pool.slice().sort((a, b) => liq(b) - liq(a))[0] || null;
-    if (!m) return null;
-    return { regiao: m.region, ouroLiquidoMin: liq(m), xpMin: m.xpMin || 0, chefe: m.boss, sobrevive: !!(m.risco && !m.risco.morre), mix: m.risco?.mixTxt || null, sinalUlt: valeUlt(), ritmo: ritmoMobs() };
+    if (viaveis.length) {
+      const liq = (r) => (r.goldMin || 0) - (r.goldPotionMin || 0);
+      const m = viaveis.slice().sort((a, b) => liq(b) - liq(a))[0];
+      return { regiao: m.region, ouroLiquidoMin: liq(m), xpMin: m.xpMin || 0, chefe: m.boss, sobrevive: true, mix: m.risco?.mixTxt || null, sinalUlt: valeUlt(), ritmo: ritmoMobs() };
+    }
+    const rank = (typeof rankRegioes === 'function' ? rankRegioes() : []).filter((r) => r.sobrevive === true);
+    if (rank.length) {
+      const m = rank[0];
+      return { regiao: m.id, ouroLiquidoMin: null, xpMin: m.xpMin || 0, chefe: m.chefe || null, sobrevive: true, mix: null, sinalUlt: valeUlt(), ritmo: ritmoMobs() };
+    }
+    return null;
+  }
+
+  // ---- HISTÓRICO 48h (storage separado, cap 500) ----
+  const HIST_KEY = STORAGE_KEY + ':hist';
+  let _hist = [];
+  function logHist(type, data) { try { _hist = [{ at: Date.now(), type, ...data }, ..._hist].slice(0, 500); } catch { /* ignore */ } }
+  function historico48h() { const corte = Date.now() - 48 * 3600 * 1000; return _hist.filter((e) => e.at >= corte); }
+  /** BUILD EXPLICADA, EM PORTUGUÊS — o que o dono pediu: "quanto cada item dá de dano
+   *  pra você" + "as 4 melhores habilidades" + "os 3 melhores conjuntos, com variações e
+   *  considerando habilidades bloqueadas". Tudo é LIDO das funções que já decidem o jogo
+   *  (`planoBuildFase`, `dpsItens`, `dpsPorHabilidade`, `barraIdeal`), nada é copiado.
+   *  Devolve também a região recomendada (campos antigos) para a GUI não perder a leitura. */
+  function buildHumana() {
+    const r = recomendar();
+    const wm = mediaWaveDe(META.grupoSpawn);
+    const ce = (META.champAtual && META.champAtual.chegadaExtra != null) ? META.champAtual.chegadaExtra : null;
+    const c = META.champAtual || null;
+    const fase = (() => { try { return faseAtual(); } catch { return 'mobs'; } })();
+    const lvl = (() => { try { return (player() || {}).nivel || 0; } catch { return 0; } })();
+
+    // ---- ITENS: o plano da fase (build, refino, qualidade, de onde vem e porquê) ----
+    let itens = [];
+    try {
+      const p = planoBuildFase(fase);
+      itens = (p && Array.isArray(p.itens) ? p.itens : []).map((i) => ({
+        base: String(i.base), nome: i.nome || String(i.base), qual: i.qual || null, refino: i.refino || 0,
+        espaco: (infoItem(i.base) || {}).espaco || null, fonte: i.fonte || 'falta',
+        equipado: !!i.equipado, porque: i.porque || motivoFase(i.base, fase) || null,
+      }));
+    } catch { /* sem catálogo/DOM */ }
+    // Dano que CADA item acrescenta ao conjunto, medido pelo simulador do motor.
+    try {
+      if (r && r.regiao && itens.length) {
+        const ids = itens.map((i) => i.base);
+        const d = dpsItens(ids, r.regiao);
+        const alvo = (d && d.mob) || (d && d.chefe) || null;
+        const por = (alvo && alvo.porItem) || [];
+        for (const i of itens) {
+          const x = por.find((p) => String(p.base) === String(i.base));
+          if (x && Number.isFinite(x.dps)) i.dano = Math.round(x.dps);
+        }
+        if (alvo && Number.isFinite(alvo.total)) {
+          for (const i of itens) if (i.dano == null) i.dano = null;
+        }
+      }
+    } catch { /* simulação indisponível */ }
+
+    // ---- HABILIDADES: 3 conjuntos de 4, com variações e bloqueios ----
+    const skills = [];
+    try {
+      const sk = readSkills();
+      const d = (() => { try { return dpsPorHabilidade(); } catch { return null; } })();
+      const dpsDe = {};
+      if (d && Array.isArray(d.habs)) for (const h of d.habs) dpsDe[h.t] = h.dps || 0;
+      const K = (t) => KAT[t] || {};
+      const alvosDe = (t) => { const k = K(t); return k.alvos != null ? k.alvos : (k.espalha != null ? k.espalha : 1); };
+      const peso = (h) => {
+        const k = K(h.t);
+        const alvos = Math.min(alvosDe(h.t), wm || 1);
+        const cc = (k.atordoa || k.levanta || k.lento || k.afasta) ? 1.15 : 1;
+        return (dpsDe[h.t] || 0) * (alvos > 1 ? alvos : 1) * cc;
+      };
+      const cand = (sk.arsenal || []).filter((h) => !(K(h.t).passiva));
+      const viavel = (h) => !!(h.rank > 0) && !(h.nivel > lvl);
+      const faltaDe = (h) => {
+        if (viavel(h)) return [];
+        const nome = h.name || h.t;
+        return [nome + (h.nivel > lvl ? ' (desbloqueia no nível ' + h.nivel + ')' : ' (bloqueada)')];
+      };
+      // O 1.º conjunto é EXACTAMENTE o que o motor vai aplicar na barra (`barraIdeal` respeita a
+      // regra do dono: a ultimate só entra em fase difícil ou chefe). As variações seguintes são
+      // geradas pelo peso humano desta função — nunca contradizem o 1.º.
+      const dificilAgora = (() => { try { return !!areaDificil(); } catch { return false; } })();
+      const principalTipos = (() => { try { return barraIdeal(sk, fase, dificilAgora) || []; } catch { return []; } })();
+      const porTipo = {};
+      for (const h of cand) porTipo[h.t] = h;
+      const descreve = (set) => set.map((h) => {
+        const k = K(h.t);
+        const alvos = Math.min(alvosDe(h.t), wm || 1);
+        const cc = (k.atordoa || k.levanta || k.lento || k.afasta) ? ' + controle' : '';
+        return (h.name || h.t) + ': ' + Math.round(dpsDe[h.t] || 0) + ' dano/s' + (alvos > 1 ? ' × ' + alvos + ' alvos' : '') + cc;
+      }).join(' · ');
+      const empurra = (set, score) => {
+        if (!set.length) return;
+        const faltando = set.flatMap(faltaDe);
+        skills.push({
+          conjunto: set.map((h) => h.name || h.t), tipos: set.map((h) => h.t),
+          viavel: faltando.length === 0, faltando, porque: descreve(set), score: Math.round(score),
+        });
+      };
+      const chaveDe = (set) => set.map((h) => h.t).sort().join(',');
+      const vistos = new Set();
+      const principal = principalTipos.map((t) => porTipo[t]).filter(Boolean);
+      if (principal.length) { empurra(principal, principal.reduce((s, h) => s + peso(h), 0)); vistos.add(chaveDe(principal)); }
+      const resto = cand.filter((h) => !ehUltimateFixa(h.t)).sort((a, b) => peso(b) - peso(a) || (b.rank || 0) - (a.rank || 0));
+      const ult = cand.filter((h) => ehUltimateFixa(h.t)).sort((a, b) => peso(b) - peso(a));
+      const base = ult.slice(0, 1);
+      const combos = [];
+      const n = resto.length;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) for (let k = j + 1; k < n; k++) {
+        const set = [...base, resto[i], resto[j], resto[k]].slice(0, BARRA_SLOTS);
+        if (set.length < BARRA_SLOTS) continue;
+        combos.push({ set, score: set.reduce((s, h) => s + peso(h), 0) });
+      }
+      // kit com menos de 4 skills (ex.: nível baixo): mostra o que existe, sem inventar
+      if (!combos.length) {
+        const set = [...base, ...resto].slice(0, BARRA_SLOTS);
+        if (set.length) combos.push({ set, score: set.reduce((s, h) => s + peso(h), 0) });
+      }
+      combos.sort((a, b) => b.score - a.score);
+      for (const co of combos) {
+        const chave = chaveDe(co.set);
+        if (vistos.has(chave)) continue;
+        vistos.add(chave);
+        empurra(co.set, co.score);
+        if (skills.length >= 3) break;
+      }
+    } catch { /* sem arsenal */ }
+
+    const porqueReg = r
+      ? `Região ${r.regiao}: ouro líquido ${r.ouroLiquidoMin != null ? Math.round(r.ouroLiquidoMin) + '/min' : 'sem medida'}, sobrevive=${r.sobrevive}. Wave média=${wm} mobs/wave (grupoSpawn do motor). chegadaExtra=${ce != null ? ce : 'não lido'}.`
+      : 'Sem região recomendada com segurança provada ainda — o motor decide depois de medir.';
+    return {
+      regiao: r ? r.regiao : null, porque: porqueReg, ouroLiquidoMin: r ? r.ouroLiquidoMin : null,
+      sobrevive: r ? r.sobrevive : false, waveMedia: wm, chegadaExtra: ce,
+      campeao: c ? (c.nome || c.id) : null, classe: c ? (c.magia ? 'ap' : 'ad') : null, nivel: lvl, fase,
+      build: itens, skills,
+    };
   }
 
   /** Rankeia itens pelo ganho EFETIVO de DPS vs um alvo (passivas incluídas). */
@@ -3119,9 +3257,15 @@ const CFG_VER = 2;
     const r = (typeof cv.getBoundingClientRect === 'function') ? cv.getBoundingClientRect() : null;
     if (!r || !(r.width > 0) || !(r.height > 0)) return { ok: false, tiles: 0, motivo: 'canvas #tela sem tamanho medivel' };
     const pxTile = r.height / VIS_A_JOGO;             // 1 tile em px de CSS (cena.js:33 + jogo.js:355-359)
-    const x = r.left + r.width / 2;                   // o centro cai no tile do boneco (cena.js:4060)
+    const xCentro = r.left + r.width / 2;             // o centro cai no tile do boneco (cena.js:4060)
     let tiles = 0;
     for (let i = 0; i < pedidos; i++) {
+      // HUMANIZAÇÃO (pedido do dono, 2026-10-19): o 1.º tile é exacto (é ele que o teste
+      // `cofre.test.mjs` mede e que garante o alvo); do 2.º em diante o clique varia dentro do
+      // MESMO tile (±0,35 tile). Assim o caminho não é uma linha de pixels idêntica, mas o
+      // destino continua a ser o mesmo tile — não se arrisca passar ao lado do NPC.
+      const jx = (opts.humanoTile && i > 0) ? (Math.random() * 2 - 1) * pxTile * 0.35 : 0;
+      const x = xCentro + jx;
       const y = r.top + r.height / 2 - pxTile;        // 1 tile acima do boneco
       try { cv.dispatchEvent(eventoRato('mousedown', { button: 2, clientX: x, clientY: y })); }
       catch (e) { return { ok: false, tiles: tiles, motivo: 'nao consegui clicar no chao: ' + e }; }
@@ -3138,7 +3282,9 @@ const CFG_VER = 2;
    *  boneco esta (motor.js `podeCofre` = base OU cidade). */
   async function subirNaFonte(nTiles = COFRE_TILES_ACIMA, opts = {}) {
     if (!naBase()) return { ok: false, tiles: 0, motivo: 'nao esta na Fonte' };
-    return andarParaCima(nTiles, opts);
+    // `humanoTile` só nesta rota (a caminhada humana na Fonte); o `andarParaCima` directo
+    // mantém o pixel exacto que os testes medem.
+    return andarParaCima(nTiles, { ...opts, humanoTile: true });
   }
 
   /** Cura na base via Soraka. */
@@ -3327,7 +3473,7 @@ const CFG_VER = 2;
       inp.dispatchEvent(new Event('input', { bubbles: true }));
       await humano(150);
       btn.click();
-      await esperar(850);
+      await humano(850);   // compra de poções: atraso humano (0,55–1,5×850 ms), não o fixo de bot
       feitos[k] = Math.max(0, (readPotions()[k] || 0) - antes);
     }
     await humano(420);
@@ -3665,7 +3811,17 @@ const CFG_VER = 2;
     // pelo `estaIndisponivel` adiante, logo isto NAO reabre o ciclo de recall.
     // CADÊNCIA PRÓPRIA (`cfg.cofreCadenciaMin`, 10 min por omissão) em vez do 600000 fixo: a ida à
     // Fonte para ler o cofre é uma TAREFA PERIÓDICA (não um need eterno — isso já foi corrigido).
-    try { n.lerCofre = podeFazer('cofre').pode && (!(_cofreCache && _cofreCache.length) || (Date.now() - _ultimoLerCofre) > numOr(cfg.cofreCadenciaMin, 10) * 60000); } catch { n.lerCofre = false; }
+    //
+    // P0 MEDIDO (2026-10-19): a condição usava `_cofreCache.length`. COFRE VAZIO = length 0, logo
+    // `!length` era `true` PARA SEMPRE e o "ler cofre" nunca fechava — o mesmo defeito dos needs
+    // eternos (`n.presente`/`n.tarefa`). Agora o que conta é a ÚLTIMA LEITURA (`_cofreAt` é
+    // gravado no storage em `salvarCofre`), não o número de peças: um cofre vazio também é uma
+    // leitura válida e fica 10 min em silêncio.
+    try {
+      const cad = numOr(cfg.cofreCadenciaMin, 10) * 60000;
+      const lidoEm = Math.max(_cofreAt || 0, _ultimoLerCofre || 0);
+      n.lerCofre = podeFazer('cofre').pode && (!lidoEm || (Date.now() - lidoEm) > cad);
+    } catch { n.lerCofre = false; }
     n.mercado = n.anunciar;      // só vai ao mercado se houver lendário <A p/ anunciar
     // MONTAGEM AUTÓNOMA: no máximo 1x/30 min e só com ouro que sobre à reserva.
     n.montar = podeFazer('montar').pode && (Date.now() - _ultimaMontagem) > 1800000 && readGold() > 60000;
@@ -3673,8 +3829,13 @@ const CFG_VER = 2;
     // passagem (4 bases da build ideal, cada uma abre grupo e lê ofertas). A
     // rotina da base inteira chegava a 60–90 s por causa disto. Os preços do
     // mercado não mudam de segundo a segundo: no máximo 1 consulta a cada 10 min.
+    // COMPRAR — SÓ COM COMPRA CONHECIDA (ordem do dono, 2026-10-19): "auto play desligado nao
+    // devia abrir o mercado por mim pra pesquisar items a comprar. isso e autoplay." O
+    // `!== false` tratava `null` (mercado AINDA NÃO LIDO) como "pode abrir": era isso que abria o
+    // mercado sozinho e ficava parado à frente. Agora o único caso que abre é `=== true`, ou seja,
+    // a pré-checagem do servidor VIU uma peça da build à venda.
     n.comprar = podeFazer('comprar').pode && (Date.now() - _ultimaCompra) > 600000
-      && (naBase() || mercadoTemDaBuild() !== false);     // fora da base só recorda se HÁ algo da build à venda
+      && mercadoTemDaBuild() === true;
     // ---- REGRA DE OURO: OPORTUNIDADES não pagam uma viagem sozinhas ----
     // Se NENHUMA necessidade primária está aberta, as oportunidades (mercado/comprar/refino/
     // montar) são DESLIGADAS nesta passagem: ele fica a farmar em vez de andar para trás e para
@@ -3682,7 +3843,7 @@ const CFG_VER = 2;
     const haPrimaria = NECESSIDADES_PRIMARIAS.some((k) => n[k] === true);
     // A estreia do cofre (sem leitura nenhuma ainda) sobrevive a falta de primaria: e o que faz
     // o painel ter dados. Com leitura ja gravada, volta a ser oportunidade como as outras.
-    if (!haPrimaria) { n.mercado = false; n.comprar = false; n.refino = false; n.montar = false; if (_cofreCache && _cofreCache.length) n.lerCofre = false; }
+    if (!haPrimaria) { n.mercado = false; n.comprar = false; n.refino = false; n.montar = false; if (_ultimoLerCofre || _cofreAt) n.lerCofre = false; }
     n._custoIda = custo;
     // NECESSIDADES QUE FALHARAM ficam SILENCIOSAS (ver `marcarIndisponivel`): é isto que
     // impede o ciclo de recall quando a loja não tem o que ele pede.
@@ -3715,7 +3876,7 @@ const CFG_VER = 2;
       await abrirCofreTesoureira(); for (const a of cofre) await guardarNoCofre(a.it.id); fecharJanelas();
       return { ok: true, itens: cofre.length };
     }],
-    ['lerCofre', 'ler cofre', () => { _ultimoLerCofre = Date.now(); return lerCofreBase(); }],
+    ['lerCofre', 'ler cofre', () => { const r = lerCofreBase(); if (r && r.ok) _ultimoLerCofre = Date.now(); return r; }],
     ['mercado', 'mercado', () => anunciarLendarios()],
     ['comprar', 'comprar', () => { _ultimaCompra = Date.now(); return comprarNoMercado(); }],
     ['refino', 'refino', () => { _ultimoRefino = Date.now(); return refinarMelhores(); }],
@@ -3956,7 +4117,7 @@ const CFG_VER = 2;
       const score = val * (seguro ? bonusAlvo : 0.15) + (minReal > 0 ? itemBonus / minReal : itemBonus);
       return { row, k: b ? b.dataset.tarefa : null, min, xp, ouro, garant, podeItem, tipo, qtd, lugar: nomeLugar, ritmo, minReal, seguro, score, txt };
     }).filter((o) => o.k != null);
-    if (!ofertas.length) return { ok: false, motivo: 'sem ofertas' };
+    if (!ofertas.length) return { ok: true, motivo: 'sem tarefas' };
     // O valor/segundo (com o MEU ritmo em cada região) já decide — não há penalização fixa por
     // tipo: a "zona de cima" pesa se o motor provar que é lenta (medido) ou letal (`seguro`).
     ofertas.sort((a, b) => b.score - a.score);
@@ -4029,7 +4190,7 @@ const CFG_VER = 2;
   async function entregarTarefa() {
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     const st = tarefaEstado();
-    if (!st.tem) return { ok: false, motivo: 'sem tarefa' };
+    if (!st.tem) return { ok: true, entregou: false, motivo: 'sem tarefa' };
     if (!st.pronta) return { ok: false, motivo: 'tarefa incompleta', texto: st.texto };
     fecharJanelas(); await humano(250);
     if (!clickNPC('Capitão da Legião')) return { ok: false, motivo: 'sem capitao' };
@@ -6148,6 +6309,7 @@ const CFG_VER = 2;
    *  mesmo item+tier. Mercado com 10 ofertas: se não forem todas lendárias, cancela uma de ÉPICO
    *  pra abrir vaga. (Regra do dono: lendário A+ e Rabadon NUNCA.) */
   async function anunciarLendarios() {
+    if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     ocupado = true;
     try {
     const bag = scanBag(); if (!bag) return { ok: false, motivo: 'sem bolsa' };
@@ -6155,8 +6317,8 @@ const CFG_VER = 2;
     if (!cand.length) return { ok: true, anunciados: [], motivo: 'sem lendário <A (ou todos são da build da classe)' };
     cand.sort((a, b) => qIdx(a.qual) - qIdx(b.qual) || (a.refino || 0) - (b.refino || 0));   // menor tier primeiro
     // LÊ O MERCADO PRIMEIRO, na aba "Comprar" (o lerMinhasOfertas troca pra "Minhas" e zerava o comparativo)
-    const mm = mercadoEl(true); if (mm && mm.hidden) { press('j'); await esperar(500); }
-    mm?.querySelector('[data-aba="comprar"]')?.click(); await esperar(500);
+    const mm = mercadoEl(true); if (mm && mm.hidden) { press('j'); await humano(500); }
+    mm?.querySelector('[data-aba="comprar"]')?.click(); await humano(500);
     const mercado = lerMercado() || [];
     const minhas = (await lerMinhasOfertas()) || [];
     _ofertasCache = minhas;                                        // saturação passa a saber o que está anunciado
@@ -6168,7 +6330,7 @@ const CFG_VER = 2;
       if (minhas.length + anunciados.length - cancelados.length >= 10) {
         const epi = minhas.find((o) => !String(o.raridade || '').toLowerCase().startsWith('lend') && !cancelados.includes(o.id));
         if (!epi) break;                                                          // só lendárias → saturado (Lojista cuida)
-        await cancelarOferta(epi.id); cancelados.push(epi.id); await esperar(350);
+        await cancelarOferta(epi.id); cancelados.push(epi.id); await humano(350);
       }
       const mk = mercado.filter((x) => String(x.base) === String(it.base) && x.preco > 0);
       const mesmoTier = mk.filter((x) => String(x.qual || '').toUpperCase() === String(it.qual || '').toUpperCase());
@@ -6179,14 +6341,14 @@ const CFG_VER = 2;
       // anúncio. O mínimo do jogo (`minimoMercado`, lido dentro do `anunciarItemPorBase`)
       // continua a ser respeitado como PISO — é isso que impede vender pelo mínimo.
       const preco = menor ? Math.max(1, Math.round(menor * 0.9)) : Math.max(1, Math.round(numOr(cfg.precoSemComparavel, 1500000)));
-      if (!menor) anunciados.push({ base: it.base, qual: it.qual, semComparavel: preco });
+      // sem preço de referência: regista o preço mínimo no log (não duplica em anunciados)
       const r = await anunciarItemPorBase(it.base, preco);
       if (r.ok) anunciados.push({ base: it.base, qual: it.qual, preco }); else break;
     }
     if (Array.isArray(_ofertasCache)) for (const a of anunciados) if (a.preco) _ofertasCache.push({ id: 'novo:' + a.base + ':' + a.qual, base: a.base, qual: a.qual, raridade: 'lendario', preco: a.preco });
     logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length });
     return { ok: true, anunciados, cancelados };
-    } finally { ocupado = false; }
+    } finally { try { fecharJanelas(); } catch { /* ignore */ } ocupado = false; }
   }
 
   /** Ofertas de COMPRA abertas no Mercado: [{ id, base, qual, preco }] (id = data-comprar). */
@@ -7059,18 +7221,18 @@ const CFG_VER = 2;
     ocupado = true;
     try {
       const mm = mercadoEl(true); if (!mm) return { ok: false, motivo: 'sem mercado' };
-      if (mm.hidden) { press('j'); await esperar(600); }
-      mm.querySelector('[data-aba="comprar"]')?.click(); await esperar(550);
+      if (mm.hidden) { press('j'); await humano(600); }
+      mm.querySelector('[data-aba="comprar"]')?.click(); await humano(550);
       const sel = '#janela-mercado [data-comprar="' + oferta.id + '"]';
       let b = q1(sel);
-      if (!b) { const card = acharCardWatch(mm, oferta); if (card) { card.click(); await esperar(550); b = q1(sel); } }
+      if (!b) { const card = acharCardWatch(mm, oferta); if (card) { card.click(); await humano(550); b = q1(sel); } }
       if (!b) return { ok: false, motivo: 'oferta nao esta no ecra (item nao encontrado)' };
       if (b.disabled) return { ok: false, motivo: 'botao desativado (saldo/reserva do jogo)' };
-      b.click(); await esperar(550);
-      clicarDialogo(/^\s*comprar\s*$|^\s*sim\s*$/i); await esperar(700);
+      b.click(); await humano(550);
+      clicarDialogo(/^\s*comprar\s*$|^\s*sim\s*$/i); await humano(700);
       logEvent('mercado', { acao: 'watch-comprar', id: oferta.id, vendedor: oferta.vendedor, item: oferta.item, preco: oferta.preco, moeda: oferta.moeda });
       return { ok: true, id: oferta.id, vendedor: oferta.vendedor, preco: oferta.preco, ouroDepois: readGold() };
-    } finally { ocupado = false; }
+    } finally { try { fecharJanelas(); } catch { /* ignore */ } ocupado = false; }
   }
   /** VARREDURA pelo DOM (fallback sem rede): le as ofertas ABERTAS no mercado, com vendedor. */
   function ofertasWatchDoDom() {
@@ -7406,8 +7568,7 @@ const CFG_VER = 2;
     let d = false;
     try {
       const r = analisarRun();
-      if (r.limite === 'dps') d = true;
-      else if (r.limite == null) {
+      if (r.limite == null) {
         // sem dado de burst: usa TEMPO DE KILL real (mobs lentos = área difícil) antes do nível
         const k = r.killGapMedMs;
         if (k != null && k > (cfg.killLentoMs || 3500)) d = true;
@@ -7457,6 +7618,29 @@ const CFG_VER = 2;
     // perto dele", motor.js HAB_RYZE.E.espalha = 3): no motor o E acerta no alvo E espalha o
     // Fluxo/dano nos vizinhos, logo em mobs vale pelos alvos que toca. Sem os dois campos, 1.
     const alvosDe = (t) => { const k = KAT[t] || {}; return k.alvos != null ? k.alvos : (k.espalha != null ? k.espalha : 1); };
+    // ---- RANKEAMENTO POR WAVE (motor.js:1222 `qtd = 2+floor(r()*3)`, :1224 `chegada`) ----
+    // O nº de mobs por wave vem do motor (META.grupoSpawn). O `alvos` de uma skill é capped
+    // à MÉDIA da wave: uma skill que acerta 3 não vale 3× se a wave só traz 2 em média.
+    // Bónus de CC (atordoa/levanta/lento/afasta) lidos do KAT do motor — nunca inventados.
+    // Bónus de janela de chegada (chegadaExtra, motor.js:954/959/79 aplicado :1534): skills
+    // multi-alvo que acertam cedo valem mais em mobs. Se chegadaExtra não está no META, diz-se "não lido".
+    // Burst de alvo único: só bónus em chefe/furioso (não em mobs fáceis).
+    const waveMedia = mediaWaveDe(META.grupoSpawn);
+    const alvosEfetivos = (t) => Math.min(alvosDe(t), waveMedia);
+    const chegadaExtra = (META.champAtual && META.champAtual.chegadaExtra != null) ? META.champAtual.chegadaExtra : null;
+    const furioso = farm.current && farm.current.furiosoApareceu && farm.current.furioso;
+    const bonusCC = (t) => { const k = KAT[t] || {}; return (k.atordoa || k.levanta || k.lento || k.afasta) ? 1.15 : 1; };
+    const bonusJanela = (t) => {
+      if (!porFase) return 1;
+      const a = alvosEfetivos(t);
+      if (a <= 1) return 1;
+      return chegadaExtra != null ? 1.1 : 1;
+    };
+    const bonusBurst = (t) => {
+      if (porFase && !furioso) return 1;
+      const k = KAT[t] || {};
+      return (k.mult || 1) >= 3 ? 1.05 : 1;
+    };
     // ---- PESO DA FASE (TK-02-18): a fase muda o PESO da skill, não só a ordem dela ----
     // Antes a fase só mexia na ORDEM (um `if (porFase)` DEPOIS do bloco de disponibilidade,
     // que nunca era alcançado com `barraPorDisponibilidade` ligado — o default) e o CONJUNTO
@@ -7506,7 +7690,7 @@ const CFG_VER = 2;
     // área — e o que deixa a da Katarina IGUAL quando o kit dela já quer as mesmas 4 nas duas
     // fases (a decisão é do motor, não nossa: Q e R são `alvos: 3` motor.js:751/759 e ficam
     // dentro nas duas).
-    const pesoFase = (t) => { const d = dpsDe[t] || 0; const a = alvosDe(t); return porFase && a > 1 ? d * a : d; };
+    const pesoFase = (t) => { const d = dpsDe[t] || 0; const a = alvosEfetivos(t); const base = porFase && a > 1 ? d * a : d; return base * bonusCC(t) * bonusJanela(t) * bonusBurst(t); };
     cand.sort((a, b) => {
       const ua = ehUltimateFixa(a.t) ? 0 : 1, ub = ehUltimateFixa(b.t) ? 0 : 1;
       if (ua !== ub) return ua - ub;                       // a ultimate PRIMEIRO: fica SEMPRE dentro (inviolável)
@@ -7631,7 +7815,8 @@ const CFG_VER = 2;
     if (!dry && mudou) aplicado = await aplicarBarra(desejadas);
     const temUlt = desejadas.some((t) => ehUltimateFixa(t));
     const vagas = lerBarra().vagas;
-    return { fase, dificil: !!dificil, usarUlt: temUlt, temUlt, vagas, ritmo: ritmoMobs(), antes, desejadas, mudou, aplicado };
+    const falhou = !!(aplicado && aplicado.ok === false);
+    return { fase, dificil: !!dificil, usarUlt: temUlt, temUlt, vagas, ritmo: ritmoMobs(), antes, desejadas, mudou, aplicado, ok: !falhou, ...(falhou ? { motivo: 'barra nao convergiu', passos: aplicado.passos } : {}) };
   }
 
   let _filtroBasicosAt = 0;   // throttle do filtro de básicos (TK-02-27)
@@ -8303,13 +8488,14 @@ const CFG_VER = 2;
     const trava = [];
     if (!cfg.enabled) trava.push('enabled=false');
     if (pausado) trava.push('pausado');
-    if (!naBase()) trava.push('nao-esta-na-base');
     if (ocupado) trava.push('ocupado (mercado/loja em andamento)');
     if (_baseBusy) trava.push('_baseBusy (rotina da base a correr)');
     if (baseLock) trava.push('baseLock (MUTEX preso)');
-    if (idleMs < idleBaseMs) trava.push('idle ' + Math.round(idleMs / 1000) + 's < ' + Math.round(idleBaseMs / 1000) + 's');
     if (!reg) trava.push('sem regiao ideal');
-    return { enabled: cfg.enabled, pausado, naBase: naBase(), motivo, info, erroMotivo, idleMs, idleBaseMs, regiaoIdeal: reg, erroReg, ocupado, _baseBusy, baseLock, baseFalhas: _baseFalhas, ultimaBaseHaMs: _ultimaBase ? Date.now() - _ultimaBase : null, teste, trava };
+    const espera = [];
+    if (!naBase()) espera.push('nao-esta-na-base');
+    if (idleMs < idleBaseMs) espera.push('idle ' + Math.round(idleMs / 1000) + 's < ' + Math.round(idleBaseMs / 1000) + 's');
+    return { enabled: cfg.enabled, pausado, naBase: naBase(), motivo, info, erroMotivo, idleMs, idleBaseMs, regiaoIdeal: reg, erroReg, ocupado, _baseBusy, baseLock, baseFalhas: _baseFalhas, ultimaBaseHaMs: _ultimaBase ? Date.now() - _ultimaBase : null, teste, trava, espera };
   }
 
   /** Fecha sozinha a janela de novidades quando ela abre SEM clique do usuário (pós-reinício). */
@@ -8603,6 +8789,7 @@ const CFG_VER = 2;
     auditoriaPassivas,
     PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
     getMeta: () => META, getFarm: () => farm, getConfig: () => cfg,
+    buildHumana, historico48h,
     // ---- WATCH-LIST DO MERCADO (2026-10-18): deteccao em tempo real + auto-compra ----
     casarOfertas, itemNaWatch, baseDoItemMercado, lerMercadoServidor, reservaOuroWatch,
     podeComprarOfertaWatch, acharCardWatch, comprarOfertaWatch, ofertasWatchDoDom,
@@ -8657,6 +8844,7 @@ const CFG_VER = 2;
   loop();
   carregarMeta();
   every(() => { try { chrome.storage.local.set({ [AGG_KEY]: agregar() }); } catch { /* ignore */ } }, 15000);
+  every(() => { try { if (_hist.length) chrome.storage.local.set({ [HIST_KEY]: _hist.slice(0, 500) }); } catch { /* ignore */ } }, 30000);
   // ESTADO COMPLETO periodicamente (pedido do dono: inventário, cofre, habilidades, mobs/bosses
   // sempre atualizados). 20 s: barato e suficiente para a GUI e para as decisões.
   every(() => { try { estadoCompleto(); } catch { /* ignore */ } }, 20000);
@@ -8669,7 +8857,7 @@ const CFG_VER = 2;
     const g = r && r[FARM_KEY];
     if (g) {
       // Descarta ciclos vazios vindos do storage (poluição histórica): sem ouro,
-      // sem xp, sem abates e sem chefe não dizem NADA sobre a build e estragam
+      // sem xp, sem abates e não dizem NADA sobre a build e estragam
       // o previsor empírico. Ver o mesmo filtro no handleLog.
       farm.cycles = (g.cycles || []).filter((c) => (c.gold || 0) > 0 || (c.xp || 0) > 0 || (c.mobFase && c.mobFase.kills > 0) || !!c.boss);
       farm.log = g.log || [];
@@ -8679,6 +8867,7 @@ const CFG_VER = 2;
     }
     farm.current = null;
   });
+  chrome.storage.local.get(HIST_KEY, (r) => { const h = r && r[HIST_KEY]; if (Array.isArray(h)) _hist = h.slice(0, 500); });
   // AUTO-RETOMAR o teste de builds (ver iniciarTeste): sem isto ele parava em silêncio a
   // cada reload e o M1 deixava de acumular. Só retoma se for recente (<2 h) e se não houver
   // já um teste a correr. Uma paragem EXPLÍCITA apaga a chave e portanto não retoma.
