@@ -267,6 +267,11 @@
   const tg = (id, rotulo, ajuda, marcado) =>
     '<label class="tg"><input type="checkbox" id="' + id + '"' + (marcado ? ' checked' : '') + '><span class="sw"></span>' +
     '<span class="tg-t"><b>' + rotulo + '</b><small>' + ajuda + '</small></span></label>';
+  /** Igual ao `tg`, mas com a CHAVE do motor em `data-cfg`. O handler genérico lê-a e escreve por
+   *  `definirCfg` — é assim que a GUI nunca escreve o nome da chave à mão (lê-o do motor). */
+  const tgCfg = (id, cfgKey, rotulo, ajuda, marcado) =>
+    '<label class="tg"><input type="checkbox" id="' + id + '" data-cfg="' + esc(cfgKey) + '"' + (marcado ? ' checked' : '') + '><span class="sw"></span>' +
+    '<span class="tg-t"><b>' + rotulo + '</b><small>' + ajuda + '</small></span></label>';
   const itemFrame = (base, qual, refino, raridade, titulo) =>
     '<span class="iframe ' + esc(raridade || '') + '" title="' + esc(titulo || '') + '">' +
     // O REFINO muda a ARTE (jogo.js:167): usa-se a pasta `ref/<base>-<N>.png` quando há refino.
@@ -626,6 +631,42 @@
     '#lolidle-ap .campo{display:flex;flex-direction:column;gap:2px;margin:4px 0;font-size:10.5px;color:var(--dim)}',
     '#lolidle-ap .campo input{margin-top:1px}',
     '#lolidle-ap .item-na{display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;background:#221d19;border:1px solid var(--lin);border-radius:4px;color:var(--dim);font-size:10px}',
+    // ---- MESTRE (TK-02 §1): o cartão AUTO-PLAY, no topo do Painel. UM interruptor grande e o
+    //      estado em letras que se lêem de longe (LIGADO/DESLIGADO/PAUSADO), sem abrir aba. ----
+    '#lolidle-ap .card.mestre{border-color:#4a4030;background:linear-gradient(180deg,#221b12,#191614)}',
+    '#lolidle-ap .card.mestre.on{border-color:#2b5c33;background:linear-gradient(180deg,#16241a,#141b16)}',
+    '#lolidle-ap .card.mestre.run{border-color:#6d5520;background:linear-gradient(180deg,#241c0d,#1b1610)}',
+    '#lolidle-ap .card.mestre.err{border-color:#6d2a20;background:linear-gradient(180deg,#251310,#1b1310)}',
+    '#lolidle-ap .card.mestre>h3{margin-bottom:7px}',
+    '#lolidle-ap .mestre-l{display:flex;align-items:center;gap:12px;flex-wrap:wrap}',
+    '#lolidle-ap .mestre-tg{display:flex;align-items:center;gap:10px;cursor:pointer;background:#0f0d0b;border:1px solid var(--lin);border-radius:10px;padding:6px 12px}',
+    '#lolidle-ap .mestre-tg .sw{width:52px;height:28px}',
+    '#lolidle-ap .mestre-tg .sw::after{width:20px;height:20px;left:4px;top:4px}',
+    '#lolidle-ap .mestre-tg input:checked+.sw::after{transform:translateX(24px)}',
+    '#lolidle-ap .mestre-est{font-size:16px;font-weight:800;letter-spacing:.6px}',
+    '#lolidle-ap .mestre-est.on{color:var(--verde)}',
+    '#lolidle-ap .mestre-est.off{color:var(--dim)}',
+    '#lolidle-ap .mestre-est.run{color:var(--ambar)}',
+    '#lolidle-ap .mestre-est.err{color:var(--verm)}',
+    '#lolidle-ap .mestre-txt{color:var(--dim);font-size:11px}',
+    // ---- ERRO (TK-02 §2): nó da árvore SEM chave no motor = motor antigo. Mostra-se o ERRO, nunca
+    //      o badge "implícito" que fingia que o switch existia. ----
+    '#lolidle-ap .arv-no.erro{border-color:#6d2a20;background:#1d1210}',
+    '#lolidle-ap .arv-no.erro .arv-dot{background:var(--verm)}',
+    '#lolidle-ap .arv-no.erro .arv-est{color:var(--verm)}',
+    '#lolidle-ap .arv-motivo.err{color:#ffc6ba}',
+    '#lolidle-ap .arv-erro{font-size:9.5px;color:#ffc6ba;background:#241310;border:1px solid #6d2a20;border-radius:4px;padding:1px 6px;white-space:nowrap}',
+    '#lolidle-ap .erro-motor{background:#241310;border:1px solid #6d2a20;border-radius:7px;padding:6px 9px;font-size:11px;color:#ffc6ba}',
+    '#lolidle-ap .erro-motor b{color:var(--txt)}',
+    // ---- SELECT DA REGIÃO em modo AUTOMÁTICO (TK-02 §4): mostra a recomendada do motor, com
+    //      aspeto de "isto é o motor a decidir" (azul), sem parecer que você é que escolheu. ----
+    '#lolidle-ap select.auto{border-color:#33505f;background:#101820;color:#cfe8ff}',
+    // ---- PAINEL EM DUAS COLUNAS (TK-02 §3): cabe o dobro sem cortar. Os cartões que valem a
+    //      largura toda (mestre, intro, árvore, campeões, blocos de combate/parado) ocupam as duas.
+    '#lolidle-ap #ap-t-painel.on{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}',
+    '#lolidle-ap #ap-t-painel.on>*{break-inside:avoid;page-break-inside:avoid}',
+    '#lolidle-ap #ap-t-painel.on>#ap-painel-estado,#lolidle-ap #ap-t-painel.on>.intro,#lolidle-ap #ap-t-painel.on>#ap-now-combate,#lolidle-ap #ap-t-painel.on>#ap-now-parado,#lolidle-ap #ap-t-painel.on>#ap-auto-arvore,#lolidle-ap #ap-t-painel.on>#ap-auto-champ{grid-column:1/-1}',
+    '@media (max-width:900px){#lolidle-ap #ap-t-painel.on{grid-template-columns:1fr}}',
   ].join('\n');
 
   function injectCss() {
@@ -660,10 +701,12 @@
       + '    <span class="mini"><b id="ap-h-hp">—</b><small>vida</small></span>'
       + '    <span class="mini wide"><b id="ap-h-local">—</b><small>onde você está</small></span>'
       + '    <span class="mini wide"><b id="ap-h-regiao">—</b><small>melhor região agora</small></span>'
+      // O CABEÇALHO MOSTRA O ESTADO, NÃO O CONTROLA (pedido do dono, TK-02): o interruptor
+      // mestre é UM só e vive no cartão grande AUTO-PLAY, no topo do Painel. Antes havia aqui
+      // um switch (`ap-on`) E um botão grande (`ap-panic`) a fazer o mesmo que o cartão — três
+      // controlos para a mesma coisa. O estado lê-se na pílula (`ap-estado`) e o motivo na
+      // linha de fase (`ap-fase`), sem abrir nenhuma aba.
       + '    <span class="sp"></span>'
-      + '    <label class="ligar" title="Liga/desliga o auto-play E a auto-poção">'
-      + '      <input type="checkbox" id="ap-on"><span class="sw"></span><b id="ap-on-txt">desligado</b></label>'
-      + '    <button id="ap-panic" class="btn danger big" title="Para tudo imediatamente: desliga o auto-play e a auto-poção e pausa o motor">⛔ PARAR TUDO</button>'
       + '  </div>'
       + '</header>'
       // 8 ABAS → 4, agrupadas por ASSUNTO: Painel = estado + switches (controle); Itens = mochila +
@@ -694,8 +737,7 @@
       // que aparecia preso em todas as abas). Aqui fica só o estado, para não perder a leitura.
       + '    <div id="ap-painel-build"></div>'
       + '    <div id="ap-now-parado"></div>'
-      + '    <div id="ap-auto-mestre"></div>'
-      // ÁRVORE DE INTERRUPTORES: logo ABAIXO do bloco mestre (o mestre é a raiz da árvore).
+      // ÁRVORE DE INTERRUPTORES: logo abaixo do cartão AUTO-PLAY (o mestre é a raiz da árvore).
       + '    <div id="ap-auto-arvore"></div>'
       + '    <div id="ap-auto-champ"></div>'
       + '    <div class="grid2"><div id="ap-auto-obj"></div><div id="ap-auto-regiao"></div></div>'
@@ -834,7 +876,11 @@
   }
 
   // ============================================================ 4b. ABRIR/FECHAR
-  function abrir() { aberto = true; $('lolidle-ap').classList.add('on'); ultimoRender = 0; renderTudo(); }
+  /** Volta o scroll do corpo do painel ao topo (TK-02 §3): abrir e trocar de aba deixava o
+   *  PRIMEIRO cartão cortado fora do ecrã (o `main` guardava a posição anterior). O `main` é o
+   *  contentor com `overflow:auto` — é ele que rola, não o painel. */
+  function resetScroll() { const m = q1('#lolidle-ap main'); if (m) m.scrollTop = 0; }
+  function abrir() { aberto = true; $('lolidle-ap').classList.add('on'); ultimoRender = 0; renderTudo(); resetScroll(); }
   function fechar() { aberto = false; const p = $('lolidle-ap'); if (p) p.classList.remove('on'); }
   function nomeEl() { return q1('#st-nome') || q1('#painel-status') || q1('#hud-nome'); }
   function attachHover() {
@@ -868,6 +914,7 @@
     qa('#lolidle-ap .pane').forEach((x) => x.classList.toggle('on', x.id === 'ap-t-' + tabAtiva));
     ultimoRender = 0;
     renderTudo();
+    resetScroll();
   }
 
   // ============================================================ 5. DESENHADORES
@@ -941,6 +988,17 @@
   };
   /** Melhor região agora — cache de 15 s (percorre todas as regiões). */
   const recomendacao = () => cache('rec', 15000, () => ler('recomendar', null));
+  /** REGIÃO RECOMENDADA pelo motor (`estado().regiaoRecomendada`, TK-01): a recomendação
+   *  AUTOMÁTICA — o motor diz sempre qual escolheria, mesmo com uma região FIXA definida. É esta
+   *  que o select mostra em modo automático (com `regiaoIdeal` como recurso, para motor antigo).
+   *  Cache de 15 s porque o `estado()` lê a mochila e o equipamento. */
+  const regiaoRecomendada = () => cache('regRec', 15000, () => {
+    const r = chamar('estado');
+    if (!r.ok || !r.v) return null;
+    const rec = r.v.regiaoRecomendada;
+    if (!rec) return null;
+    return typeof rec === 'string' ? rec : (rec.id || rec.regiao || null);
+  });
   /** Identidade do campeão — cache de 30 s. */
   const identidade = () => cache('ident', 30000, () => ler('identidadeCampeao', null));
   /** Build ideal — cache de 30 s. */
@@ -964,38 +1022,46 @@
     if (pausado()) return 'pausado';
     return cfg().enabled ? 'ligado' : 'observacao';
   }
-  /** O que cada estado QUER DIZER, numa linha. */
+  /** O que cada estado QUER DIZER, numa linha. O dono pediu TRÊS palavras claras —
+   *  LIGADO / DESLIGADO / PAUSADO — e o motivo por baixo. */
   const EST_AUTO = {
-    observacao: { cls: 'off', titulo: 'OBSERVAÇÃO', txt: 'só lê o jogo, não clica em nada' },
+    observacao: { cls: 'off', titulo: 'DESLIGADO', txt: 'só lê o jogo, não clica em nada' },
     ligado: { cls: 'on', titulo: 'LIGADO', txt: 'farmando e decidindo sozinho' },
     pausado: { cls: 'run', titulo: 'PAUSADO', txt: 'parou de agir, continua medindo' },
     desligado: { cls: 'err', titulo: 'DESLIGADO', txt: 'parou tudo; ao religar começa limpo' },
   };
-  /** O botão principal de cada estado: o rótulo diz o que VAI MUDAR (não o que o botão "faz"). */
-  const BTN_AUTO = {
-    observacao: { id: 'ap-painel-ligar', txt: '▶ Ligar auto-play', txtCurto: '▶ LIGAR AUTO-PLAY', ajuda: 'Muda de OBSERVAÇÃO para LIGADO: o motor passa a farmar, viajar e decidir sozinho.' },
-    ligado: { id: 'ap-painel-desligar', txt: '⏸ Desligar', txtCurto: '⏸ DESLIGAR', ajuda: 'Muda de LIGADO para OBSERVAÇÃO e limpa o estado ativo (prazos, testes, farm forçado): ao religar, começa do zero.' },
-    pausado: { id: 'ap-painel-retomar', txt: '▶ Retomar', txtCurto: '▶ RETOMAR', ajuda: 'Muda de PAUSADO para LIGADO: volta a agir do ponto onde parou — a medição acumulada não se perde.' },
-    desligado: { id: 'ap-painel-religar', txt: '▶ Religar', txtCurto: '▶ RELIGAR', ajuda: 'Sai de DESLIGADO e volta a agir (o estado ativo foi limpo quando você parou tudo).' },
-  };
-  /** ESTADO + o botão principal + as ações secundárias. */
+  /** O CARTÃO MESTRE (topo do Painel): UM interruptor + o estado + o motivo. Não há um segundo
+   *  botão "DESLIGAR": o interruptor é o único liga/desliga do auto-play. Pausar/Retomar e Parar
+   *  tudo ficam como ações SECUNDÁRIAS porque são outras coisas (a pausa é do motor e o kill é
+   *  persistente no navegador) — não são um "desligar" repetido. */
   function renderPainelEstado() {
     const el = $('ap-painel-estado');
     if (!el) return;
     const a = estadoAgora();
     const e = a.estado || 'observacao';
     const info = EST_AUTO[e] || EST_AUTO.observacao;
-    const b = BTN_AUTO[e] || BTN_AUTO.observacao;
-    setHtml('ap-painel-estado', card('Auto-play — estado e controle', 'um switch decide; cada capacidade tem o seu',
-      '<p class="est ' + info.cls + '"><b>' + esc(info.titulo) + '</b> — ' + esc(info.txt) + '</p>'
-      + '<div class="acoes">' + acao(b.id, b.txt, b.ajuda, e === 'ligado' ? 'warn' : (e === 'desligado' ? 'danger' : '')) + '</div>'
-      + '<div class="sec-acoes">'
-      + acao('ap-painel-pausar', '⏸ Pausar', e === 'ligado'
+    const ligadoAgora = !!cfg().enabled;                 // o switch mostra o que o MOTOR tem
+    const acaoSec = e === 'pausado'
+      ? acao('ap-painel-retomar', '▶ Retomar', 'Muda de PAUSADO para LIGADO: volta a agir do ponto onde parou — a medição acumulada não se perde.', 'sec')
+      : acao('ap-painel-pausar', '⏸ Pausar', e === 'ligado'
         ? 'Congela as ações agora e continua medindo; Retomar devolve tudo do mesmo ponto.'
-        : 'Só faz sentido com o auto-play LIGADO (agora: ' + esc(info.titulo.toLowerCase()) + ').', 'sec', e !== 'ligado')
+        : 'Só faz sentido com o auto-play LIGADO (agora: ' + esc(info.titulo.toLowerCase()) + ').', 'sec', e !== 'ligado');
+    setHtml('ap-painel-estado',
+      '<section class="card mestre ' + info.cls + '">'
+      + '<h3>AUTO-PLAY <span class="obs">um interruptor manda em tudo</span></h3>'
+      + '<div class="mestre-l">'
+      + '<label class="mestre-tg" title="Liga ou desliga o auto-play. Desligado, o motor só observa (não clica em nada).">'
+      + '<input type="checkbox" id="ap-mestre"' + (ligadoAgora ? ' checked' : '') + '><span class="sw"></span>'
+      + '<b class="mestre-est ' + info.cls + '">' + esc(info.titulo) + '</b>'
+      + '</label>'
+      + '<small class="mestre-txt">' + esc(info.txt) + '</small>'
+      + '</div>'
+      + '<p class="hint">' + esc(a.fase) + '</p>'
+      + '<div class="sec-acoes">'
+      + acaoSec
       + acao('ap-painel-kill', '⛔ Parar tudo', 'Para tudo e grava a decisão no navegador: nem recarregando a página (F5) o motor volta sozinho.', 'danger')
       + '</div>'
-      + '<p class="hint"><b>Pausar</b> congela as ações e continua medindo; <b>Parar tudo</b> limpa o estado ativo e fica gravado até você religar. O switch <b>Tudo (auto-play)</b>, na lista abaixo, é o mesmo liga/desliga em forma de switch.</p>'));
+      + '<p class="hint">Este é o <b>único</b> interruptor mestre. <b>Pausar</b> congela as ações e continua medindo; <b>Parar tudo</b> limpa o estado ativo e fica gravado até você religar.</p>');
   }
   /** Estado resumido do cabeçalho — cache de 2 s. */
   function estadoAgora() {
@@ -1016,16 +1082,16 @@
       pill = { cls: 'err', txt: 'sem motor' };
       fase = 'O motor do auto-play não carregou nesta página — recarregue com F5.';
     } else if (est === 'desligado') {
-      pill = { cls: 'err', txt: 'desligado' };
+      pill = { cls: 'err', txt: 'DESLIGADO' };
       fase = 'DESLIGADO — parou tudo e a decisão ficou gravada no navegador. Ao religar, o motor começa limpo.';
     } else if (est === 'pausado') {
-      pill = { cls: 'run', txt: 'pausado' };
+      pill = { cls: 'run', txt: 'PAUSADO' };
       fase = 'PAUSADO — parou de agir, mas continua medindo. Retomar devolve tudo do mesmo ponto.';
     } else if (est === 'observacao') {
-      pill = { cls: 'off', txt: 'observação' };
+      pill = { cls: 'off', txt: 'DESLIGADO' };
       fase = 'OBSERVAÇÃO — o motor só lê o jogo, não clica em nada.';
     } else {
-      pill = { cls: 'on', txt: 'ligado' };
+      pill = { cls: 'on', txt: 'LIGADO' };
       const dg = diagBase();
       if (dg && dg.naBase) {
         const esp = esperaReal(dg);
@@ -1068,18 +1134,10 @@
     set('ap-h-hp', a.hp ? fmt(a.hp.cur) + ' / ' + fmt(a.hp.max) : '—');
     set('ap-h-local', a.local);
     set('ap-h-regiao', a.regiao || '—');
-    const on = $('ap-on'); if (on && on.checked !== a.ligado) on.checked = a.ligado;
-    set('ap-on-txt', a.ligado ? 'ligado' : 'desligado');
-    // O botão grande do cabeçalho é o MESMO botão principal do painel: o rótulo diz o que muda
-    // a partir do estado de agora — nunca dois controles a parecer a mesma coisa.
-    const pb = $('ap-panic');
-    if (pb) {
-      const b = BTN_AUTO[a.estado] || BTN_AUTO.observacao;
-      if (pb.textContent !== b.txtCurto) pb.textContent = b.txtCurto;
-      const cls = 'btn big ' + (a.estado === 'ligado' ? 'warn' : (a.estado === 'desligado' ? 'danger' : ''));
-      if (pb.className !== cls) pb.className = cls;
-      pb.title = b.ajuda;
-    }
+    // O CABEÇALHO NÃO TEM CONTROLO do auto-play: mostra só o ESTADO (a pílula `ap-estado`, agora
+    // LIGADO/DESLIGADO/PAUSADO) e o MOTIVO (a linha `ap-fase`). O único interruptor mestre está no
+    // cartão AUTO-PLAY, no topo do Painel — deixar um switch e um botão aqui seria a duplicação
+    // que o dono mandou remover. Quem tiver o Painel aberto vê o switch do cartão actualizado.
     const pin = $('ap-pin'); if (pin) pin.classList.toggle('ativo', fixado);
   }
 
@@ -1471,31 +1529,37 @@
     if (nivel > 8) return '';                       // guarda contra um pai cíclico: nunca recursa sem fim
     const c = cfg();
     const nome = String(s.nome || '?');
-    const temCfg = !!s.cfg;
+    // `cfg` FALTA = MOTOR ANTIGO. O contrato (TK-01) diz que TODO o switch tem chave própria; um
+    // nó sem `cfg` é um motor que ainda não foi actualizado. Mostra-se o ERRO, nunca um badge
+    // "implícito" que fingia que o switch existia (pedido do dono, TK-02 §2).
+    const semChave = !s.cfg;
+    const temCfg = !semChave;
     const proprio = temCfg ? c[s.cfg] !== false : true;
     const z = arvQuemBloqueia(s.porque);
     const bloqueado = s.pode === false;
-    const porExcecao = bloqueado && /excep/i.test(z.motivo);
-    const porPai = bloqueado && !porExcecao && !!z.quem && z.quem !== nome;
-    const inerte = bloqueado && !porExcecao && proprio;     // o switch está LIGADO; o pai é que fecha
+    const porExcecao = !semChave && bloqueado && /excep/i.test(z.motivo);
+    const porPai = !semChave && bloqueado && !porExcecao && !!z.quem && z.quem !== nome;
+    const inerte = !semChave && bloqueado && !porExcecao && proprio;     // o switch está LIGADO; o pai é que fecha
     let cls, est;
-    if (porExcecao) { cls = 'skip'; est = 'ligado, mas skippado'; }
+    if (semChave) { cls = 'erro'; est = 'sem chave no motor'; }
+    else if (porExcecao) { cls = 'skip'; est = 'ligado, mas skippado'; }
     else if (inerte) { cls = 'bloq'; est = 'ligado, mas inerte'; }
     else if (bloqueado) { cls = 'bloq'; est = 'desligado por você'; }
-    else { cls = 'on'; est = temCfg ? (c[s.cfg] === undefined ? 'ligado (padrão)' : 'ligado e agindo') : 'ligado (implícito)'; }
+    else { cls = 'on'; est = c[s.cfg] === undefined ? 'ligado (padrão)' : 'ligado e agindo'; }
     let motivo = '';
-    if (porExcecao) motivo = '<span class="arv-motivo">⚠ o motor pula este agora — ' + esc(arvExc(nome, s)) + '</span>';
+    if (semChave) motivo = '<span class="arv-motivo err">⚠ motor antigo: recarregue a página (F5) — este switch não tem chave própria no motor.</span>';
+    else if (porExcecao) motivo = '<span class="arv-motivo">⚠ o motor pula este agora — ' + esc(arvExc(nome, s)) + '</span>';
     else if (porPai) motivo = '<span class="arv-motivo">' + (inerte ? 'não age enquanto ' : 'bloqueado por ')
       + '<b>' + esc(ARV_NOME[z.quem] || z.quem) + '</b>' + (inerte ? ' estiver desligado' : ' (está desligado)') + '</span>';
     else if (bloqueado) motivo = '<span class="arv-motivo">' + (!z.quem ? 'desligado (o motor não disse por quem)'
-      : temCfg ? 'desligado por você' : 'desligado pelo motor') + '</span>';
+      : 'desligado por você') + '</span>';
     const cobre = ARV_COBRE[nome] || null;
     const linha = cobre ? '<p class="arv-cobre ' + (bloqueado ? 'off' : 'on') + '">' + esc(bloqueado ? cobre.off : cobre.on) + '</p>' : '';
     const ctrl = temCfg
       ? '<label class="arv-tg" title="' + esc((ARV_AJUDA[nome] || '') + ' (nome técnico no motor: ' + s.cfg + ')') + '"><input type="checkbox" id="ap-arv-' + esc(nome)
         + '" data-arv="' + esc(nome) + '" data-cfg="' + esc(s.cfg) + '"' + (proprio ? ' checked' : '')
         + '><span class="sw"></span></label>'
-      : '<span class="arv-cfg" title="não tem switch próprio: liga e desliga com o pai">implícito</span>';
+      : '<span class="arv-erro" title="este switch não tem chave no motor desta página — recarregue (F5) para a versão nova">motor antigo: recarregue</span>';
     const meus = ramos[nome] || [];
     // SWITCH À ESQUERDA: o interruptor vem antes do nome, não no fim da linha.
     return '<div class="arv-no ' + cls + (nome === 'autoplay' ? ' mestre' : '') + '" data-no="' + esc(nome) + '">'
@@ -1541,10 +1605,15 @@
     const bloq = lista.filter((x) => x.pode === false);
     const porPai = bloq.filter((x) => { const z = arvQuemBloqueia(x.porque); return !/excep/i.test(z.motivo) && !!z.quem && z.quem !== x.nome; });
     const skip = bloq.filter((x) => /excep/i.test(arvQuemBloqueia(x.porque).motivo));
+    // Nós SEM chave = motor antigo (o contrato diz que todo o switch tem `cfg`). Não se finge um
+    // switch: mostra-se o erro e um aviso no topo do cartão.
+    const semChave = lista.filter((x) => !x.cfg);
     // "Ligado, mas inerte": o switch do próprio está ligado e o motor não age porque o pai fecha.
     const inerte = bloq.filter((x) => { const z = arvQuemBloqueia(x.porque); return !/excep/i.test(z.motivo) && !!x.cfg && c[x.cfg] !== false; });
     const desligados = bloq.length - inerte.length - skip.length;
-    const agindo = lista.length - bloq.length;
+    // Nós SEM chave não contam como "agindo": o motor desta página não os pode desligar nem ligar,
+    // por isso somá-los aqui faria a contagem mentir (eles têm o seu próprio alerta no topo).
+    const agindo = lista.length - bloq.length - semChave.length;
     const mestre = porNome.autoplay;
     const alvo = c.champAlvo === undefined ? 'yasuo' : (c.champAlvo || 'qualquer campeão');
     // O CASO A DESTACAR: ligado no switch e mesmo assim sem agir.
@@ -1552,8 +1621,14 @@
       ? '<p class="aviso warn">O switch mestre está <b>LIGADO</b> mas <b>skippado</b> agora: ' + esc(arvExc('autoplay', mestre))
         + ' (alvo: <b>' + esc(alvo) + '</b>). Enquanto for assim, nenhum switch abaixo age — nem vender, nem equipar.</p>'
       : '';
+    const alertaMotor = semChave.length
+      ? '<p class="aviso err">⚠ <b>' + String(semChave.length) + ' switch(es) sem chave própria no motor</b> ('
+        + esc(semChave.map((x) => ARV_NOME[x.nome] || x.nome).join(', '))
+        + '). O motor desta página é ANTIGO: recarregue (F5) para os interruptores reais aparecerem.</p>'
+      : '';
     setHtml('ap-auto-arvore', card('Switches — o que o motor faz sozinho', 'lista e hierarquia declaradas pelo motor',
-      alerta
+      alertaMotor
+      + alerta
       + '<p class="hint">' + String(lista.length) + ' switches · <b>' + String(agindo) + ' ligados e agindo</b> · '
       + String(desligados) + ' desligados por você · ' + String(inerte.length) + ' ligados mas <b>inertes</b> (o pai está desligado) · '
       + String(skip.length) + ' skippados por exceção.</p>'
@@ -1561,6 +1636,48 @@
       + '<div class="arv">' + raizes.map((x) => arvNo(x, ramos, 0)).join('') + '</div>'
       + '<p class="hint">Ligar uma capacidade <b>não</b> liga o switch mestre, e o mestre desligado <b>não</b> desliga os filhos: eles ficam <b>inertes</b> (ligados, sem agir). '
       + 'A linha verde diz o que o switch cobre; a vermelha, o que deixa de acontecer com ele desligado.</p>'));
+  }
+
+
+  /** CARTÃO "Automatismos do motor": um interruptor REAL por capacidade, com a CHAVE lida do
+   *  próprio motor (`arvoreInterruptores()`) — a GUI não escreve `autoVender` & cia. à mão em lado
+   *  nenhum (REGRA N.º 3). A chave viaja no `data-cfg` e o handler genérico escreve por `definirCfg`.
+   *  Redesenha SEMPRE (como a árvore): as chaves só existem depois de o motor declarar a tabela, e
+   *  um motor antigo (nó sem `cfg`) aparece como ERRO — nunca como um switch "implícito" falso. */
+  function renderExtrasMotor() {
+    const c = cfg();
+    const r = chamar('arvoreInterruptores');
+    const arv = (r.ok && Array.isArray(r.v)) ? r.v : [];
+    const porNome = {}; for (const x of arv) if (x && x.nome) porNome[x.nome] = x;
+    // [nó do motor, rótulo de usuário, ajuda]. O RÓTULO é nosso; a CHAVE vem do motor.
+    const NOS = [
+      ['irBase', 'Ir à base (Fonte)', 'Volta à Fonte quando alguma pendência paga a viagem.'],
+      ['vender', 'Vender o lixo ao lojista', 'Vende só o que o plano da mochila diz que é lixo; os protegidos nunca são tocados.'],
+      ['repor', 'Repor poções', 'Compra poções no Lojista até o mínimo que você escolheu.'],
+      ['cofre', 'Cofre (guardar e retirar)', 'Guarda no cofre os épicos tier S/SS e vai buscar o que está lá.'],
+      ['anunciar', 'Anunciar lendários no mercado', 'Põe à venda os lendários abaixo de tier A, a 90% do preço mais baixo.'],
+      ['hab', 'Subir habilidades', 'Sobe as habilidades quando há pontos livres.'],
+      ['equip', 'Trocar por peça melhor', 'Troca sempre que aparecer uma peça melhor para o slot.'],
+      ['atrib', 'Distribuir pontos de atributo', 'Gasta sozinho os pontos de atributo livres pelo modelo escolhido na aba Personagem.'],
+      ['refino', 'Refinar no Ornn', 'Refina os seus LENDÁRIOS já tier A ou melhor até +3 (acima de +2 pode descer).'],
+    ];
+    const linhas = NOS.map(([nome, rotulo, ajuda]) => {
+      const s = porNome[nome];
+      if (!s) return '';                              // o motor não declarou este nó: nada a mostrar
+      if (!s.cfg) {                                   // motor antigo: erro visível, nunca switch falso
+        return '<div class="erro-motor">⚠ <b>' + esc(rotulo) + '</b> — motor antigo: recarregue (F5) para este interruptor ganhar chave.</div>';
+      }
+      // `autoAtrib` nasce DESLIGADO (contrato TK-01); os restantes nascem LIGADOS (recurso base).
+      const padrao = s.cfg === 'autoAtrib' ? false : true;
+      const on = c[s.cfg] === undefined ? padrao : (c[s.cfg] !== false);
+      return tgCfg('ap-cfg-' + s.cfg, s.cfg, rotulo, ajuda, on);
+    }).join('');
+    // Estes dois NÃO são nós do motor (são config própria): ficam com o id/handler de sempre.
+    const estaticos = tg('ap-cfg-trocaItens', 'Trocar itens conforme a luta', 'Use o conjunto de FARM contra mobs e o conjunto de CHEFE contra chefes.', !!c.trocaItens)
+      + tg('ap-cfg-barraDisp', 'Barra pelas habilidades PRONTAS', 'Põe na barra as habilidades DISPONÍVEIS e as que ficam prontas mais cedo (o dono: "usava tudo disponivel ... o tempo inteiro"). Desligado, a barra fica presa às 4 de maior dano.', c.barraPorDisponibilidade !== false);
+    setHtml('ap-auto-extras', card('Automatismos do motor', 'cada interruptor é um switch real do motor',
+      '<div class="grid2">' + linhas + estaticos + '</div>'
+      + '<p class="hint">Cada switch escreve a chave que o <b>motor</b> declarou — nada é inventado aqui. Um interruptor sem chave aparece como <b>erro</b> (motor antigo), nunca como ligado.</p>'));
   }
 
 
@@ -1579,10 +1696,9 @@
     }
     if (!autoConstruido) {
       autoConstruido = true;
-      setHtml('ap-auto-mestre', card('O switch mestre', 'o resto depende dele, mas ele não liga o resto',
-        '<p class="hint">O switch <b>Tudo (auto-play)</b> (no topo do painel e na lista abaixo) é o único que faz o motor <b>jogar</b>: farmar, viajar e decidir. O mesmo switch comanda a auto-poção.</p>'
-        + '<p class="hint">Ligar uma capacidade <b>não</b> liga o mestre. Com o mestre desligado as capacidades podem ficar ligadas — elas aparecem como <b>inertes</b>, porque ninguém age.</p>'
-        + '<p class="hint">Para ligar ou desligar use o <b>switch</b> aqui em cima, no cabeçalho, ou o botão do cartão de estado (o rótulo diz o que vai mudar).</p>'));
+      // O antigo cartão "O switch mestre" saiu: o interruptor mestre é UM só e vive no cartão
+      // AUTO-PLAY (topo do Painel, `renderPainelEstado`) — aqui seria um segundo bloco a
+      // explicar o mesmo controlo.
 
       const regioes = (ler('rankRegioes', []) || []).slice(0, 40);
       setHtml('ap-auto-obj', card('O que você quer ganhar', 'critério da região escolhida',
@@ -1597,14 +1713,9 @@
           '<div class="acoes">' + acaoD('ap-ir-agora', '🧭 Ir agora para a região escolhida', 'Viaja já para a região selecionada. O motor viaja sozinho quando está ligado e a região é a melhor para o seu nível.') + '</div>')
         + '<div id="ap-reg-info"></div>'));
 
-      setHtml('ap-auto-extras', card('Automatismos do motor', 'cada um faz uma coisa concreta',
-        '<div class="grid2">'
-        + tg('ap-cfg-autoEquip', 'Trocar por peça melhor', 'Troca sempre que aparecer uma peça melhor para o slot.', !!c.autoEquip)
-        + tg('ap-cfg-trocaItens', 'Trocar itens conforme a luta', 'Use o conjunto de FARM contra mobs e o conjunto de CHEFE contra chefes.', !!c.trocaItens)
-        + tg('ap-cfg-autoAtrib', 'Distribuir pontos de atributo', 'Gasta sozinho os pontos de atributo livres pelo modelo escolhido na aba Personagem.', !!c.autoAtrib)
-        + tg('ap-cfg-autoRefino', 'Refinar no Ornn', 'Refina os seus LENDÁRIOS já tier A ou melhor até +3 (acima de +2 pode descer).', !!c.autoRefino)
-        + tg('ap-cfg-barraDisp', 'Barra pelas habilidades PRONTAS', 'Põe na barra as habilidades DISPONÍVEIS e as que ficam prontas mais cedo (o dono: "usava tudo disponivel ... o tempo inteiro"). Desligado, a barra fica presa às 4 de maior dano.', c.barraPorDisponibilidade !== false)
-        + '</div>'));
+      // O cartão "Automatismos do motor" NÃO é construído aqui: ele depende das chaves que o
+      // MOTOR declara em `arvoreInterruptores()` e por isso é redesenhado a cada render
+      // (`renderExtrasMotor`), tal como a árvore. Ver abaixo, no fim do `renderAuto`.
 
       const pc = (k) => Object.assign({ enabled: true, mode: 'pct', value: k === 'vidaS' ? 60 : k === 'vidaF' ? 43 : 21 }, (config && config.potions && config.potions[k]) || {});
       const minP = (config && config.automation && config.automation.minPotion) || (c.minPotion) || { vida: 200, vidaF: 100, vidaS: 30 };
@@ -1669,6 +1780,8 @@
     // A ÁRVORE DE INTERRUPTORES redesenha SEMPRE (o estado dela muda com a config, com o campeão
     // e com o local) — não faz parte do bloco "constrói uma vez" acima.
     renderArvore();
+    // "Automatismos do motor": as chaves vêm do motor, logo também redesenha sempre.
+    renderExtrasMotor();
     // ---- ALVOS DO AUTO-PLAY: em que campeões o motor pode jogar (pedido do dono, 2026-10-18) --
     // A LISTA de campeões do jogo é a mesma que o motor lê do KITS (nunca escrita à mão — REGRA
     // N.º 3); o motor ainda não a pode ter quando este render corre, e por isso este cartão
@@ -1701,15 +1814,22 @@
     const automatica = !c.regionDefault;
     const modo = $('ap-reg-modo');
     if (modo) { const v = automatica ? 'auto' : 'fixa'; if (modo.value !== v) modo.value = v; }
-    // DROPDOWN DA REGIÃO: com a região automática o dropdown não pode parecer que manda. Fica
-    // marcado como ignorado e aponta para a região que o MOTOR está a usar (nunca para uma
-    // região diferente da que está em uso).
+    // DROPDOWN DA REGIÃO: em modo AUTOMÁTICO o select MOSTRA a região recomendada pelo motor
+    // (`estado().regiaoRecomendada`, com `regiaoIdeal` como recurso) e fica marcado como
+    // "automática" — nunca parece que manda, mas mostra o que o motor está a usar. Escolher uma
+    // região aqui passa a FIXA (handler `ap-reg-id`); voltar a "auto" limpa `regionDefault`.
     const rid = $('ap-reg-id');
     const idIdeal = ler('regiaoIdeal', null);
+    const regRec = regiaoRecomendada();
+    const autoId = regRec || idIdeal || null;
     if (rid) {
-      const alvo = c.regionDefault || idIdeal || null;
+      const alvo = c.regionDefault || autoId;
       if (alvo && rid.value !== alvo && qa('#ap-reg-id option').some((o) => o.value === alvo)) rid.value = alvo;
-      rid.classList.toggle('ignorada', automatica);
+      rid.classList.toggle('auto', automatica);
+      rid.classList.remove('ignorada');
+      rid.title = automatica
+        ? 'AUTOMÁTICA: mostra a região recomendada pelo motor. Escolher uma aqui passa a região para FIXA.'
+        : 'FIXA: o motor fica nesta região até você voltar para "Automática".';
     }
     const setChk = (id, v) => { const e = $(id); if (e && e.checked !== !!v) e.checked = !!v; };
     setChk('ap-cfg-autoEquip', c.autoEquip); setChk('ap-cfg-trocaItens', c.trocaItens);
@@ -1756,8 +1876,8 @@
     // motor escolheu), ou é fixa (com o nome que você escolheu).
     const emUso = c.regionDefault
       ? 'FIXA (você escolheu: <b>' + esc(nomeRegiao(c.regionDefault)) + '</b>)'
-      : 'automática (o motor escolheu: <b>' + esc(rec ? limparNivel(rec.regiao) : (idIdeal ? nomeRegiao(idIdeal) : '—')) + '</b>)';
-    const autoEscolha = rec ? limparNivel(rec.regiao) : (idIdeal ? nomeRegiao(idIdeal) : null);
+      : 'automática (o motor recomenda: <b>' + esc(regRec ? nomeRegiao(regRec) : (rec ? limparNivel(rec.regiao) : (idIdeal ? nomeRegiao(idIdeal) : '—'))) + '</b>)';
+    const autoEscolha = regRec ? nomeRegiao(regRec) : (rec ? limparNivel(rec.regiao) : (idIdeal ? nomeRegiao(idIdeal) : null));
     setHtml('ap-reg-info', '<p class="aviso ' + (c.regionDefault ? 'warn' : 'ok') + '">Região em uso: ' + emUso + '.'
       + (c.regionDefault ? ' Enquanto estiver fixa, o motor <b>não</b> escolhe sozinho — mude para <b>Automática</b> para ele voltar a decidir.' : ' O motor muda de região sozinho quando compensa.') + '</p>'
       + '<p class="hint">No automático, o motor escolheria: <b>' + esc(autoEscolha || '—') + '</b>' + (rec ? ' · ' + fmt(rec.ouroLiquidoMin) + ' ouro limpo/min · ' + fmt(rec.xpMin) + ' xp/min' : '') + '.</p>'
@@ -2968,7 +3088,8 @@
    *  que o próprio motor declarou (`cfg`) — a GUI não conhece nem inventa chaves de configuração. */
   function alternarInterruptor(nome, chave, ligado) {
     const legivel = ARV_NOME[nome] || nome;
-    if (!chave) { fbAviso(legivel + ' é implícito: liga e desliga com o switch pai.'); return; }
+    // Sem chave = motor antigo: NÃO se escreve nada (não há chave para escrever) e diz-se o erro.
+    if (!chave) { fbAviso(legivel + ' não tem chave própria no motor desta página — nada foi mudado. Recarregue (F5).'); return; }
     const patch = {}; patch[chave] = !!ligado;
     const r = chamar('setConfig', patch);
     if (!r.ok) {
@@ -3716,7 +3837,22 @@
   const listaWatch = (s) => String(s == null ? '' : s).split(',').map((x) => x.trim()).filter(Boolean);
   const novoWatch = (patch) => Object.assign({}, (cfg() || {}).mercadoWatch || {}, patch);
   const MUDANCAS = {
-    'ap-on': (el) => executar(null, el.checked ? 'Ligar' : 'Desligar', async () => { definirLigado(el.checked); return { ok: true, msg: el.checked ? 'auto-play e auto-poção LIGADOS.' : 'auto-play DESLIGADO — o motor só observa.' }; }),
+    // O ÚNICO INTERRUPTOR MESTRE (cartão AUTO-PLAY, topo do Painel). Ligar/desligar = `enabled`.
+    // Sair de DESLIGADO (kill persistente no navegador) religa tudo primeiro; desligar limpa o
+    // estado ativo (prazos, testes, farm forçado) — ao religar começa do zero.
+    'ap-mestre': (el) => {
+      const on = !!el.checked;
+      if (on) {
+        if (estaDesligado()) chamar('religarTudo');
+        definirLigado(true);
+        fb('ok', 'AUTO-PLAY LIGADO — farma, viaja e decide sozinho.');
+      } else {
+        definirLigado(false);
+        chamar('limparEstadoAtivo');
+        fb('info', 'AUTO-PLAY DESLIGADO — o motor só observa (não clica em nada).');
+      }
+      ultimoRender = 0;
+    },
     'ap-obj': (el) => { definirCfg({ objetivo: el.value }); fb('ok', 'Objetivo: ' + ({ xp: 'experiência', ouro: 'ouro', runas: 'runas' }[el.value] || el.value) + '. A região ideal passa a ser escolhida por isto.'); ultimoRender = 0; },
     'ap-reg-modo': (el) => {
       if (el.value === 'auto') { definirCfg({ regionDefault: null }); fb('ok', 'Região AUTOMÁTICA: o motor escolhe sempre a melhor para o seu nível (a região fixa foi limpa).'); }
@@ -3843,6 +3979,19 @@
       }
       const f = MUDANCAS[el.id];
       if (f) { try { f(el); } catch (err) { fbErro('Erro ao guardar: ' + String((err && err.message) || err)); } return; }
+      // SWITCH DE CAPACIDADE DO MOTOR (cartão "Automatismos do motor"): a CHAVE vem em `data-cfg`,
+      // lida de `arvoreInterruptores()`. Cobre os interruptores sem handler próprio — vender,
+      // repor, cofre, anunciar, subir habilidades e ir à base — e a GUI não escreve o nome da
+      // chave à mão (só o motor a declara).
+      if (el.dataset && el.dataset.cfg) {
+        try {
+          const ok = definirCfg({ [el.dataset.cfg]: !!el.checked });
+          ultimoRender = 0;
+          if (ok) fb(el.checked ? 'ok' : 'info', 'Interruptor ' + (el.checked ? 'LIGADO.' : 'DESLIGADO.'));
+          else fbErro('Não consegui mudar o interruptor — o motor não aceitou a escrita.');
+        } catch (err) { fbErro('Erro ao mudar o switch: ' + String((err && err.message) || err)); }
+        return;
+      }
       // poções: ids compostos ap-pc-<campo>-<poção>
       const m = /^ap-pc-(on|v|m)-(.+)$/.exec(el.id);
       if (m) {
