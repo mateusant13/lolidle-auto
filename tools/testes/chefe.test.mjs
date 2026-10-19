@@ -87,8 +87,13 @@ export const suite = {
       const ideal = (auto.buildIdealPara(champ) || []).map(String);
       const chefe = (auto.buildIdealParaFase(champ, 'chefe') || []).map(String);
       const mobs = (auto.buildIdealParaFase(champ, 'mobs') || []).map(String);
-      t.check('B1[' + nome + ']: a build IDEAL contem a 3153 contra chefes de vida alta', ideal.indexOf('3153') >= 0);
-      t.check('B2[' + nome + ']: a build de CHEFE contem a 3153', chefe.indexOf('3153') >= 0);
+      const pecaChefe = magia ? '3100' : '3153';
+      // TK-01: a build e escolhida por SCORE MEDIDO (`scoreSet`). A 3153 (dano = % da vida do
+      // alvo) so escala contra VIDA ALTA; num campeao AP ela pontua 0 (nao tem AP) e a peca de
+      // chefe da classe passa a ser a Lich Bane (3100). O contrato medido mantem-se: IDEAL e
+      // CHEFE levam a peca de chefe da CLASSE; a de MOBS nao leva a 3153 (vida baixa, o tecto morde).
+      t.check('B1[' + nome + ']: a build IDEAL leva a peca de chefe da classe (' + pecaChefe + ')', ideal.indexOf(pecaChefe) >= 0);
+      t.check('B2[' + nome + ']: a build de CHEFE leva a peca de chefe da classe (' + pecaChefe + ')', chefe.indexOf(pecaChefe) >= 0);
       t.check('B3[' + nome + ']: a build de MOBS NAO leva a 3153 (vida baixa: o teto morde)', mobs.indexOf('3153') < 0);
       t.check('B4[' + nome + ']: a build de CHEFE tem 5 itens (1 bota + 4)', chefe.length === 5);
       t.check('B5[' + nome + ']: a build IDEAL tem 5 itens', ideal.length === 5);

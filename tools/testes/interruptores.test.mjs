@@ -22,20 +22,20 @@ export const suite = {
     const auto = carregarAutomation(m);
     alimentarCatalogo(m);
     definirCampeao(m, 'adtest');
-    // O mestre tem EXCEPCAO DE CAMPEO (auto-play so no alvo). Estes testes sao sobre a
-    // HIERARQUIA, logo aponta-se o alvo ao campeao do stub; a excepcao tem testes proprios (I9).
+    // O mestre NAO tem excepcao de campeao (TK-01). Estes testes sao sobre a HIERARQUIA,
+    // logo aponta-se o alvo ao campeao do stub.
     auto.setConfig({ champAlvo: 'adtest' });
 
-    /* I1 - o MESTRE manda: desligado, nenhum sub-interruptor pode agir. */
+    /* I1 - o MESTRE UNICO manda: desligado, NENHUM sub-interruptor pode agir. */
     auto.setConfig({ enabled: false });
     t.check('I1: com o mestre desligado, o proprio autoplay nao pode', auto.podeFazer('autoplay').pode === false);
-    // A DISTINCAO DO DONO: manutencao (vender/equipar/mercado/pontos/cofre) NAO e auto-play.
-    // Desligar o auto-play NAO pode travar os recursos base do script.
-    t.check('I1: com o AUTOPLAY desligado, a MANUTENCAO segue — VENDER pode', auto.podeFazer('vender').pode === true);
-    t.check('I1: com o AUTOPLAY desligado, EQUIPAR pode', auto.podeFazer('equip').pode === true);
-    // `buildPorFase` e agora o UNICO interruptor que resta sob o autoplay (depende do contexto de
+    // CONTRATO TK-01: UM mestre unico (autoplay). Desligar o mestre desliga TUDO — vender,
+    // equipar, montar, build. Nao ha mais o segundo mestre independente.
+    t.check('I1: com o MESTRE desligado, VENDER nao pode (era o segundo mestre)', auto.podeFazer('vender').pode === false);
+    t.check('I1: com o MESTRE desligado, EQUIPAR nao pode', auto.podeFazer('equip').pode === false);
+    // `buildPorFase` e o unico interruptor que resta sob o autoplay (depende do contexto de
     // luta). A `rotacao` passou para manutencao (trocar a barra e sempre, regra do dono).
-    t.check('I1: com o AUTOPLAY desligado, o ramo dele NAO pode — BUILD POR FASE', auto.podeFazer('buildPorFase').pode === false);
+    t.check('I1: com o MESTRE desligado, o ramo dele NAO pode — BUILD POR FASE', auto.podeFazer('buildPorFase').pode === false);
     auto.setConfig({ manutencao: false });
     t.check('I1: com a MANUTENCAO desligada, VENDER nao pode', auto.podeFazer('vender').pode === false);
     t.check('I1: com a MANUTENCAO desligada, EQUIPAR nao pode', auto.podeFazer('equip').pode === false);
@@ -60,7 +60,7 @@ export const suite = {
     // tem que ser usado sempre, em farm". Trocar a barra e RECURSO BASE (manutencao), nao farmar —
     // estava sob `autoplay`, que tem excepcao de campeao, logo na Katarina a barra ficava PARADA.
     t.check('I3: rotacao pende da MANUTENCAO (trocar a barra e sempre, nao so no farm)', auto.INTERRUPTORES.rotacao.pai === 'manutencao');
-    t.check('I3: ha DOIS mestres independentes', auto.INTERRUPTORES.autoplay.pai === null && auto.INTERRUPTORES.manutencao.pai === null);
+    t.check('I3: ha UM mestre unico (autoplay) e manutencao e filho dele', auto.INTERRUPTORES.autoplay.pai === null && auto.INTERRUPTORES.manutencao.pai === 'autoplay');
 
     /* I4 - excepcoes declaradas (Runeterra: nao vender, nao mexer no cofre). */
     t.check('I4: VENDER tem excepcao declarada (Runeterra)', !!auto.INTERRUPTORES.vender.excecao);
@@ -100,22 +100,37 @@ export const suite = {
     t.check('I8: correr as necessidades sem local NAO inventa regiao', auto.regiaoAntesDaBase() === null);
 
 
-    /* I9 - EXCEPCAO DE CAMPEO (regra do dono): com o alvo noutro campeao, o MESTRE fecha
-     * tudo mesmo com `enabled:true`. Foi medido ao vivo: a Katarina ficou com enabled=true
-     * sozinha e 5 necessidades activas. Verificar a mao nao chegava. */
+    /* I9 - SEM EXCEPCAO DE CAMPEAO (TK-01): `podeFazer('autoplay')` NAO bloqueia por campeao.
+     * O champAlvo continua a existir como preferencia visual (a GUI mostra-o), mas o motor
+     * nao o usa como bloqueio. O dono mandou simplificar: um mestre, sem excecoes. */
     auto.setConfig({ enabled: true, manutencao: true, champAlvo: 'yasuo' });
-    t.check('I9: enabled=true mas campeao errado => autoplay NAO pode', auto.podeFazer('autoplay').pode === false);
-    t.check('I9: campeao errado => BUILD POR FASE nao pode (ramo do autoplay)', auto.podeFazer('buildPorFase').pode === false);
-    t.check('I9: campeao errado NAO trava a MANUTENCAO (vender segue)', auto.podeFazer('vender').pode === true);
+    t.check('I9: enabled=true com campeao fora do alvo -> autoplay AINDA pode (sem excepcao)', auto.podeFazer('autoplay').pode === true);
+    t.check('I9: campeao fora do alvo -> BUILD POR FASE tambem pode', auto.podeFazer('buildPorFase').pode === true);
+    t.check('I9: campeao fora do alvo NAO trava a MANUTENCAO (vender segue)', auto.podeFazer('vender').pode === true);
     t.check('I9: ehCampeaoAlvo() diz que nao e o alvo', auto.ehCampeaoAlvo() === false);
     auto.setConfig({ champAlvo: 'adtest' });
-    t.check('I9: com o campeao certo o mestre volta a poder', auto.podeFazer('autoplay').pode === true);
+    t.check('I9: com o campeao certo o mestre segue a poder', auto.podeFazer('autoplay').pode === true);
     t.check('I9: ehCampeaoAlvo() diz que e o alvo', auto.ehCampeaoAlvo() === true);
     auto.setConfig({ champAlvo: null });
-    t.check('I9: champAlvo null desliga a excepcao (qualquer campeao serve)', auto.ehCampeaoAlvo() === true);
+    t.check('I9: champAlvo null -> qualquer campeao serve', auto.ehCampeaoAlvo() === true);
     auto.setConfig({ champAlvo: 'adtest' });
 
     /* I6 - fail-open: um nome desconhecido nao pode bloquear o motor. */
     t.check('I6: nome desconhecido devolve pode:true (fail-open)', auto.podeFazer('naoExiste').pode === true);
+
+    /* I10 - CONTRATO TK-01 (criterio 4): NENHUM interruptor tem `cfg:null` (fim do "implicito")
+     * e o `vender` segue o mestre SEM campeao carregado (a hierarquia nao depende de identidade). */
+    const comCfgNull = Object.keys(auto.INTERRUPTORES).filter((k) => auto.INTERRUPTORES[k].cfg == null);
+    t.check('I10: nenhum interruptor tem cfg:null (fim do implicito)', comCfgNull.length === 0);
+    {
+      const m2 = criarMundo();
+      const a2 = carregarAutomation(m2);
+      a2.setConfig({ enabled: false });
+      t.check('I10: sem campeao e enabled:false -> vender NAO pode', a2.podeFazer('vender').pode === false);
+      a2.setConfig({ enabled: true, autoVender: true });
+      t.check('I10: sem campeao e enabled:true + autoVender:true -> vender PODE', a2.podeFazer('vender').pode === true);
+      a2.setConfig({ autoVender: false });
+      t.check('I10: sem campeao e autoVender:false -> vender NAO pode', a2.podeFazer('vender').pode === false);
+    }
   },
 };

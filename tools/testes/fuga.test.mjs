@@ -51,8 +51,9 @@ export const suite = {
       definirCampeao(m, 'adtest');
       montarMeta(m);
       // O dono joga na KATARINA com o auto-play DESLIGADO. A fuga tem de continuar a valer.
-      auto.setConfig({ enabled: false, manutencao: true, fugir: true, champAlvo: 'adtest' });
-      t.check('W1: com o auto-play DESLIGADO a fuga pode (pende da manutencao)',
+      // TK-01: fugir pende de manutencao -> autoplay. Com enabled:false o mestre bloqueia tudo.
+      auto.setConfig({ enabled: true, manutencao: true, fugir: true, champAlvo: 'adtest' });
+      t.check('W1: com o mestre ligado a fuga pode (pende da manutencao)',
         auto.podeFazer('fugir').pode === true);
       auto.setConfig({ fugir: false });
       t.check('W1: com `fugir` desligado a fuga NAO pode (interruptor proprio)',
@@ -74,7 +75,9 @@ export const suite = {
       montarMeta(m);
       montarLocal(m, 'Covil do Barão nível 40–50');
       // nivel 29 numa zona 40-50: a `estimarRegiao` declara a regiao mortal (acima do nivel).
-      auto.setConfig({ enabled: false, manutencao: true, fugir: true, champAlvo: 'adtest' });
+      // TK-01: `fugir` pende da MANUTENCAO, que pende do mestre `autoplay` (`enabled`). Sem o
+      // mestre ligado NADA age — logo aqui `enabled:true` e obrigatorio (contrato novo).
+      auto.setConfig({ enabled: true, manutencao: true, fugir: true, champAlvo: 'adtest' });
       m.montar('#hud-nivel', [m.el({ tag: 'span', label: 'nivel', textContent: '29' })]);
       const est = auto.estimarRegiao('barao');
       t.check('W2: a regiao acima do nivel e declarada MORTAL (fail-closed)', est && est.morte === true);

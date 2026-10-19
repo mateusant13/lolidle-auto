@@ -78,14 +78,15 @@ function provaUltimate(t) {
   t.check('U5: mercadoTemDaBuild() é fail-open sem leitura (null, nao false)',
     auto.mercadoTemDaBuild() === null);
 
-  /* U6 - COMPRAR a build e AUTO-PLAY: o portão herda o auto-play (candeeiro da queixa do dono) */
+  /* U6 - COMPRAR a build e AUTO-PLAY: o portão herda o auto-play (candeeiro da queixa do dono).
+   * TK-01: comprar pende de irBase -> manutencao -> autoplay. Sem excepcao de campeao. */
   auto.setConfig({ champAlvo: ['aptest'], enabled: true });
   t.check('U6: campeao no alvo + auto-play ligado -> pode comprar', auto.podeFazer('comprar').pode === true);
   auto.setConfig({ enabled: false });
   t.check('U6: AUTO-PLAY DESLIGADO -> NAO pode abrir o mercado para comprar', auto.podeFazer('comprar').pode === false);
   auto.setConfig({ enabled: true, champAlvo: ['outro'] });
-  t.check('U6: campeao FORA do alvo (Katarina) -> NAO pode comprar (era o defeito ao vivo)',
-    auto.podeFazer('comprar').pode === false);
+  t.check('U6: campeao FORA do alvo (Katarina) -> AINDA pode comprar (sem excepcao de campeao)',
+    auto.podeFazer('comprar').pode === true);
 }
 
 export const suite = {

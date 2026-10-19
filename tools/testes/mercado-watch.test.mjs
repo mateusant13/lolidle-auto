@@ -139,6 +139,7 @@ export const suite = {
     /* W8 - o interruptor e a config persistente. */
     t.check('W8: vigiarMercado pende da manutencao', auto.INTERRUPTORES.vigiarMercado && auto.INTERRUPTORES.vigiarMercado.pai === 'manutencao');
     t.check('W8: vigiarMercado usa a chave autoVigiarMercado', auto.INTERRUPTORES.vigiarMercado.cfg === 'autoVigiarMercado');
+    auto.setConfig({ enabled: true });
     t.check('W8: por defeito pode (fail-open, chave ausente = ligada)', auto.podeFazer('vigiarMercado').pode === true);
     auto.setConfig({ autoVigiarMercado: false });
     t.check('W8: desligado, NAO pode', auto.podeFazer('vigiarMercado').pode === false);

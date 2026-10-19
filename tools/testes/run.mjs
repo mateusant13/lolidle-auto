@@ -65,6 +65,10 @@ import { suite as suiteStunChefe } from './stun-chefe.test.mjs';
 import { suite as suiteUltFase } from './ult-fase.test.mjs';
 // DIAGNOSTICO DE FPS (2026-10-18): observer de novidades barato (body+childList) e sem empilhar na reinjecao.
 import { suite as suiteObservers } from './observers.test.mjs';
+// TK-01: MERCADO SO-LEITURA — o servidor decide, a UI so para acoes concretas.
+import { suite as suiteMercadoServidor } from './mercado-servidor.test.mjs';
+// TK-01: BANNER `#rastreio-tarefa.pronta` — so clica pronto E na Fonte.
+import { suite as suiteTarefaBanner } from './tarefa-banner.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -91,6 +95,8 @@ const SUITES = [
   suiteUltFase,
   suiteObservers,
   suiteAlvosEstado,
+  suiteMercadoServidor,
+  suiteTarefaBanner,
 ];
 const checks = [];
 const notas = [];

@@ -155,9 +155,15 @@ function provaEstado(t) {
   t.check('D1: equipado traz a peca', est.equipado.length === 1 && est.equipado[0].base === '3020');
   t.check('D1: habilidades traz a barra/ranks', !!est.habilidades && Array.isArray(est.habilidades.ranks) && est.habilidades.ranks.indexOf('Q:3') >= 0);
   t.check('D1: pocoes contadas', !!est.pocoes && est.pocoes.vida === 5);
-  t.check('D1: lista de alvos no estado', est.alvo.join(',') === 'aptest');
+  // TK-01: o painel desenha `est.alvo` como "alvo: yasuo, ryze" — a restrição de campeão que o
+  // dono queixou. Com a excepção removida, o campo é NULL (o painel não mostra restrição).
+  t.check('D1: SEM alvo de campeão no estado (null — o painel não mostra "alvo: ...")', est.alvo === null);
   t.check('D1: o retrato ficou GRAVADO no storage (a GUI le-o sem varrer o DOM)',
     !!(m.estado.storage[STORAGE_KEY + ':estado'] && m.estado.storage[STORAGE_KEY + ':estado'].at));
+
+  // TK-01: o `snapshotEstado` (o retrato leve) também não tem alvo de campeão.
+  const snap = auto.snapshotEstado();
+  t.check('D2: snapshotEstado().alvo e NULL (sem restricao de campeão no painel)', snap.alvo === null);
 }
 
 /* ------------------------------------------------------------------------------------ *
