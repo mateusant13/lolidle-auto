@@ -1,10 +1,3 @@
-// motor.js — LIDO DO JOGO VIVO em 2026-10-14 via https://lolidle.com/js/motor.js (curl, sem browser).
-// 285082 bytes · 3846 linhas · sha256 e3bb66d4d8c6574d77fe6736aac783ca8b3b4e404b0b2983768baf77c176b8eb
-// A copia anterior do repo (278724 bytes / 3792 linhas, mais de 60 linhas atrasada) ficou em
-// docs/historico/motor-anterior-desactualizado.js. Regra N.o 3: numero LIDO, nunca copiado.
-// DIFERENCAS vs a copia antiga: +54 linhas, com o lote de mascote no mercado (ofertaMascote/MASCOTE)
-// e novos comentarios; ha INSERTOES a partir da linha 122, logo os numeros de linha dos documentos
-// antigos podem estar desviados em dezenas — relocalizar por conteudo, nao por linha.
 // Motor do jogo: estado, atributos, combate, loot e progressão. Sem DOM, para poder simular no Node.
 import { DADOS } from './dados.js';
 import { DADOS_EZREAL } from './dados-ezreal.js';
@@ -13,6 +6,7 @@ import { DADOS_LUX } from './dados-lux.js';
 import { DADOS_KATARINA } from './dados-katarina.js';
 import { DADOS_TARIC } from './dados-taric.js';
 import { DADOS_ZAC } from './dados-zac.js';
+import { DADOS_RYZE } from './dados-ryze.js';
 import { ITENS_DADOS } from './itens.js';
 import { t, ingles } from './i18n.js';
 import { BALANCO } from './balanco.js';
@@ -128,6 +122,10 @@ function gastarGema(e, gema) { e.gemas[gema]--; if (!e.gemas[gema]) delete e.gem
 export const ofertaGema = (item) => { const m = /^gema:(\w+):(\d+)$/.exec(String(item)); return m && Object.hasOwn(GEMAS, m[1]) && +m[2] >= 1 ? { id: m[1], q: +m[2] } : null; };
 // o lote de mascote no mercado (p677): "mascote:<id>", só dos negociáveis (o Poro de Bigode); devolve o id ou null
 export const ofertaMascote = (item) => { const m = /^mascote:(\w+)$/.exec(String(item)); return m && Object.hasOwn(MASCOTES, m[1]) && MASCOTES[m[1]].negociavel ? m[1] : null; };
+// p777: lendário A, S ou SS anunciado no mercado fica 3 minutos à vista antes de alguém poder comprar (todo mundo vê e se prepara)
+export const ESPERA_MERCADO = { ms: 180000, quals: ['A', 'S', 'SS'] };
+export const esperaMercado = (item) => (ofertaGema(item) || ofertaMascote(item) || !Object.hasOwn(ITENS, baseId(item)) ? 0
+  : raridade(ITENS[baseId(item)]) === 'lendario' && ESPERA_MERCADO.quals.includes(qualidadeDe(item)) ? ESPERA_MERCADO.ms : 0);
 export const nomeOferta = (item) => { const g = ofertaGema(item); if (g) return `${g.q}× ${nomeGema(g.id)}`; const mo = ofertaMascote(item); return mo ? MASCOTES[mo].nome : infoItem(item).nomeRef; };
 export function chancesGema(local, mult = 1) {
   const k = 1 + (local?.tier || 0) * 0.1;
@@ -252,9 +250,29 @@ export function revelarPendentes(antes, e, rng = Math.random, agora = Date.now()
   return revelados;
 }
 // "Poder": um número para mostrar a força do personagem pelo nível e pelos itens equipados (preço do item × refino × qualidade)
+// p753: em cada raridade, o preço dos itens de ataque e de magia entra no Poder ajustado para a média das duas classes
+// ficar igual (lendário: AD ×0,973, AP ×1,028); os neutros e as botas ficam como estão
+let fatoresPoder = null;
+function fatorPoder(id) {
+  if (!fatoresPoder) {
+    const soma = {};
+    for (const [k, i] of Object.entries(ITENS)) {
+      const c = classeItem(k); if ((c !== 'ad' && c !== 'ap') || ehBota(k)) continue;
+      const ch = raridade(i) + ':' + c; soma[ch] = soma[ch] || [0, 0]; soma[ch][0] += i.preco || 0; soma[ch][1]++;
+    }
+    fatoresPoder = {};
+    for (const rar of ['basico', 'epico', 'lendario']) {
+      const ad = soma[rar + ':ad'], ap = soma[rar + ':ap']; if (!ad || !ap) continue;
+      const mAd = ad[0] / ad[1], mAp = ap[0] / ap[1], alvo = (mAd + mAp) / 2;
+      fatoresPoder[rar + ':ad'] = alvo / mAd; fatoresPoder[rar + ':ap'] = alvo / mAp;
+    }
+  }
+  const c = classeItem(id);
+  return (c === 'ad' || c === 'ap') && !ehBota(id) ? fatoresPoder[raridade(ITENS[id]) + ':' + c] || 1 : 1;
+}
 export function poder(estado) {
   let p = (estado.nivel || 1) * 40;
-  for (const x of estado.itens || []) { const i = ITENS[baseId(x)]; if (!i) continue; p += (i.preco || 0) * (1 + BONUS_REFINO * refinoDe(x)) * (QUALIDADES[qualidadeDe(x)]?.mult || 1) / 10; }
+  for (const x of estado.itens || []) { const id = baseId(x), i = ITENS[id]; if (!i) continue; p += (i.preco || 0) * fatorPoder(id) * (1 + BONUS_REFINO * refinoDe(x)) * (QUALIDADES[qualidadeDe(x)]?.mult || 1) / 10; }
   return Math.round(p);
 }
 export function infoItem(x) {
@@ -399,10 +417,13 @@ const DROPS = {
   lobos: { basico: ['1042', '1037', '1018', '1029', '1001'], epico: ['3051', '3086', '1043', '2019', '3009', '3105'], lendario: ['3046', '6333', '3170'] },
   azul: { basico: ['1033', '1006', '2022', '1028', '1120'], epico: ['3067', '3211', '3066', '1011', '3111', '3801'], lendario: ['3065', '3071', '8020', '3190', '3174'] },
   vermelho: { basico: ['1036', '1037', '1038', '1028', '1054'], epico: ['2021', '3077', '3035', '6670', '3008'], lendario: ['3748', '2501', '3072', '3168'] },
-  rio: { basico: ['1042', '1018', '1038', '1001'], epico: ['3086', '6670', '3144', '1043', '3158', '3024'], lendario: ['3085', '3153', '3036', '3156', '3173'] },
-  dragao: { basico: ['1037', '1038', '1029', '1028', '1120'], epico: ['1031', '3076', '2019', '3133', '3047', '3140'], lendario: ['3075', '3742', '6610', '3068', '3143', '663056', '3172'] },
-  barao: { basico: ['1038', '1037', '1018', '1054'], epico: ['3035', '6670', '3133', '1011', '3006', '3111'], lendario: ['3031', '3026', '3053', '6673', '3083', '3168'] },
+  rio: { basico: ['1042', '1018', '1038', '1001'], epico: ['3086', '6670', '3144', '1043', '3158', '3024'], lendario: ['3085', '3153', '3036', '3156', '3173', '3078', '6631', '6333'] },
+  dragao: { basico: ['1037', '1038', '1029', '1028', '1120'], epico: ['1031', '3076', '2019', '3133', '3047', '3140'], lendario: ['3075', '3742', '6610', '3068', '3143', '663056', '3172', '3078', '3074'] },
+  barao: { basico: ['1038', '1037', '1018', '1054'], epico: ['3035', '6670', '3133', '1011', '3006', '3111'], lendario: ['3031', '3026', '3053', '6673', '3083', '3168', '3046', '3170'] },
 };
+// 18/10/2026 (p775): Quebrapassos, Dança da Morte, Hidra Raivosa, Dançarina Fantasma, Marcha Célere, Rylai, Lich e Eco de Luden também caem
+// numa zona alta (antes só nas zonas do começo, até o nível 10 a 20)
+// 17/10/2026: a Força da Trindade também cai no Rio e no Fosso do Dragão (antes só nas rotas iniciais, níveis 1 a 15)
 // 09/10/2026: o Campo Azul, o Dragão e o Barão (e o Vermelho para mago) ganharam uma bota lendária no saque: sem ela, quem passava
 // do nível 30 só conseguia bota lendária voltando para zona baixa ou montando no Ornn
 // saque das mesmas zonas para os campeões de magia (itens de mago e os de defesa)
@@ -413,9 +434,9 @@ const DROPS_AP = {
   lobos: { basico: ['1052', '3070', '1029', '1028', '1001'], epico: ['3108', '4630', '3147', '2508', '3009', '3105'], lendario: ['3100', '6653', '3170', '3190'] },
   azul: { basico: ['1033', '1006', '2022', '1028', '1027', '1056'], epico: ['3802', '3067', '3113', '1011', '3111', '3801'], lendario: ['3003', '3165', '3065', '8020', '3190', '3171'] },
   vermelho: { basico: ['1026', '1052', '1028', '1120'], epico: ['2508', '3145', '2420', '3147', '3020'], lendario: ['4645', '6653', '3102', '3152', '3175', '3143'] },
-  rio: { basico: ['1026', '1052', '3070', '1001'], epico: ['4630', '3916', '4632', '3113', '3158', '3024'], lendario: ['3135', '4629', '3157', '3175', '3173', '8020'] },
-  dragao: { basico: ['1026', '1058', '1029', '1028', '1120'], epico: ['2420', '3145', '4632', '3108', '3047', '3140'], lendario: ['3157', '4645', '3075', '3068', '664644', '3175'] },
-  barao: { basico: ['1058', '1026', '1052', '1054'], epico: ['4630', '3802', '2420', '1011', '3020', '3111'], lendario: ['3089', '3135', '3157', '4633', '3083', '3171'] },
+  rio: { basico: ['1026', '1052', '3070', '1001'], epico: ['4630', '3916', '4632', '3113', '3158', '3024'], lendario: ['3135', '4629', '3157', '3175', '3173', '8020', '3116'] },
+  dragao: { basico: ['1026', '1058', '1029', '1028', '1120'], epico: ['2420', '3145', '4632', '3108', '3047', '3140'], lendario: ['3157', '4645', '3075', '3068', '664644', '3175', '6655', '3100'] },
+  barao: { basico: ['1058', '1026', '1052', '1054'], epico: ['4630', '3802', '2420', '1011', '3020', '3111'], lendario: ['3089', '3135', '3157', '4633', '3083', '3171', '6655', '3170'] },
 };
 for (const l of LOCAIS) { if (DROPS[l.id]) l.drops = DROPS[l.id]; if (DROPS_AP[l.id]) l.dropsAp = DROPS_AP[l.id]; }
 for (const i of ITENS_DADOS) { const cl = classeItem(i.id); if (cl !== 'ap') POR_CLASSE.ad[raridade(i)].push(i.id); if (cl !== 'ad') POR_CLASSE.ap[raridade(i)].push(i.id); }
@@ -492,6 +513,7 @@ export const DICA_ATRIBUTOS = {
   zac: 'Zac é um tanque de magia que paga as habilidades com vida: Vitalidade é a base (mais vida deixa os golpes dele mais fortes e as gosmas curam mais); a Força vira Poder de Habilidade; Resistência segura o grupo em volta; Foco dá recarga e um pouco mais de dano.',
   taric: 'Taric é um tanque de magia: a Força vira Poder de Habilidade e deixa as curas, os escudos e o dano mais fortes; Vitalidade e Resistência seguram tudo (a armadura bônus também aumenta o dano da Bravata); Foco dá mana e recarga menor, e cada habilidade carrega a Bravata.',
   yasuo: 'Yasuo luta colado e vive do crítico: Força e Agilidade dão dano e velocidade de ataque (que também acelera a Tempestade de Aço); Vitalidade segura os golpes até o escudo do Fluxo encher.',
+  ryze: 'Ryze é mago de mana: a Força vira Poder de Habilidade; o Foco dá mana, e a mana a mais também vira Poder (Maestria Arcana) e deixa os escudos das runas mais fortes; Vitalidade evita que ele caia quando é alcançado.',
 };
 export const PONTOS_POR_NIVEL = 3;
 export const MODELOS = {
@@ -530,7 +552,13 @@ export function atributos(estado) {
   const bc = bonusConquistas(estado), bm = bonusMascote(estado);
   // Yasuo: o Fluxo ocupa o lugar da mana (sempre 100; enche lutando e andando, ver encherFluxo)
   // Katarina: não usa recurso nenhum (mana 0)
-  const manaMax = k.fluxo ? FLUXO_MAX : k.semMana ? 0 : b.mp + b.mpperlevel * g + 8 * at.foco + manaItens;
+  let manaMax = k.fluxo ? FLUXO_MAX : k.semMana ? 0 : b.mp + b.mpperlevel * g + 8 * at.foco + manaItens;
+  const HPm = k.hab.P?.maestria;
+  if (HPm) {                                                 // Maestria Arcana (Ryze): o Poder aumenta a mana e a mana a mais vira Poder
+    const extra = manaMax * Math.min(HPm.manaMax, HPm.manaPor100 * ap / 100);
+    manaMax += extra;
+    ap += HPm.poder * (8 * at.foco + manaItens + extra);
+  }
   if (tem('3003')) ap += 0.03 * manaMax;                    // Cajado do Arcanjo: 3% da mana vira poder
   if (tem('3089')) ap *= 1.35;                              // Rabadon: +35% do poder total
   ad *= 1 + pct.adPct; ap *= 1 + pct.apPct; armadura *= 1 + pct.armPct + wArm; rm *= 1 + pct.rmPct;
@@ -873,6 +901,47 @@ export const danoWZac = (r, a, alvo) => HAB_ZAC.W.dano(r, a) + HAB_ZAC.W.pctAlvo
 // quanto da vida atual a habilidade custa (0 para quem não paga com vida); o arena.js e o jogo usam
 export const custoVidaHab = (estado, tecla) => { const h = habDe(estado)[tecla], r = estado.ranks?.[tecla] || 0; return Array.isArray(h?.custoVida) && r ? h.custoVida[r - 1] || 0 : 0; };
 
+// Ryze, o Mago Rúnico (17/10/2026): mago de dano constante. O E (Fluxo de Feitiço) marca o alvo e os vizinhos com Fluxo
+// (i.fluxoR, segundos); o Q (Sobrecarregar) contra quem tem Fluxo bate mais e pula para todos os outros com Fluxo. W e E zeram a
+// recarga do Q e carregam uma runa (até 2): o Q com 2 runas dá um escudo. A Maestria Arcana (P) liga mana e Poder (atributos()).
+// O R abre um portal: enquanto abre, queima e marca quem está nele; depois o Ryze se teleporta (no Rift, para longe do grupo).
+const HRZ = DADOS_RYZE.habilidades;
+const danoRyze = (h) => (r, a) => h.base[r - 1] + h.ratio[r - 1] * apDe(a);
+export const HAB_RYZE = {
+  P: { maestria: { poder: 0.06, manaPor100: 0.1, manaMax: 0.5 }, fluxo: 4, runasMax: 2, runaDura: 4,
+    resetQ: 0.5 },      // p776: o W, o E e o Colapso deixam a recarga do Q nisso (antes zeravam): o Q não sai colado
+  Q: { nome: HRZ.Q.nome, nivel: 1, max: 10, recarga: serie(5, -0.15), custo: serie(28, 1), base: serie(60, 24), ratio: serie(0.4, 0.025), fluxoBonus: serie(0.1, 0.03),
+    escudoBase: serie(40, 18), escudoPoder: 0.25, escudoManaQ: 0.03,
+    desc: 'Dispara uma carga de energia no monstro mais perto. Se ele tem Fluxo, o golpe bate mais forte e pula para todos os outros com Fluxo. Prisão de Runa e Fluxo de Feitiço deixam a recarga em 0,5 segundo e carregam uma runa; com 2 runas, o Sobrecarregar dá um escudo ao Ryze.' },
+  W: { nome: HRZ.W.nome, nivel: 1, max: 10, recarga: serie(11, -0.3), custo: serie(50, 3), base: serie(80, 32), ratio: serie(0.6, 0.035), prende: 1, prendeFluxo: 1.5,
+    desc: 'Prende o monstro numa prisão de runas: dano mágico e ele fica preso por 1 segundo (1,5 segundo se tiver Fluxo). Deixa a recarga do Sobrecarregar em 0,5 segundo e carrega uma runa.' },
+  E: { nome: HRZ.E.nome, nivel: 1, max: 10, recarga: serie(3.5, -0.1), custo: serie(30, 2), base: serie(50, 20), ratio: serie(0.35, 0.02), espalha: 3,
+    desc: 'Um orbe de magia pura: dano mágico no alvo e Fluxo nele e nos monstros perto dele. Se o alvo já tinha Fluxo, o dano também se espalha. Deixa a recarga do Sobrecarregar em 0,5 segundo e carrega uma runa.' },
+  R: { nome: HRZ.R.nome, nivel: 6, max: 5, recarga: [110, 96, 84, 74, 64], custo: serie(100, 0, 5), canal: 1.5, ticks: 4, base: serie(60, 30, 5), ratio: serie(0.15, 0.03, 5), alcance: 12, raioArena: 2.6,
+    afasta: serie(1.4, 0.1, 5),
+    desc: 'Abre um portal: enquanto ele abre (1,5 segundo), quem está em cima queima 4 vezes com dano mágico e fica com Fluxo. Depois o Ryze se teleporta para o outro lado (em Runeterra, até o ponto escolhido, levando os aliados do grupo que estão no círculo). No Summoner\'s Rift, ele reaparece longe do grupo e os monstros precisam caminhar até ele de novo.' },
+  // as extras são de runas e de magia arcana
+  G: { nome: 'Fluxo Arcano', nivel: 8, max: 10, recarga: serie(26, -0.8), custo: serie(40, 2), duracao: 8, bonusHab: serie(0.15, 0.025), metadeMana: true,
+    desc: 'Por 8 segundos, as habilidades do Ryze causam mais dano e custam metade da mana.' },
+  A: { nome: 'Grilhão Rúnico', nivel: 13, max: 10, recarga: serie(12, -0.5), custo: serie(35, 2), base: serie(90, 35), ratio: serie(0.6, 0.035), atordoa: 1,
+    desc: 'Uma corrente de runas prende o monstro mais distante: dano mágico, atordoamento de 1 segundo e Fluxo.' },
+  D: { nome: 'Eco Rúnico', nivel: 18, max: 10, passiva: true, base: serie(40, 18), ratio: serie(0.25, 0.015), ecoSaltos: 2, ecoMana: serie(0.02, 0.002),
+    desc: 'Passiva: quando um monstro com Fluxo morre, o Fluxo pula para os 2 monstros mais perto com dano mágico, e o Ryze recupera uma parte da mana.' },
+  F: { nome: 'Barreira de Mana', nivel: 23, max: 10, recarga: serie(24, -0.8), custo: serie(40, 3), escudoMana: serie(0.2, 0.015), escudoPoder: 0.4,
+    desc: 'A mana do Ryze vira uma barreira: um escudo de parte da mana máxima mais o Poder de Habilidade.' },
+  T: { nome: 'Círculo de Runas', nivel: 28, max: 10, recarga: serie(11, -0.4), custo: serie(50, 4), base: serie(120, 50), ratio: serie(0.75, 0.04), raioArena: 2.8, lento: 1.5,
+    desc: 'Runas giram em volta do Ryze e explodem: dano mágico, Fluxo e lentidão em todos perto.' },
+  B: { nome: 'Pergaminho Antigo', nivel: 33, max: 10, recarga: serie(35, -1.5), custo: serie(60, 2), duracao: 10, poderBonus: serie(0.1, 0.02), manaSeg: 0.03,
+    desc: 'Ryze lê o pergaminho que carrega nas costas: por 10 segundos, mais Poder de Habilidade e 3% da mana de volta por segundo.' },
+  M: { nome: 'Tempestade Arcana', nivel: 38, max: 10, recarga: serie(16, -0.5), custo: serie(70, 4), runas: 6, intervalo: 0.2, base: serie(70, 28), ratio: serie(0.45, 0.03),
+    desc: 'Seis runas caem do céu, uma a cada 0,2 segundo, nos monstros (primeiro nos que têm Fluxo): dano mágico e Fluxo em cada um.' },
+  N: { nome: 'Colapso dos Reinos', nivel: 45, max: 5, recarga: [80, 70, 62, 55, 48], custo: serie(100, 0, 5), espera: 1, base: serie(380, 160, 5), ratio: serie(1.2, 0.13, 5), fluxoExtra: 0.5, raioArena: 4.5,
+    desc: 'Ryze rasga uma fenda entre os reinos: os monstros perto são puxados para ela e, 1 segundo depois, tudo explode com dano mágico enorme (50% a mais em quem tem Fluxo). Todos ficam com Fluxo e a recarga do Sobrecarregar cai para 0,5 segundo.' },
+};
+for (const t of ['Q', 'W', 'E', 'R', 'A', 'D', 'T', 'M', 'N']) { HAB_RYZE[t].escalaPoder = true; HAB_RYZE[t].dano = danoRyze(HAB_RYZE[t]); }
+// o escudo das runas (Q com 2 runas): base + parte do Poder + parte da mana máxima
+export const escudoRunasRyze = (r, a) => HAB_RYZE.Q.escudoBase[r - 1] + HAB_RYZE.Q.escudoPoder * apDe(a) + HAB_RYZE.Q.escudoManaQ * (a.mana || 0);
+
 // cada campeão é um kit: atributos-base, habilidades e jeito de lutar
 export const KITS = {
   // papel: multiplica o dano causado e o recebido contra monstros (balanceamento de 11/10/2026, pedido do dono: Darius tanque de
@@ -880,9 +949,9 @@ export const KITS = {
   // pouco mais tanque; Katarina com mais dano que o Yasuo e mais frágil). arena: o dano contra monstros em Runeterra (lá vêm em
   // bando: quem bate num alvo só precisa de mais). pvp e pvpRecebido: os mesmos papéis pela metade, só entre jogadores.
   // vel: velocidade de andar em Runeterra (o servidor aceita junto, pvp.js)
-  darius: { id: 'darius', dados: DADOS, stats: DADOS.campeao.stats, adBase: 64, adNivel: 3.9, hab: HAB_DARIUS_KIT, distancia: false, hemorragia: true, papel: { dano: 1.1, recebido: 0.55, arena: 1.075, pvp: 0.95, pvpRecebido: 0.85 },      // dano 0,91 → 1,1 e arena 1,3 → 1,075 em 13/10/2026 (p633: +21% só no Rift)
+  darius: { id: 'darius', dados: DADOS, stats: DADOS.campeao.stats, adBase: 64, adNivel: 3.9, hab: HAB_DARIUS_KIT, distancia: false, hemorragia: true, papel: { dano: 1.19, recebido: 0.55, arena: 1.075, pvp: 0.95, pvpRecebido: 0.85 },      // dano 1,1 → 1,19 em 18/10/2026 (p781: +8%)      // dano 0,91 → 1,1 e arena 1,3 → 1,075 em 13/10/2026 (p633: +21% só no Rift)
     ordem: ['N', 'R', 'E', 'A', 'G', 'B', 'F', 'T', 'Q', 'M', 'W'] },
-  ezreal: { id: 'ezreal', dados: DADOS_EZREAL, stats: DADOS_EZREAL.campeao.stats, adBase: 66, adNivel: 4.2, hab: HAB_EZREAL, distancia: true, hemorragia: false, chegadaExtra: 1.2, papel: { dano: 1.12, recebido: 1.05, arena: 1.1, pvp: 1.08, pvpRecebido: 0.95, vel: 1.08 },
+  ezreal: { id: 'ezreal', dados: DADOS_EZREAL, stats: DADOS_EZREAL.campeao.stats, adBase: 66, adNivel: 4.2, hab: HAB_EZREAL, distancia: true, hemorragia: false, chegadaExtra: 1.2, papel: { dano: 1.12, recebido: 1.05, arena: 1.1, pvp: 1.08, pvpRecebido: 0.95, vel: 1.08, dungeon: 1.07 },      // dungeon: +7% só na luta da Dungeon (p780)
     // kiting: recua entre os disparos (recuo em s que o monstro leva para alcançar de novo), gastando fôlego
     kite: { recarga: 1.6, recuo: 0.6, gasto: 0.25, recupera: 0.15, pausa: 0.2 },
     ordem: ['N', 'G', 'F', 'R', 'E', 'B', 'T', 'A', 'M', 'W', 'Q'] },
@@ -895,7 +964,7 @@ export const KITS = {
     ordem: ['N', 'R', 'W', 'E', 'A', 'G', 'B', 'F', 'T', 'M', 'Q'] },
   // Katarina: corpo a corpo, de magia, sem mana; as adagas (Q, A, T) caem no chão e ela gira ao pegar
   katarina: { id: 'katarina', dados: DADOS_KATARINA, stats: DADOS_KATARINA.campeao.stats, adBase: 58, adNivel: 3.4, hab: HAB_KATARINA, distancia: false, magia: true, semMana: true, adagas: true,
-    hemorragia: false, papel: { dano: 1.2, recebido: 0.75, recebidoArena: 1, arena: 1.75, pvp: 1.15, pvpRecebido: 0.92, vel: 1.05 },
+    hemorragia: false, papel: { dano: 1.26, recebido: 0.75, recebidoArena: 1, arena: 1.75, pvp: 1.15, pvpRecebido: 0.92, vel: 1.05 },      // dano 1,2 → 1,26 em 18/10/2026 (p780: +5%, um pouco abaixo da média do 28 em diante)
     ordem: ['N', 'R', 'B', 'M', 'E', 'A', 'G', 'F', 'T', 'Q', 'W'] },
   // Taric: tanque de suporte, de magia; cura, escudos e atordoamentos, e a Bravata depois de cada habilidade
   taric: { id: 'taric', dados: DADOS_TARIC, stats: DADOS_TARIC.campeao.stats, adBase: 55, adNivel: 3.3, hab: HAB_TARIC, distancia: false, magia: true,
@@ -903,8 +972,14 @@ export const KITS = {
     ordem: ['R', 'N', 'F', 'Q', 'W', 'E', 'B', 'G', 'M', 'T', 'A'] },
   // Zac: tanque que entra na briga; sem mana, paga as habilidades com vida (semMana) e se cura com as gosmas
   zac: { id: 'zac', dados: DADOS_ZAC, stats: DADOS_ZAC.campeao.stats, adBase: 60, adNivel: 3.3, hab: HAB_ZAC, distancia: false, magia: true, semMana: true, gosmas: true,
-    hemorragia: false, papel: { dano: 1.425, recebido: 0.66, recebidoArena: 0.7, arena: 0.7, pvp: 0.65, pvpRecebido: 0.69 },      // dano 1,37 → 1,425 em 13/10/2026 (p600, +4%)
+    hemorragia: false, papel: { dano: 1.55, recebido: 0.66, recebidoArena: 0.7, arena: 0.8, pvp: 0.75, pvpRecebido: 0.69 },      // dano 1,37 → 1,425 em 13/10/2026 (p600, +4%)
     ordem: ['N', 'R', 'B', 'G', 'E', 'A', 'T', 'M', 'F', 'W', 'Q'] },
+  // Ryze: mago de dano constante (17/10/2026, pedido do dono): o combo Q-E-Q sem parar, um pouco abaixo da Lux no dano em grupo e
+  // mais resistente que ela pelo escudo das runas; ataca de longe e recua como a Lux
+  ryze: { id: 'ryze', dados: DADOS_RYZE, stats: DADOS_RYZE.campeao.stats, adBase: 55, adNivel: 3.3, hab: HAB_RYZE, distancia: true, magia: true, hemorragia: false, chegadaExtra: 1.2,
+    papel: { dano: 1.1, recebido: 0.85, arena: 1.1, pvp: 1.0, pvpRecebido: 0.92 },
+    kite: { recarga: 1.8, recuo: 0.55, gasto: 0.25, recupera: 0.15, pausa: 0.2 },
+    ordem: ['N', 'R', 'F', 'B', 'G', 'M', 'T', 'A', 'W', 'E', 'Q'] },
 };
 export const kit = (estado) => KITS[estado?.campeao] || KITS.darius;
 export const habDe = (estado) => kit(estado).hab;
@@ -1000,6 +1075,16 @@ export function efeitosRank(tecla, r, estado) {
   if (h.danoGosma) lista.push([t('Dano das habilidades por gosma'), t('+{p} (até {n} vezes)', { p: num1(h.danoGosma[i] * 100) + '%', n: h.acumMax })], [t('Recargas a menos por gosma'), `${h.reduzGosma[i]}s`]);
   if (h.clones) lista.push([t('Cópias'), String(h.clones)]);
   if (h.curaPorAlvo) lista.push([t('Cura por monstro atingido'), t('{p} da vida máxima (até {n})', { p: pct(h.curaPorAlvo), n: h.curaAlvos })]);
+  if (h.fluxoBonus) lista.push([t('Dano extra com Fluxo'), `+${pct(h.fluxoBonus[i])}`]);
+  if (h.escudoBase) lista.push([t('Escudo com 2 runas'), t('{b} + {p} do Poder de Habilidade + {m} da mana máxima', { b: h.escudoBase[i], p: pct(h.escudoPoder), m: pct(h.escudoManaQ) })]);
+  if (h.prendeFluxo) lista.push([t('Prende com Fluxo'), `${num1(h.prendeFluxo)}s`]);
+  if (h.espalha) lista.push([t('Fluxo se espalha para'), t('{n} monstros perto', { n: h.espalha })]);
+  if (h.ticks && h.canal) lista.push([t('Queima enquanto abre'), t('{n} vezes em {s}s', { n: h.ticks, s: num1(h.canal) })], [t('Distância do teleporte'), t('até {n} quadrados', { n: h.alcance })]);
+  if (h.escudoMana) lista.push([t('Escudo'), t('{p} da mana máxima + {q} do Poder de Habilidade', { p: pct(h.escudoMana[i]), q: pct(h.escudoPoder) })]);
+  if (h.ecoMana) lista.push([t('Saltos'), String(h.ecoSaltos)], [t('Mana de volta'), num1(h.ecoMana[i] * 100) + '%']);
+  if (h.runas) lista.push([t('Runas'), String(h.runas)]);
+  if (h.fluxoExtra) lista.push([t('Em quem tem Fluxo'), `+${pct(h.fluxoExtra)}`]);
+  if (h.metadeMana) lista.push([t('Custo de mana'), t('metade')]);
   if (h.recarga) lista.push([t('Recarga'), `${h.recarga[i]}s`]);
   if (h.custoVida && h.custoVida[i]) lista.push([t('Custo'), t('{p} da vida atual', { p: num1(h.custoVida[i] * 100) + '%' })]);
   if (h.custo && h.custo[i]) lista.push([t('Mana'), String(h.custo[i])]);
@@ -1163,7 +1248,10 @@ export function chancesDrop(local, mult = 1) {
 // classe: 'ad' (padrão: Darius, Ezreal) ou 'ap' (campeões de magia)
 export const itensPorRaridade = (r, local, classe = 'ad') => (classe === 'ap' ? local?.dropsAp?.[r] || POR_CLASSE.ap[r] : local?.drops?.[r] || POR_CLASSE.ad[r]);
 export const classeDe = (estado) => (kit(estado).magia ? 'ap' : 'ad');
-export function sortearLoot(local, chefe, mult = 1, classe = 'ad') {
+// p755: até o nível 15 a chance de lendário dobra (quem começa mata pouco por hora; ~8 a 9 h pelo primeiro lendário)
+export const LEND_NOVATO = { ate: 15, mult: 2 };
+export const multLendNovato = (estado) => ((estado?.nivel || 1) <= LEND_NOVATO.ate ? LEND_NOVATO.mult : 1);
+export function sortearLoot(local, chefe, mult = 1, classe = 'ad', multLend = 1) {
   const r = Math.random, t = local.tier || 0, itens = [];
   const pool = (rar) => itensPorRaridade(rar, local, classe);
   if (chefe) {
@@ -1171,7 +1259,7 @@ export function sortearLoot(local, chefe, mult = 1, classe = 'ad') {
     return itens;
   }
   const c = BRUTO(t);
-  if (r() < c.lendario * mult) itens.push(escolher(pool('lendario')));
+  if (r() < c.lendario * mult * multLend) itens.push(escolher(pool('lendario')));
   else if (r() < c.epico * mult) itens.push(escolher(pool('epico')));
   else if (r() < c.basico * mult) itens.push(escolher(pool('basico')));
   return itens;
@@ -1224,7 +1312,7 @@ function golpear(estado, c, a, alvo, bruto, fonte, { acumula = true, critico = f
   }
   const d = c.darius;
   let dano = mitigar(bruto, arm) * (1 + (d.grito > 0 ? d.gritoBonus : 0) + 0.01 * d.disciplina + (estado.buffBarao > 0 ? BARAO.dano : 0));
-  dano *= (kit(estado).papel?.dano ?? 1) * (LOCAL[estado.local]?.arena ? kit(estado).papel?.arena ?? 1 : 1);      // o papel do campeão (tanque bate menos, a maga bate mais); em Runeterra, o ajuste de lá
+  dano *= (kit(estado).papel?.dano ?? 1) * (LOCAL[estado.local]?.arena ? kit(estado).papel?.arena ?? 1 : 1) * (c.dg ? kit(estado).papel?.dungeon ?? 1 : 1);      // p780: na Dungeon, o ajuste de lá      // o papel do campeão (tanque bate menos, a maga bate mais); em Runeterra, o ajuste de lá
   if (critico) dano *= a.danoCritico || 1.75;
   if (alvo.chefe && a.tem?.('3036')) dano *= 1.15;
   if (alvo.dominioAmp) dano *= 1 + alvo.dominioAmp;          // Domínio de Noxus: quanto mais tempo dentro, mais dano leva
@@ -1232,6 +1320,7 @@ function golpear(estado, c, a, alvo, bruto, fonte, { acumula = true, critico = f
   if (ezreal && hab) dano *= bonusEzreal(estado, c, alvo);
   if (hab && a.danoHab) dano *= 1 + a.danoHab;               // Foco da Katarina (vale também no giro das adagas)
   if (hab && d.absorcao > 0) dano *= 1 + (d.absorcaoBonus || 0) * (d.absorcaoAcum || 0);      // Absorção (Zac): cada gosma pega
+  if (hab && d.fluxoArcano > 0) dano *= 1 + (d.fluxoArcBonus || 0);                          // Fluxo Arcano (Ryze)
   if (d.sombraPronta > 0 && hab && fonte !== 'B') { dano *= 1 + (d.sombraBonus || 0); d.sombraPronta = 0; emitir(c, 'sombraGolpe', { alvo: alvo.id }); }
   if (!c.dg) dano *= fatorDanoJogador(estado, alvo);                  // monstro bem acima do seu nível aguenta mais
   if (alvo.escudoLonge > 0 && kit(estado).distancia) dano *= 1 - alvo.escudoLonge;      // Inquebrável do Braum: segura quem ataca de longe (p663)
@@ -1404,6 +1493,8 @@ export function passo(estado, c, dt) {
   for (const k of ['sede', 'veneno', 'sinistra', 'sombraPronta', 'pegaCd']) if (d[k] > 0) d[k] = Math.max(0, d[k] - dt);      // Katarina
   for (const k of ['bravataT', 'diamante']) if (d[k] > 0) d[k] = Math.max(0, d[k] - dt);      // Taric
   for (const k of ['membrana', 'absorcao', 'pegaGosmaCd']) if (d[k] > 0) d[k] = Math.max(0, d[k] - dt);      // Zac
+  for (const k of ['fluxoArcano', 'runasT']) if (d[k] > 0) d[k] = Math.max(0, d[k] - dt);      // Ryze
+  if (!(d.runasT > 0)) d.runas = 0;
   if (!(d.absorcao > 0)) d.absorcaoAcum = 0;
   if (d.dividido > 0) { d.dividido = Math.max(0, d.dividido - dt); if (d.dividido <= 0) reunirZac(estado, c, a); }      // Divisão Celular: os pedaços se juntam
   if (!(d.bravataT > 0)) d.bravata = 0;
@@ -1469,6 +1560,7 @@ export function passo(estado, c, dt) {
   if (K.adagas) katarinaPasso(estado, c, a, adEfetivo, vivos, dt);
   if (K.id === 'taric') taricPasso(estado, c, a, adEfetivo, vivos, dt);
   if (K.gosmas) zacPasso(estado, c, a, adEfetivo, vivos, dt);
+  if (K.id === 'ryze') ryzePasso(estado, c, a, adEfetivo, vivos, dt);
 
   // Lux: o Tornado de Fogo queima o grupo a cada meio segundo; a varinha da Barreira Prismática volta e dá o escudo de novo
   if (d.tornado) {
@@ -1595,9 +1687,10 @@ export function passo(estado, c, dt) {
   if (alvo && d.recall <= 0 && !(d.dividido > 0)) {
     const r = estado.ranks;
     // só as habilidades que estão na barra são usadas
-    const pode = (t) => estado.barra.includes(t) && r[t] && d.recargas[t] <= 0 && estado.mana >= HK[t].custo[r[t] - 1];
+    const custoT = (t) => HK[t].custo[r[t] - 1] * (d.fluxoArcano > 0 ? 0.5 : 1);      // Fluxo Arcano (Ryze): metade da mana
+    const pode = (t) => estado.barra.includes(t) && r[t] && d.recargas[t] <= 0 && estado.mana >= custoT(t);
     const usar = (t, extra = {}, recarga = HK[t].recarga[r[t] - 1]) => {
-      gastarMana(estado, HK[t].custo[r[t] - 1]);
+      gastarMana(estado, custoT(t));
       d.recargas[t] = recarga * (1 - a.reducaoRecarga);
       emitir(c, 'habilidade', { tecla: t, ...extra });
       d.trindade = lamina(a);
@@ -1606,7 +1699,7 @@ export function passo(estado, c, dt) {
     const chegando = vivos.filter((i) => i.chegada > 0);
     const alcancaveis = K.distancia ? vivos : prontos;     // quem as habilidades de área e de execução conseguem acertar
     const ctx = { estado, c, a, d, r, HK, adEfetivo, vivos, prontos, chegando, alcancaveis, alvo, pode, usar };
-    const acoes = { ...acoesComuns(ctx), ...(K.id === 'lux' ? acoesLux(ctx) : K.id === 'ezreal' ? acoesEzreal(ctx) : K.id === 'yasuo' ? acoesYasuo(ctx) : K.id === 'katarina' ? acoesKatarina(ctx) : K.id === 'taric' ? acoesTaric(ctx) : K.id === 'zac' ? acoesZac(ctx) : acoesDarius(ctx)) };
+    const acoes = { ...acoesComuns(ctx), ...(K.id === 'lux' ? acoesLux(ctx) : K.id === 'ezreal' ? acoesEzreal(ctx) : K.id === 'yasuo' ? acoesYasuo(ctx) : K.id === 'katarina' ? acoesKatarina(ctx) : K.id === 'taric' ? acoesTaric(ctx) : K.id === 'zac' ? acoesZac(ctx) : K.id === 'ryze' ? acoesRyze(ctx) : acoesDarius(ctx)) };
     if (d.canalR > 0) {        // Barragem Incendiária: carregando a luva, parado e sem atacar
       d.canalR -= dt;
       if (d.canalR <= 0) (K.id === 'lux' ? dispararCentelha : dispararBarragem)(ctx);
@@ -1789,7 +1882,7 @@ function processarAbates(estado, c, a, local, bonus = 1, bonusXp = 1) {
       ganharXpMascote(estado, c, xp * 0.1);
       const petIt = 1 + bonusMascote(estado).itens;      // a Aranhinha acha um pouco mais de itens
       const lugar = typeof local === 'function' ? local(i) : local;
-      const cl = classeDe(estado), itens = i.invocado ? [] : [...sortearLoot(lugar, i.chefe, mult * petIt, cl), ...aMais(i, FURIOSO.saque, () => sortearLoot(lugar, false, mult * petIt, cl))], guardados = [], perdidos = [];
+      const cl = classeDe(estado), ml = multLendNovato(estado), itens = i.invocado ? [] : [...sortearLoot(lugar, i.chefe, mult * petIt, cl, ml), ...aMais(i, FURIOSO.saque, () => sortearLoot(lugar, false, mult * petIt, cl, ml))], guardados = [], perdidos = [];
       for (const id of itens) {
         if (estado.ignorarBasicos && raridade(infoItem(id)) === 'basico') continue;
         if (espacosLivres(estado) > 0) { estado.mochila.push(comItem(id, 0, '?')); guardados.push(id); estado.totais.drops++; if (ITENS[id].lendario) estado.totais.lendarios = (estado.totais.lendarios || 0) + 1; }
@@ -1806,7 +1899,12 @@ function processarAbates(estado, c, a, local, bonus = 1, bonusXp = 1) {
       if (i.nome === 'Barão Nashor') { estado.buffBarao = BARAO.duracao; emitir(c, 'buffBarao', {}); }
       emitir(c, 'abate', { alvo: i.id, nome: i.nome, ouro, xp, chefe: i.chefe, furioso: !!i.furioso, itens: guardados, perdidos, espolios: espGuardados, gemas });
       if (!i.invocado) contarTarefa(estado, c, i.nome, !!i.furioso);      // as larvas que o Barão invoca não contam (como na diária)
-      contarDiaria(estado, i);
+      contarDiaria(estado, i, c);
+      if (i.fluxoR > 0 && habDe(estado).D?.ecoMana) {      // Eco Rúnico (Ryze): o Fluxo pula para os mais perto (em Runeterra, até 4 tiles)
+        const perto = c.inimigos.filter((o) => o.hp > 0 && (i.x == null || Math.hypot(o.x - i.x, o.y - i.y) <= 4))
+          .sort((p, q) => (i.x == null ? p.chegada - q.chegada : Math.hypot(p.x - i.x, p.y - i.y) - Math.hypot(q.x - i.x, q.y - i.y)));
+        ecoRunico(estado, c, a, i, perto);
+      }
       const HPk = habDe(estado).P;
       if (HPk?.voracidade) for (const t of ['Q', 'W', 'E']) d.recargas[t] = Math.max(0, d.recargas[t] - (i.chefe ? HPk.voracidadeChefe : HPk.voracidade));
       if (a.tem('6333')) { d.sangramentoRecebido = []; curar(estado, c, a, (a.vida - estado.vida) * 0.15); }
@@ -2597,6 +2695,159 @@ function acoesZac(ctx) {
 
 export const CANAL_R = 1;
 export const CANAL_LUX = 0.6;
+// ---------- Ryze ----------
+// marca de Fluxo (segundos) num monstro; em Runeterra o arena.js usa as mesmas funções
+export function marcarFluxo(estado, i) { if (i && i.hp > 0) i.fluxoR = habDe(estado).P?.fluxo || 4; }
+export const temFluxo = (i) => i?.fluxoR > 0;
+export function darRuna(estado, c) {
+  const d = c.darius, HP = habDe(estado).P;
+  d.runas = Math.min(HP.runasMax, (d.runas || 0) + 1); d.runasT = HP.runaDura;
+  emitir(c, 'runa', { n: d.runas });
+}
+// o Sobrecarregar: no alvo e, se ele tem Fluxo, em todos os outros com Fluxo; com 2 runas, o escudo
+export function sobrecarregar(estado, c, a, adEfetivo, alvo, outros) {
+  const d = c.darius, HQ = habDe(estado).Q, rQ = estado.ranks.Q || 1;
+  const bruto = HQ.dano(rQ, adEfetivo), bonus = 1 + HQ.fluxoBonus[rQ - 1];
+  const pula = temFluxo(alvo) ? outros.filter((i) => i !== alvo && i.hp > 0 && temFluxo(i)) : [];
+  golpear(estado, c, adEfetivo, alvo, bruto * (temFluxo(alvo) ? bonus : 1), 'Q', { acumula: false });
+  for (const i of pula) golpear(estado, c, adEfetivo, i, bruto * bonus, 'Q', { acumula: false });
+  let escudo = 0;
+  if ((d.runas || 0) >= habDe(estado).P.runasMax) {
+    escudo = escudoRunasRyze(rQ, adEfetivo);
+    d.escudo = Math.max(d.escudo || 0, escudo); d.runas = 0; d.runasT = 0;
+    emitir(c, 'escudoRuna', { escudo: Math.round(escudo) });
+  }
+  return { pula, escudo };
+}
+// Eco Rúnico (D): um monstro com Fluxo morreu; o Fluxo pula para os mais perto (perto: lista já filtrada por quem chama)
+export function ecoRunico(estado, c, a, morto, perto) {
+  const HD = habDe(estado).D, rD = estado.ranks.D;
+  if (!HD?.ecoMana || !rD) return;
+  const adEf = efetivo(estado, c.darius, a), alvos = perto.filter((i) => i !== morto && i.hp > 0).slice(0, HD.ecoSaltos);
+  estado.mana = Math.min(a.mana, estado.mana + a.mana * HD.ecoMana[rD - 1]);
+  emitir(c, 'ecoRunico', { de: morto.id, para: alvos.map((i) => i.id) });
+  for (const i of alvos) { golpear(estado, c, adEf, i, HD.dano(rD, adEf), 'D', { acumula: false }); marcarFluxo(estado, i); }
+}
+function ryzePasso(estado, c, a, adEfetivo, vivos, dt) {
+  const d = c.darius, HK = habDe(estado), r = estado.ranks;
+  for (const i of c.inimigos) if (i.fluxoR > 0) i.fluxoR = Math.max(0, i.fluxoR - dt);
+  // Portal de Reinos: abre no meio do grupo, queima e marca quem está perto; no fim o Ryze reaparece longe
+  if (d.portalR) {
+    const p = d.portalR, HR = HK.R, rR = r.R || 1;
+    p.t -= dt; p.tick -= dt;
+    while (p.tick <= 0 && p.n < HR.ticks) {
+      p.tick += HR.canal / HR.ticks; p.n++;
+      const perto = vivos.filter((i) => i.hp > 0 && i.chegada <= 1.5);
+      for (const i of perto) { golpear(estado, c, adEfetivo, i, HR.dano(rR, adEfetivo), 'R', { acumula: false }); marcarFluxo(estado, i); }
+      emitir(c, 'portalR', { fase: 'queima', n: p.n, alvos: perto.map((i) => i.id) });
+    }
+    if (p.t <= 0) {
+      const afasta = HR.afasta[rR - 1];
+      for (const i of vivos) i.chegada = Math.max(i.chegada, afasta * (i.chefe ? 0.5 : 1));
+      d.portalR = null;
+      emitir(c, 'portalR', { fase: 'fim' });
+    }
+  }
+  // Tempestade Arcana: as runas caem uma de cada vez
+  if (d.runasM?.length) d.runasM = d.runasM.filter((q) => {
+    q.t -= dt;
+    if (q.t > 0) return true;
+    const vs = vivos.filter((i) => i.hp > 0);
+    const alvo = vs.find((i) => i.id === q.alvo) || vs.find(temFluxo) || vs[0];
+    if (alvo) { golpear(estado, c, adEfetivo, alvo, q.bruto, 'M', { acumula: false }); marcarFluxo(estado, alvo); emitir(c, 'runaQueda', { alvo: alvo.id }); }
+    return false;
+  });
+  // Colapso dos Reinos: a explosão
+  if (d.colapso) {
+    d.colapso.t -= dt;
+    if (d.colapso.t <= 0) {
+      const HN = HK.N, rN = r.N || 1, alvos = vivos.filter((i) => i.hp > 0);
+      emitir(c, 'colapso', { fase: 'explode', alvos: alvos.map((i) => i.id) });
+      for (const i of alvos) { golpear(estado, c, adEfetivo, i, HN.dano(rN, adEfetivo) * (temFluxo(i) ? 1 + HN.fluxoExtra : 1), 'N', { acumula: false }); marcarFluxo(estado, i); }
+      d.recargas.Q = Math.min(d.recargas.Q || 0, HK.P.resetQ);
+      d.colapso = null;
+    }
+  }
+}
+function acoesRyze(ctx) {
+  const { estado, c, a, d, r, HK, adEfetivo, vivos, prontos, chegando, alvo, pode, usar } = ctx;
+  const grupo = () => vivos.length >= 2 || alvo.chefe || alvo.furioso;
+  const zerarQ = () => { d.recargas.Q = Math.min(d.recargas.Q || 0, HK.P.resetQ); darRuna(estado, c); };      // p776
+  return {
+    N() {      // Colapso dos Reinos: o grupo todo para a fenda; explode 1 s depois
+      if (!pode('N') || d.colapso || !(vivos.length >= 3 || alvo.chefe || alvo.furioso)) return;
+      d.colapso = { t: HK.N.espera };
+      usar('N', { alvo: alvo.id, alvos: vivos.map((i) => i.id), espera: HK.N.espera });
+    },
+    R() {      // Portal de Reinos: quando o grupo chega (ou num chefe), queima e some para longe
+      if (!pode('R') || d.portalR || !(prontos.length >= 2 || alvo.chefe || alvo.furioso || (vivos.length >= 3 && estado.vida < a.vida * 0.6))) return;
+      d.portalR = { t: HK.R.canal, tick: 0, n: 0 };
+      usar('R', { alvos: vivos.filter((i) => i.chegada <= 1.5).map((i) => i.id), canal: HK.R.canal });
+      emitir(c, 'portalR', { fase: 'abre', canal: HK.R.canal });
+    },
+    F() {      // Barreira de Mana: quando a vida cai
+      if (!pode('F') || estado.vida >= a.vida * 0.7) return;
+      const v = HK.F.escudoMana[r.F - 1] * a.mana + HK.F.escudoPoder * apDe(adEfetivo);
+      d.escudo = Math.max(d.escudo || 0, v);
+      usar('F', { escudo: Math.round(v) });
+    },
+    B() {      // Pergaminho Antigo: Poder e mana por 10 s
+      if (!pode('B') || !(estado.mana < a.mana * 0.6 || vivos.length >= 3 || alvo.chefe || alvo.furioso)) return;
+      d.estandarte = HK.B.duracao; d.estandarteCura = 0; d.farolMana = HK.B.manaSeg;
+      d.farol = HK.B.duracao; d.farolPoder = HK.B.poderBonus[r.B - 1];
+      usar('B');
+    },
+    G() {      // Fluxo Arcano: mais dano e metade da mana
+      if (!pode('G') || !grupo()) return;
+      d.fluxoArcano = HK.G.duracao; d.fluxoArcBonus = HK.G.bonusHab[r.G - 1];
+      usar('G', { duracao: HK.G.duracao });
+    },
+    M() {      // Tempestade Arcana: 6 runas, uma a cada 0,2 s (primeiro nos que têm Fluxo)
+      if (!pode('M') || !grupo()) return;
+      const vs = [...vivos.filter(temFluxo), ...vivos.filter((i) => !temFluxo(i))].filter((i) => i.hp > 0), bruto = HK.M.dano(r.M, adEfetivo), quedas = [];
+      for (let k = 0; k < HK.M.runas; k++) { const q = { t: 0.35 + k * HK.M.intervalo, alvo: vs[k % vs.length].id }; quedas.push(q); (d.runasM ??= []).push({ ...q, bruto }); }
+      usar('M', { alvo: alvo.id, quedas });
+    },
+    T() {      // Círculo de Runas: em volta (também quem está quase chegando)
+      const alvos = vivos.filter((i) => i.hp > 0 && i.chegada <= 1.5);
+      if (!pode('T') || !(alvos.length >= 2 || alvo.chefe || alvo.furioso)) return;
+      for (const i of alvos) { golpear(estado, c, adEfetivo, i, HK.T.dano(r.T, adEfetivo), 'T', { acumula: false }); i.lento = Math.max(i.lento || 0, HK.T.lento); marcarFluxo(estado, i); }
+      usar('T', { alvos: alvos.map((i) => i.id) });
+    },
+    A() {      // Grilhão Rúnico: o mais distante (ou o Arauto carregando)
+      const arauto = vivos.find((i) => MECANICAS[i.nome] === 'investida' && i.hp > 0);
+      if (!pode('A') || (arauto && !(arauto.carregando > 0))) return;
+      const longe = (arauto?.carregando > 0 && arauto) || [...chegando].sort((x, y) => y.chegada - x.chegada)[0] || alvo;
+      golpear(estado, c, adEfetivo, longe, HK.A.dano(r.A, adEfetivo), 'A', { acumula: false });
+      longe.atordoado = Math.max(longe.atordoado || 0, HK.A.atordoa); marcarFluxo(estado, longe);
+      usar('A', { alvo: longe.id });
+    },
+    W() {      // Prisão de Runa: prende (mais com Fluxo), zera o Q
+      if (!pode('W') || alvo.hp <= 0) return;
+      const preso = temFluxo(alvo) ? HK.W.prendeFluxo : HK.W.prende;
+      golpear(estado, c, adEfetivo, alvo, HK.W.dano(r.W, adEfetivo), 'W', { acumula: false });
+      alvo.atordoado = Math.max(alvo.atordoado || 0, preso);
+      usar('W', { alvo: alvo.id, prende: preso, fluxo: temFluxo(alvo) });
+      zerarQ();
+    },
+    E() {      // Fluxo de Feitiço: Fluxo no alvo e nos vizinhos; com Fluxo antes, o dano também se espalha
+      if (!pode('E') || alvo.hp <= 0) return;
+      const ja = temFluxo(alvo), viz = vivos.filter((i) => i !== alvo && i.hp > 0).sort((x, y) => x.chegada - y.chegada).slice(0, HK.E.espalha), bruto = HK.E.dano(r.E, adEfetivo);
+      golpear(estado, c, adEfetivo, alvo, bruto, 'E', { acumula: false });
+      if (ja) for (const i of viz) golpear(estado, c, adEfetivo, i, bruto, 'E', { acumula: false });
+      for (const i of [alvo, ...viz]) marcarFluxo(estado, i);
+      usar('E', { alvo: alvo.id, alvos: viz.map((i) => i.id), espalhou: ja });
+      emitir(c, 'fluxoMarca', { alvos: [alvo, ...viz].filter((i) => i.hp > 0).map((i) => i.id) });
+      zerarQ();
+    },
+    Q() {      // Sobrecarregar
+      if (!pode('Q') || alvo.hp <= 0) return;
+      const { pula, escudo } = sobrecarregar(estado, c, a, adEfetivo, alvo, vivos);
+      usar('Q', { alvo: alvo.id, alvos: pula.map((i) => i.id), escudo: Math.round(escudo) });
+    },
+  };
+}
+
 function dispararBarragem(ctx) {
   const { estado, c, r, HK, adEfetivo, vivos } = ctx;
   if (!r.R) return;
@@ -2795,6 +3046,7 @@ function zerarEfeitos(d) {
   d.arrogancia = 0; d.sobrecarga = 0; d.apogeu = 0; d.pressa = 0; d.portal = null; d.ricochetes = []; d.isca = null;
   d.bravata = 0; d.bravataT = 0; d.diamante = 0; d.deslumbrar = null; d.radiancia = null;
   d.gosmas = []; d.quique = null; d.poca = null; d.mitose = null; d.regenZ = null; d.membrana = 0; d.absorcao = 0; d.absorcaoAcum = 0; d.dividido = 0;
+  d.runas = 0; d.runasT = 0; d.fluxoArcano = 0; d.portalR = null; d.runasM = []; d.colapso = null;
 }
 function morrer(estado, c, por) {
   const d = c.darius, aram = !!LOCAL[estado.local]?.aram;
@@ -3422,11 +3674,11 @@ export function aceitarDiaria(estado, tipo = 'runeterra') {
   return true;
 }
 export const diariaPronta = (estado, tipo = 'runeterra') => { const d = estado[DIARIAS[tipo].campo]; return !!d && d.feitos >= d.qtd; };
-function contarDiaria(estado, i) {
+function contarDiaria(estado, i, c = null) {
   if (i.invocado) return;
-  for (const D of Object.values(DIARIAS)) {
+  for (const [tipo, D] of Object.entries(DIARIAS)) {
     const d = estado[D.campo];
-    if (d && d.feitos < d.qtd && D.aqui(estado) && (i.nivel || 0) >= estado.nivel - D.regra.abaixo) d.feitos++;
+    if (d && d.feitos < d.qtd && D.aqui(estado) && (i.nivel || 0) >= estado.nivel - D.regra.abaixo) { d.feitos++; if (d.feitos === d.qtd && c) emitir(c, 'diariaPronta', { qual: tipo }); }
   }
 }
 // a entrega (só no servidor): XP, ouro e o item; devolve null se não pode, ou { mochilaCheia }
@@ -3483,7 +3735,7 @@ export function entregarTarefa(estado, c) {
   const max = recompensaTarefa(t);       // aceita antes de um rebalanço: paga no máximo o de agora (o anticheat confere assim)
   if (max) { t.xp = Math.min(Number(t.xp) || 0, max.xp); t.ouro = Math.min(Number(t.ouro) || 0, max.ouro); }
   const rar = raridadeTarefa(t), item = rar ? escolher(POR_CLASSE[classeDe(estado)][rar]) : null;
-  if (item) { estado.mochila.push(comItem(item, 0, '?')); if (ITENS[item].lendario) estado.totais.lendarios = (estado.totais.lendarios || 0) + 1; }
+  if (item && !(estado.ignorarBasicos && rar === 'basico')) { estado.mochila.push(comItem(item, 0, '?')); if (ITENS[item].lendario) estado.totais.lendarios = (estado.totais.lendarios || 0) + 1; }      // "Sem básicos" vale também aqui
   estado.ouro += t.ouro; estado.totais.ouro += t.ouro;
   ganharXp(estado, c, t.xp);
   estado.tarefa = null;
@@ -3533,7 +3785,14 @@ export function escolherTitulo(estado, id) {
   if (id && !estado.conquistas?.includes(id)) return false;
   estado.titulo = id || null; return true;
 }
-export const tituloAtual = (estado) => CONQUISTAS.find((c) => c.id === estado.titulo)?.titulo || null;
+// p765: o título no feminino (estado.tituloFem); vai aos outros como "id" ou "id:f"
+export const TITULOS_F = { sangue: 'a Recruta', centuriao: 'Centuriã', carniceiro: 'a Carniceira', veterano: 'a Veterana', mao: 'a Mão de Noxus', imortal: 'a Imortal', arauto: 'Caçadora de Arautos', dragao: 'Matadora de Dragões', barao: 'Carrasca do Barão', soldado: 'Soldada Dedicada', mercador: 'a Mercadora', sortudo: 'a Sortuda', vilemaw: 'Matadora de Vilemaw', ferreiro: 'Discípula de Ornn', rico: 'a Magnata', colecionador: 'a Colecionadora' };
+export const codigoTitulo = (estado) => (estado?.titulo ? estado.titulo + (estado.tituloFem ? ':f' : '') : null);
+export function textoTitulo(codigo) {
+  const [id, g] = String(codigo || '').split(':'), c = CONQUISTAS.find((x) => x.id === id);
+  return c ? (g === 'f' && TITULOS_F[id]) || c.titulo : null;
+}
+export const tituloAtual = (estado) => textoTitulo(codigoTitulo(estado));
 
 // ---------- Mascotes ----------
 export const MASCOTE_MAX = 20;
@@ -3637,17 +3896,19 @@ function ganharXpMascote(estado, c, xp) {
 // outras (de antes, compradas com ouro ou liberadas por feitos) continua com elas.
 // "efeitos": a skin também muda as cores das habilidades (só o visual: mesmo dano e mesma área). Custa mais.
 const SKINS_A_VENDA = {
-  darius: { 15: { preco: 900, efeitos: true }, 4: { preco: 500 }, 54: { preco: 900, efeitos: true } },
-  ezreal: { 5: { preco: 900, efeitos: true }, 18: { preco: 500 }, 22: { preco: 900, efeitos: true } },
-  lux: { 6: { preco: 900, efeitos: true }, 15: { preco: 500 }, 42: { preco: 900, efeitos: true } },
-  yasuo: { 36: { preco: 900, efeitos: true }, 3: { preco: 500 }, 9: { preco: 900, efeitos: true } },
-  katarina: { 29: { preco: 900, efeitos: true }, 12: { preco: 500 }, 10: { preco: 900, efeitos: true } },
-  taric: { 18: { preco: 900, efeitos: true }, 1: { preco: 500 }, 3: { preco: 900, efeitos: true } },
-  zac: { 1: { preco: 500 }, 24: { preco: 900, efeitos: true } },
+  darius: { 24: { preco: 1500, efeitos: true, ultimate: true }, 15: { preco: 900, efeitos: true }, 4: { preco: 500 }, 54: { preco: 900, efeitos: true } },
+  ezreal: { 54: { preco: 1500, efeitos: true, ultimate: true }, 5: { preco: 900, efeitos: true }, 18: { preco: 500 }, 22: { preco: 900, efeitos: true } },
+  lux: { 7: { preco: 1500, efeitos: true, ultimate: true }, 6: { preco: 900, efeitos: true }, 15: { preco: 500 }, 42: { preco: 900, efeitos: true } },
+  yasuo: { 54: { preco: 1500, efeitos: true, ultimate: true }, 36: { preco: 900, efeitos: true }, 3: { preco: 500 }, 9: { preco: 900, efeitos: true } },
+  katarina: { 48: { preco: 1500, efeitos: true, ultimate: true }, 29: { preco: 900, efeitos: true }, 12: { preco: 500 }, 10: { preco: 900, efeitos: true } },
+  taric: { 27: { preco: 1500, efeitos: true, ultimate: true }, 18: { preco: 900, efeitos: true }, 1: { preco: 500 }, 3: { preco: 900, efeitos: true } },
+  zac: { 1: { preco: 500 }, 24: { preco: 900, efeitos: true }, 14: { preco: 1500, efeitos: true, ultimate: true } },      // 14: Zac Empíreo, ultimate (p739)
+  // Ryze (17/10/2026)
+  ryze: { 9: { preco: 500 }, 13: { preco: 900, efeitos: true }, 20: { preco: 1500, efeitos: true, ultimate: true } },      // Barba Branca, Guardião das Areias, Arcana (ultimate)
 };
 for (const k of Object.values(KITS)) {
   const venda = SKINS_A_VENDA[k.id] || {};
-  k.skins = k.dados.skins.map((sk) => ({ ...sk, aVenda: !!venda[sk.num], preco: venda[sk.num]?.preco || 0, efeitos: !!venda[sk.num]?.efeitos }));
+  k.skins = k.dados.skins.map((sk) => ({ ...sk, aVenda: !!venda[sk.num], preco: venda[sk.num]?.preco || 0, efeitos: !!venda[sk.num]?.efeitos, ultimate: !!venda[sk.num]?.ultimate }));
 }
 export const skinsDe = (estado) => kit(estado).skins;
 export const SKINS = KITS.darius.skins;
@@ -3684,7 +3945,7 @@ export const spriteMascote = (estado) => {
 // Todo jogador tem o Burrinho. Montado ele anda mais rápido (+30% no nível 1 até +75% no 10) e a montaria sobe de nível
 // com a distância andada montado (em tiles). Montar leva 1 s (andando ou parado); atacar ou usar habilidade desmonta.
 export const MONTARIA = { max: 10, montar: 1, base: 0.3, porNivel: 0.05 };
-export const SKINS_MONTARIA = [{ id: 'cavalo', nome: 'Cavalo de Guerra de Demacia', preco: 600 }];
+export const SKINS_MONTARIA = [{ id: 'cavalo', nome: 'Cavalo de Guerra de Demacia', preco: 600 }, { id: 'grifo', nome: 'Grifo de Shurima', preco: 1200 }];      // grifo: p738
 export const xpMontaria = (n) => 250 + 250 * n;          // tiles andados montado para passar do nível n
 export const montariaDe = (e) => {
   const m = (e.montaria ??= { nivel: 1, xp: 0, skins: [], skin: '' });
@@ -3734,6 +3995,7 @@ export const BENCAO_MAX = 1;
 // o Mestre da Legião também refaz o treino, por ouro (pedido do dono: caro de propósito, umas 6 h de caça em
 // qualquer nível); a Loja continua vendendo os resets por diamantes. Quem cobra e aplica é o servidor (rota /api/mestre/reset)
 export const RESET_OURO = 25000;
+export const BENCAO_OURO = 1000000;      // p763: a Bênção Protetora também por ouro
 export const precoResetOuro = (nivel) => RESET_OURO * Math.max(1, nivel || 1);
 // preço de um produto (as skins de campeão têm preço próprio)
 export function precoLoja(estado, produto, alvo) {

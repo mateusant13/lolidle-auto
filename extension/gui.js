@@ -42,6 +42,9 @@
   // MOSTRAR o que já foi recolhido, sem obrigar o usuário carregando em botões.
   const COFRE_KEY = STORAGE_KEY + ':cofre';       // { at, itens }   — conteúdo do cofre
   const OFERTAS_KEY = STORAGE_KEY + ':ofertas';   // { at, ofertas } — minhas ofertas
+  // ESTADO COMPLETO do jogo (automation.js: `estadoCompleto`, gravado a cada 20 s). A GUI lê-o
+  // para mostrar inventário/cofre/habilidades/mobs/bosses SEM varrer o DOM nem custar nada.
+  const ESTADO_KEY = STORAGE_KEY + ':estado';     // { at, campeao, inventario, cofre, ... }
   // Preferências SÓ da GUI (não são config do motor: `setConfig` escreve no objeto que o
   // motor lê e um campo desconhecido lá dentro seria lixo na config dele). Guarda aqui o
   // minimizar do bloco da build por fase e dos cartões de farm, e a modalidade de farm escolhida.
@@ -94,6 +97,7 @@
   let aggStore = null;    // espelho de AGG_KEY
   let cofreStore = null;  // espelho de COFRE_KEY: { at, itens } — última leitura GRAVADA do cofre
   let ofertasStore = null;// espelho de OFERTAS_KEY: { at, ofertas } — última leitura do mercado
+  let estadoStore = null; // espelho de ESTADO_KEY: estado COMPLETO do jogo (motor grava a cada 20 s)
   let aberto = false, fixado = false, saveTimer = null, tabAtiva = 'painel', ultimoRender = 0, cacheAgora = { at: 0, v: null };
   // Espelho de GUI_KEY (preferências da GUI, não do motor). `bfAberto`: o bloco da build por
   // fase está aberto? `farmModo`: 'sozinho' (o motor escolhe a região) ou 'item' (escolhe-se
@@ -624,10 +628,12 @@
       + '    <div id="ap-auto-mestre"></div>'
       // ÁRVORE DE INTERRUPTORES: logo ABAIXO do bloco mestre (o mestre é a raiz da árvore).
       + '    <div id="ap-auto-arvore"></div>'
+      + '    <div id="ap-auto-champ"></div>'
       + '    <div class="grid2"><div id="ap-auto-obj"></div><div id="ap-auto-regiao"></div></div>'
       + '    <div id="ap-auto-extras"></div>'
       + '    <div id="ap-auto-falta"></div>'
       + '    <div id="ap-now-pocoes"></div>'
+      + '    <div id="ap-now-jogo"></div>'
       + '    <div id="ap-auto-pocoes"></div>'
       + '    <div id="ap-auto-tarefa"></div>'
       + '    <div id="ap-auto-base"></div>'
@@ -651,6 +657,7 @@
       + '    <div id="ap-mk-plano"></div>'
       + '    <div id="ap-mk-ornn"></div>'
       + '    <div id="ap-mk-compra"></div>'
+      + '    <div id="ap-mk-watch"></div>'
       + '  </section>'
       + '  <section class="pane" id="ap-t-personagem">'
       + '    <p class="intro">O seu campeão: as HABILIDADES (barra, pontos e ordem de subida) e os ATRIBUTOS (pontos livres e modelo de distribuição).</p>'
@@ -1229,6 +1236,60 @@
       + (planoPocao ? '<p class="aviso warn">Em falta: ' + esc((planoPocao.faltas || []).map((k) => POCAO_NOME[k]).join(', ')) + '. Vai comprar: '
         + esc(ORDER.filter((k) => planoPocao.comprar[k] > 0).map((k) => POCAO_NOME[k] + ' ×' + fmt(planoPocao.comprar[k])).join(' · ') || 'nada (sem ouro)') + '</p>'
         : '<p class="hint">Poções acima do mínimo — nada comprando.</p>')));
+
+    // 6) ESTADO COMPLETO DO JOGO — inventário, equipamento, habilidades, cofre, mobs/bosses e o
+    // próximo passo. É o retrato que o MOTOR mantém atualizado (automation.js: `estadoCompleto`,
+    // gravado a cada 20 s em ESTADO_KEY), não uma segunda leitura do DOM feita aqui. Se ainda não
+    // houver retrato (a primeira gravação corre ~2,5 s depois de o motor arrancar), não se inventa.
+    const est = estadoStore;
+    if (!est || !est.at) {
+      setHtml('ap-now-jogo', '');
+    } else {
+      const nomeDe = (b) => nomeItem(b);
+      const inv = est.inventario;
+      const itensInv = inv && inv.itens ? inv.itens : [];
+      const invRes = itensInv.slice(0, 10).map((i) => i.espolio
+        ? '<span class="tag">' + esc(i.espolio) + ' ×' + fmt(i.qtd) + '</span>'
+        : '<span class="tag">' + esc(nomeDe(i.nome || i.id)) + (i.qual && i.qual !== 'C' ? ' <b>' + esc(i.qual) + '</b>' : '') + (i.refino ? ' +' + i.refino : '') + '</span>').join('');
+      const eq = est.equipado || [];
+      const eqRes = eq.length ? eq.map((e) => '<span class="tag">' + esc(nomeDe(e.nome || e.base)) + (e.qual && e.qual !== 'C' ? ' <b>' + esc(e.qual) + '</b>' : '') + (e.refino ? ' +' + e.refino : '') + '</span>').join('') : '<span class="vazio">nada equipado lido</span>';
+      const hab = est.habilidades || {};
+      const barra = (hab.barra || []).map((t) => (hab.prontas || []).indexOf(t) >= 0 ? '<b>' + esc(t) + '</b>' : esc(t)).join(' · ');
+      const cofre = est.cofre || [];
+      const chefe = est.chefe;
+      const alvo = est.mobs && est.mobs.alvo;
+      const pot = est.pocoes || {};
+      const prox = est.proximoPasso;
+      setHtml('ap-now-jogo', card('Estado completo do jogo', 'o motor mantém isto atualizado sozinho (a cada 20 s)',
+        '<div class="kvs">'
+        + kv('campeão', esc(est.campeao || '—') + (est.alvo && est.alvo.length ? ' <small>alvo: ' + esc(est.alvo.join(', ')) + '</small>' : ''))
+        + kv('nível', est.nivel == null ? '—' : String(est.nivel))
+        + kv('ouro', fmt(est.ouro))
+        + kv('onde', esc(est.local || '—'))
+        + kv('atualizado', 'há ' + fmtDur(Date.now() - est.at))
+        + '</div>'
+        + '<p class="diag-t">Mochila — ' + (inv ? fmt(inv.used) + '/' + fmt(inv.cap) + ' espaços' : 'não lida') + '</p>'
+        + '<div class="chips">' + (invRes || '<span class="vazio">vazia</span>') + (itensInv.length > 10 ? '<span class="tag">+ ' + (itensInv.length - 10) + '</span>' : '') + '</div>'
+        + '<p class="diag-t">Equipado</p>'
+        + '<div class="chips">' + eqRes + '</div>'
+        + '<p class="diag-t">Habilidades</p>'
+        + '<div class="kvs">'
+        + kv('na barra', barra || '—', hab.prontas && hab.prontas.length ? '(a bold = pronta)' : '')
+        + kv('pontos por gastar', hab.pontos == null ? '—' : String(hab.pontos))
+        + kv('ranks', esc((hab.ranks || []).join(' · ') || '—'))
+        + '</div>'
+        + '<p class="diag-t">Cofre — ' + fmt(cofre.length) + ' peças conhecidas</p>'
+        + '<div class="chips">' + (cofre.slice(0, 10).map((c) => '<span class="tag">' + esc(nomeDe(c.nome || c.base)) + (c.qual && c.qual !== 'C' ? ' <b>' + esc(c.qual) + '</b>' : '') + '</span>').join('') || '<span class="vazio">nada guardado lido</span>') + '</div>'
+        + '<p class="diag-t">Mobs e bosses</p>'
+        + '<div class="kvs">'
+        + kv('alvo agora', alvo ? esc(alvo.name || '?') + (alvo.boss ? ' 👑' : '') : '—')
+        + kv('chefe', chefe ? esc(chefe.nome || chefe) + (chefe.pct != null ? ' — ' + esc(chefe.pct) + '% de vida' : '') : '—')
+        + kv('poções', ORDER.map((k) => POCAO_NOME[k] + ' ' + fmt(pot[k] || 0)).join(' · '))
+        + '</div>'
+        + '<p class="hint">' + (prox
+          ? 'Próximo passo por omissão: farmar <b>' + esc(limparNivel(prox.regiao)) + '</b> — ' + fmt(prox.ouroLiquidoMin) + ' ouro limpo/min · ' + fmt(prox.xpMin) + ' xp/min' + (prox.sobrevive ? '' : ' · ⚠ o chefe mata você') + '.'
+          : 'Próximo passo: sem dados suficientes ainda — o motor decide após medir as regiões.') + '</p>'));
+    }
   }
 
   // ------------------------------------- ÁRVORE DE INTERRUPTORES (hierarquia do motor)
@@ -1254,6 +1315,7 @@
     buildPorFase: 'Trocar a build conforme a luta',
     skillsPorFase: 'Trocar as habilidades conforme a luta',
     rotacao: 'Repor a rotação na barra',
+    vigiarMercado: 'Vigiar o mercado (itens e jogadores) e comprar',
   };
   const ARV_AJUDA = {
     manutencao: 'recurso base (vender, equipar, mercado, pontos, cofre) — funciona em qualquer campeão',
@@ -1273,6 +1335,7 @@
     buildPorFase: 'em mobs veste a build de limpeza; no chefe a de alvo único',
     skillsPorFase: 'em mobs prefere as habilidades de área; no chefe as de alvo único',
     rotacao: 'põe na barra as 4 habilidades prontas que dão mais dano',
+    vigiarMercado: 'lê o mercado dos jogadores em tempo real e compra as ofertas que casam com a sua watch (itens e/ou nomes de jogador) — só gasta ouro e nunca abaixo da reserva',
   };
   /** O QUE CADA SWITCH COBRE — é a linha colorida ao lado dele: VERDE quando está ligado (o que
    *  passa a acontecer) e VERMELHA quando está desligado (o que deixa de acontecer). O texto fala
@@ -1299,6 +1362,7 @@
     buildPorFase: { on: 'Troca a build entre mobs e chefe conforme a luta.', off: 'Uma build só: as peças da outra fase não são reservadas.' },
     skillsPorFase: { on: 'Prefere habilidades de área em mobs e de alvo único no chefe.', off: 'A barra não muda com o contexto da luta.' },
     rotacao: { on: 'Mantém na barra as melhores habilidades, com a ultimate.', off: 'A barra fica como está — pode ficar sem a ultimate.' },
+    vigiarMercado: { on: 'Deteta em tempo real as ofertas dos itens que você vigia e dos jogadores da lista, e compra-as sozinho pelo mercado (no Mercador).', off: 'O mercado deixa de ser vigiado: nenhuma oferta da watch é comprada.' },
   };
   /** Marca dos switches com EXCEÇÃO. O motor já manda o texto (`excecaoTxt` em
    *  `arvoreInterruptores()`, automation.js:2293); este mapa é só o recurso para um motor antigo. */
@@ -1455,6 +1519,7 @@
         + tg('ap-cfg-trocaItens', 'Trocar itens conforme a luta', 'Use o conjunto de FARM contra mobs e o conjunto de CHEFE contra chefes.', !!c.trocaItens)
         + tg('ap-cfg-autoAtrib', 'Distribuir pontos de atributo', 'Gasta sozinho os pontos de atributo livres pelo modelo escolhido na aba Personagem.', !!c.autoAtrib)
         + tg('ap-cfg-autoRefino', 'Refinar no Ornn', 'Refina os seus LENDÁRIOS já tier A ou melhor até +3 (acima de +2 pode descer).', !!c.autoRefino)
+        + tg('ap-cfg-barraDisp', 'Barra pelas habilidades PRONTAS', 'Põe na barra as habilidades DISPONÍVEIS e as que ficam prontas mais cedo (o dono: "usava tudo disponivel ... o tempo inteiro"). Desligado, a barra fica presa às 4 de maior dano.', c.barraPorDisponibilidade !== false)
         + '</div>'));
 
       const pc = (k) => Object.assign({ enabled: true, mode: 'pct', value: k === 'vidaS' ? 60 : k === 'vidaF' ? 43 : 21 }, (config && config.potions && config.potions[k]) || {});
@@ -1521,6 +1586,27 @@
     // A ÁRVORE DE INTERRUPTORES redesenha SEMPRE (o estado dela muda com a config, com o campeão
     // e com o local) — não faz parte do bloco "constrói uma vez" acima.
     renderArvore();
+    // ---- ALVOS DO AUTO-PLAY: em que campeões o motor pode jogar (pedido do dono, 2026-10-18) --
+    // A LISTA de campeões do jogo é a mesma que o motor lê do KITS (nunca escrita à mão — REGRA
+    // N.º 3); o motor ainda não a pode ter quando este render corre, e por isso este cartão
+    // redesenha SEMPRE (fora do "constrói uma vez"). Sem alvos (null/vazio) = qualquer campeão.
+    {
+      const alvos = (() => { const v = ler('campeoesAlvo', []); return Array.isArray(v) ? v : []; })();
+      const lista = (() => { const v = ler('campeoesDoJogo', []); return Array.isArray(v) ? v : []; })();
+      const qualquer = !alvos.length;
+      const nomeC = (id) => String(id || '').charAt(0).toUpperCase() + String(id || '').slice(1);
+      setHtml('ap-auto-champ', card('Em que campeões jogar', 'fora desta lista o motor só observa — não joga',
+        (lista.length
+          ? '<div class="grid2">'
+            + tg('ap-champ-any', 'Qualquer campeão', 'Corre em qualquer campeão (desliga a restrição de alvos).', qualquer)
+            + lista.map((ch) => tg('ap-champ-' + ch.id, ch.nome || nomeC(ch.id), 'Joga sozinho com ' + (ch.nome || ch.id) + '.', !qualquer && alvos.indexOf(ch.id) >= 0)).join('')
+            + '</div>'
+          : '<p class="vazio">O motor ainda não leu a lista de campeões do jogo. Ela chega com o catálogo (F5 se demorar).</p>')
+        + '<p class="hint">' + (qualquer
+          ? 'Sem restrição: o auto-play corre em <b>qualquer campeão</b>.'
+          : 'O motor só joga com <b>' + esc(alvos.map(nomeC).join(', ') || '—') + '</b>; nos outros fica só a observar.')
+        + ' Isto <b>não</b> liga o auto-play — quem liga é o switch mestre.</p>'));
+    }
     // valores dinâmicos
     const obj = $('ap-obj'); if (obj && obj.value !== (c.objetivo || 'xp')) obj.value = c.objetivo || 'xp';
     const automatica = !c.regionDefault;
@@ -2340,6 +2426,36 @@
       + '<div class="acoes">'
       + acaoD('ap-melhor-compra', '🤔 Calcular melhor compra', 'Compara comprar o item ideal, comprar um substituto mais barato, ou esperar.')
       + acaoD('ap-mk-comprar', '🛒 Comprar o ideal no mercado', 'Compra o que falta da build ideal pelo menor preço, sem zerar o ouro.')
+      + '</div>'));
+
+    // ---- WATCH DO MERCADO (pedido do dono, 2026-10-18): itens e nomes de jogador -----------
+    const w = ler('mercadoWatchEstado', null) || {};
+    const wItens = (w.itens || []).join(', ');
+    const wVend = (w.vendedores || []).join(', ');
+    const wPreco = w.precoMax == null ? 0 : Number(w.precoMax);
+    const wTeto = w.tetoCompra == null ? 500000 : Number(w.tetoCompra);
+    const wCad = Math.max(2, Math.round((Number(w.cadenciaMs) || 5000) / 1000));
+    const wAch = (w.achados || []);
+    const wOut = !w.at ? '<p class="vazio">Ainda não vigiou. O motor vigia sozinho a cada ' + wCad + ' s; o botão abaixo força agora.</p>'
+      : wAch.length
+        ? tabela(['id', 'vendedor', 'item', 'preço'], wAch.map((o) => '<tr><td>' + esc(o.id) + '</td><td>' + esc(o.vendedor || '?') + '</td><td>' + esc(o.item || '?')
+          + '</td><td>' + fmt(o.preco) + (o.moeda && o.moeda !== 'ouro' ? ' ' + esc(o.moeda) : '') + '</td></tr>'))
+        : '<p class="vazio">A última vigia (há ' + fmtDur(Date.now() - w.at) + ') não achou nada que casasse.</p>';
+    const wUlt = w.ultimaCompra;
+    setHtml('ap-mk-watch', card('Watch do mercado — itens e jogadores', 'deteta em tempo real e compra sozinho',
+      '<p class="hint">Vigia o mercado dos jogadores pelo SERVIDOR (todas as ofertas, com vendedor) e, quando algo casa, compra pelo próprio mercado do jogo. <b>Só gasta ouro</b> (nunca Gemas/diamantes) e nunca abaixo da reserva de poções. Para comprar sozinho tem de estar no <b>Mercador</b> (base) — a deteção corre em qualquer sítio.</p>'
+      + tg('ap-watch-ligado', 'Ligar a vigia', 'A deteção corre sempre que há itens ou jogadores na lista; desligar isto para tudo.', !!w.ligado)
+      + '<label class="campo">Itens (id-base, id completo ou nome — separados por vírgula)<input id="ap-watch-itens" type="text" autocomplete="off" spellcheck="false" value="' + esc(wItens) + '" placeholder="3031, Gume do Infinito, 3071+2~S"></label>'
+      + '<label class="campo">Jogadores (nomes, separados por vírgula)<input id="ap-watch-vendedores" type="text" autocomplete="off" spellcheck="false" value="' + esc(wVend) + '" placeholder="srdog"></label>'
+      + '<label class="campo">Preço máximo por oferta em ouro (0 = sem tecto próprio)<input id="ap-watch-preco" type="number" min="0" step="1" value="' + wPreco + '"></label>'
+      + '<label class="campo">Tecto de gasto por passagem em ouro (0 = sem tecto)<input id="ap-watch-teto" type="number" min="0" step="1" value="' + wTeto + '"></label>'
+      + '<label class="campo">Cadência da vigia em segundos (mínimo 2)<input id="ap-watch-cad" type="number" min="2" max="120" step="1" value="' + wCad + '"></label>'
+      + '<div id="ap-watch-out">' + wOut
+        + (wUlt ? '<p class="hint">Última compra: ' + (wUlt.ok ? 'COMPROU ' + esc(wUlt.vendedor || '') + ' por ' + fmt(wUlt.preco) + ' ouro' : 'falhou — ' + esc(wUlt.motivo || '?')) + '.</p>' : '')
+      + '</div>'
+      + diag('Watch do mercado: ações manuais (manutenção manual)')
+      + '<div class="acoes">'
+      + acaoD('ap-watch-agora', '👁 Vigiar agora', 'Lê o mercado do servidor neste instante, mostra o que casa e (no Mercador) compra.')
       + '</div>'));
   }
 
@@ -3177,6 +3293,17 @@
     'ap-mkt-go': (b) => aplicarMercado(b),
     'ap-ornn-ler': (b) => lerOrnn(b),
     'ap-melhor-compra': (b) => melhorCompra(b),
+    // ---- WATCH DO MERCADO (2026-10-18): força uma vigia agora e reporta no rodapé ----
+    'ap-watch-agora': (b) => executar(b, 'Vigia do mercado', async () => {
+      const r = await chamarA('vigiarMercadoPasso');
+      if (!r.ok) return { ok: false, motivo: erroLegivel(r.erro, 'vigiarMercadoPasso') };
+      const v = r.v || {};
+      if (v.ok === false) return { ok: false, motivo: v.motivo || 'nada a fazer' };
+      const n = (v.achados || []).length;
+      if (!n) return { ok: true, msg: 'Nada casou agora' + (v.n != null ? ' (o mercado tem ' + v.n + ' ofertas).' : '.') };
+      const c = v.comprou;
+      return { ok: true, msg: n + ' oferta(s) casam.' + (c && c.ok ? ' COMPROU ' + (c.vendedor || '?') + ' por ' + fmt(c.preco) + ' ouro.' : (c && c.motivo ? ' Não comprou: ' + c.motivo : (v.motivo ? ' ' + v.motivo : ''))) };
+    }),
     'ap-tx-x': () => { const m = $('lolidle-ap-testes'); m.hidden = true; m.classList.remove('on'); },
     'ap-tx-add': () => { if (sets.length >= 6) { fbAviso('Máximo de 6 conjuntos.'); return; } sets.push({ nome: 'conjunto ' + (sets.length + 1), itens: [] }); renderTestes(); },
     'ap-tx-base': () => { sets[0] = { nome: 'atual', itens: (ler('readEquip', []) || []).map((e) => String(e.base)).filter((b) => b !== RABADON) }; renderTestes(); },
@@ -3208,6 +3335,11 @@
     salvarTopo({ potions: novo });
   }
 
+  // WATCH DO MERCADO (2026-10-18): a GUI nao conhece a chave — escreve sempre pelo motor
+  // (`setConfig`), e passa o objeto mercadoWatch INTEIRO porque o setConfig faz Object.assign
+  // raso (automation.js:8279). Estes dois atalhos leem e fundem o objeto actual.
+  const listaWatch = (s) => String(s == null ? '' : s).split(',').map((x) => x.trim()).filter(Boolean);
+  const novoWatch = (patch) => Object.assign({}, (cfg() || {}).mercadoWatch || {}, patch);
   const MUDANCAS = {
     'ap-on': (el) => executar(null, el.checked ? 'Ligar' : 'Desligar', async () => { definirLigado(el.checked); return { ok: true, msg: el.checked ? 'auto-play e auto-poção LIGADOS.' : 'auto-play DESLIGADO — o motor só observa.' }; }),
     'ap-obj': (el) => { definirCfg({ objetivo: el.value }); fb('ok', 'Objetivo: ' + ({ xp: 'experiência', ouro: 'ouro', runas: 'runas' }[el.value] || el.value) + '. A região ideal passa a ser escolhida por isto.'); ultimoRender = 0; },
@@ -3244,6 +3376,20 @@
     'ap-min-vidaF': (el) => guardarMin('vidaF', el.value),
     'ap-min-vidaS': (el) => guardarMin('vidaS', el.value),
     'ap-at-modelo-sel': (el) => { definirCfg({ modeloAtrib: el.value }); fb('ok', 'Modelo de atributos: ' + el.value + '.'); },
+    // ---- WATCH DO MERCADO (2026-10-18): itens, jogadores, tectos e cadencia ----
+    'ap-watch-ligado': (el) => { definirCfg({ autoVigiarMercado: !!el.checked }); fb('ok', 'Vigia do mercado: ' + (el.checked ? 'LIGADA.' : 'desligada — nenhuma oferta da watch é comprada.')); ultimoRender = 0; },
+    'ap-watch-itens': (el) => { const l = listaWatch(el.value); definirCfg({ mercadoWatch: novoWatch({ itens: l }) }); fb('ok', 'Watch de itens: ' + (l.length ? l.join(', ') : 'vazia') + '.'); ultimoRender = 0; },
+    'ap-watch-vendedores': (el) => { const l = listaWatch(el.value); definirCfg({ mercadoWatch: novoWatch({ vendedores: l }) }); fb('ok', 'Watch de jogadores: ' + (l.length ? l.join(', ') : 'vazia') + '.'); ultimoRender = 0; },
+    'ap-watch-preco': (el) => { const v = Math.max(0, Number(el.value) || 0); definirCfg({ mercadoWatch: novoWatch({ precoMax: v > 0 ? v : null }) }); fb('ok', v > 0 ? 'Preço máximo por oferta: ' + fmt(v) + ' ouro.' : 'Sem tecto de preço próprio (fica só a reserva de ouro).'); },
+    'ap-watch-teto': (el) => { const v = Math.max(0, Number(el.value) || 0); definirCfg({ mercadoWatch: novoWatch({ tetoCompra: v > 0 ? v : null }) }); fb('ok', 'Tecto de gasto por passagem: ' + (v > 0 ? fmt(v) + ' ouro' : 'sem tecto') + '.'); },
+    'ap-watch-cad': (el) => { const s = Math.max(2, Number(el.value) || 5); definirCfg({ mercadoWatch: novoWatch({ cadenciaMs: s * 1000 }) }); fb('ok', 'Cadência da vigia: ' + s + ' s.'); },
+    // ---- ALVOS DO AUTO-PLAY (2026-10-18): "qualquer campeão" vs lista. Vazio = qualquer. ----
+    'ap-champ-any': (el) => {
+      definirCfg({ champAlvo: el.checked ? null : ['yasuo', 'ryze'] });
+      fb('ok', el.checked ? 'Alvos: QUALQUER campeão (o auto-play corre em todos).' : 'Alvos: lista restrita — escolha os campeões abaixo.');
+      _ultimoHtml.delete('ap-auto-champ');
+      if (tabAtiva === 'painel') { renderAuto(); }
+    },
   };
 
   function bind() {
@@ -3280,6 +3426,24 @@
           else { guardarPocao(k, { mode: el.value }); fb('ok', POCAO_NOME[k] + ': unidade mudada para ' + (el.value === 'pct' ? '% da vida perdida' : 'vida perdida') + '.'); }
           ultimoRender = 0;
         } catch (err) { fbErro('Erro ao guardar poção: ' + String((err && err.message) || err)); }
+      }
+      // ALVOS DO AUTO-PLAY: ids compostos ap-champ-<id-do-campeao>. A lista vazia = qualquer
+      // campeão (o motor trata null/vazio como "sem restrição") — coerente com o "Qualquer campeão".
+      const mc = /^ap-champ-(.+)$/.exec(el.id);
+      if (mc) {
+        const id = mc[1];
+        try {
+          const atuais = (ler('campeoesAlvo', []) || []).slice();
+          const i = atuais.indexOf(id);
+          if (el.checked && i < 0) atuais.push(id);
+          if (!el.checked && i >= 0) atuais.splice(i, 1);
+          definirCfg({ champAlvo: atuais.length ? atuais : null });
+          fb('ok', atuais.length
+            ? 'Alvos: ' + atuais.join(', ') + '.'
+            : 'Nenhum campeão selecionado: o motor volta a jogar em QUALQUER um.');
+          _ultimoHtml.delete('ap-auto-champ');
+          if (tabAtiva === 'painel') renderAuto();
+        } catch (err) { fbErro('Erro ao guardar alvos: ' + String((err && err.message) || err)); }
       }
     });
     qa('#lolidle-ap .tab').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
@@ -3336,13 +3500,14 @@
     build();
     buildLaunch();
     try {
-      chrome.storage.local.get([STORAGE_KEY, STATUS_KEY, FARM_KEY, AGG_KEY, COFRE_KEY, OFERTAS_KEY, GUI_KEY], (res) => {
+      chrome.storage.local.get([STORAGE_KEY, STATUS_KEY, FARM_KEY, AGG_KEY, COFRE_KEY, OFERTAS_KEY, GUI_KEY, ESTADO_KEY], (res) => {
         config = (res && res[STORAGE_KEY]) || null;
         status = (res && res[STATUS_KEY]) || null;
         farmStore = (res && res[FARM_KEY]) || null;
         aggStore = (res && res[AGG_KEY]) || null;
         cofreStore = (res && res[COFRE_KEY]) || null;        // o que o motor gravou do cofre
         ofertasStore = (res && res[OFERTAS_KEY]) || null;    // o que o motor gravou do mercado
+        estadoStore = (res && res[ESTADO_KEY]) || null;      // estado COMPLETO do jogo (motor grava a cada 20 s)
         // Preferências da GUI (minimizar da build por fase, modalidade de farm): não são config
         // do motor, por isso vivem em GUI_KEY e não em STORAGE_KEY.
         guiPrefs = Object.assign({ bfAberto: true, farmModo: 'sozinho', fmModoMin: false, fmItensMin: false }, (res && res[GUI_KEY]) || {});
@@ -3367,6 +3532,8 @@
         // O MOTOR grava aqui o que leu (cofre/mercado): a GUI passa a mostrá-lo sem ninguém pedir.
         if (ch[COFRE_KEY]) { cofreStore = ch[COFRE_KEY].newValue; cacheLimpar('cofreLive'); if (aberto && tabAtiva === 'itens') renderCofre(); }
         if (ch[OFERTAS_KEY]) { ofertasStore = ch[OFERTAS_KEY].newValue; if (aberto && tabAtiva === 'itens') renderMercado(); }
+        // ESTADO COMPLETO: o motor grava-o a cada 20 s; a GUI redesenha o retrato quando chega.
+        if (ch[ESTADO_KEY]) { estadoStore = ch[ESTADO_KEY].newValue; if (aberto && tabAtiva === 'painel') renderAgora(); }
         if (ch[STORAGE_KEY]) config = ch[STORAGE_KEY].newValue;
         // Preferências da GUI: mudam o que se vê (bloco minimizado, modalidade de farm).
         if (ch[GUI_KEY]) {

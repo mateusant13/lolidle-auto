@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "LoL Idle — Auto Poção",
+  "version": "0.4.0",
+  "description": "Usa poções de vida automaticamente no lolidle.com: lê o HP, mede o DPS recebido e a cura/s e combina poções (normal + forte) em vez de gastar a suprema.",
+  "permissions": ["storage"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://lolidle.com/*",
+    "https://*.lolidle.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://lolidle.com/*", "https://*.lolidle.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://lolidle.com/*", "https://*.lolidle.com/*"],
+      "js": ["automation.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://lolidle.com/*", "https://*.lolidle.com/*"],
+      "js": ["gui.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "LoL Idle — Auto Poção",
+    "default_popup": "popup.html"
+  }
+}

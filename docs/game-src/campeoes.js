@@ -39,6 +39,12 @@ export const CAMPEOES = [
     alcance: 'corpo a corpo',
     resumo: 'Tanque de gosma que entra no meio do grupo: se lança longe com o Estilingue Elástico, agarra os monstros com a Esticada e quica em cima deles no Vamos pular!. Não usa mana: cada habilidade custa um pouco da vida, e as gosmas que se soltam dele curam quando ele pega. Ao cair, se divide e volta a se juntar. Escala com a vida e com o Poder de Habilidade.',
   },
+  // Ryze (17/10/2026)
+  {
+    id: 'ryze', nome: 'Ryze', titulo: 'o Mago Rúnico', funcao: 'Mago', regiao: 'Runeterra', disponivel: true,
+    alcance: 'à distância',
+    resumo: 'Mago de dano constante: marca os monstros com o Fluxo de Feitiço e dispara o Sobrecarregar sem parar, que pula para todos os marcados. A Prisão de Runa e o Fluxo deixam a recarga do Sobrecarregar em 0,5 segundo e carregam runas que viram escudo. Quanto mais mana, mais Poder. Abre o Portal de Reinos para queimar o grupo e se teleportar.',
+  },
 ];
 // quantas vagas "em breve" aparecem na tela de criação (diminuem conforme novos campeões chegam)
 // em inglês, os textos de apresentação já saem traduzidos (o nome e o id ficam iguais)
@@ -51,7 +57,7 @@ export const campeaoDisponivel = (id) => CAMPEOES.some((c) => c.id === id && c.d
 // onde ficam os arquivos de cada campeão (o Darius, o primeiro, ficou na raiz das pastas)
 const pasta = (id) => (id === 'darius' ? '' : `${id}/`);
 // o Cloudflare guarda as imagens por horas: aumente V_ICONES sempre que gerar ícones novos, senão os jogadores continuam vendo os antigos
-const V_ICONES = 12;
+const V_ICONES = 13;
 export const iconeHabilidade = (id, tecla) => `assets/img/habilidades/${pasta(id)}${tecla}.png?v=${V_ICONES}`;
 const V_SPLASH = 2;      // aumente quando uma imagem de skin entrar ou mudar (a Cloudflare guarda as imagens por horas)
 export const splashSkin = (id, num) => `assets/img/skins/${pasta(id)}${num}.jpg?v=${V_SPLASH}`;

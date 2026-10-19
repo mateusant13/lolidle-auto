@@ -56,6 +56,8 @@ import { suite as suiteFiltroBasicos } from './filtrobasicos.test.mjs';
 import { suite as suiteBuildEquipada } from './build-equipada.test.mjs';
 // WATCH DO MERCADO (2026-10-18): deteccao em tempo real por itens e por NOME DE JOGADOR + auto-compra.
 import { suite as suiteMercadoWatch } from './mercado-watch.test.mjs';
+// ALVOS DO AUTO-PLAY / BARRA POR DISPONIBILIDADE / TAREFAS POR VALOR-s / ESTADO COMPLETO (2026-10-18).
+import { suite as suiteAlvosEstado } from './alvos-estado.test.mjs';
 // TK-X2 (P0): a barra de CHEFE reserva um lugar para o atordoamento (interrompe a mecanica).
 import { suite as suiteStunChefe } from './stun-chefe.test.mjs';
 // DIAGNOSTICO DE FPS (2026-10-18): observer de novidades barato (body+childList) e sem empilhar na reinjecao.
@@ -84,6 +86,7 @@ const SUITES = [
   suiteMercadoWatch,
   suiteStunChefe,
   suiteObservers,
+  suiteAlvosEstado,
 ];
 const checks = [];
 const notas = [];

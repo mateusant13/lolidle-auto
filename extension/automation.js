@@ -191,7 +191,12 @@
     // Logo o default é LIGADO; `false` explícito desliga.
     autoAtrib: true,          // distribui automaticamente os pontos de atributo livres
     modeloAtrib: null,        // força um modelo; null = MODELO DERIVADO do campeão (`modeloAtribDe`)
-    champAlvo: 'yasuo',       // auto-play SO neste campeao (regra do dono); null = qualquer
+    // AUTO-PLAY: em QUE campeoes pode jogar. Aceita um id ('yasuo'), vários ('yasuo,ryze'),
+    // uma LISTA (['yasuo','ryze']) ou null (qualquer campeao). Antes era um id so e prendia o
+    // auto-play ao Yasuo; o dono passou a jogar de Ryze (2026-10-18: "o ryze e pra estar
+    // resolvido e o autoplay funcionando") -> o default passa a aceitar os dois. A lista NAO
+    // afrouxa nada do resto: `ehCampeaoAlvo` compara o id lido do HUD com o conjunto.
+    champAlvo: ['yasuo', 'ryze'],
     manutencao: true,         // RECURSO BASE do script: vender/equipar/mercado/pontos/cofre
     // PEDIDO DO DONO (2026-10-14, verbatim): "o auto play e pra decidir tudo pelo usuario, ate
     // que itens equipar e onde farmar SOZINHO. e auto play literal, joga sem o usuario nem
@@ -1804,12 +1809,14 @@
   /** MIGRACOES DO CFG (ramo w10): cada entrada diz de que valor PARA que valor migrar. Nada e
    *  aplicado se o valor do dono for DIFERENTE do default velho (nunca se pisa uma escolha dele). */
   /** Versao do esquema do cfg (ramo w10) — gravada no arranque para a migracao ser ONE-SHOT. */
-const CFG_VER = 1;
+const CFG_VER = 2;
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
     { ver: 1, chave: 'autoRefino', de: false, para: true,
       porquê: 'a unica accao que nascia DESLIGADA era o refino; o dono mandou ligar por defeito' },
+    { ver: 2, chave: 'champAlvo', de: 'yasuo', para: ['yasuo', 'ryze'],
+      porquê: 'o dono passou a jogar de Ryze (17/10/2026); a lista de alvos passa de "so o Yasuo" para incluir o Ryze — so migra quem tinha o default antigo' },
   ];
 
   const NIVEL_DIF_FB = { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5, danoJogador: 0.12, minDanoJogador: 0.25 };
@@ -2062,7 +2069,7 @@ const CFG_VER = 1;
       // `curaBase`, `curaGiro`, `vaAdaga` e `voracidade`/`voracidadeChefe` chegam AQUI.
       // O `aplicarKit` é que os deitava fora: nao estavam nesta lista (defeito medido — ver
       // `penKitDe`, `curaGiroDe` e `voracidadeDe`).
-      out[t] = { alvos: h.alvos != null ? h.alvos : null, max: h.max, mult: h.mult, alvo: h.alvo, adaga: !!h.adaga, auto: !!h.auto, dot: !!h.dot, passiva: !!h.passiva, util: !!h.util, adRatio: h.adRatio,
+      out[t] = { alvos: h.alvos != null ? h.alvos : null, espalha: h.espalha != null ? h.espalha : null, max: h.max, mult: h.mult, alvo: h.alvo, adaga: !!h.adaga, auto: !!h.auto, dot: !!h.dot, passiva: !!h.passiva, util: !!h.util, adRatio: h.adRatio,
         base: serie(h.base), ratio: serie(h.ratio), rec: serie(h.recarga), nivel: h.nivel,
         duracao: h.duracao, duracaoPen: h.duracaoPen, penSuspiro: h.penSuspiro,
         va: serie(h.va), bonus: serie(h.bonus), bonusHab: serie(h.bonusHab),
@@ -3026,6 +3033,11 @@ const CFG_VER = 1;
   }
 
   function loop() {
+    // BATIMENTO do auto-play: `saudeAutoplay().ultimoTickHaMs` lia `_ultimoTick`, que só o
+    // `tickAutoplay()` (um ponto de entrada MANUAL, nunca agendado) escrevia — logo a GUI
+    // mostrava sempre "nunca", mesmo com o motor a correr. O `loop` é o batimento REAL (corre a
+    // cada 3 s, automation.js `every(loop, 3000)`), portanto é aqui que se marca.
+    _ultimoTick = Date.now();
     const now = Date.now();
     if (now - lastAt < 3000) return;
     lastAt = now;
@@ -3507,16 +3519,31 @@ const CFG_VER = 1;
   // vender item sozinho, deve voltar pra onde estava antes de vender o item." -> guardamos a
   // regiao do CAMPO onde ele estava. Sem isto, depois de vender ele saltava para a `regiaoIdeal`
   // e podia acabar num sitio diferente daquele onde estava a farmar.
-  /** O campeao actual e o ALVO do auto-play? (regra do dono: so o Yasuo). Fail-open: sem
-   *  campeao identificado NAO bloqueia - um seletor que mude nao pode desligar tudo. */
+  /** A LISTA de campeoes em que o auto-play pode correr, normalizada.
+   *  Aceita `null`/'' (qualquer), um id, uma string separada por virgulas ou um array —
+   *  o dono configura isto na GUI e pela `setConfig`, e as três formas nao podem divergir. */
+  function campeoesAlvo() {
+    const bruto = cfg.champAlvo === undefined ? DEFAULT.champAlvo : cfg.champAlvo;
+    if (bruto == null) return [];                        // excepcao desligada pelo dono = qualquer
+    const itens = Array.isArray(bruto) ? bruto : String(bruto).split(',');
+    return itens.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+  }
+  /** O campeao actual e um dos ALVOS do auto-play? Fail-open: sem campeao identificado NAO
+   *  bloqueia - um seletor que mude nao pode desligar tudo. Sem alvos (null) = qualquer um. */
   function ehCampeaoAlvo() {
     try {
-      const alvo = cfg.champAlvo === undefined ? 'yasuo' : cfg.champAlvo;
-      if (alvo == null) return true;                       // excepcao desligada pelo dono
+      const alvos = campeoesAlvo();
+      if (!alvos.length) return true;                      // excepcao desligada pelo dono
       const id = String(((META.champAtual || {}).id) || '').trim().toLowerCase();
       if (!id) return true;                                // HUD ainda nao carregou: fail-open
-      return id === String(alvo).trim().toLowerCase();
+      return alvos.indexOf(id) >= 0;
     } catch { return true; }
+  }
+  /** Lista de campeoes do JOGO (id + nome legivel), para a GUI montar os alvos. Os ids sao
+   *  as chaves de `META.kits` (o inject manda TODOS os kits do motor, motor.js `KITS`). */
+  function campeoesDoJogo() {
+    const ids = Object.keys((META && META.kits) || {});
+    return ids.map((id) => ({ id, nome: id.charAt(0).toUpperCase() + id.slice(1) })).sort((a, b) => a.id.localeCompare(b.id));
   }
   let _regiaoAntesDaBase = null;
   /** Regiao onde o boneco estava ANTES de ir a base (null se nunca esteve no campo). */
@@ -3866,6 +3893,35 @@ const CFG_VER = 1;
     if (!btn) return { ok: false, motivo: 'sem opcao tarefa' };
     btn.click(); await humano(350);
     if (!(await waitFor('#npc-troca [data-tarefa]', 4000))) return { ok: false, motivo: 'sem tarefas' };
+    // ---- VALOR POR SEGUNDO COM O MEU RITMO, NAQUELA REGIÃO (pedido do dono) ----------------
+    // O `min` que a oferta mostra é o do RITMO DA ZONA do jogo (motor.js `minutosTarefa` ->
+    // `abatesEquivalentes` / `ritmoZona` = ABATES_MIN_ZONA × RITMO_REAL). O que decide não é
+    // esse min — é quantos abates/min EU faço LÁ: a MESMA tarefa vale mais numa zona onde eu
+    // mato mais rápido, e uma zona onde o motor prova que eu MORRO não vale nada. A pontuação
+    // usa os meus abates/min MEDIDOS (`agregar`) ou, sem amostra, a estimativa do motor
+    // (`estimarRegiao.killsMin`) — nunca um número inventado (REGRA N.º 1/3).
+    const locDeNome = (nome) => (META.locais || []).find((l) => semAcento(l.nome) === semAcento(nome)) || null;
+    const meuRitmo = (loc) => {
+      if (!loc) return null;
+      try {
+        const r = (agregar() || []).find((x) => x.region && semAcento(x.region).startsWith(semAcento(loc.nome)));
+        if (r && r.n >= 1 && r.killsMin > 0) return r.killsMin;      // MEDIDO manda
+      } catch { /* ignore */ }
+      try { const e = estimarRegiao(loc.id); if (e && e.killsMin > 0) return e.killsMin; } catch { /* ignore */ }
+      return null;
+    };
+    // Abates EQUIVALENTES da tarefa, pela regra do motor (motor.js `abatesEquivalentes`):
+    //   zona -> qtd; Caça -> qtd / fracção da espécie; Fúria -> qtd × 3/chance.
+    const equivalentes = (o, loc) => {
+      if (o.tipo === 'especie' && loc && o.monstro) {
+        const tot = (loc.monstros || []).reduce((s, [, f]) => s + f, 0);
+        const m = (loc.monstros || []).find(([n]) => n === o.monstro);
+        const f = (m && tot) ? m[1] / tot : 0;
+        return f ? o.qtd / f : 0;
+      }
+      if (o.tipo === 'furioso') { const ch = (META.furioso && META.furioso.chance) || 0.05; return o.qtd * (3 / ch); }
+      return o.qtd || 0;
+    };
     const rows = qa1('#npc-troca .troca-linha');
     const ofertas = rows.map((row) => {
       const txt = (row.textContent || '').replace(/\s+/g, ' ');
@@ -3875,18 +3931,34 @@ const CFG_VER = 1;
       const ouro = parseBig((txt.match(/([\d.,]+\s*[kKmM]?)\s*de ouro/i) || [])[1]);
       const garant = /item garantido/i.test(txt); const podeItem = /pode dar item/i.test(txt);
       const tipo = (String(row.className).match(/tarefa-(\w+)/) || [])[1] || '';
+      // "20 monstros em Rota Inferior <Tipo> ~15 min ..." / "15 Lobos em Bosque Sombrio Caça ..."
+      const qtd = +((txt.match(/^\s*(\d+)\s+/) || [])[1] || 0);
+      const lugar = (txt.match(/\bem\s+(.+?)\s*(?:Rápida|Normal|Desafio|Longa|Caça|Fúria)\b/) || txt.match(/\bem\s+(.+?)\s*~/)) || [];
+      const nomeLugar = (lugar[1] || '').trim();
+      const monstro = tipo === 'especie' ? ((txt.match(/^\s*\d+\s+(.+?)\s+em\s+/) || [])[1] || '').trim() : '';
+      const loc = locDeNome(nomeLugar);
+      const ritmo = meuRitmo(loc);
+      const eq = equivalentes({ tipo, qtd, monstro }, loc);
+      const minReal = (ritmo && eq) ? (eq / ritmo) : min;       // minutos REAIS (meus) ou o do jogo
+      let seguro = true;
+      try { const e = loc ? estimarRegiao(loc.id) : null; seguro = !e || e.morte === false; } catch { /* ignore */ }
+      const bonusAlvo = (loc && loc.id === regiaoIdeal()) ? 1.15 : 1;   // a zona onde eu já ia farmar: sem viagem extra
       const itemBonus = garant ? 600 : (podeItem ? 150 : 0);
-      const score = min > 0 ? (xp + 2 * ouro) / min + itemBonus / Math.max(1, min) : (xp + 2 * ouro);
-      return { row, k: b ? b.dataset.tarefa : null, min, xp, ouro, garant, podeItem, tipo, score, txt };
+      const val = minReal > 0 ? (xp + 2 * ouro) / minReal : (xp + 2 * ouro);
+      // Zona onde o motor PROVA que eu morro não vale: 15% do valor (não zero — se todas forem
+      // inseguras, escolhe-se a menos má). O resto é o valor/segundo REAL × (1,15 se é a minha zona).
+      const score = val * (seguro ? bonusAlvo : 0.15) + (minReal > 0 ? itemBonus / minReal : itemBonus);
+      return { row, k: b ? b.dataset.tarefa : null, min, xp, ouro, garant, podeItem, tipo, qtd, lugar: nomeLugar, ritmo, minReal, seguro, score, txt };
     }).filter((o) => o.k != null);
     if (!ofertas.length) return { ok: false, motivo: 'sem ofertas' };
-    for (const o of ofertas) if (o.tipo === 'desafio') o.score *= 0.6;   // zona de cima: penaliza
+    // O valor/segundo (com o MEU ritmo em cada região) já decide — não há penalização fixa por
+    // tipo: a "zona de cima" pesa se o motor provar que é lenta (medido) ou letal (`seguro`).
     ofertas.sort((a, b) => b.score - a.score);
     const best = ofertas[0];
     best.row.querySelector('[data-tarefa]').click(); await humano(450);
-    logEvent('tarefa', { aceitou: best.tipo, min: best.min, xp: best.xp, ouro: best.ouro, item: best.garant ? 'garantido' : (best.podeItem ? 'chance' : null) });
+    logEvent('tarefa', { aceitou: best.tipo, lugar: best.lugar, min: best.min, minReal: best.minReal != null ? +best.minReal.toFixed(1) : null, ritmo: best.ritmo != null ? Math.round(best.ritmo) : null, seguro: best.seguro, xp: best.xp, ouro: best.ouro, item: best.garant ? 'garantido' : (best.podeItem ? 'chance' : null) });
     fecharJanelas();
-    return { ok: true, tipo: best.tipo, min: best.min, xp: best.xp, ouro: best.ouro, item: best.garant ? 'garantido' : (best.podeItem ? 'chance' : null), todas: ofertas.map((o) => ({ tipo: o.tipo, min: o.min, xp: o.xp, ouro: o.ouro, score: Math.round(o.score) })) };
+    return { ok: true, tipo: best.tipo, lugar: best.lugar, min: best.min, xp: best.xp, ouro: best.ouro, item: best.garant ? 'garantido' : (best.podeItem ? 'chance' : null), todas: ofertas.map((o) => ({ tipo: o.tipo, lugar: o.lugar, min: o.min, minReal: o.minReal != null ? +o.minReal.toFixed(1) : null, ritmo: o.ritmo != null ? Math.round(o.ritmo) : null, seguro: o.seguro, xp: o.xp, ouro: o.ouro, score: Math.round(o.score) })) };
   }
 
   /** Estado da tarefa lido do rastreio do jogo (`#rastreio-tarefa`). */
@@ -7333,7 +7405,11 @@ const CFG_VER = 1;
     // O peso da fase propriamente dito (e a prova de que a fase muda o CONJUNTO) está no
     //`pesoFase` abaixo — TK-02-18.
     const porFase = cfg.skillsPorFase !== false && String(fase || '').toLowerCase() === 'mobs';
-    const alvosDe = (t) => { const k = KAT[t] || {}; return k.alvos != null ? k.alvos : 1; };
+    // Nº de ALVOS da skill, lido do KIT (nunca copiado — REGRA N.º 3). `alvos` é o campo do motor
+    // (ex.: Katarina Q/R = 3, Yasuo M = 4) e `espalha` é o do Ryze E ("Fluxo nele e nos monstros
+    // perto dele", motor.js HAB_RYZE.E.espalha = 3): no motor o E acerta no alvo E espalha o
+    // Fluxo/dano nos vizinhos, logo em mobs vale pelos alvos que toca. Sem os dois campos, 1.
+    const alvosDe = (t) => { const k = KAT[t] || {}; return k.alvos != null ? k.alvos : (k.espalha != null ? k.espalha : 1); };
     // ---- PESO DA FASE (TK-02-18): a fase muda o PESO da skill, não só a ordem dela ----
     // Antes a fase só mexia na ORDEM (um `if (porFase)` DEPOIS do bloco de disponibilidade,
     // que nunca era alcançado com `barraPorDisponibilidade` ligado — o default) e o CONJUNTO
@@ -7356,6 +7432,9 @@ const CFG_VER = 1;
     // Uma skill FORA da barra não tem recarga legível no HUD → 0 (disponível): é o que o dono
     // descreve ("usava tudo disponivel").
     const cdDe = (t) => { const b = (s.bar || []).find((x) => x.t === t); return b && b.cd > 0 ? b.cd : 0; };
+    // "PRONTA" = recarga restante lida do HUD abaixo de 0,5 s (o mesmo limiar que o `trocarSkills`
+    // usa). Skill fora da barra não tem recarga legível → cdDe = 0 → pronta.
+    const pronto = (t) => cdDe(t) <= 0.5;
     const idxAtual = (t) => { const i = (s.bar || []).map((b) => b.t).indexOf(t); return i < 0 ? 99 : i; };
     const cand = (s.arsenal || []).filter((h) => h.rank > 0 && !(KAT[h.t] && KAT[h.t].passiva));
     // Peso com que a skill CONCORRE A UM LUGAR na fase atual (multi-alvo em mobs, alvo único
@@ -7367,17 +7446,26 @@ const CFG_VER = 1;
     cand.sort((a, b) => {
       const ua = ehUltimateFixa(a.t) ? 0 : 1, ub = ehUltimateFixa(b.t) ? 0 : 1;
       if (ua !== ub) return ua - ub;                       // a ultimate PRIMEIRO: fica SEMPRE dentro (inviolável)
-      // 1) QUEM MERECE O LUGAR: o peso da fase (em mobs, dano × alvos; no chefe, dano).
-      //    Desempata por rank e pela ordem do motor (determinístico).
+      if (porDisp) {
+        // 1) DISPONIBILIDADE MANDA (é a regra do dono, verbatim: "usava tudo disponivel ... e ai
+        //    removia dos slots pra colocar nos slots as que tavam mais proximas de serem usadas,
+        //    e assim em loop, o tempo inteiro"). Antes isto era só um DESEMPATE depois do DPS,
+        //    logo uma skill de dano alto em recarga NUNCA saía — e uma skill pronta fora da barra
+        //    NUNCA entrava (o defeito medido: "4 skills nos slots, paradas"). Agora uma skill
+        //    PRONTA ocupa o lugar à frente de qualquer uma em recarga. Uma skill FORA da barra
+        //    não tem recarga legível no HUD → 0 = disponível (é o que o dono descreve).
+        const pa = pronto(a.t) ? 0 : 1, pb = pronto(b.t) ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        // 2) ENTRE AS EM RECARGA: primeiro a que fica pronta mais cedo (a "mais próxima de ser usada").
+        const da = cdDe(a.t), db = cdDe(b.t);
+        if (da !== db) return da - db;
+      }
+      // 3) QUEM MERECE O LUGAR: o peso da fase (em mobs, dano × alvos; no chefe, dano).
       const pa = pesoFase(a.t), pb = pesoFase(b.t);
       if (pa !== pb) return pb - pa;
       if (porDisp) {
-        // 2) A ORDEM DENTRO DA BARRA é a do dono ("usava tudo disponivel"): prontas primeiro,
-        //    depois pela recarga RESTANTE (menor primeiro).
-        const da = cdDe(a.t), db = cdDe(b.t);
-        if (da !== db) return da - db;
-        // 3) ANTI-OSCILAÇÃO (obrigatória): MESMA recarga restante -> NÃO reordena. Mantém quem já
-        //    está na barra e pela posição que ocupa (é isto que evita o churn de 2 s medido).
+        // 4) ANTI-OSCILAÇÃO (obrigatória): MESMA recarga restante e MESMO peso -> NÃO reordena.
+        //    Mantém quem já está na barra e pela posição que ocupa (evita o churn sem motivo).
         const ia = idxAtual(a.t), ib = idxAtual(b.t);
         if (ia !== ib) return ia - ib;
       }
@@ -7669,6 +7757,48 @@ const CFG_VER = 1;
       chefeFatal: (() => { const c = farm.current; if (!c) return null; const r = agregar().find((x) => x.region === c.region); return r?.risco?.morre ? c.boss : null; })(),
     };
   }
+  const ESTADO_KEY = STORAGE_KEY + ':estado';
+  /** ESTADO COMPLETO DO JOGO, mantido atualizado (pedido do dono: "sempre manter o estado:
+   *  inventário, cofre, habilidades, mobs/bosses"). É BARATO (só o que o DOM/o content.js já
+   *  têm) e é gravado periodicamente em `STORAGE_KEY+':estado'`, para a GUI e as decisões o
+   *  lerem sem varrer o DOM. NÃO substitui o `snapshotJogo` (esse é completo e caro, para
+   *  simular caminhos). Nada aqui é inventado: cada fonte é o leitor que já existe. */
+  function estadoCompleto() {
+    const p = (() => { try { return player() || {}; } catch { return {}; } })();
+    const bag = (() => { try { return scanBag(); } catch { return null; } })();
+    const sk = (() => { try { return readSkills(); } catch { return {}; } })();
+    const eq = (() => { try { return readEquip(); } catch { return []; } })();
+    const live = (typeof window !== 'undefined' && window.__lolidleLive) || null;
+    const nome = (id) => { const it = (META.itens || []).find((x) => String(x.id) === String(id)); return it ? it.nome : String(id); };
+    const out = {
+      at: Date.now(),
+      campeao: (META.champAtual && META.champAtual.id) || null,
+      alvo: campeoesAlvo(),
+      local: (() => { try { return readLocation().text || null; } catch { return null; } })(),
+      nivel: p.nivel || null,
+      ouro: (() => { try { return readGold(); } catch { return null; } })(),
+      hp: (live && live.hp) ? { cur: live.hp.cur, max: live.hp.max } : null,
+      inventario: bag ? { used: bag.used, cap: bag.cap,
+        itens: (bag.items || []).slice(0, 60).map((i) => i.kind === 'item'
+          ? { id: i.id, nome: nome(i.base), qual: i.qual, refino: i.refino || 0 }
+          : { espolio: i.id, qtd: i.qty }) } : null,
+      equipado: (eq || []).map((e) => ({ base: e.base, nome: nome(e.base), qual: e.qual, refino: e.refino })),
+      habilidades: { barra: (sk.bar || []).map((b) => b.t),
+        prontas: (sk.bar || []).filter((b) => b.ready).map((b) => b.t),
+        pontos: sk.pontos || 0,
+        ranks: (sk.arsenal || []).map((h) => h.t + ':' + h.rank) },
+      cofre: (() => { try { return cofreConhecido().slice(0, 80); } catch { return []; } })(),
+      // MOBS/BOSSES AO VIVO: o alvo e o chefe que o content.js le (não um palpite)
+      mobs: live ? { alvo: live.target || null } : null,
+      chefe: (live && live.bossHp) ? live.bossHp : ((farm.current && farm.current.boss) || null),
+      fase: (farm.current && farm.current.fase) || null,
+      pocoes: (() => { try { return readPotions(); } catch { return null; } })(),
+      proximoPasso: (() => { try { return recomendar(); } catch { return null; } })(),
+    };
+    try { chrome.storage.local.set({ [ESTADO_KEY]: out }); } catch { /* ignore */ }
+    return out;
+  }
+
   function diffEstado(a, b) {
     if (!a || !b) return null;
     const d = {};
@@ -8376,7 +8506,7 @@ const CFG_VER = 1;
   }
 
   window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
-    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
+    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
     // modeladas com eles: vida com k/M e escudo, recarga exacta, efeitos activos, recarga de item,
@@ -8457,6 +8587,10 @@ const CFG_VER = 1;
   loop();
   carregarMeta();
   every(() => { try { chrome.storage.local.set({ [AGG_KEY]: agregar() }); } catch { /* ignore */ } }, 15000);
+  // ESTADO COMPLETO periodicamente (pedido do dono: inventário, cofre, habilidades, mobs/bosses
+  // sempre atualizados). 20 s: barato e suficiente para a GUI e para as decisões.
+  every(() => { try { estadoCompleto(); } catch { /* ignore */ } }, 20000);
+  setTimeout(() => { try { estadoCompleto(); } catch { /* ignore */ } }, 2500);
   // observa o #log da aba Servidor (loot/chefe)
   const logEl = document.querySelector('#log');
   if (logEl) { window.__lolidleAutoObs = new MutationObserver(scanLog); window.__lolidleAutoObs.observe(logEl, { childList: true }); }   // sem subtree (o #log muda muito)
