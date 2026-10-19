@@ -133,8 +133,7 @@
     pocaoPisoPct: 0.75,       // piso de HP FORA de chefe (% do máx)
     pocaoPisoChefe: 0.9,      // piso de HP NO CHEFE (mais seguro; a carga cobre o burst)
     pocaoMargem: 1.1,         // margem só na previsão da CARGA (física/mágica)
-    ultWaveSeg: 12,           // segundos p/ 3 waves: acima disso vale usar a ultimate nos mobs (só se cfg.ultEmMobs)
-    ultEmMobs: false,         // PADRÃO: NUNCA usar a ultimate em mobs — só no chefe (o dono pediu N vezes)
+    ultWaveSeg: 12,           // segundos p/ 3 waves: acima disso a fase e DIFICIL (a ultimate so entra aí/chefe)
     killLentoMs: 3500,        // tempo mediano entre kills acima disso = área difícil (fallback sem burst)
     testeForcar: false,       // permite iniciar teste em região letal (default: recusa)
     testeMobSeg: 20,          // segundos de mobs por build no teste (20s = 3x amostra vs 60s)
@@ -210,8 +209,8 @@
     //    (nao ha flag; saem do planBag). autoEquip/autoAtrib/autoMontar/buildPorFase/
     //    skillsPorFase/rotacaoSkills ja nasciam LIGADAS. A UNICA accao que nascia DESLIGADA era
     //    o refino -> passa a true. As que continuam false sao deliberadas e nao sao accoes:
-    //    `enabled` (interruptor-mestre, modo observacao ate o dono ligar), `ultEmMobs` (o dono
-    //    proibiu a ultimate em mobs), `testeForcar` (so para testes) e `trocaItens` (caminho
+    //    `enabled` (interruptor-mestre, modo observacao ate o dono ligar), `testeForcar` (so para
+    //    testes) e `trocaItens` (caminho
     //    ANTIGO, substituido pelo buildPorFase — ligar os dois punha-os a lutar entre si).
     autoRefino: true,         // refina no Ornn itens LENDÁRIOS A+ até +3 (PADRAO LIGADO)
     // REGRA DO DONO (inviolável): "Equipar SEMPRE o melhor item disponível em cada slot".
@@ -1784,6 +1783,7 @@
       nivel,
       vida: hp.max != null ? hp.max : 4188, vidaCur: hp.cur, vidaAtual: hp.cur, escudo: hp.escudo, vidaEff: (hp.vidaEff != null ? hp.vidaEff : hp.max),
       armadura: s['Armadura'] || 0, rm: s['Res. mágica'] || 0, dano: s['Dano'] || 0, poder: s['Poder'] || 0, va: s['Vel. ataque'] || 0,
+      mana: s['Mana'] || 0,
       // ROUBO DE VIDA (motor.js:538 `rouboVida`, aplicado em motor.js:1226-1228 `cura = dano × rv`):
       // era LIDO pelo `readStats` e DEITADO FORA pelo `player()`. Vale ~269 de cura/s numa base AD
       // (AGENTS.md, prova n.o 5) e decide a troca dano→sustento (docs/auditoria-do-jogo.md C8).
@@ -2091,6 +2091,18 @@ const CFG_VER = 2;
         // (TK-X2). Lido do kit, nunca copiado (REGRA N.º 3).
         atordoa: h.atordoa != null ? h.atordoa : null,
         acumMax: h.acumMax, duracaoSinistra: h.duracaoSinistra };
+      // PASS-THROUGH GENERICO: qualquer campo simples do kit que a lista acima nao conheca
+      // (ex.: `P.maestria`, `Q.fluxoBonus`, `R.ticks`, `M.runas`, `N.fluxoExtra`) passa tal e
+      // qual. Sem isto, cada campeao novo exigia uma linha nova aqui - e a Maestria Arcana do
+      // Ryze (mana->AP) ficava de fora. Funcoes/objectos complexos continuam a nao passar.
+      for (const c of Object.keys(h)) {
+        if (out[t][c] !== undefined) continue;
+        const v = h[c];
+        if (v == null || typeof v === 'function') continue;
+        if (typeof v !== 'object' || Array.isArray(v)) out[t][c] = v;
+        else { try { const pr = Object.getPrototypeOf(v); if (pr === Object.prototype || pr === null) out[t][c] = v; } catch { /* ignore */ } }
+      }
+
     }
     KAT = out;
     META.champAtual = { id, adBase: fonte.adBase, adNivel: fonte.adNivel, magia: !!fonte.magia, semMana: !!fonte.semMana, adagas: !!fonte.adagas, distancia: !!fonte.distancia, papel: fonte.papel || null, hemorragia: !!fonte.hemorragia };
@@ -2198,8 +2210,7 @@ const CFG_VER = 2;
         // KIT, TK-02-114); aqui a do KIT entra UMA vez no conjunto, nao uma vez por item.
         return { base, qual, refino, cdr: S.cdr, penMag: S.pen, penArmadura: S.penArmadura || 0,
           penArmaduraItens: S.penArmaduraItens != null ? S.penArmaduraItens : (S.penArmadura || 0),
-          apPct: (S.det || []).some((d) => /Rabadon/.test(d)) ? 0.35 : 0,
-          lich: S.lich, ap: S.ap, ad: S.ad, efeito: ((META.itens || []).find((x) => String(x.id) === base) || {}).efeito || null };
+          apPct: S.apPct || 0, lich: S.lich, ap: S.ap, ad: S.ad, efeito: ((META.itens || []).find((x) => String(x.id) === base) || {}).efeito || null };
       });
       const soma = (k) => itens.reduce((t, x) => t + (x[k] || 0), 0);
       // motor.js:552 `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)` — penE = a do KIT.
@@ -2216,7 +2227,12 @@ const CFG_VER = 2;
       // PEN DE ARMADURA do 3036 (motor.js:539): o `parseDica` le o TEXTO da passiva e nao tem
       // campo de pen de armadura, pelo que a 3036 valia 0 neste caminho — o ramo com `ids`
       // (statsSet) sempre a viu. Medido: 30% de pen a faltar NUM item que a build AD poe.
-      if (String(e.base) === '3036') penArm = Math.max(penArm, 0.3);
+      // PEN DE ARMADURA lida do TEXTO do item (nao por ID): o 3036 e outros entram sozinhos.
+      const cat = (META.itens || []).find((x) => String(x.id) === String(e.base)) || {};
+      const pv = passivasDoItem(cat);
+      if (pv.penArmadura) penArm = Math.max(penArm, pv.penArmadura);
+      if (pv.apPct && !s.apPct) apPct += pv.apPct;
+      if (pv.lich && !s.lich) lich = Math.max(lich, pv.lich);
       itens.push({ base: e.base, nome: e.nome, refino: e.refino, qual: e.qual, ...s });
     }
     // CDR do PAINEL manda (motor.js:537): o painel escreve `reducaoRecarga` = foco + itens, com o
@@ -2248,7 +2264,10 @@ const CFG_VER = 2;
     for (const h of (sk.arsenal || [])) {
       const k = KAT[h.t]; if (!k) continue;
       if (k.passiva) continue;
-      const temAdaga = !!k.adaga;
+      // ADAGAS que o uso deixa no chão. `adaga:true` = uma; a T da Katarina diz `adagas:3`
+      // (motor.js:801) e `soltarAdaga` é chamado 3× (`motor.js:2391`), logo são 3 giros, não 1.
+      const nDagas = Math.max(0, Number(k.adagas) || (k.adaga ? 1 : 0));
+      const temAdaga = nDagas > 0;
       const rr = (ranksOverride && ranksOverride[h.t] != null) ? ranksOverride[h.t] : h.rank;   // rank a calcular
       // ESCALA DO `ratio` — o motor diz qual é (motor.js:923 `efeitosRank`):
       //   `h.escalaPoder ? 'do Poder de Habilidade' : h.ratio ? 'do dano' : ...`
@@ -2258,18 +2277,32 @@ const CFG_VER = 2;
       // num campeão AD é ZERO — todo o escalamento do Yasuo era multiplicado por zero e o DPS
       // saía ~10x abaixo do real (a MESMA correcção já tinha sido feita no `estimarSet`).
       const escala = (META.champAtual && META.champAtual.magia) ? ap : ad;
-      const direto = (k.base && rr) ? k.base(rr) + (typeof k.ratio === 'function' ? k.ratio(rr) : k.ratio) * escala + (k.adRatio || 0) * ad : 0;
-      const dano = direto + (temAdaga ? giro : 0);
+      const fluxoMult = ((KAT.P && KAT.P.fluxo) != null || (KAT.E && KAT.E.espalha != null))
+        ? 1 + (Number(k.fluxoBonus) || Number(k.fluxoExtra) || 0) : 1;
+      const direto = ((k.base && rr) ? k.base(rr) + (typeof k.ratio === 'function' ? k.ratio(rr) : k.ratio) * escala + (k.adRatio || 0) * ad : 0) * fluxoMult;
+      // ---- GOLPES POR USO (motor.js:787 R `golpes:15`, :809 N `golpes:12`) -------------
+      // O motor NÃO faz um golpe por uso: a Lótus da Morte bate 15 vezes em cada alvo
+      // (`motor.js:2306-2310`, `d.lotus = { n: HK.R.golpes, cada: duracao/golpes }`) e a
+      // Tempestade 12 (`motor.js:2320-2326`). O DPS daqui era `dano/cd`, um golpe só: a R da
+      // Katarina saía com 10 de DPS e era descartada como se não valesse nada. Isto NÃO é
+      // opinião — é a lista `golpes` do kit, lida (REGRA Nº 3).
       const mult = k.mult || 1;
-      const procLich = lich ? lich * ap : 0;                         // Lich: proc 1× por skill (não multiplica pelo nº de alvos)
-      const total = direto * mult + (temAdaga ? giro * mult : 0) + procLich;
+      const golpes = Math.max(1, Number(k.golpes) || Number(k.ticks) || Number(k.runas) || 1);
+      const alvos = Math.max(1, Number(k.alvos) || Number(k.espalha) || 1);
+      const danoPorGolpe = direto + (temAdaga ? giro * mult * nDagas : 0);
+      const dano = danoPorGolpe * mult * golpes;
+      // O Lich é 1 proc por USO de habilidade (`motor.js:2064` põe `d.lich=true` no `usar`, e
+      // `motor.js:1803` consome no golpe seguinte): multiplicar por `golpes` contaria 15 procs
+      // num só uso. Fica UMA vez, fora do ×golpes.
+      const procLich = lich ? lich * ap : 0;
+      const total = dano + procLich;
       const cdBase = k.rec ? k.rec(rr || 1) : null;
       // VORACIDADE POR ABATE (motor.js:1789): cada abate tira 1,5 s (5 s em chefe) de Q/W/E.
       // Sem isto o DPS da Katarina saia ate x1,63 abaixo do real a 25 abates/min (C3).
       const cd = cdBase != null ? cdVoraz(cdBase * (1 - cdr), h.t) : null;
-      const dps = cd ? total / cd : 0, dpsDireto = cd ? (direto * mult) / cd : 0, dpsAdaga = cd && temAdaga ? (giro * mult) / cd : 0, dpsLich = cd ? procLich / cd : 0;
-      out.push({ t: h.t, nome: h.name, rank: h.rank, rankUsado: rr, max: h.maxRank, naBarra: h.onBar, util: !direto && !temAdaga, adaga: temAdaga, auto: !!k.auto, dot: !!k.dot, alvo: k.alvo || null, dano: Math.round(dano), direto: Math.round(direto), giro: temAdaga ? giro : 0, total: Math.round(total), cdBase: cdBase != null ? +cdBase.toFixed(1) : null, cd: cd != null ? +cd.toFixed(1) : null, dps: Math.round(dps), dpsDireto: Math.round(dpsDireto), dpsAdaga: Math.round(dpsAdaga), dpsLich: Math.round(dpsLich), lichProc: Math.round(procLich) });
-      if (temAdaga && cd) { giroDps += giro / cd; adagas.push(h.t); }
+      const dps = cd ? total / cd : 0, dpsDireto = cd ? (direto * mult * golpes) / cd : 0, dpsAdaga = cd && temAdaga ? (giro * mult * nDagas * golpes) / cd : 0, dpsLich = cd ? procLich / cd : 0;
+      out.push({ t: h.t, nome: h.name, rank: h.rank, rankUsado: rr, max: h.maxRank, naBarra: h.onBar, util: !direto && !temAdaga, adaga: temAdaga, auto: !!k.auto, dot: !!k.dot, alvo: k.alvo || null, golpes, alvos, dano: Math.round(dano), direto: Math.round(direto), giro: temAdaga ? giro : 0, total: Math.round(total), cdBase: cdBase != null ? +cdBase.toFixed(1) : null, cd: cd != null ? +cd.toFixed(1) : null, dps: Math.round(dps), dpsDireto: Math.round(dpsDireto), dpsAdaga: Math.round(dpsAdaga), dpsLich: Math.round(dpsLich), lichProc: Math.round(procLich) });
+      if (temAdaga && cd) { giroDps += (giro * nDagas) / cd; adagas.push(h.t + (nDagas > 1 ? '×' + nDagas : '')); }
       lichDps += dpsLich;
     }
     out.push({ t: 'P', nome: 'Voracidade (giro)', dano: giro, dps: Math.round(giroDps), passiva: true, adagas, nota: adagas.length ? 'giro disparado por ' + adagas.join('/') : 'sem skill de adaga' });
@@ -2305,12 +2338,16 @@ const CFG_VER = 2;
   function dpsRank(ctx, t, r) {
     if (!(r > 0)) return 0;
     const k = KAT[t]; if (!k || k.passiva) return 0;
-    const temAdaga = !!k.adaga;
+    const temAdaga = !!(k.adaga || k.adagas);
+    const nDagas = Math.max(0, Number(k.adagas) || (k.adaga ? 1 : 0));
     const escala = ctx.magia ? ctx.ap : ctx.ad;      // motor.js:923 `escalaPoder` (ver dpsPorHabilidade)
-    const direto = (k.base ? k.base(r) : 0) + (typeof k.ratio === 'function' ? k.ratio(r) : (k.ratio || 0)) * escala + (k.adRatio || 0) * ctx.ad;
+    const fluxoMult = ((KAT.P && KAT.P.fluxo) != null || (KAT.E && KAT.E.espalha != null))
+      ? 1 + (Number(k.fluxoBonus) || Number(k.fluxoExtra) || 0) : 1;
+    const direto = ((k.base ? k.base(r) : 0) + (typeof k.ratio === 'function' ? k.ratio(r) : (k.ratio || 0)) * escala + (k.adRatio || 0) * ctx.ad) * fluxoMult;
     const mult = k.mult || 1;
-    const procLich = ctx.lich ? ctx.lich * ctx.ap : 0;
-    const total = direto * mult + (temAdaga ? ctx.giro * mult : 0) + procLich;
+    const golpes = Math.max(1, Number(k.golpes) || Number(k.ticks) || Number(k.runas) || 1);        // motor.js:787/809 (ver dpsPorHabilidade)
+    const procLich = ctx.lich ? ctx.lich * ctx.ap : 0;         // 1 proc por uso, fora do ×golpes
+    const total = (direto * mult + (temAdaga ? ctx.giro * mult * nDagas : 0)) * golpes + procLich;
     const cdBase = k.rec ? k.rec(r) : null;
     if (cdBase == null) return 0;
     // VORACIDADE POR ABATE (motor.js:1789) — mesma conta do `dpsPorHabilidade`.
@@ -4455,11 +4492,95 @@ const CFG_VER = 2;
    *  (Rabadon +35%AP, Cajado pen 40%, Ímpeto CDR, Chama +20% <40%, Lich +75%AP/skill,
    *  Liandry queima 1,5% da vida máx/s com teto de 3× a curva). */
   /** Stats de item compartilhadas (AP, CDR, pen, passivas) — uma fonte só p/ estimarSet/scoreSet. */
+  /** Le as passivas de um item pelo TEXTO do catalogo (PT-BR, sem acento) e pelos campos
+   *  numericos. Nao ha UM `if (id === ...)` aqui: um item novo (ou um nerf/buff no texto)
+   *  entra sozinho. O que nao for reconhecido fica em `naoReconhecidos` - nunca em silencio.
+   *  Fonte do texto: `META.itens` (o catalogo do jogo, inject.js). */
+  function passivasDoItem(it) {
+    const ef = String(it.efeito || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const p = { naoReconhecidos: [] };
+    const n = (s) => { const v = parseFloat(String(s).replace(',', '.')); return Number.isFinite(v) ? v : 0; };
+    const setMax = (k, v) => { if (v > (p[k] || 0)) p[k] = v; };
+    let m;
+    // percentagens de atributo total
+    if ((m = ef.match(/\+\s*(\d+(?:[.,]\d+)?)\s*%\s*de\s+poder de habilidade total/))) setMax('apPct', n(m[1]) / 100);
+    if ((m = ef.match(/aumenta (?:o|seu) poder de habilidade total em (\d+(?:[.,]\d+)?)\s*%/))) setMax('apPct', n(m[1]) / 100);
+    if ((m = ef.match(/\+\s*(\d+(?:[.,]\d+)?)\s*%\s*de dano de ataque total/))) setMax('adPct', n(m[1]) / 100);
+    if ((m = ef.match(/aumenta (?:o|seu) dano de ataque total em (\d+(?:[.,]\d+)?)\s*%/))) setMax('adPct', n(m[1]) / 100);
+    if ((m = ef.match(/\+\s*(\d+(?:[.,]\d+)?)\s*%\s*de vida maxima/))) setMax('vidaPct', n(m[1]) / 100);
+    if ((m = ef.match(/\+\s*(\d+(?:[.,]\d+)?)\s*%\s*de armadura total/))) setMax('armPct', n(m[1]) / 100);
+    if ((m = ef.match(/\+\s*(\d+(?:[.,]\d+)?)\s*%\s*de resistencia magica total/))) setMax('rmPct', n(m[1]) / 100);
+    if ((m = ef.match(/\+\s*(\d+(?:[.,]\d+)?)\s*%\s*de esquiva/))) setMax('esquiva', n(m[1]) / 100);
+    // dano / procs
+    if ((m = ef.match(/acertos criticos causam \+(\d+(?:[.,]\d+)?)\s*%\s*de dano/))) setMax('critDano', n(m[1]) / 100);
+    if ((m = ef.match(/proximo ataque causa \+(\d+(?:[.,]\d+)?)\s*%\s*do poder de habilidade/))) setMax('lich', n(m[1]) / 100);
+    if ((m = ef.match(/proximo ataque.*?\+(\d+(?:[.,]\d+)?)\s*%\s*do dano de ataque base/))) setMax('sheen', n(m[1]) / 100);
+    if ((m = ef.match(/poder de habilidade igual a (\d+(?:[.,]\d+)?)\s*%\s*da sua mana maxima/))) setMax('manaToAp', n(m[1]) / 100);
+    if ((m = ef.match(/dano de ataque igual a (\d+(?:[.,]\d+)?)\s*%\s*da vida bonus/))) setMax('bonusVidaToAd', n(m[1]) / 100);
+    if ((m = ef.match(/(\d+(?:[.,]\d+)?)\s*%\s*de penetracao de armadura/))) setMax('penArmadura', n(m[1]) / 100);
+    if ((m = ef.match(/(\d+(?:[.,]\d+)?)\s*%\s*de penetracao magica/))) setMax('penMag', n(m[1]) / 100);
+    if ((m = ef.match(/a cada (\d+(?:[.,]\d+)?)\s*s,\s*a proxima habilidade causa mais (\d+(?:[.,]\d+)?)\s*\+\s*(\d+(?:[.,]\d+)?)\s*%\s*do poder de habilidade em ate (\d+)\s*inimigos/))) {
+      p.areaProc = { cd: n(m[1]), flat: n(m[2]), apRatio: n(m[3]) / 100, alvos: Math.max(1, parseInt(m[4], 10)) };
+    }
+    if ((m = ef.match(/habilidades queimam o alvo, causando (\d+(?:[.,]\d+)?)\s*%\s*da vida maxima dele por segundo durante (\d+(?:[.,]\d+)?)\s*s/))) {
+      p.burnPct = { pct: n(m[1]) / 100, dur: n(m[2]) };
+    }
+    if ((m = ef.match(/ataques causam (\d+(?:[.,]\d+)?)\s*%\s*da vida atual do alvo/))) p.currentHpPct = { pct: n(m[1]) / 100 };
+    if ((m = ef.match(/dano magico causa \+(\d+(?:[.,]\d+)?)\s*%\s*em inimigos com menos de (\d+(?:[.,]\d+)?)\s*%\s*de vida/))) {
+      p.execute = { pct: n(m[1]) / 100, below: n(m[2]) / 100 };
+    }
+    if (!p.execute && (m = ef.match(/habilidades causam \+(\d+(?:[.,]\d+)?)\s*%\s*de dano em inimigos com menos de (\d+(?:[.,]\d+)?)\s*%\s*de vida/))) {
+      p.execute = { pct: n(m[1]) / 100, below: n(m[2]) / 100 };
+    }
+    if ((m = ef.match(/a cada (\d+(?:[.,]\d+)?)\s*s,\s*o proximo ataque causa \+(\d+(?:[.,]\d+)?)(\s*de dano|\s*%\s*do dano de ataque)( em todos os inimigos que voce alcanca)?/))) {
+      p.periodic = { cd: n(m[1]), flat: /de dano/.test(m[3]) ? n(m[2]) : 0, adRatio: /%/.test(m[3]) ? n(m[2]) / 100 : 0, alvos: m[4] ? 99 : 1 };
+    }
+    if ((m = ef.match(/ataques causam (\d+(?:[.,]\d+)?)\s*%\s*do dano de ataque nos outros inimigos/))) p.cleave = { pct: n(m[1]) / 100 };
+    if ((m = ef.match(/ataques causam \+?(\d+(?:[.,]\d+)?)\s*%\s*da sua vida maxima em todos os inimigos/))) p.cleaveHp = { pct: n(m[1]) / 100 };
+    if ((m = ef.match(/cada ataque da \+(\d+(?:[.,]\d+)?)\s*%\s*de velocidade de ataque por (\d+(?:[.,]\d+)?)\s*s,\s*acumulando ate (\d+)\s*vezes/))) {
+      p.stackAS = { pct: n(m[1]) / 100, dur: n(m[2]), max: Math.max(1, parseInt(m[3], 10)) };
+    }
+    if ((m = ef.match(/cada ataque reduz a armadura do alvo em (\d+(?:[.,]\d+)?)\s*%,\s*acumulando ate (\d+(?:[.,]\d+)?)\s*%/))) {
+      p.shred = { pct: n(m[1]) / 100, max: n(m[2]) / 100 };
+    }
+    if ((m = ef.match(/\+(\d+(?:[.,]\d+)?)\s*%\s*em toda cura recebida/))) setMax('healPct', n(m[1]) / 100);
+    if ((m = ef.match(/\+(\d+(?:[.,]\d+)?)\s*%\s*de dano contra chefes/))) setMax('danoChefe', n(m[1]) / 100);
+    if ((m = ef.match(/volta com (\d+(?:[.,]\d+)?)\s*%\s*da vida/))) p.revive = { pct: n(m[1]) / 100 };
+    if ((m = ef.match(/invulneravel por (\d+(?:[.,]\d+)?)\s*s/))) p.stasis = { dur: n(m[1]) };
+    if ((m = ef.match(/com menos de (\d+(?:[.,]\d+)?)\s*%\s*de vida, ganha um escudo de (\d+(?:[.,]\d+)?)\s*%\s*da vida bonus/))) {
+      p.shield = { below: n(m[1]) / 100, pct: n(m[2]) / 100 };
+    }
+    if (/bloqueia o proximo golpe de monstro/.test(ef)) {
+      const mb = ef.match(/a cada (\d+(?:[.,]\d+)?)\s*s/);
+      p.block = { cada: mb ? n(mb[1]) : null };
+    }
+    if ((m = ef.match(/quem te ataca recebe (\d+(?:[.,]\d+)?)\s*\+\s*(\d+(?:[.,]\d+)?)\s*%\s*da sua armadura bonus/))) {
+      p.thorns = { flat: n(m[1]), armRatio: n(m[2]) / 100 };
+    }
+    if ((m = ef.match(/dispara em mais (\d+)\s*inimigos.*?com (\d+(?:[.,]\d+)?)\s*%\s*do dano/))) {
+      p.runaan = { n: parseInt(m[1], 10), pct: n(m[2]) / 100 };
+    }
+    if ((m = ef.match(/deixam os inimigos lentos por (\d+(?:[.,]\d+)?)\s*s/))) p.slow = { dur: n(m[1]) };
+    if ((m = ef.match(/(\d+(?:[.,]\d+)?)\s*%\s*do dano recebido vira sangramento/))) p.bleed = { pct: n(m[1]) / 100 };
+    if ((m = ef.match(/primeiro ataque em cada inimigo e critico/))) p.firstCrit = true;
+    if ((m = ef.match(/queima os monstros encostados em voce \((\d+(?:[.,]\d+)?)\s*\+\s*(\d+(?:[.,]\d+)?)\s*x nivel \+ (\d+(?:[.,]\d+)?)\s*%\s*da sua vida maxima\)/))) {
+      p.burnAura = { flat: n(m[1]), nivel: n(m[2]), vidaPct: n(m[3]) / 100 };
+    }
+    // o que sobrou de texto e nao foi classificado: fica visivel para a proxima sessao
+    if (ef && !Object.keys(p).some((k) => k !== 'naoReconhecidos')) p.naoReconhecidos.push(String(it.efeito || ''));
+    return p;
+  }
+
   function statsSet(ids, opt) {
     const qm = (opt && opt.mult) || 1;   // multiplicador de ATRIBUTO (qualidade/refino) p/ simular cenários
     const itens = META.itens || [];
-    let apItem = 0, adItem = 0, apPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvItens = 0, lich = 0, chama = false, liandry = false, crit = 0, infinito = false;
-    let tem3036 = false;   // motor.js:552 `tem('3036')` — a pen de armadura do item encadeia com a do KIT
+    let apItem = 0, adItem = 0, apPct = 0, adPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvItens = 0, lich = 0, sheen = 0, chama = false, liandry = false, crit = 0, infinito = false;
+    // Stats/genericos que antes eram IDs fixos. Agora saem do TEXTO de cada item.
+    let manaItem = 0, vidaItem = 0, armaduraItem = 0, rmItem = 0, vaItem = 0, regenItem = 0, esquivaItem = 0;
+    let vidaPct = 0, armPct = 0, rmPct = 0, critDano = 0, manaToAp = 0, bonusVidaToAd = 0;
+    let areaProc = null, burnPct = null, currentHpPct = null, execute = null, periodic = [], cleave = null, cleaveHp = null;
+    let stackAS = null, shred = null, healPct = 0, danoChefe = 0, runaan = null, revive = 0, stasis = 0, shield = null, block = null, thorns = null, burnAura = null, slow = 0, bleed = 0;
+    const naoReconhecidos = [];
     const det = [];
     for (const raw of ids) {
       // `parseSlotId` resolve a BASE e a qualidade/refino ('3175~A', '4629+3~A', '3171~B+2') — o
@@ -4469,7 +4590,11 @@ const CFG_VER = 2;
       const id = String(p.base);
       const it = itens.find((x) => String(x.id) === id) || {};
       const m = p.mult * qm;   // qualidade/refino da peça × o multiplicador de cenário (`opt.mult`)
-      let c = it.cdr || 0, pm = it.penMag || 0;
+      // PASSIVAS LIDAS DO TEXTO - nenhum `if (id === ...)` daqui para baixo.
+      const pv = passivasDoItem(it);
+      if (pv.naoReconhecidos.length) for (const t of pv.naoReconhecidos) naoReconhecidos.push(id + ': ' + t);
+      let c = it.cdr || 0, pm = it.penMag != null ? it.penMag : (pv.penMag || 0);
+      let pa = it.penArmadura != null ? it.penArmadura : (pv.penArmadura || 0);
       const ef = String(it.efeito || '');
       if (!c) { const mm = ef.match(/[\u2212-]\s*(\d+)\s*%\s*(?:na\s*)?recarga/i); if (mm) c = +mm[1] / 100; }
       // PEN MAGICA vs PEN DE ARMADURA — sao COISAS DIFERENTES no motor:
@@ -4482,21 +4607,69 @@ const CFG_VER = 2;
       // ('30% de penetracao de armadura') e arquivava-o como pen MAGICA — inflacionava o dano magico
       // em +13,0% (armadura 104) a +19,6% (armadura 200). Ver docs/pendencias-motor.md, lacuna 1.
       if (!pm) { const mm2 = ef.match(/(\d+)\s*%\s*de\s*penetra[çc][ãa]o\s*m[áa]gica/i); if (mm2) pm = +mm2[1] / 100; }
-      let pa = it.penArmadura || 0;
-      if (!pa && id === '3036') { pa = 0.3; tem3036 = true; }   // motor.js:539 (`0.7` = 1 - 0,30) + 552
+      // (a pen de armadura do 3036 ja veio do TEXTO: "30% de penetracao de armadura")
       // O `mult` (qualidade/refino) aplica-se EXACTAMENTE à lista do motor (motor.js:254-255): ad, ap,
       // mana, vida, armadura, rm, va, rv, critico, regen e **cdr**. O `penMag` NÃO está nessa lista —
       // NÃO é escalado (o 3175~A dá 15% de pen, não 17,25%; a dica medida no jogo confirma:
       // docs/snapshots/farm.json). Correcção do Lead, 2026-10-14.
       apItem += (it.ap || 0) * m; adItem += (it.ad || it.dano || 0) * m; cdr += c * m; pen += pm; penArmadura += pa; rvItens += (it.rv || 0) * m;
+      // ---- STATS BASE que faltavam (mana/vida/armadura/rm/va/regen/esquiva) --------------
+      // A vida e a armadura nunca entravam no `statsSet`: o 2501 ("2% da Vida bonus vira AD")
+      // e os % de vida/armadura ficavam sem base. Agora entram, com o mesmo `m` do motor
+      // (`infoItem`, motor.js:279-285, escala SO os campos numericos).
+      manaItem += (it.mana || 0) * m; vidaItem += (it.vida || 0) * m;
+      armaduraItem += (it.armadura || 0) * m; rmItem += (it.rm || 0) * m;
+      vaItem += (it.va || 0) * m; regenItem += (it.regen || 0) * m; crit += (it.critico || 0);
+      // ---- % do total: campo do catalogo primeiro, texto depois (NUNCA os dois) ----------
+      // motor.js:509 `for (const p in pct) pct[p] += i[p] || 0` - o jogo soma o CAMPO. Quando
+      // o campo nao existe (ex.: 3089), o texto e a unica fonte; usar os dois contaria 2x
+      // (3152 tem apPct=0,05 E "+5% de Poder" no texto).
+      apPct += (it.apPct != null ? it.apPct : (pv.apPct || 0));
+      adPct += (it.adPct != null ? it.adPct : (pv.adPct || 0));
+      vidaPct += (it.vidaPct != null ? it.vidaPct : (pv.vidaPct || 0));
+      armPct += (it.armPct != null ? it.armPct : (pv.armPct || 0));
+      rmPct += (it.rmPct != null ? it.rmPct : (pv.rmPct || 0));
+      esquivaItem += (it.esquiva != null ? it.esquiva : (pv.esquiva || 0));
+      // ---- PASSIVAS (todas lidas; a lista cresce sem tocar em IDs) -----------------------
+      if (pv.critDano) critDano += pv.critDano;
+      if (pv.lich) lich = Math.max(lich, pv.lich);
+      if (pv.sheen) sheen = Math.max(sheen, pv.sheen);
+      if (pv.manaToAp) manaToAp += pv.manaToAp;
+      if (pv.bonusVidaToAd) bonusVidaToAd += pv.bonusVidaToAd;
+      if (pv.areaProc) areaProc = pv.areaProc;
+      if (pv.burnPct) burnPct = pv.burnPct;
+      if (pv.currentHpPct) currentHpPct = pv.currentHpPct;
+      if (pv.execute && (!execute || pv.execute.pct > execute.pct)) execute = pv.execute;
+      if (pv.periodic) periodic.push(pv.periodic);
+      if (pv.cleave) cleave = pv.cleave;
+      if (pv.cleaveHp) cleaveHp = pv.cleaveHp;
+      if (pv.stackAS) stackAS = pv.stackAS;
+      if (pv.shred) shred = pv.shred;
+      if (pv.healPct) healPct = Math.max(healPct, pv.healPct);
+      if (pv.danoChefe) danoChefe = Math.max(danoChefe, pv.danoChefe);
+      if (pv.runaan) runaan = pv.runaan;
+      if (pv.revive) revive = Math.max(revive, pv.revive.pct);
+      if (pv.stasis) stasis = Math.max(stasis, pv.stasis.dur);
+      if (pv.shield) shield = pv.shield;
+      if (pv.block) block = pv.block;
+      if (pv.thorns) thorns = pv.thorns;
+      if (pv.burnAura) burnAura = pv.burnAura;
+      if (pv.slow) slow = Math.max(slow, pv.slow.dur);
+      if (pv.bleed) bleed = pv.bleed.pct;
+      if (pv.firstCrit) det.push('critico no 1o ataque');
       // CRITICO: a CHANCE soma (motor.js:507 `critico += i.critico`) e o 3031 da +0,4 no
       // MULTIPLICADOR (motor.js:515 `danoCritico += 0.4`). Ambos eram invisiveis ao scoring.
-      crit += (it.critico || 0);
-      if (id === '3031') infinito = true;
-      if (id === RABADON) { apPct += 0.35; det.push('Rabadon +35%AP'); }
-      if (id === '3100') { lich += 0.75; det.push('Lich +75%AP/skill'); }
-      if (id === '4645') { chama = true; det.push('Chama +20% (<40%)'); }
-      if (id === '6653') { liandry = true; det.push('Liandry queima 1,5%/s'); }
+      // (a chance de critico ja somou acima; o multiplicador critico vem do texto do 3031)
+      if (critDano > 0) infinito = true;
+      // compatibilidade: os dois booleanos historicos sao derivados das passivas lidas
+      if (execute) chama = true;
+      if (burnPct) liandry = true;
+      if (pv.lich) det.push('Lich ' + Math.round(pv.lich * 100) + '%AP/skill');
+      if (pv.areaProc) det.push('Eco ' + pv.areaProc.flat + '+' + Math.round(pv.areaProc.apRatio * 100) + '%AP/' + pv.areaProc.cd + 's');
+      if (pv.burnPct) det.push('Queima ' + (pv.burnPct.pct * 100).toFixed(1) + '%/s');
+      if (pv.apPct) det.push('+' + Math.round(pv.apPct * 100) + '%AP');
+      if (pv.adPct) det.push('+' + Math.round(pv.adPct * 100) + '%AD');
+      if (pv.execute) det.push('+' + Math.round(pv.execute.pct * 100) + '% (<' + Math.round(pv.execute.below * 100) + '%)');
     }
     cdr = Math.min(CAP_CDR, cdr); pen = Math.min(CAP_PEN_MAG, pen);
     // ---- PEN DE ARMADURA: a do KIT encadeada com a dos ITENS (motor.js:552) ------------------
@@ -4513,18 +4686,74 @@ const CFG_VER = 2;
     // contribuicao de item — senao contaria o 0,7 duas vezes (medido: 0,652 em vez de 0,503).
     const penArmaduraItens = Math.max(0, Math.min(1, penArmadura));
     const penKit = penKitCampeao('E');
-    penArmadura = 1 - (1 - penKit) * (1 - penArmaduraItens) * (penArmaduraItens > 0 ? 1 : (tem3036 ? 0.7 : 1));
+    penArmadura = 1 - (1 - penKit) * (1 - penArmaduraItens);
     // `pen` = pen MAGICA (motor.js:542, tecto 0,6) e `penArmadura` = pen de ARMADURA
     // (motor.js:552, so no ramo fisico).
-    return { ap: apItem * (1 + apPct), ad: adItem, cdr, pen, penArmadura, rv: rvItens, penArmaduraItens, penKit, lich, chama, liandry, crit, infinito, det };
+    return { ap: apItem * (1 + apPct), apBruto: apItem, apPct, ad: adItem * (1 + adPct), adBruto: adItem, adPct,
+      mana: manaItem, vida: vidaItem * (1 + vidaPct), vidaPct, armadura: armaduraItem * (1 + armPct), armPct,
+      rm: rmItem * (1 + rmPct), rmPct, va: vaItem, regen: regenItem, esquiva: esquivaItem,
+      cdr, pen, penArmadura, rv: rvItens, penArmaduraItens, penKit,
+      lich, sheen, chama, liandry, crit, critDano, infinito, det,
+      manaToAp, bonusVidaToAd, areaProc, burnPct, currentHpPct, execute, periodic, cleave, cleaveHp,
+      stackAS, shred, healPct, danoChefe, runaan, revive, stasis, shield, block, thorns, burnAura, slow, bleed,
+      naoReconhecidos };
+  }
+
+  /** IDs dos itens EQUIPADOS com refino/qualidade (a mesma sintaxe do `statsSet`). */
+  function idsEquipados() {
+    try { return (readEquip() || []).map((e) => e.id || (e.base + (e.refino ? '+' + e.refino : '') + (e.qual ? '~' + e.qual : ''))).filter(Boolean); }
+    catch { return []; }
+  }
+
+  /** AP TOTAL de um conjunto pela formula do MOTOR (motor.js:555-563), nao pela soma dos itens.
+   *  Isto e o que faltava para o Ryze: a Maestria Arcana (P.maestria) transforma mana em AP e
+   *  o AP em mana; o Cajado do Arcanjo (texto: "3% da Mana maxima") e o Rabadon (texto: "+35%
+   *  do Poder total") entram na MESMA conta. Nada aqui nomeia o Ryze: `KAT.P.maestria` e lido
+   *  do kit; se outro campeao tiver o campo, funciona igual.
+   *
+   *  A base sem itens e INVERTIDA do estado VIVO (AP/mana do painel) no conjunto EQUIPADO:
+   *  assim o "ideal" e comparado com o que a conta TEM, nao com um numero inventado. */
+  function apDoSet(ids, S) {
+    const st = S || statsSet(ids);
+    const p = player() || {};
+    const cur = statsSet(idsEquipados());
+    const mst = (KAT.P && KAT.P.maestria) || null;
+    const apPctCur = 1 + (cur.apPct || 0);
+    const apPre = (p.poder || 0) / apPctCur;                 // antes do Rabadon
+    const mana0 = Math.max(0, (p.mana || 0) - (cur.mana || 0));   // mana base + extra do passivo
+    // resolve o extra do passivo no estado ACTUAL (poucas iteracoes; a formula e monotonica)
+    let extraCur = 0, curMst = 0, curArch = 0;
+    for (let i = 0; i < 6; i++) {
+      const apPrePassive = Math.max(0, apPre - curMst - curArch);
+      const f = mst ? Math.min(mst.manaMax || 0.5, (mst.manaPor100 || 0.1) * apPrePassive / 100) : 0;
+      extraCur = mana0 * f / (1 + f);
+      curMst = mst ? (mst.poder || 0) * ((cur.mana || 0) + extraCur) : 0;
+      curArch = cur.manaToAp ? cur.manaToAp * (mana0) : 0;
+    }
+    const manaBase = Math.max(0, mana0 - extraCur);
+    const apBase = Math.max(0, apPre - (cur.apBruto || 0) - curMst - curArch);
+    // ---- conjunto candidato ----
+    let ap = apBase + (st.apBruto || 0);
+    let mana = manaBase + (st.mana || 0);
+    if (mst) {
+      const f = Math.min(mst.manaMax || 0.5, (mst.manaPor100 || 0.1) * ap / 100);
+      const extra = mana * f;
+      mana += extra;
+      ap += (mst.poder || 0) * ((st.mana || 0) + extra);
+    }
+    if (st.manaToAp) ap += st.manaToAp * mana;               // Cajado do Arcanjo (texto)
+    ap *= 1 + (st.apPct || 0);                               // Rabadon (texto)
+    return { ap: Math.round(ap), mana: Math.round(mana), baseAp: Math.round(apBase), baseMana: Math.round(manaBase), passiva: !!mst };
   }
 
   function estimarSet(ids, alvo, opt) {
     const p = player();
     const S = statsSet(ids, opt);
-    const { cdr, pen, penArmadura, lich, chama, liandry, det } = S;
-    const ap = S.ap;
+    const { cdr, pen, penArmadura, lich, sheen, det } = S;
+    const apInfo = apDoSet(ids, S);
+    const ap = apInfo.ap;
     const sk = readSkills();
+    const adTotalSet = (p.dano || 0) + (S.ad || 0);
     let dps = 0; const habs = [];
     for (const h of (sk.arsenal || [])) {
       const k = KAT[h.t]; if (!k || k.passiva || !h.rank) continue;
@@ -4542,12 +4771,20 @@ const CFG_VER = 2;
       // tipo de dano do campeao: mago -> AP, AD -> AD total (campeao + itens).
       const magiaEsc = !!(META.champAtual && META.champAtual.magia);
       const escala = magiaEsc ? ap : adTotal;
-      const direto = (k.base ? k.base(h.rank) : 0) + (typeof k.ratio === 'function' ? k.ratio(h.rank) : (k.ratio || 0)) * escala + (k.adRatio || 0) * adTotal;
-      const total = direto * (k.mult || 1) + lich * ap;
+      const fluxoMult = ((KAT.P && KAT.P.fluxo) != null || (KAT.E && KAT.E.espalha != null))
+        ? 1 + (Number(k.fluxoBonus) || Number(k.fluxoExtra) || 0) : 1;
+      const direto = ((k.base ? k.base(h.rank) : 0) + (typeof k.ratio === 'function' ? k.ratio(h.rank) : (k.ratio || 0)) * escala + (k.adRatio || 0) * adTotal) * fluxoMult;
+      const mult = k.mult || 1;
+      // GOLPES/TICKS/RUNAS: a MESMA lista que o `dpsPorHabilidade` le (R da Katarina 15,
+      // R do Ryze `ticks`, M `runas`). Antes o `estimarSet` contava 1 golpe por uso.
+      const golpes = Math.max(1, Number(k.golpes) || Number(k.ticks) || Number(k.runas) || 1);
+      const procLich = (magiaEsc && lich) ? lich * ap : 0;
+      const procSheen = (!magiaEsc && sheen) ? sheen * baseAdCampeao(p.nivel || 1) : 0;
+      const total = direto * mult * golpes + procLich + procSheen;
       const cdBase = k.rec ? k.rec(h.rank) : null;
       const cd = cdBase != null ? cdBase * (1 - cdr) : null;
       const d = cd ? total / cd : 0;
-      dps += d; habs.push({ t: h.t, nome: h.name, dps: Math.round(d) });
+      dps += d; habs.push({ t: h.t, nome: h.name, dps: Math.round(d), golpes, fluxo: +fluxoMult.toFixed(3) });
     }
     // MITIGAÇÃO PELO TIPO DE DANO do campeão (motor.js:1202):
     //   mágico -> armadura do alvo × RM_MONSTRO × (1 − penMagica)   [motor.js:1179, 529]
@@ -4556,16 +4793,20 @@ const CFG_VER = 2;
     // magia. Num campeão AD isso infla o dano estimado e muda a escolha de itens: as duas pens
     // são coisas diferentes no motor (motor.js:529 vs 539) e cada uma fica no seu ramo.
     const magiaCh = !!(META.champAtual && META.champAtual.magia);
-    const mit = 100 / (100 + (magiaCh ? armMagicaEfetiva(alvo?.armadura, pen) : (alvo?.armadura || 0) * (1 - penArmadura)));
+    const shredMax = (S.shred && S.shred.max) || 0;
+    const mit = 100 / (100 + (magiaCh ? armMagicaEfetiva(alvo?.armadura, pen) : (alvo?.armadura || 0) * (1 - penArmadura) * (1 - shredMax)));
     dps *= mit;
-    if (chama) dps *= 1 + (alvo?.chefe ? 0.066 : 0.033);   // ~1/3 (chefe) / ~1/6 (mob) da luta abaixo de 40%
+    if (S.execute) dps *= 1 + S.execute.pct * (alvo?.chefe ? 0.33 : 0.17);   // uptime ~1/3 (chefe) / ~1/6 (mob) abaixo do limiar
+    if (S.danoChefe && alvo?.chefe) dps *= 1 + S.danoChefe;
+    // ---- procs de ITEM que nao sao por uso de skill: Luden (a cada N s) e Quebrapassos ----
+    if (S.areaProc) { const n = alvo?.chefe ? 1 : Math.min(S.areaProc.alvos, alvo?.alvos || S.areaProc.alvos); dps += (S.areaProc.flat + S.areaProc.apRatio * ap) * n / Math.max(1, S.areaProc.cd); }
+    for (const pr of (S.periodic || [])) { const n = alvo?.chefe ? 1 : Math.min(pr.alvos || 1, alvo?.alvos || 1); dps += (pr.flat + (pr.adRatio || 0) * adTotalSet) * n / Math.max(1, pr.cd); }
     let burn = 0;
-    if (liandry && alvo?.hp) {
-      const cv = (META.curva && META.curva.hp) || [150, 100, 1];
-      const cap = 3 * (cv[0] + cv[1] * (alvo.nivel || 1) + cv[2] * (alvo.nivel || 1) ** 2);
-      burn = Math.min(alvo.hp, cap) * 0.015; dps += burn;
-    }
-    return { hemorragia: (typeof hemorragiaDe === 'function' ? hemorragiaDe(p && p.nivel, p && p.bonusAd, alvo) : null), dps: Math.round(dps), ap: Math.round(ap), cdr: +cdr.toFixed(2), pen: +pen.toFixed(2), burn: Math.round(burn), habs: habs.sort((a, b) => b.dps - a.dps).slice(0, 5), det };
+    const cv = (META.curva && META.curva.hp) || [150, 100, 1];
+    const capVida = 3 * (cv[0] + cv[1] * (alvo?.nivel || 1) + cv[2] * (alvo?.nivel || 1) ** 2);
+    if (S.burnPct && alvo?.hp) { burn = Math.min(alvo.hp, capVida) * S.burnPct.pct; dps += burn; }
+    if (S.currentHpPct && alvo?.hp) dps += Math.min(alvo.hp, capVida) * S.currentHpPct.pct;
+    return { hemorragia: (typeof hemorragiaDe === 'function' ? hemorragiaDe(p && p.nivel, p && p.bonusAd, alvo) : null), dps: Math.round(dps), ap: Math.round(ap), mana: apInfo.mana, apPassiva: apInfo.passiva, cdr: +cdr.toFixed(2), pen: +pen.toFixed(2), burn: Math.round(burn), habs: habs.sort((a, b) => b.dps - a.dps).slice(0, 5), det, naoReconhecidos: S.naoReconhecidos };
   }
 
   /** Multiplicador médio de ATRIBUTO dos itens EQUIPADOS (refino +12%/nv, qualidade): (1+0.12·ref)·multQual. */
@@ -7352,6 +7593,7 @@ const CFG_VER = 2;
   /** Score de dano de um conjunto — AGORA com as passivas (Lich/Chama/Liandry), igual ao estimarSet. */
   function scoreSet(ids, alvo) {
     const S = statsSet(ids);
+    const apSet = apDoSet(ids, S).ap;
     // Idem `estimarSet`: MITIGAÇÃO PELO TIPO DE DANO do campeão (motor.js:1202).
     // TK-02-150: o ramo FÍSICO usava a pen MÁGICA (`S.pen`), que o motor só dá a quem bate com
     // magia (motor.js:529). Cada pen fica no seu ramo: penArmadura no físico (motor.js:539).
@@ -7362,7 +7604,9 @@ const CFG_VER = 2;
     // vem do campeao: AP usa o AP dos itens; AD usa o dano do campeao (ja com
     // itens) + o AD dos itens. O Lich so entra para magos.
     const magia = !!(META.champAtual && META.champAtual.magia);
-    const base = magia ? S.ap : (((player() || {}).dano) || 0) + (S.ad || 0);
+    const pj = player() || {};
+    const adTotalSet = (pj.dano || 0) + (S.ad || 0) + (S.bonusVidaToAd ? S.bonusVidaToAd * (S.vida || 0) : 0);
+    const base = magia ? apSet : adTotalSet;
     // ---- CDR SÓ NAS HABILIDADES (correcção do Lead, 2026-10-14) --------------------------------
     // O CDR acelera a TAXA DE LANÇAMENTO das habilidades; NÃO aumenta o dano de cada AUTO-ATAQUE.
     // Estrutura correcta: `danoTotal = danoAutos + danoHabilidades/(1-cdr)`. É o que o motor faz:
@@ -7382,15 +7626,23 @@ const CFG_VER = 2;
       // H12a (motor.js:1199/1226): o CRÍTICO do painel entra SÓ na parcela dos AUTOS — a skill pura não critica.
       const _stC = readStats();
       const _cChance = Number.isFinite(_stC.critChance) ? _stC.critChance : 0;
-      const _cMult = Number.isFinite(_stC.critMult) ? _stC.critMult : 1.75;
+      const _cMult = (Number.isFinite(_stC.critMult) ? _stC.critMult : 1.75) + (S.critDano || 0);
       const _fracAuto = (typeof fracAuto === 'function') ? fracAuto() : (1 - fracHabs);   // H12a: a MESMA fracção que o teste le
       const fCrit = 1 + _fracAuto * (_cChance * (_cMult - 1));
-      let d = (base * mit) * fatorCdr * fCrit * (1 + (magia ? S.lich * 0.15 : 0)); // Lich: +75%AP/skill ≈ +15% no dano total
-    if (S.chama) d *= 1 + (alvo?.chefe ? 0.066 : 0.033);        // finisher <40% HP
-    if (S.liandry && alvo?.hp) {                                 // queima da Liandry
-      const cv = (META.curva && META.curva.hp) || [150, 100, 1];
-      const cap = 3 * (cv[0] + cv[1] * (alvo.nivel || 1) + cv[2] * (alvo.nivel || 1) ** 2);
-      d += Math.min(alvo.hp, cap) * 0.015;
+      let d = (base * mit) * fatorCdr * fCrit * (1 + (magia && S.lich ? S.lich * 0.2 : (!magia && S.sheen ? S.sheen * 0.2 : 0))); // Lich: +75%AP/skill ≈ +15% no dano total
+    if (S.execute) d *= 1 + S.execute.pct * (alvo?.chefe ? 0.33 : 0.17);
+    if (S.danoChefe && alvo?.chefe) d *= 1 + S.danoChefe;
+    const cvS = (META.curva && META.curva.hp) || [150, 100, 1];
+    const capS = 3 * (cvS[0] + cvS[1] * (alvo?.nivel || 1) + cvS[2] * (alvo?.nivel || 1) ** 2);
+    if (S.burnPct && alvo?.hp) d += Math.min(alvo.hp, capS) * S.burnPct.pct;
+    if (S.currentHpPct && alvo?.hp) d += Math.min(alvo.hp, capS) * S.currentHpPct.pct;
+    if (S.areaProc) { const n = alvo?.chefe ? 1 : S.areaProc.alvos; d += (S.areaProc.flat + S.areaProc.apRatio * apSet) * n / Math.max(1, S.areaProc.cd); }
+    for (const pr of (S.periodic || [])) { const n = alvo?.chefe ? 1 : (pr.alvos || 1); d += (pr.flat + (pr.adRatio || 0) * adTotalSet) * n / Math.max(1, pr.cd); }
+    if (!alvo?.chefe) {
+      const va = (pj.va || 0);
+      if (S.cleave) d += va * adTotalSet * S.cleave.pct;
+      if (S.cleaveHp) d += va * (S.vida || 0) * S.cleaveHp.pct;
+      if (S.runaan) d += va * adTotalSet * S.runaan.pct * S.runaan.n;
     }
     // ---- ROUBO DE VIDA: cura/s = dano de AUTO-ATAQUE/s × rv (TK-02-127) ---------------------
     // motor.js:1226-1228 `if (a.rouboVida && fonte === 'ataque') { cura = dano * a.rouboVida ... }`
@@ -7604,8 +7856,8 @@ const CFG_VER = 2;
   const ORDEM_HAB_FB = ['Q', 'W', 'E', 'R', 'G', 'A', 'D', 'F', 'T', 'B', 'M', 'N'];
   function barraIdeal(s, fase, dificil) {
     s = s || readSkills();
-    const dpsDe = {};
-    try { for (const h of dpsPorHabilidade().habs) dpsDe[h.t] = h.dps || 0; } catch { /* ignore */ }
+    const dpsDe = {}, dpsDet = {};
+    try { for (const h of dpsPorHabilidade().habs) { dpsDe[h.t] = h.dps || 0; dpsDet[h.t] = h; } } catch { /* ignore */ }
     const peso = (t) => { const i = ORDEM_HAB_FB.indexOf(t); return i < 0 ? 99 : i; };
     // SKILLS POR FASE (pedido do dono): no combate de MAPA os mobs vem em GRUPO, logo conta o
     // numero de ALVOS da skill (o `alvos` do kit do motor, ex.: Katarina R tem alvos: 3). No
@@ -7681,7 +7933,7 @@ const CFG_VER = 2;
     const ehChefe = String(fase || '').toLowerCase() !== 'mobs';
     const faseDificil = (typeof dificil === 'boolean') ? dificil
       : (() => { try { return !!(areaDificil() || valeUlt()); } catch { return false; } })();
-    const usarUlt = ehChefe || faseDificil || cfg.ultEmMobs === true;
+    const usarUlt = ehChefe || faseDificil;
     let cand = (s.arsenal || []).filter((h) => h.rank > 0 && !(KAT[h.t] && KAT[h.t].passiva));
     // Fora de chefe e sem dificuldade medida, a ultimate SAI da disputa por um lugar.
     if (!usarUlt) cand = cand.filter((h) => !ehUltimateFixa(h.t));
@@ -7690,7 +7942,22 @@ const CFG_VER = 2;
     // área — e o que deixa a da Katarina IGUAL quando o kit dela já quer as mesmas 4 nas duas
     // fases (a decisão é do motor, não nossa: Q e R são `alvos: 3` motor.js:751/759 e ficam
     // dentro nas duas).
-    const pesoFase = (t) => { const d = dpsDe[t] || 0; const a = alvosEfetivos(t); const base = porFase && a > 1 ? d * a : d; return base * bonusCC(t) * bonusJanela(t) * bonusBurst(t); };
+    // PESO DA FASE, decomposto para não multiplicar a parte errada pelo nº de alvos:
+    //   • dano DIRETO/alvo único  -> × alvos efetivos (Q da Katarina = 3, R = 3);
+    //   • dano do GIRO (adaga)    -> × média da wave, porque `giroAdaga` corta TODOS os que estão
+    //     perto (`motor.js:2169-2185`), não um alvo só. Q/W/A/T deixam uma adaga e o giro é área;
+    //   • proc do Lich (1 por USO) -> × 1 (não é por alvo, `motor.js:1803`: um golpe consome).
+    // Sem esta separação a W (só giro) valia como alvo único e a Q era ×alvos no total inteiro,
+    // o que inflava a Q e escondia a área da W. É a MESMA física do motor, não um peso novo.
+    const wavePeso = Math.max(1, waveMedia);
+    const pesoFase = (t) => {
+      const h = dpsDet[t] || {};
+      const a = alvosEfetivos(t);
+      const base = porFase
+        ? ((h.dpsDireto || 0) * a + (h.dpsAdaga || 0) * wavePeso + (h.dpsLich || 0))
+        : (dpsDe[t] || 0);
+      return base * bonusCC(t) * bonusJanela(t) * bonusBurst(t);
+    };
     cand.sort((a, b) => {
       const ua = ehUltimateFixa(a.t) ? 0 : 1, ub = ehUltimateFixa(b.t) ? 0 : 1;
       if (ua !== ub) return ua - ub;                       // a ultimate PRIMEIRO: fica SEMPRE dentro (inviolável)

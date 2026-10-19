@@ -351,7 +351,10 @@
   // ============================================================ 3. CSS
   const CSS = [
     '#lolidle-ap{--bg:#100e0c;--pnl:#191614;--pnl2:#141110;--lin:#332c24;--lin2:#231e19;--txt:#e9e0cf;--dim:#9d9280;--ouro:#ffd070;--verde:#4ce06a;--ambar:#ffb020;--verm:#ff6a4a;--azul:#7cc4ff;',
-    'position:fixed;top:36px;right:8px;z-index:2147483647;width:min(1020px,80vw);max-height:min(820px,92vh);display:none;flex-direction:column;overflow:hidden;',
+    // LARGURA/ALTURA (queixa do dono, 2026-10-19: "o painel ta mais curto do que devia, ta
+    // truncado"): era 1020x820 e o Painel tem 18 cartões — cabia 1 coluna e scroll de 2600 px.
+    // Agora ocupa quase o ecrã e o Painel usa DUAS colunas (ver `#ap-t-painel.on` abaixo).
+    'position:fixed;top:10px;right:10px;z-index:2147483647;width:min(1320px,94vw);height:calc(100vh - 20px);max-height:calc(100vh - 20px);display:none;flex-direction:column;overflow:hidden;',
     'background:var(--bg);color:var(--txt);border:1px solid var(--lin);border-radius:12px;box-shadow:0 16px 60px #000c;font:12px/1.45 system-ui,"Segoe UI",Roboto,sans-serif;opacity:0;visibility:hidden;transform:translateY(-6px);transition:.12s}',
     '#lolidle-ap.on{opacity:1;visibility:visible;display:flex;transform:none}',
     '#lolidle-ap *{box-sizing:border-box;min-width:0}',
@@ -1601,7 +1604,6 @@
         + tg('ap-cfg-autoAtrib', 'Distribuir pontos de atributo', 'Gasta sozinho os pontos de atributo livres pelo modelo escolhido na aba Personagem.', !!c.autoAtrib)
         + tg('ap-cfg-autoRefino', 'Refinar no Ornn', 'Refina os seus LENDÁRIOS já tier A ou melhor até +3 (acima de +2 pode descer).', !!c.autoRefino)
         + tg('ap-cfg-barraDisp', 'Barra pelas habilidades PRONTAS', 'Põe na barra as habilidades DISPONÍVEIS e as que ficam prontas mais cedo (o dono: "usava tudo disponivel ... o tempo inteiro"). Desligado, a barra fica presa às 4 de maior dano.', c.barraPorDisponibilidade !== false)
-        + tg('ap-cfg-ultMobs', 'Ultimate nas lutas de mobs', 'LIGADO: a ultimate entra na barra também nos mobs (gasta a recarga longa em qualquer luta). DESLIGADO (recomendado): a ultimate só entra quando a fase é DIFÍCIL (lenta/limite de dano/acima do nível) ou é o CHEFE — nos mobs fáceis o lugar vai para uma habilidade que volta muito antes (recarga base >35 s).', c.ultEmMobs === true)
         + '</div>'));
 
       const pc = (k) => Object.assign({ enabled: true, mode: 'pct', value: k === 'vidaS' ? 60 : k === 'vidaF' ? 43 : 21 }, (config && config.potions && config.potions[k]) || {});
@@ -1712,7 +1714,7 @@
     const setChk = (id, v) => { const e = $(id); if (e && e.checked !== !!v) e.checked = !!v; };
     setChk('ap-cfg-autoEquip', c.autoEquip); setChk('ap-cfg-trocaItens', c.trocaItens);
     setChk('ap-cfg-autoAtrib', c.autoAtrib); setChk('ap-cfg-autoRefino', c.autoRefino);
-    setChk('ap-cfg-barraDisp', c.barraPorDisponibilidade !== false); setChk('ap-cfg-ultMobs', c.ultEmMobs === true);
+    setChk('ap-cfg-barraDisp', c.barraPorDisponibilidade !== false);
     // o que falta fazer na base (checklist viva)
     const fb3 = faltasBase();
     if (fb3) {
@@ -3746,8 +3748,9 @@
     // DEFEITO CORRIGIDO (2026-10-19): `ap-cfg-barraDisp` era desenhado mas NÃO tinha handler —
     // o interruptor não fazia nada. Agora escreve a chave do motor.
     'ap-cfg-barraDisp': (el) => { definirCfg({ barraPorDisponibilidade: !!el.checked }); fb('ok', 'Barra pelas PRONTAS: ' + (el.checked ? 'ligada (usa tudo disponível, reavalia a cada 2 s)' : 'desligada (fixa nas 4 de maior dano)') + '.'); ultimoRender = 0; },
-    // REGRA DA ULTIMATE (dono, 2026-10-19): desligado (default) = ultimate só em fase difícil/chefe.
-    'ap-cfg-ultMobs': (el) => { definirCfg({ ultEmMobs: !!el.checked }); fb('ok', el.checked ? 'Ultimate SEMPRE em mobs (ignora a regra da fase).' : 'Ultimate só em fase DIFÍCIL ou no chefe.'); ultimoRender = 0; },
+    // A ULTIMATE NÃO É INTERRUPTOR (dono, 2026-10-19, verbatim: "ultimate nas lutas dos mobs
+    // nao e pra ser opcional"). A regra vive na `barraIdeal`: entra em fase DIFÍCIL ou no CHEFE,
+    // e só. O toggle e a chave `ultEmMobs` foram removidos da UI — não há handler.
     // Sem handlers de smart/strongest: os toggles foram removidos (decisão sempre inteligente;
     // PvP por detecção de Runeterra). Um clique antigo não existe mais no DOM.
     'ap-min-vida': (el) => guardarMin('vida', el.value),

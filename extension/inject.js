@@ -234,7 +234,22 @@
   // Um OBJECTO no meio de um campo desconhecido deitaria o postMessage abaixo
   // (DataCloneError) e o meta inteiro nunca chegava — daí o filtro de tipo.
   const prim = (v) => typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean';
-  const simples = (v) => v == null ? false : prim(v) || (Array.isArray(v) && v.every((e) => prim(e) || e == null));
+  // Objecto SIMPLES (prototipo Object/null) de primitivos, ate 2 niveis. O `P.maestria` do
+  // Ryze (motor.js:912) e um objecto e era DESCARTADO aqui - a Maestria Arcana (mana->AP)
+  // nunca chegava a extensao. Funcoes/ciclos/prototipos estranhos continuam de fora para nao
+  // haver DataCloneError no postMessage.
+  const clonavel = (v, d = 0) => {
+    if (v == null) return true;
+    if (prim(v)) return true;
+    if (Array.isArray(v)) return v.every((e) => prim(e) || e == null);
+    if (typeof v !== 'object' || d >= 2) return false;
+    try {
+      const proto = Object.getPrototypeOf(v);
+      if (proto !== Object.prototype && proto !== null) return false;
+      return Object.keys(v).every((k) => typeof v[k] !== 'function' && clonavel(v[k], d + 1));
+    } catch { return false; }
+  };
+  const simples = (v) => v == null ? false : clonavel(v);
 
   // Kit do campeao: so os campos serializaveis (funcoes nao passam por postMessage).
   // AUDITADO em docs/auditoria-do-jogo.md:263-269: este filtro descartava 34 campos

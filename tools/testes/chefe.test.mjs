@@ -265,7 +265,7 @@ export const suite = {
       const { auto } = mundo('aptest');
       // REGRA DA ULTIMATE (2026-10-19): por defeito a ultimate sai da barra de MOBS. Este bloco
       // testa disponibilidade/anti-oscilação com a ultimate PRESENTE, logo força-a em mobs.
-      auto.setConfig({ ultEmMobs: true });
+      auto.setConfig({});
       t.check('H1: barraPorDisponibilidade nasce LIGADA (pedido do dono)',
         auto.getConfig().barraPorDisponibilidade === true);
       // 4 skills: Q e R prontas (cd 0), A a 3s e F a 7s de recarga. A barra actual tem as 4.
@@ -276,7 +276,7 @@ export const suite = {
         { t: 'R', cd: 0 }, { t: 'Q', cd: 0 }, { t: 'A', cd: 3 }, { t: 'F', cd: 7 },
       ];
       const s = { arsenal: arsenal.map((h) => Object.assign({}, h)), bar: bar.map((b) => Object.assign({}, b)) };
-      const desejadas = auto.barraIdeal(s, 'mobs');
+      const desejadas = auto.barraIdeal(s, 'mobs', true);
       t.check('H2: a barra desejada tem exactamente 4 slots', desejadas.length === 4);
       t.check('H3: a ULTIMATE fica SEMPRE dentro (regra inviolavel do dono)', desejadas.indexOf('R') >= 0);
       t.check('H4: a ULTIMATE e a primeira (nunca cai pelo corte dos 4)', desejadas[0] === 'R');
@@ -288,18 +288,18 @@ export const suite = {
         desejadas.indexOf('W') >= 0 && desejadas.indexOf('F') < 0);
       // anti-oscilacao: repetir a conta com a barra JA no alvo nao muda nada
       const bar2 = desejadas.map((tt) => ({ t: tt, cd: 0 }));
-      const repetido = auto.barraIdeal({ arsenal: arsenal.map((h) => Object.assign({}, h)), bar: bar2 }, 'mobs');
+      const repetido = auto.barraIdeal({ arsenal: arsenal.map((h) => Object.assign({}, h)), bar: bar2 }, 'mobs', true);
       t.check('H6: anti-oscilacao: repetir a conta com a barra ja no alvo NAO reordena',
         JSON.stringify(repetido) === JSON.stringify(desejadas));
       // empate sem oscilacao: mesma recarga restante -> mantem quem ja esta na barra
       const tie1 = auto.barraIdeal({ arsenal: [{ t: 'A', rank: 5 }, { t: 'F', rank: 5 }, { t: 'R', rank: 1 }],
-        bar: [{ t: 'F', cd: 2 }, { t: 'A', cd: 2 }, { t: 'R', cd: 0 }] }, 'mobs');
+        bar: [{ t: 'F', cd: 2 }, { t: 'A', cd: 2 }, { t: 'R', cd: 0 }] }, 'mobs', true);
       const tie2 = auto.barraIdeal({ arsenal: [{ t: 'A', rank: 5 }, { t: 'F', rank: 5 }, { t: 'R', rank: 1 }],
-        bar: [{ t: 'A', cd: 2 }, { t: 'F', cd: 2 }, { t: 'R', cd: 0 }] }, 'mobs');
+        bar: [{ t: 'A', cd: 2 }, { t: 'F', cd: 2 }, { t: 'R', cd: 0 }] }, 'mobs', true);
       t.check('H7: empate mantem a ordem de quem ja esta na barra (sem churn de 2 s)',
         tie1[0] === 'R' && tie2[0] === 'R' && tie1[1] === 'F' && tie2[1] === 'A');
       auto.setConfig({ barraPorDisponibilidade: false });
-      const off = auto.barraIdeal(s, 'mobs');
+      const off = auto.barraIdeal(s, 'mobs', true);
       t.check('H8: DESLIGADO a barra enche na mesma os 4 slots', off.length === 4);
       t.check('H9: DESLIGADO a ULTIMATE continua dentro', off.indexOf('R') >= 0);
       auto.setConfig({ barraPorDisponibilidade: true });

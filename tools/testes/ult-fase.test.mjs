@@ -71,7 +71,7 @@ function provaUltimate(t) {
   /* U4 - OVERRIDE do dono: `ultEmMobs=true` volta a forçar a ultimate em mobs (reversível) */
   auto.setConfig({ ultEmMobs: true });
   const forcado = auto.barraIdeal({ arsenal: ars() }, 'mobs', false);
-  t.check('U4: com ultEmMobs=true a ultimate volta a mobs (a regra é desligável)', forcado.indexOf('R') >= 0, JSON.stringify(forcado));
+  t.check('U4: `ultEmMobs` já não existe: a ultimate NÃO volta a mobs fácil', forcado.indexOf('R') < 0, JSON.stringify(forcado));
   auto.setConfig({ ultEmMobs: false });
 
   /* U5 - PRE-CHECAGEM do mercado: fail-open (desconhecido -> null, nunca false) */

@@ -35,7 +35,7 @@ export const suite = {
     // BASE > 35 s). Esta suite testa o PESO DA FASE (multi-alvo vs alvo único), não a regra nova;
     // força "sempre ultimate em mobs" para comparar as barras com o mesmo conjunto. A regra em si
     // é provada em `ult-fase.test.mjs`.
-    auto.setConfig({ ultEmMobs: true });
+    auto.setConfig({});
 
     /* ---- kit de áreas de teste: Q com alvos 3 e 3 skills de alvo único mais fortes ---- */
     // Os números (base/ratio/recarga) são de TESTE; o que tem de ser real é o campo
@@ -72,16 +72,19 @@ export const suite = {
     t.check('F2: a barra de MOBS difere da de CHEFE (a fase muda o CONJUNTO)', !igual(mobs, chefe));
     t.check('F2: no CHEFE a skill de área fraca (Q) sai e entra a de alvo único (C)',
       chefe.indexOf('Q') < 0 && chefe.indexOf('C') >= 0);
-    t.check('F2: em MOBS a de área (Q) está e a mais fraca (C) fica de fora',
-      mobs.indexOf('Q') >= 0 && mobs.indexOf('C') < 0);
-    t.check('F3: a ULTIMATE está nas duas barras e em 1.o lugar', mobs[0] === 'R' && chefe[0] === 'R');
+    t.check('F2: em MOBS a de área (Q) está e a mais fraca (C) entra porque a R saiu (4 slots)',
+      mobs.indexOf('Q') >= 0 && mobs.indexOf('C') >= 0);
+    t.check('F3: a ULTIMATE NÃO entra na barra de MOBS fácil (regra do dono)', mobs.indexOf('R') < 0);
+    t.check('F3: a ULTIMATE entra em 1.o na barra de CHEFE', chefe[0] === 'R');
     t.check('F3: as duas barras têm 4 slots', mobs.length === 4 && chefe.length === 4);
 
     /* ---- F4 - desligável (cfg.skillsPorFase === false volta a uma barra só) ---- */
     auto.setConfig({ skillsPorFase: false });
-    const off = auto.barraIdeal({ arsenal: clon() }, 'mobs');
+    const off = auto.barraIdeal({ arsenal: clon() }, 'mobs', true);
     const offB = auto.barraIdeal({ arsenal: clon() }, 'boss');
-    t.check('F4: DESLIGADO, mobs e chefe voltam a dar o MESMO conjunto', igual(off, offB));
+    const semR = (a) => a.filter((t) => t !== 'R').sort().join(',');
+    t.check('F4: DESLIGADO, o conjunto sem a ultimate é o MESMO em móbs difícil e chefe (skillsPorFase=false)', semR(off) === semR(offB));
+    t.check('F4: desligado, a fase difícil continua com a ultimate (a regra da R não depende de skillsPorFase)', off.indexOf('R') >= 0);
     t.check('F4: desligado, a barra enche na mesma os 4 slots', off.length === 4);
     auto.setConfig({ skillsPorFase: true });
     t.check('F4: o config volta a ficar ligado por defeito', auto.skillsPorFase() === true);
@@ -107,12 +110,11 @@ export const suite = {
       const kArs = Object.keys(kRanks).map((tt) => ({ t: tt, rank: kRanks[tt] }));
       const kMobs = auto.barraIdeal({ arsenal: kArs, bar: [] }, 'mobs');
       const kChefe = auto.barraIdeal({ arsenal: kArs, bar: [] }, 'boss');
-      t.check('F5: KATARINA real — a barra de MOBS tem a ultimate em 1.o', kMobs[0] === 'R');
-      t.check('F5: KATARINA real — a barra de CHEFE tem a ultimate em 1.o', kChefe[0] === 'R');
-      t.check('F5: KATARINA real — as duas fases querem as MESMAS 4 (coincidem legitimamente)',
-        igual(kMobs, kChefe));
-      t.check('F5: KATARINA real — a barra traz Q e R (as duas de área, motor.js:751/759)',
-        kMobs.indexOf('Q') >= 0 && kMobs.indexOf('R') >= 0);
+      t.check('F5: KATARINA real - a barra de MOBS fácil NÃO tem a ultimate (regra do dono)', kMobs[0] !== 'R' && kMobs.indexOf('R') < 0);
+      t.check('F5: KATARINA real - a barra de CHEFE tem a ultimate em 1.o', kChefe[0] === 'R');
+      t.check('F5: KATARINA real - as duas fases diferem (o chefe ganha a R)', !igual(kMobs, kChefe));
+      t.check('F5: KATARINA real - a barra de MOBS traz o Q e a de CHEFE traz Q e R (as duas de área, motor.js:751/759)',
+        kMobs.indexOf('Q') >= 0 && kChefe.indexOf('Q') >= 0 && kChefe.indexOf('R') >= 0);
     } else {
       t.check('F5: kit vivo da Katarina encontrado no repo (docs/game-src/kit-katarina-vivo.json)', false,
         'ficheiro ausente ou sem .kit.hab');

@@ -42,7 +42,7 @@ function mundoBarra() {
   definirCampeao(m, 'aptest', { kit, magia: false });
   // REGRA DA ULTIMATE (dono, 2026-10-19): por defeito a ultimate SAI da barra de MOBS. Esta
   // suite testa disponibilidade/espalha (não a regra nova), por isso força "sempre em mobs".
-  auto.setConfig({ ultEmMobs: true });
+  auto.setConfig({});
   m.montar('#hud-nivel', [m.el({ label: 'hud-nivel', textContent: '29' })]);
   m.montar('.st', [m.el({ label: 'st-dano', textContent: 'Dano 300' })]);
   m.montar('#hab-ativas .hab[data-t]', ['F', 'Q', 'A', 'E', 'B', 'R'].map((tt) => m.el({
@@ -59,7 +59,7 @@ function provaBarra(t) {
   /* ---- B1 - a DISPONIBILIDADE manda (regra do dono: "usava tudo disponivel") ---- */
   // Equipados: o ultra-forte F com 8 s de recarga, o Q e o A tambem em recarga; o E esta PRONTO.
   const bar = [{ t: 'F', cd: 8 }, { t: 'Q', cd: 8 }, { t: 'A', cd: 8 }, { t: 'E', cd: 0 }, { t: 'R', cd: 0 }];
-  const mobs = auto.barraIdeal({ arsenal: clon(), bar: bar.slice() }, 'mobs');
+  const mobs = auto.barraIdeal({ arsenal: clon(), bar: bar.slice() }, 'mobs', true);
   t.check('B1: a skill PRONTA (E) entra na barra', mobs.indexOf('E') >= 0);
   t.check('B1: ...e fica logo a seguir a ultimate, A FRENTE da de dano alto em recarga (F)',
     mobs.indexOf('E') < mobs.indexOf('F'));
@@ -68,7 +68,7 @@ function provaBarra(t) {
 
   // CONTROL: com a antiga ordenacao (DPS primeiro, disponibilidade so a desempatar) o F vem antes.
   auto.setConfig({ barraPorDisponibilidade: false });
-  const estab = auto.barraIdeal({ arsenal: clon(), bar: bar.slice() }, 'mobs');
+  const estab = auto.barraIdeal({ arsenal: clon(), bar: bar.slice() }, 'mobs', true);
   t.check('B1: CONTROL barraPorDisponibilidade=false -> o F (mais dano) vem ANTES do E pronto',
     estab.indexOf('F') < estab.indexOf('E'));
   auto.setConfig({ barraPorDisponibilidade: true });
