@@ -91,33 +91,60 @@ export const suite = {
       t.check('E1[' + id + ']: e a assinatura lida nos slots é exactamente a build',
         JSON.stringify((r1.atual || []).map((e) => String(e.base)).sort()) === JSON.stringify(build.slice().sort()));
 
-      /* ---- 2. um item FORA da build que esteja vestido tem de sair ---- */
+      /* ---- 2. a BITOLA do equipamento e o `alvoEquip` (valorDe): nada vestido fora do alvo dele
+       * fica equipado. TK-01: a BUILD (scoreSet) e o ALVO do planeador (valorDe) passaram a ser
+       * DOIS calculos diferentes — a build maximiza o dano medido, o equipamento maximiza
+       * poder/sustentacao. O que se prova aqui e o contrato do PLANEADOR: marca para SAIR tudo o
+       * que esta vestido e nao pertence ao alvo dele. ---- */
       const fora = (ITENS_DADOS || []).find((x) => x.raridade === 'lendario' && build.indexOf(String(x.id)) < 0);
-      montarEquip(m, build.concat([String(fora.id)]));
-      montarMochila(m, build.concat([String(fora.id)]));
+      const pool2 = build.concat([String(fora.id)]);
+      montarEquip(m, pool2);
+      montarMochila(m, pool2);
       const r2 = auto.planoEquipar(auto.scanBag(true));
-      t.check('E2[' + id + ']: o item FORA da build (' + fora.id + ' ' + fora.nome + ') vestido é marcado para SAIR',
-        (r2.saem || []).some((e) => String(e.base) === String(fora.id)));
-      t.check('E2[' + id + ']: e não volta a entrar', !(r2.entram || []).some((e) => String(e.base) === String(fora.id)));
+      const alvoBases = new Set((r2.alvo || []).map((e) => String(e.base)));
+      const deviamSair = pool2.map(String).filter((b) => !alvoBases.has(b));
+      t.check('E2[' + id + ']: todo o item vestido FORA do alvo do planeador e marcado para SAIR',
+        deviamSair.every((b) => (r2.saem || []).some((e) => String(e.base) === b)));
+      t.check('E2[' + id + ']: e nenhum dos que saem volta a entrar',
+        (r2.saem || []).every((e) => !(r2.entram || []).some((x) => String(x.base) === String(e.base))));
 
-      /* ---- 3. os 4 itens nao-bota da build sao os 4 melhores do catalogo ---- */
-      // (a bota e o 5.o slot e e naturalmente mais fraca que uma arma: comparar armas com a
-      // bota nao provaria nada. O que garante 'nada fora da build e vestido' e que os QUATRO
-      // espacos livres fiquem com os quatro melhores -- exactamente o que o escolherConjunto
-      // do alvoEquip/planoEquipar faz, e o valorDe e a bitola dele.)
+      /* ---- 3. a build e escolhida pelo SCORE MEDIDO (scoreSet), nao pelo valorDe (TK-01) ----
+       * (a) a build pontua MAIS no scoreSet que a alternativa "por valorDe" (o caminho antigo);
+       * (b) e um OPTIMO LOCAL: trocar UM item da build por outro do catalogo nao sobe o score.
+       * Se o PESO_FASE voltar ao caminho da build, (a) falha. ---- */
       const ehBota = (i) => (i.espaco === 'botas');
-      const naoBota = (ITENS_DADOS || []).filter((x) => x.raridade === 'lendario' && !ehBota(x));
-      const valores = naoBota.map((x) => ({ id: String(x.id), v: auto.valorDe(x.id) })).sort((a, b) => b.v - a.v);
-      const top4 = valores.slice(0, 4).map((x) => x.id).sort();
-      const buildNaoBota = build.filter((b) => { const it = ITENS_DADOS.find((x) => String(x.id) === b); return it && !ehBota(it); }).sort();
-      t.check('E3[' + id + ']: os 4 nao-bota da build sao os 4 melhores do catalogo (' + buildNaoBota.join(',') + ')',
-        JSON.stringify(buildNaoBota) === JSON.stringify(top4));
-      // e a bota da build e a melhor bota lendaria:
-      const botas = (ITENS_DADOS || []).filter((x) => x.raridade === 'lendario' && ehBota(x));
+      const alvoScore = auto.alvoDeReferencia('chefe');
+      const score = (ids) => auto.scoreSet(ids.map(String), alvoScore);
+      const classe = c.magia ? 'ap' : 'ad';
+      const lend = (ITENS_DADOS || []).filter((x) => x.raridade === 'lendario');
+      const poolScore = lend.filter((x) => { const cl = auto.classeItem(x.id); return cl === 'neutro' || cl === classe; });
+      const resto = poolScore.filter((x) => !ehBota(x));
+      const botasScore = poolScore.filter((x) => ehBota(x));
+      const porValor = resto.map((x) => ({ id: String(x.id), v: auto.valorDe(x.id) })).sort((a, b) => b.v - a.v);
+      const melhorBotaValor = botasScore.map((x) => ({ id: String(x.id), v: auto.valorDe(x.id) })).sort((a, b) => b.v - a.v)[0];
+      const altValor = porValor.slice(0, 4).map((x) => x.id).concat([melhorBotaValor.id]);
+      t.check('E3[' + id + ']: a build pontua MAIS no scoreSet que a alternativa por valorDe (scoreSet manda)',
+        score(build) >= score(altValor));
+      const buildNB = build.filter((b) => { const it = ITENS_DADOS.find((x) => String(x.id) === b); return it && !ehBota(it); });
+      let viol = 0;
+      for (const b of buildNB) {
+        for (const it of resto) {
+          const cand = String(it.id);
+          if (build.indexOf(cand) >= 0) continue;
+          const alt2 = build.slice(); alt2[build.indexOf(b)] = cand;
+          if (score(alt2) > score(build) + 1e-9) viol++;
+        }
+      }
+      t.check('E3[' + id + ']: otimo local — nenhuma troca de UM item melhora o scoreSet', viol === 0);
       const botaBuild = build.filter((b) => { const it = ITENS_DADOS.find((x) => String(x.id) === b); return it && ehBota(it); })[0];
-      const melhorBota = botas.map((x) => ({ id: String(x.id), v: auto.valorDe(x.id) })).sort((a, b) => b.v - a.v)[0];
-      t.check('E3[' + id + ']: e a bota da build (' + botaBuild + ') e a melhor bota do catalogo (' + melhorBota.id + ')',
-        botaBuild === melhorBota.id);
+      let botaViol = 0;
+      for (const it of botasScore) {
+        const cand = String(it.id);
+        if (cand === botaBuild) continue;
+        const alt3 = build.slice(); alt3[build.indexOf(botaBuild)] = cand;
+        if (score(alt3) > score(build) + 1e-9) botaViol++;
+      }
+      t.check('E3[' + id + ']: a bota da build (' + botaBuild + ') maximiza o scoreSet do conjunto final', botaViol === 0);
 
       t.check('Z[' + id + ']: nenhum seletor desconhecido foi usado (stub honesto)', m.unstubbed().length === 0);
     }

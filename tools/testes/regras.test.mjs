@@ -10,7 +10,7 @@
 
 import {
   criarMundo, carregarAutomation, CATALOGO, alimentarCatalogo, alimentarMeta, definirCampeao,
-  montarMochila, montarMercado, ofertasLendarias, ofertasEpicas, saturarMercado,
+  montarMochila, montarMercado, ofertasLendarias, ofertasEpicas, saturarMercado, stubFetchMercado,
 } from './dom-stub.mjs';
 
 function novoMundo(opts) {
@@ -180,7 +180,8 @@ export const suite = {
       // 4. espaco ao 2006. A assercao agora fixa o 3031 no lugar do 2006 - o que se prova e que o
       // lendario da build esta blindado, e a linha seguinte (T6: 2009 tardio) prova a invalidacao
       // do memo pelo caminho que interessa.
-      t.check('T6: fixture: 3031 esta na build antes', w.auto.buildDaClasse().indexOf('3031') >= 0);
+      t.check('T6: fixture: 2001 esta na build antes', w.auto.buildDaClasse().indexOf('2001') >= 0);
+      t.check('T6: fixture: 2006 esta na build antes', w.auto.buildDaClasse().indexOf('2006') >= 0);
       const novo = { id: '2009', nome: 'Lendario Tardio', raridade: 'lendario', espaco: 'arma', ad: 900, preco: 3000, de: ['2002'] };
       alimentarCatalogo(w.m, CATALOGO.concat([novo]));
       t.check('T6: catalogo tardio invalida o memo (memo por tamanho do catalogo)',
@@ -189,7 +190,11 @@ export const suite = {
       t.check('T6: o item que saiu da build deixa de ser blindado', w.auto.ehLendarioDaBuild('2006') === false);
     }
 
-    /* ================= T7 - memo invalida quando o PAPEL muda ================= */
+    /* ================= T7 - a build e por SCORE, nao pelo PAPEL (TK-01) =================
+     * ANTES (PESO_FASE): o papel mudava a build (dano -> tanque). AGORA a build e escolhida por
+     * SCORE MEDIDO (`scoreSet`) sobre o catalogo, e o score NAO le o papel — logo a build deixa
+     * de mudar com ele. Este teste guarda o contrato novo: se a build VOLTAR a mudar com o papel,
+     * e porque o PESO_FASE regressou ao caminho da build (o que o TK-01 proibe). */
     {
       const w = novoMundo();
       alimentarCatalogo(w.m);
@@ -200,17 +205,11 @@ export const suite = {
       definirCampeao(w.m, 'adtest', { papel: { dano: 0.8, recebido: 0.5 } });
       t.check('T7: papel muda o perfil (dano -> tanque)', w.auto.identidadeCampeao().perfil === 'tanque');
       const depois = w.auto.buildDaClasse().slice();
-      t.check('T7: papel muda a build (memo invalidado por papel)', antes.join(',') !== depois.join(','));
-      t.check('T7: a bota AD sai da build no tanque', depois.indexOf('2007') < 0);
-      t.check('T7: a bota AP entra na build no tanque', depois.indexOf('3005') >= 0);
-      t.check('T7: 2007 deixa de ser blindado', w.auto.ehLendarioDaBuild('2007') === false);
-      // ACTUALIZADO 2026-10-14 (fila W11): no perfil TANQUE a build passou a ser
-      // 3005,3031,3168,4002,3171 - o 3168 (500 de vida, o item defensivo REAL) e o 3171 (350 de
-      // vida) entraram no lugar do 2001. A assercao fixa agora o que a build do tanque blinda.
-      t.check('T7: 3168 continua blindado (o defensivo real da build do tanque)', w.auto.ehLendarioDaBuild('3168') === true);
+      t.check('T7: a build NAO depende do papel (scoreSet manda, nao PESO_FASE)', antes.join(',') === depois.join(','));
+      t.check('T7: o lendario da build continua blindado depois da troca de papel', w.auto.ehLendarioDaBuild('2007') === true);
     }
 
-    /* ================= T8 - memo invalida quando a DISTANCIA muda ================= */
+    /* ================= T8 - a build e por SCORE, nao pela DISTANCIA (TK-01) ================= */
     {
       const w = novoMundo();
       alimentarCatalogo(w.m);
@@ -219,11 +218,8 @@ export const suite = {
       definirCampeao(w.m, 'adtest', { distancia: true });
       t.check('T8: distancia muda o perfil (dano -> atirador)', w.auto.identidadeCampeao().perfil === 'atirador');
       const depois = w.auto.buildDaClasse().slice();
-      t.check('T8: distancia muda a build (memo invalidado por distancia)', antes.join(',') !== depois.join(','));
-      t.check('T8: o item ad-heavy 2006 sai da build no atirador', depois.indexOf('2006') < 0);
-      t.check('T8: o item critico 2008 entra na build no atirador', depois.indexOf('2008') >= 0);
-      t.check('T8: 2008 passa a blindado', w.auto.ehLendarioDaBuild('2008') === true);
-      t.check('T8: 2006 deixa de ser blindado', w.auto.ehLendarioDaBuild('2006') === false);
+      t.check('T8: a build NAO depende da distancia (scoreSet manda, nao PESO_FASE)', antes.join(',') === depois.join(','));
+      t.check('T8: o lendario da build continua blindado depois da troca de distancia', w.auto.ehLendarioDaBuild('2006') === true);
     }
 
     /* ================= T9 - qualidade ilegivel ('?') nunca e mexida ================= */
@@ -262,7 +258,7 @@ export const suite = {
       alimentarCatalogo(w.m);
       definirCampeao(w.m, 'adtest');
       const ofertas = await saturarMercado(w.auto, w.m);
-      t.check('T11: salvarOfertas leu as 10 ofertas do DOM do mercado', (ofertas || []).length === 10);
+      t.check('T11: salvarOfertas leu as 10 ofertas do SERVIDOR (sem abrir o mercado)', (ofertas || []).length === 10);
       const ms = w.auto.mercadoSaturado();
       t.check('T11: mercadoSaturado() com 10 ofertas lendarias -> sat = true', ms.sat === true);
       t.check('T11: ...e conta 10 lendarias', ms.lend === 10);
@@ -304,7 +300,9 @@ export const suite = {
       alimentarCatalogo(w.m);
       definirCampeao(w.m, 'adtest');
       const epicas = ofertasEpicas(1).map((o) => ({ id: 'ep:0', txt: o.txt }));
-      montarMercado(w.m, ofertasLendarias(9).concat(epicas));
+      const ofertas9 = ofertasLendarias(9).concat(epicas);
+      montarMercado(w.m, ofertas9);
+      stubFetchMercado(w.m, ofertas9);
       await w.auto.salvarOfertas();
       const ms = w.auto.mercadoSaturado();
       t.check('T11: 9 lendarias + 1 epica -> sat = false (limiar exato de 10)', ms.sat === false);
@@ -315,7 +313,9 @@ export const suite = {
       const w = novoMundo();
       alimentarCatalogo(w.m);
       definirCampeao(w.m, 'adtest');
-      montarMercado(w.m, ofertasEpicas(10));
+      const ofertas10 = ofertasEpicas(10);
+      montarMercado(w.m, ofertas10);
+      stubFetchMercado(w.m, ofertas10);
       await w.auto.salvarOfertas();
       const ms = w.auto.mercadoSaturado();
       t.check('T11: 10 epicas -> sat = false (so lendarias contam)', ms.sat === false);

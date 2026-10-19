@@ -73,18 +73,20 @@ export const suite = {
     pe = auto.planoEquipar(auto.scanBag(true));
     t.check('E4: sem troca melhor, o plano nao mexe (n.equip fecha)', pe.mexe === false);
 
-    /* E5 - OBJETIVO PINADO: conjunto cheio onde o Rabadon e o mais fraco para AD; ha um
-     * lendario AD melhor na mochila. COM objetivo o Rabadon fica; SEM objetivo ele sai. */
+    /* E5 - SEM OBJETIVO POR DECRETO (TK-01): o `cfg.objetivoItem` foi REMOVIDO. Um Rabadon
+     * (3089, AP) equipado num campeao AD e o MAIS FRACO do conjunto — sai, e mexer no campo
+     * removido NAO o segura (nao ha alvo por decreto). O resultado nao pode depender do campo. */
     const comRabadon = [sl('2007~C', 'lendario'), sl('2001~C', 'lendario'), sl('2004~C', 'lendario'),
       sl('2005~C', 'lendario'), sl('3089~C', 'lendario')];
     montarEquip(m, comRabadon);
     montarMochila(m, [sl('2006~C', 'lendario')]);
     auto.setConfig({ objetivoItem: 'rabadon' });
     pe = auto.planoEquipar(auto.scanBag(true));
-    t.check('E5: o Rabadon equipado NAO sai com o objetivo pinado', basesDe(pe.saem).indexOf('3089') < 0);
+    t.check('E5: o campo removido `objetivoItem` NAO segura um Rabadon fraco na build AD',
+      basesDe(pe.saem).indexOf('3089') >= 0);
     auto.setConfig({ objetivoItem: null });
     pe = auto.planoEquipar(auto.scanBag(true));
-    t.check('E5: CONTROLO - sem objetivo o Rabadon fraco SAI (a guarda e que o segura)',
+    t.check('E5: CONTROLO - sem o campo, o Rabadon fraco tambem SAI (o resultado nao depende dele)',
       basesDe(pe.saem).indexOf('3089') >= 0);
   },
 };

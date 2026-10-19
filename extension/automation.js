@@ -85,14 +85,10 @@
     // SOMA normalizada pelo próprio motor (ver `regiaoIdeal`), não um eixo só.
     // 'xp' | 'ouro' | 'runas' continuam válidos.
     objetivo: 'ouro+xp',
-    // PEDIDO DO DONO (2026-10-14, verbatim): "faz funcionar bem o objetivo de farm/item.
-    // quero settar o objetivo pra rabaddon."
-    // O campo objetivo acima so pontua REGIOES. A build ideal era 100% EMERGENTE de
-    // montarBuildDe() (soma ponderada de stats x multiplicador de classe), pelo que NAO
-    // havia forma de dizer "quero este item": num campeao AD o Rabadon (AP) levava 0.12x
-    // e nunca entrava. Este campo fixa um item como ALVO da build, a frente de tudo.
-    // Valores: null (sem alvo) | 'rabadon' | id numerico de item (ex.: '3089').
-    objetivoItem: null,
+    // TK-01 (2026-10-19): o `objetivoItem` (fixar um item à frente de tudo na build) foi
+    // REMOVIDO. A build passou a ser escolhida por SCORE MEDIDO (`scoreSet`), não por peso à
+    // mão — um item entra se o score o escolher, e não por decreto. O `objetivo` acima
+    // (regiões: ouro/xp/runas) continua a ser o único "objetivo" do dono.
     keepEpicA: true,
     minPotion: { vida: 200, vidaF: 100, vidaS: 30 },
     buyPotion: { vida: 3000, vidaF: 1500, vidaS: 700 },
@@ -190,9 +186,9 @@
     // (motor.js:357, a região "por onde todo mundo começa"). O default é DERIVADO do META; este
     // campo só existe para o dono sobrepor. Até este nível o ouro da venda conta; depois, não.
     inicioJogoAteNivel: 10,
-    // REGRA DO DONO (inviolável): "Gastar TODOS os pontos: skill points ... e attribute points".
-    // Logo o default é LIGADO; `false` explícito desliga.
-    autoAtrib: true,          // distribui automaticamente os pontos de atributo livres
+    // DECISÃO DO DONO (2026-10-19, checkpoint do TK-01): "não quer pontos por agora" ->
+    // `autoAtrib` passa a FALSE por defeito (o switch mantém-se, a GUI pode ligá-lo).
+    autoAtrib: false,         // distribui automaticamente os pontos de atributo livres
     modeloAtrib: null,        // força um modelo; null = MODELO DERIVADO do campeão (`modeloAtribDe`)
     // AUTO-PLAY: em QUE campeoes pode jogar. Aceita um id ('yasuo'), vários ('yasuo,ryze'),
     // uma LISTA (['yasuo','ryze']) ou null (qualquer campeao). Antes era um id so e prendia o
@@ -200,6 +196,16 @@
     // resolvido e o autoplay funcionando") -> o default passa a aceitar os dois. A lista NAO
     // afrouxa nada do resto: `ehCampeaoAlvo` compara o id lido do HUD com o conjunto.
     champAlvo: ['yasuo', 'ryze'],
+    // ===== CONTRATO DA HIERARQUIA (TK-01/TK-02, 2026-10-19) ===============================
+    // O dono mandou dar cfg PRÓPRIA a TODOS os interruptores (fim do "ligado (implícito)" da
+    // GUI) e transformar `manutencao` em FILHO do `autoplay` (um mestre só). Estes são os
+    // defaults dos que passaram a ter toggle; os que já tinham cfg mantêm o valor.
+    autoIrBase: true,         // subir à Fonte quando há algo a fazer lá (irBase)
+    autoVender: true,         // vender ao Lojista / despachar (vender)
+    autoRepor: true,          // repor poções na Fonte (repor)
+    autoCofre: true,          // ler/guardar no cofre da Tesoureira (cofre)
+    autoAnunciar: true,       // anunciar no mercado (anunciar)
+    autoHab: false,           // subir pontos de habilidade (hab)
     manutencao: true,         // RECURSO BASE do script: vender/equipar/mercado/pontos/cofre
     // PEDIDO DO DONO (2026-10-14, verbatim): "o auto play e pra decidir tudo pelo usuario, ate
     // que itens equipar e onde farmar SOZINHO. e auto play literal, joga sem o usuario nem
@@ -3626,59 +3632,37 @@ const CFG_VER = 2;
   // interruptor novo e UMA linha nesta tabela, e ele herda a hierarquia e as excepcoes.
   // =======================================================================================
   const INTERRUPTORES = {
-    // MESTRE. REGRA DO DONO (inviolavel): "AUTO-PLAY SO NO YASUO. A Katarina tem de ficar
-    // enabled=false. Verificar sempre." MEDIDO 2026-10-14: o `enabled` da Katarina voltou a
-    // `true` sozinho (provavelmente num reload/escrita de config) e ela ficou com 5 necessidades
-    // ACTIVAS (vender/equip/montar/comprar/lerCofre) - o auto-play a agir contra a regra.
-    // Verificar a mao nao chega. Passa a ser IMPOSSIVEL POR CONSTRUCAO: o mestre tem excepcao
-    // de campeao, logo com `enabled:true` num campeao que nao o alvo NADA abre. `champAlvo`
-    // e configuravel (default 'yasuo'); `null` desliga a excepcao e volta a valer so o toggle.
-    // DOIS MESTRES — a distincao e do dono (verbatim): "o auto play e pra decidir tudo pelo
-    // usuario... ja vender itens pro lojista, botar no mercado e etc, deve ser RECURSO PADRAO DO
-    // SCRIPT. entenda como que e a diferenca e faca por padrao essas coisas ativadas".
-    //   manutencao = RECURSO BASE (vender, equipar, mercado, pontos, cofre). Nao e auto-play.
-    //                Liga por DEFEITO e nao depende do campeao alvo.
-    //   autoplay   = JOGAR sozinho (farmar, viajar, chefes, escolher regiao). So no campeao alvo.
-    // Antes TUDO pedia do `autoplay`, e por isso na Katarina (enabled=false) a mochila enchia a
-    // 29/30, a ultimate ficava fora da barra e um item melhor ficava na mochila por equipar.
-    manutencao:   { pai: null,        cfg: 'manutencao' },
-    autoplay:     { pai: null,        cfg: 'enabled', excecao: () => !ehCampeaoAlvo(), excecaoTxt: 'so corre no campeao alvo' },
-    // ramo da BASE: tudo o que exige ir a Fonte. `irBase` e implicito (nao tem toggle).
-    irBase:       { pai: 'manutencao', cfg: null },
-    vender:       { pai: 'irBase',    cfg: null,   excecao: () => ehRuneterra(), excecaoTxt: 'skippado em Runeterra' },
-    repor:        { pai: 'irBase',    cfg: null },
-    // COMPRAR A BUILD E AUTO-PLAY (regra do dono, 2026-10-19, verbatim): "auto play desligado
-    // nao devia abrir o mercado por mim pra pesquisar items a comprar. isso e autoplay."
-    // Estava só sob `irBase`/`manutencao`, e a manutencao é ligada por defeito e corre em
-    // QUALQUER campeao — por isso a Katarina (autoplay off, fora do alvo) abria o mercado à
-    // mesma. Agora herda a excepção de campeão do auto-play: sem alvo, NÃO abre o mercado.
-    comprar:      { pai: 'irBase',    cfg: 'autoComprar', excecao: () => !podeFazer('autoplay').pode, excecaoTxt: 'comprar a build e auto-play (so no campeao alvo)' },
-    refino:       { pai: 'irBase',    cfg: 'autoRefino' },
-    montar:       { pai: 'irBase',    cfg: 'autoMontar' },
-    cofre:        { pai: 'irBase',    cfg: null,   excecao: () => ehRuneterra(), excecaoTxt: 'skippado em Runeterra' },
-    // FUGA = SOBREVIVÊNCIA, não auto-play (correcção do Lead, 2026-10-14): estava presa ao
-    // mestre do auto-play (`cfg.enabled`), que tem excepção de campeão — na Katarina
-    // (`enabled=false`) o boneco NÃO fugia e morria. Pende da MANUTENÇÃO, com cfg própria.
+    // ===== CONTRATO DA HIERARQUIA (TK-01/TK-02, 2026-10-19) ===============================
+    // Antes havia DOIS mestres independentes (`manutencao` e `autoplay`) e o `autoplay` tinha
+    // EXCEPCAO DE CAMPEO. O dono mandou simplificar: UM mestre que liga tudo, e os recursos
+    // base (vender/equipar/mercado/pontos/cofre) passam a ser FILHOS dele — desligar o mestre
+    // desliga tudo. `champAlvo` continua a existir como PREFERENCIA VISUAL (a GUI mostra-o),
+    // mas JA NAO e um bloqueio: `podeFazer('autoplay')` nao olha para o campeao.
+    // Cada interruptor tem cfg PROPRIA (nenhum `cfg:null`) — fim do "ligado (implicito)".
+    autoplay:     { pai: null,         cfg: 'enabled' },
+    manutencao:   { pai: 'autoplay',   cfg: 'manutencao' },
+    // ramo da BASE: tudo o que exige ir a Fonte.
+    irBase:       { pai: 'manutencao', cfg: 'autoIrBase' },
+    vender:       { pai: 'irBase',     cfg: 'autoVender', excecao: () => ehRuneterra(), excecaoTxt: 'skippado em Runeterra' },
+    repor:        { pai: 'irBase',     cfg: 'autoRepor' },
+    // COMPRAR A BUILD E AUTO-PLAY: herda o mestre (auto-play desligado nao abre o mercado).
+    comprar:      { pai: 'irBase',     cfg: 'autoComprar' },
+    refino:       { pai: 'irBase',     cfg: 'autoRefino' },
+    montar:       { pai: 'irBase',     cfg: 'autoMontar' },
+    cofre:        { pai: 'irBase',     cfg: 'autoCofre', excecao: () => ehRuneterra(), excecaoTxt: 'skippado em Runeterra' },
+    // FUGA = SOBREVIVENCIA, nao auto-play: pende da manutencao, com cfg propria.
     fugir:        { pai: 'manutencao', cfg: 'fugir' },
     // ramo do CAMPO: nao exige a base
     equip:        { pai: 'manutencao', cfg: 'autoEquip' },
     atrib:        { pai: 'manutencao', cfg: 'autoAtrib' },
-    hab:          { pai: 'manutencao', cfg: null },
-    anunciar:     { pai: 'manutencao', cfg: null,  excecao: () => ehRuneterra(), excecaoTxt: 'skippado em Runeterra' },
-    buildPorFase: { pai: 'autoplay',  cfg: 'buildPorFase' },
-    // A TROCA DA BARRA É RECURSO BASE, NÃO FARMAR (correcção do Lead, 2026-10-14; queixa do dono
-    // verbatim: "e o negocio de trocar habilidades sozinho no combate, tem que ser usado sempre,
-    // em farm. agora tem 4 skills no slots, paradas. nao ta trocando como antigamente").
-    // Estavam debaixo do `autoplay`, que tem EXCEPÇÃO DE CAMPEÃO (`!ehCampeaoAlvo()`): na Katarina
-    // (enabled=false) a barra NUNCA convergia — MEDIDO ao vivo: barra [Q,A,G,F] contra a ideal
-    // [R,Q,A,W], com a ULTIMATE fora (regra inviolável do dono). Passam para a MANUTENÇÃO, como o
-    // equipar e o gastar pontos: a barra troca em QUALQUER campeão. O `buildPorFase` FICA no
-    // autoplay (esse depende do contexto de luta, é jogar).
+    hab:          { pai: 'manutencao', cfg: 'autoHab' },
+    anunciar:     { pai: 'manutencao', cfg: 'autoAnunciar', excecao: () => ehRuneterra(), excecaoTxt: 'skippado em Runeterra' },
+    buildPorFase: { pai: 'autoplay',   cfg: 'buildPorFase' },
+    // A TROCA DA BARRA E RECURSO BASE, NAO FARMAR (correccao do Lead, 2026-10-14).
     skillsPorFase:{ pai: 'manutencao', cfg: 'skillsPorFase' },
     rotacao:      { pai: 'manutencao', cfg: 'rotacaoSkills' },
     // WATCH-LIST DO MERCADO (pedido do dono, 2026-10-18): vigiar itens e jogadores em tempo
-    // real e auto-comprar. Pende da MANUTENCAO (recurso base, funciona em qualquer campeao),
-    // com o seu proprio liga/desliga. A compra exige estar no Mercador (naBase()).
+    // real e auto-comprar. Pende da MANUTENCAO, com o seu proprio liga/desliga.
     vigiarMercado: { pai: 'manutencao', cfg: 'autoVigiarMercado' },
   };
   /** Este interruptor pode agir AGORA? Sobe a cadeia de pais e avalia a excepcao.
@@ -3899,7 +3883,19 @@ const CFG_VER = 2;
     ['repor', 'reposto', () => reporPocoes()],
     ['tarefa', 'tarefas', async () => {
       const st = tarefaEstado() || {};
-      if (st.pronta) { const r = { entregou: await entregarTarefa() }; if (!(tarefaEstado() || {}).tem) r.nova = await aceitarTarefa(); return r; }
+      if (st.pronta) {
+        // TK-01: o banner `#rastreio-tarefa.pronta` é um atalho que abre o diálogo do Capitão
+        // directamente (jogo.js:6407). Tenta o banner primeiro; se clicar, o diálogo já está aberto
+        // e `entregarTarefa({dialogoAberto:true})` entrega através dele. Fora da base o clique não
+        // faz nada — a necessidade `n.tarefa` envia o personagem à Fonte (o `supervisarBase` já faz
+        // isso).
+        const banner = clicarTarefaPronta();
+        // TK-01: se o banner ABRIU o diálogo do Capitão, entrega ATRAVÉS dele — sem fechar/reabrir
+        // (o `fecharJanelas()` do caminho normal FECHARIA o diálogo que o banner abriu).
+        const r = { entregou: await entregarTarefa({ dialogoAberto: banner && banner.ok === true }), banner };
+        if (!(tarefaEstado() || {}).tem) r.nova = await aceitarTarefa();
+        return r;
+      }
       return { diaria: await aceitarDiarias(), nova: await aceitarTarefa() };
     }],
     ['hab', 'habs', () => subirHabilidades()],
@@ -4003,7 +3999,11 @@ const CFG_VER = 2;
 
   // ------------------------------------------------------------- mercado (J)
   function mercadoEl(abrir) { const m = q1('#janela-mercado'); if (m && m.hidden && abrir) press('j'); return m; }
-  /** Lista minhas ofertas (aba Minhas ofertas): [{ id, nome, raridade, qual, preco, txt }]. */
+  /** Lista minhas ofertas (aba Minhas ofertas): [{ id, nome, raridade, qual, preco, txt }].
+   *  TK-01: LEGACY/UNUSED — zero call sites. O TK-01 trocou a LEITURA para o servidor
+   *  (`lerMinhasOfertasServidor`) e removeu o FALLBACK que abria o mercado so para VER.
+   *  Nunca re-ligar: isto faz `mercadoEl(true)` + `press('j')` — o P0 do dono proibe abrir o
+   *  mercado para LER. Mantido só para compatibilidade de referencia. */
   async function lerMinhasOfertas() {
     const m = mercadoEl(true); if (!m) return null;
     if (m.hidden) { press('j'); await esperar(500); }
@@ -4016,6 +4016,56 @@ const CFG_VER = 2;
       const pr = txt.match(/([\d.,]+\s*[kKmM]?)\s*ouro/i);
       return { id: b.dataset.cancelar, nome: txt.split('[')[0].trim(), raridade: /lend/.test(txt) ? 'lendario' : /pic/.test(txt) ? 'epico' : 'basico', qual: mq ? mq[1] : null, preco: pr ? parseBig(pr[1]) : null, txt: txt.slice(0, 120) };
     });
+  }
+  /** Minhas ofertas ANUNCIADAS, lidas do SERVIDOR (GET /api/mercado) — sem abrir o mercado.
+   *  TK-01: o servidor já sabe o que está anunciado (`o.minha === true`); a UI só é precisa
+   *  para CRIAR/CANCELAR ofertas, nunca para LER. Devolve null quando o servidor falha (o
+   *  chamador decide: seguir sem dados, ou cair para o DOM como fallback). */
+  async function lerMinhasOfertasServidor() {
+    try {
+      const r = await lerMercadoServidor();
+      if (!r || !r.ok) return null;
+      const minhas = (r.ofertas || []).filter((o) => o && o.minha === true);
+      return minhas.map((o) => {
+        const base = String(baseDoItemMercado(o.item));
+        const it = infoItem(base);
+        const partes = String(o.item).split('~');
+        return { id: String(o.id), base, nome: (it && it.nome) || base, qual: partes[1] || null,
+          preco: o.preco != null ? Number(o.preco) : null, raridade: (it && it.raridade) || null, txt: null };
+      });
+    } catch { return null; }
+  }
+  /** LE o mercado INTEIRO do servidor (GET /api/mercado) num só pedido e devolve:
+   *  - mercado: o MENOR preco por item+qualidade (o que a aba "comprar" mostra no DOM)
+   *  - minhas:   as ofertas onde `o.minha === true`
+   *  TK-01: leitura 100% servidor; a UI do mercado só para acoes concretas (comprar/vender/
+   *  cancelar/anunciar). null quando o servidor falha (o chamador decide o fallback). */
+  async function mercadoDoServidor() {
+    try {
+      const r = await lerMercadoServidor();
+      if (!r || !r.ok) return null;
+      const todas = (r.ofertas || []).filter((o) => o && typeof o === 'object');
+      const mapear = (o) => {
+        const base = String(baseDoItemMercado(o.item));
+        const it = infoItem(base);
+        const partes = String(o.item).split('~');
+        return { id: String(o.id), base, nome: (it && it.nome) || base, qual: partes[1] || null,
+          preco: o.preco != null ? Number(o.preco) : null, raridade: (it && it.raridade) || null, txt: null };
+      };
+      const minhas = todas.filter((o) => o.minha === true).map(mapear);
+      // o mercado publico: AGRUPADO por item+qualidade com o MENOR preco — idêntico ao que
+      // a aba "comprar" do DOM mostra (um cartão por item+qualidade, "a partir de X").
+      const porGrupo = new Map();
+      for (const o of todas) {
+        if (o.minha || o.para) continue;
+        const m = mapear(o);
+        if (m.preco == null) continue;
+        const chave = m.base + '~' + (m.qual || '');
+        const cur = porGrupo.get(chave);
+        if (!cur || m.preco < cur.preco) porGrupo.set(chave, m);
+      }
+      return { mercado: [...porGrupo.values()], minhas, taxa: r.taxa, limite: r.limite };
+    } catch { return null; }
   }
   /** Cancela uma oferta pelo id. */
   function cancelarOferta(id) { const b = q1(`#janela-mercado [data-cancelar="${id}"]`); if (b) { if (Array.isArray(_ofertasCache)) _ofertasCache = _ofertasCache.filter((o) => String(o.id) !== String(id)); b.click(); logEvent('mercado', { acao: 'cancelar', id }); return true; } return false; }
@@ -4172,6 +4222,23 @@ const CFG_VER = 2;
     return { tem: true, pronta: bt.classList.contains('pronta'), texto: (bt.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 140) };
   }
 
+  /** Clica no banner `#rastreio-tarefa` quando visível e `.pronta` (TK-01).
+   *  O jogo mostra "Tarefa pronta! Clique aqui para falar com o Capitão." (jogo.js:6774-6783)
+   *  e o click handler (jogo.js:6407) chama `falarCom('Capitão da Legião')` — mas só na base.
+   *  Fora da base o clique não faz nada (o jogo pede "Volte à Fonte (tecla B)"), logo a extensão
+   *  só clica quando `naBase()`; caso contrário devolve `{ok:false, motivo:'fora da base'}` para
+   *  que a necessidade `n.tarefa` envie o personagem à Fonte. */
+  function clicarTarefaPronta() {
+    const st = tarefaEstado();
+    if (!st.tem || !st.pronta) return { ok: false, motivo: 'banner nao visivel ou nao pronta' };
+    if (!naBase()) return { ok: false, motivo: 'fora da base' };
+    const bt = document.querySelector('#rastreio-tarefa');
+    if (!bt) return { ok: false, motivo: 'banner nao encontrado' };
+    bt.click();
+    logEvent('tarefa', { clicouBanner: true, texto: st.texto });
+    return { ok: true, clicou: true, texto: st.texto };
+  }
+
   /** MODELO de atributos POR CAMPEÃO — derivado da dica do MOTOR (`DICA_ATRIBUTOS`,
    *  motor.js:474-482) cruzada com a CLASSE e o PERFIL do campeão (motor.js:484 `MODELOS`):
    *   - TANQUE  -> 'tanque'      { vitalidade:2, resistencia:2, forca:1 }  (motor.js:485)
@@ -4223,21 +4290,28 @@ const CFG_VER = 2;
     return { ok: gastos > 0, modelo: chave, gastos };
   }
 
-  /** Entrega a tarefa PRONTA ao Capitão (na Fonte). Fluxo: NPC → `[data-palavra="entregar"]` → `sim`. */
-  async function entregarTarefa() {
+  /** Entrega a tarefa PRONTA ao Capitão (na Fonte). Fluxo: NPC → `[data-palavra="entregar"]` → `sim`.
+   *  TK-01: `opts.dialogoAberto` diz que o diálogo do Capitão JÁ está aberto (o click no banner
+   *  `#rastreio-tarefa.pronta` abriu-o, jogo.js:6407). Nesse caso NÃO se chama `fecharJanelas()`
+   *  (que FECHARIA o diálogo que o banner abriu) nem `clickNPC` (que o reabria) — vai-se
+   * directamente ao `[data-palavra="entregar"]`. É UMA ÚNICA implementação de entrega. */
+  async function entregarTarefa(opts) {
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     const st = tarefaEstado();
     if (!st.tem) return { ok: true, entregou: false, motivo: 'sem tarefa' };
     if (!st.pronta) return { ok: false, motivo: 'tarefa incompleta', texto: st.texto };
-    fecharJanelas(); await humano(250);
-    if (!clickNPC('Capitão da Legião')) return { ok: false, motivo: 'sem capitao' };
+    const dialogoAberto = !!(opts && opts.dialogoAberto);
+    if (!dialogoAberto) {
+      fecharJanelas(); await humano(250);
+      if (!clickNPC('Capitão da Legião')) return { ok: false, motivo: 'sem capitao' };
+    }
     const btn = await waitFor('#janela-npc [data-palavra="entregar"]', 4000);
     if (!btn) return { ok: false, motivo: 'sem opcao entregar' };
     btn.click(); await humano(400);
     const sim = document.querySelector('#janela-npc [data-palavra="sim"]');
     if (sim) { sim.click(); await humano(300); }
-    logEvent('tarefa', { entregou: true, texto: st.texto });
-    return { ok: true, entregou: true, tinha: st.texto };
+    logEvent('tarefa', { entregou: true, texto: st.texto, dialogoAberto: dialogoAberto === true });
+    return { ok: true, entregou: true, tinha: st.texto, dialogoAberto: dialogoAberto === true };
   }
 
   /** Recebe as diárias prontas e aceita as disponíveis no Capitão (na Fonte).
@@ -4474,7 +4548,13 @@ const CFG_VER = 2;
                               // anunciar-vs-vender), e antes NÃO tinha como ler — dava sempre "não saturado".
   async function salvarOfertas() {
     try {
-      const o = await lerMinhasOfertas();
+      // TK-01: LEITURA do servidor (sem abrir o mercado). Quando o servidor falha (banco sem
+      // fetch, cookie expirado, HTTP erro) devolve null = "nao sei" — o chamador trata como
+      // desconhecido e NUNCA abre o mercado para descobrir (P0 do dono: "o mercado NUNCA abre
+      // para LER; UI so para comprar/vender/anunciar/cancelar"). O FALLBACK para o DOM que aqui
+      // existia (`|| (await lerMinhasOfertas())`) foi REMOVIDO: esse fallback abria #janela-mercado
+      // so para VER as ofertas — exatamente o que o P0 proibe.
+      const o = await lerMinhasOfertasServidor();
       if (o) { _ofertasCache = o; chrome.storage.local.set({ [OFERTAS_KEY]: { at: Date.now(), ofertas: o } }); logEvent('ofertas', { n: o.length }); }
       return o;
     } catch { return null; }
@@ -5035,11 +5115,21 @@ const CFG_VER = 2;
       if (!bagI || cofreMelhor) { const r = await retirarDoCofre(base); if (r.ok) return { ok: true, de: 'cofre', ...r }; }
     }
     if (bagI) return { ok: true, de: 'mochila', qual: bagI.qual, refino: bagI.refino };
-    // 2) meu anúncio no mercado → cancela (volta pra mochila)
+    // 2) meu anúncio no mercado → cancela (volta pra mochila).
+    // TK-01: a LEITURA vem do servidor (GET /api/mercado) — nunca abrir o mercado só para
+    // VER o que está anunciado. A UI abre apenas para CANCELAR esta oferta, e fecha-se logo
+    // (o `finally` garante o fecho mesmo que o cancelamento rebente).
     try {
-      const ofertas = await lerOfertas();
-      const o = (ofertas || []).find((x) => String(x.base) === String(base));
-      if (o) { const m = mercadoEl(false); cancelarOferta(o.id); await humano(500); if (m) q1('#janela-mercado [data-fechar]')?.click(); return { ok: true, de: 'mercado', nome: o.nome }; }
+      const r = await lerMercadoServidor();
+      const o = r && r.ok ? (r.ofertas || []).find((x) => x && x.minha === true && String(baseDoItemMercado(x.item)) === String(base)) : null;
+      if (o) {
+        const m = mercadoEl(true);   // só para cancelar; sem janela montada NAO há press('j')
+        if (m) {
+          try { cancelarOferta(o.id); await humano(500); }
+          finally { try { q1('#janela-mercado [data-fechar]')?.click(); } catch { /* ignore */ } }
+        }
+        return { ok: true, de: 'mercado', nome: String(baseDoItemMercado(o.item)) };
+      }
     } catch { /* ignore */ }
     return { ok: false, motivo: 'nao consegui obter ' + base };
   }
@@ -5171,6 +5261,8 @@ const CFG_VER = 2;
   }
 
   /** Lê Minhas ofertas (aba Minhas): [{ id, base, nome, qual, preco }]. */
+  /** LEGACY/UNUSED — zero call sites (TK-01 removeu-o dos exports). Abria #janela-mercado so para
+   *  VER as ofertas — o P0 do dono proibe. Usa-se `lerMinhasOfertasServidor()` (sem UI). */
   async function lerOfertas() {
     const m = mercadoEl(true); if (!m) return null;
     if (m.hidden) { press('j'); await esperar(500); }
@@ -5186,14 +5278,13 @@ const CFG_VER = 2;
     });
   }
 
-  /** PLANEJA o reajuste: compara minhas ofertas com o menor do mercado do MESMO item+qualidade. */
+  /** PLANEJA o reajuste: compara minhas ofertas com o menor do mercado do MESMO item+qualidade.
+   *  TK-01: TUDO lido do servidor (GET /api/mercado) — o planejamento nunca abre o mercado. */
   async function planejarMercado() {
-    const m = mercadoEl(true); if (!m) return { ok: false, motivo: 'sem mercado' };
-    if (m.hidden) { press('j'); await esperar(500); }
-    m.querySelector('[data-aba="comprar"]')?.click();
-    await esperar(500);
-    const mercado = lerMercado() || [];
-    const minhas = await lerOfertas() || [];
+    const mk = await mercadoDoServidor();
+    if (!mk) return { ok: false, motivo: 'sem leitura do servidor' };
+    const mercado = mk.mercado;
+    const minhas = mk.minhas || [];
     const acoes = [];
     for (const o of minhas) {
       if (isProtected({ kind: 'item', base: o.base, raridade: (infoItem(o.base) || {}).raridade, qual: o.qual })) {
@@ -6031,28 +6122,9 @@ const CFG_VER = 2;
     // `ids` = ids dos SLOTS que entram; `bases` = as bases correspondentes. É preciso distinguir
     // porque DUAS cópias do mesmo item têm o MESMO `id` ('1006~A') — casar só por `id` marcava
     // TODAS as cópias como EQUIPAR e nenhuma era vendida (bug apanhado na verificação).
-    // OBJETIVO FIXO DO DONO (cfg.objetivoItem): o item-alvo NUNCA sai da build por
-    // comparacao de poder. MEDIDO 2026-10-14: com o objetivo em Rabadon (3089, cabeca)
-    // EQUIPADO, o alvoEquip queria troca-lo pela Coroa da Rainha Despedacada (664644,
-    // tambem cabeca) so porque esta pontua mais em poderItem - o motor desfazia
-    // exactamente o objetivo que o dono tinha acabado de definir.
-    try {
-      const alvoBruto = cfg && cfg.objetivoItem;
-      const alvoId = alvoBruto == null ? null : (/^rabadon$/i.test(String(alvoBruto)) ? RABADON : String(alvoBruto));
-      if (alvoId) {
-        const byId = new Map((META.itens || []).map((i) => [String(i.id), i]));
-        const equipado = new Set(eq.map((i) => String(i.base || i.id)));
-        if (equipado.has(alvoId)) {
-          const espaco = (byId.get(alvoId) || {}).espaco;
-          r.saem = (r.saem || []).filter((i) => String(i.base || i.id) !== alvoId);
-          r.entram = (r.entram || []).filter((i) => {
-            const e2 = (byId.get(String(i.base || i.id)) || {}).espaco;
-            return !(espaco && e2 === espaco);
-          });
-          r.mexe = r.entram.length > 0;
-        }
-      }
-    } catch { /* a guarda do objetivo nunca pode quebrar o equipamento */ }
+    // TK-01 (2026-10-19): o "objetivo fixo do dono" (`cfg.objetivoItem`) foi REMOVIDO — a build
+    // é escolhida por score medido e a protecção de um item por decreto contradizia isso. O
+    // `alvoEquip` (a bitola do equipamento) decide sozinho, como sempre.
     return { ...r, ids: new Set(r.entram.map((i) => i.id)), bases: new Set(r.entram.map((i) => String(i.base))) };
   }
 
@@ -6557,13 +6629,16 @@ const CFG_VER = 2;
     const cand = (bag.items || []).filter((i) => i.kind === 'item' && i.raridade === 'lendario' && QUAL.includes(i.qual) && qIdx(i.qual) < qIdx('A') && !ehPrioridadeExtrema(i.base) && !ehLendarioDaBuild(i.base));
     if (!cand.length) return { ok: true, anunciados: [], motivo: 'sem lendário <A (ou todos são da build da classe)' };
     cand.sort((a, b) => qIdx(a.qual) - qIdx(b.qual) || (a.refino || 0) - (b.refino || 0));   // menor tier primeiro
-    // LÊ O MERCADO PRIMEIRO, na aba "Comprar" (o lerMinhasOfertas troca pra "Minhas" e zerava o comparativo)
-    const mm = mercadoEl(true); if (mm && mm.hidden) { press('j'); await humano(500); }
-    mm?.querySelector('[data-aba="comprar"]')?.click(); await humano(500);
-    const mercado = lerMercado() || [];
-    const minhas = (await lerMinhasOfertas()) || [];
+    // TK-01: LEITURA do servidor (GET /api/mercado) — o comparativo de preços e as minhas
+    // ofertas NÃO abrem o mercado. A UI abre só para as AÇÕES do loop: cancelar quando
+    // saturar (e o anunciarItemPorBase, por sua vez, já abre para anunciar).
+    const mk = await mercadoDoServidor();
+    if (!mk) return { ok: false, motivo: 'sem leitura do mercado', anunciados: [], cancelados: [] };
+    const mercado = mk.mercado || [];
+    const minhas = mk.minhas || [];
     _ofertasCache = minhas;                                        // saturação passa a saber o que está anunciado
     const anunciados = []; const cancelados = [];
+    const mm = minhas.length ? mercadoEl(true) : null;   // só se houver o que cancelar quando saturar
     for (const it of cand) {
       if (ehLendarioDaBuild(it.base)) continue;                            // lendário da build da classe: NUNCA anuncia
       if (minhas.length + anunciados.length >= 10 - cancelados.length) { /* cheio: tenta abrir vaga */ }
@@ -6642,10 +6717,58 @@ const CFG_VER = 2;
   function buildParaMob() { return buildDaFase('mobs'); }
   /** BUILD de CHEFE do campeão actual (um alvo, armadura alta, luta longa). */
   function buildParaChefe() { return buildDaFase('chefe'); }
-  /** O corpo da build ideal, parametrizado pelos pesos (fase) — UMA implementação só, para a
-   *  build da classe (fase null) e as builds de mob/chefe não poderem divergir na REGRA.
-   *  A regra é a mesma de sempre: 1 bota + 4 melhores entre épicos e lendários do catálogo. */
+  /** O corpo da build ideal — TK-01: escolhida por SCORE MEDIDO (scoreSet) sobre o catálogo,
+   *  não por PESO_FASE. Regras do motor respeitadas (1 slot de bota, classe, raridade).
+   *  O caminho antigo fica como FALLBACK declarado (`montarBuildDePesos`) para quando o
+   *  score não está disponível (sem catálogo/DOM) — não apagar a função sem rede. */
   function montarBuildDe(c, fase) {
+    const todos = (META.itens || []).filter((i) => i.raridade === 'lendario' || i.raridade === 'epico');
+    if (!c || !todos.length || typeof scoreSet !== 'function') return montarBuildDePesos(c, fase);
+    const alvoScore = (fase === 'chefe' || fase == null) ? alvoDeReferencia('chefe') : null;
+    const classe = c.magia ? 'ap' : 'ad';
+    _champScore = c;                       // o scoreSet avalia a build PARA ESTE campeão
+    try {
+      return montarBuildDePorScore(c, fase, alvoScore, classe, todos).map(String);
+    } finally {
+      _champScore = null;
+    }
+  }
+  /** A escolha por SCORE MEDIDO: greedy sobre o catálogo — o item que mais sobe o score do
+   *  conjunto entra, até encher os 4 slots livres; a bota é a que mais sobe o score final.
+   *  SEM Rabadon forçado, SEM objetivoItem: entra o que o score escolher (Rabadon incluído). */
+  function montarBuildDePorScore(c, fase, alvoScore, classe, todos) {
+    const scoreDe = (ids) => scoreSet(ids.map(String), alvoScore);
+    const pool = todos.filter((i) => { const cl = classeItem(i.id); return cl === 'neutro' || cl === classe; });
+    const resto = pool.filter((i) => i.espaco !== 'botas');
+    const botas = pool.filter((i) => i.espaco === 'botas');
+    const usados = new Set();
+    const set = [];
+    let melhor = scoreDe(set);
+    while (set.length < 4) {
+      let add = null, val = melhor;
+      for (const it of resto) {
+        const id = String(it.id);
+        if (usados.has(id)) continue;
+        const v = scoreDe([...set, id]);
+        if (v > val) { val = v; add = id; }
+      }
+      if (!add) break;
+      usados.add(add); set.push(add); melhor = val;
+    }
+    // a BOTA (motor.js:30 — 1 slot só de bota): a que mais sobe o score do conjunto final.
+    let bota = null, valBota = -Infinity;
+    for (const it of botas) {
+      const id = String(it.id);
+      const v = scoreDe([...set, id]);
+      if (v > valBota) { valBota = v; bota = id; }
+    }
+    const out = bota ? [...set, bota] : set;
+    return out.slice(0, 5);
+  }
+  /** FALLBACK DECLARADO (TK-01) — o caminho ANTIGO por PESO_FASE. Só corre quando o score
+   *  não está disponível (sem catálogo/DOM). O `objetivoItem` forçado foi REMOVIDO daqui e
+   *  do caminho novo: o Rabadon entra se (e só se) o score o escolher. */
+  function montarBuildDePesos(c, fase) {
     const perfil = perfilDe(c);
     const classe = c && c.magia ? 'ap' : 'ad';
     const pesos = fase ? pesosItemFase(perfil, fase) : pesosItem(perfil);
@@ -6704,25 +6827,6 @@ const CFG_VER = 2;
     const botas = todos.filter((i) => i.espaco === 'botas').sort(cmp)[0] || null;
     const usados = new Set(botas ? [String(botas.id)] : []);
     const out = botas ? [String(botas.id)] : [];
-    // ALVO FIXO DO DONO (cfg.objetivoItem): entra logo a seguir as botas e NUNCA e
-    // filtrado pelo multiplicador de classe - e um pedido explicito, nao uma estimativa.
-    // Sem isto o Rabadon num campeao AD levava 0.12x e era inalcancavel por construcao.
-    try {
-      const alvoBruto = cfg && cfg.objetivoItem;
-      const alvo = alvoBruto == null ? null
-        : (/^rabadon$/i.test(String(alvoBruto)) ? RABADON : String(alvoBruto));
-      if (alvo && !usados.has(alvo)) {
-        const it = todos.find((i) => String(i.id) === alvo);
-        // O ALVO FIXO RESPEITA A CLASSE (correcção do Lead, 2026-10-14). O objetivo entrava
-        // ANTES de qualquer filtro, logo o Rabadon (AP) aparecia em TODAS as builds — MEDIDO:
-        // `buildIdealPara({magia:false})` -> "3172,3089,3046,6631,3031" (Rabadon numa build AD).
-        // A classe sai da MESMA função do resto do ficheiro (`classeItem`, automation.js:3528);
-        // o dono pode forçar um alvo de classe oposta com `cfg.objetivoItemForcar: true`.
-        // Mesma classe/neutro continua a entrar como sempre (o Rabadon na Katarina/Lux).
-        const cl = classeItem(alvo);
-        if (it && (cl === 'neutro' || cl === classe || cfg.objetivoItemForcar === true)) { usados.add(alvo); out.push(alvo); }
-      }
-    } catch { /* alvo invalido nao pode quebrar a build */ }
     for (const i of todos.slice().sort(cmp)) {
       if (out.length >= 5) break;
       if (usados.has(String(i.id))) continue;
@@ -6866,21 +6970,26 @@ const CFG_VER = 2;
     scanBag(true);
     return { ok: retirados.length > 0, retirados: retirados };
   }
-  /** Puxa do MERCADO as bases pedidas: cancela as MINHAS ofertas (o item volta à mochila). */
+  /** Puxa do MERCADO as bases pedidas: cancela as MINHAS ofertas (o item volta à mochila).
+   *  TK-01: as MINHAS ofertas são lidas do servidor (sem abrir para VER); a UI abre uma
+   *  vez só, para o CANCELAR concreto, e fecha-se no fim. */
   async function puxarDoMercado(bases) {
-    const m = mercadoEl(true); if (!m) return { ok: false, motivo: 'sem mercado', cancelados: [] };
-    if (m.hidden) { press('j'); await esperar(500); }
-    m.querySelector('[data-aba="minhas"]')?.click(); await esperar(450);
-    const minhas = (await lerMinhasOfertas()) || [];
+    const minhas = await lerMinhasOfertasServidor();
+    if (!minhas) return { ok: false, motivo: 'sem leitura do mercado', cancelados: [] };
     _ofertasCache = minhas;
     const cancelados = [];
-    for (const b of bases) {
-      const o = minhas.find((x) => String(x.base) === String(b));
-      if (!o) continue;
-      if (cancelarOferta(o.id)) cancelados.push(String(b));
-      await esperar(350);
+    let m = null;
+    try {
+      for (const b of bases) {
+        const o = minhas.find((x) => String(x.base) === String(b));
+        if (!o) continue;
+        if (!m) { m = mercadoEl(true); if (!m) break; m.querySelector('[data-aba="minhas"]')?.click(); await esperar(450); }
+        if (cancelarOferta(o.id)) cancelados.push(String(b));
+        await esperar(350);
+      }
+    } finally {
+      if (m) fecharMercado();
     }
-    fecharMercado();
     scanBag(true);
     return { ok: cancelados.length > 0, cancelados: cancelados };
   }
@@ -7590,20 +7699,26 @@ const CFG_VER = 2;
     return { chance: Math.min(1, chance), mult };
   }
 
+  /** Campeão usado pelo scoreSet quando chamado a partir do montarBuildDe: `montarBuildDe(c,fase)`
+   *  avalia a build PARA `c` (que pode não ser o campeão em campo — ex.: buildIdealPara de um
+   *  campeão que não está em campo). null = o campeão actual (META.champAtual), que é o
+   *  comportamento de sempre para TODOS os outros chamadores. */
+  let _champScore = null;
   /** Score de dano de um conjunto — AGORA com as passivas (Lich/Chama/Liandry), igual ao estimarSet. */
   function scoreSet(ids, alvo) {
+    const champ = _champScore || META.champAtual || null;
     const S = statsSet(ids);
     const apSet = apDoSet(ids, S).ap;
     // Idem `estimarSet`: MITIGAÇÃO PELO TIPO DE DANO do campeão (motor.js:1202).
     // TK-02-150: o ramo FÍSICO usava a pen MÁGICA (`S.pen`), que o motor só dá a quem bate com
     // magia (motor.js:529). Cada pen fica no seu ramo: penArmadura no físico (motor.js:539).
-    const magiaCh = !!(META.champAtual && META.champAtual.magia);
+    const magiaCh = !!(champ && champ.magia);
     const mit = 100 / (100 + (magiaCh ? armMagicaEfetiva(alvo?.armadura, S.pen) : (alvo?.armadura || 0) * (1 - (S.penArmadura || 0))));
     // BUG CORRIGIDO: usava SEMPRE S.ap, por isso o melhorSet recomendava Rabadon
     // (AP) para o Yasuo (AD) — build errada para o boneco. Agora o tipo de dano
     // vem do campeao: AP usa o AP dos itens; AD usa o dano do campeao (ja com
     // itens) + o AD dos itens. O Lich so entra para magos.
-    const magia = !!(META.champAtual && META.champAtual.magia);
+    const magia = !!(champ && champ.magia);
     const pj = player() || {};
     const adTotalSet = (pj.dano || 0) + (S.ad || 0) + (S.bonusVidaToAd ? S.bonusVidaToAd * (S.vida || 0) : 0);
     const base = magia ? apSet : adTotalSet;
@@ -8253,6 +8368,10 @@ const CFG_VER = 2;
       conta, atributos: readStats(), pocoes: readPotions(), habilidades: readSkills(),
       equipado, mochila: mochila ? { cap: mochila.cap, used: mochila.used, espacosEspolio: mochila.espacosEspolio } : null,
       itens,
+      // REGIAO (TK-01 §2): `emUso` = a que o motor segue (fixa do dono, se houver);
+      // `recomendada` = a AUTO, sempre — o preview do modo automatico na GUI usa esta.
+      regiao: { emUso: regiaoIdeal(), recomendada: regiaoRecomendada(), fixa: cfg.regionDefault || null },
+      regiaoIdeal: regiaoIdeal(), regiaoRecomendada: regiaoRecomendada(),
       resumo: {
         mochilaLivre: mochila ? mochila.cap - mochila.used : null,
         itemPorRaridade: porRar, itemPorQualidade: porQual,
@@ -8270,6 +8389,11 @@ const CFG_VER = 2;
     return {
       at: Date.now(), local: readLocation().text, ouro: readGold(), pocoes: readPotions(),
       nivel: player().nivel, hp: hp ? { cur: hp.cur, max: hp.max } : null,
+      // TK-01: SEM "alvo" de campeão. A GUI desenhava `est.alvo` como "alvo: yasuo, ryze" (a
+      // restrição de campeão que o dono queixou); com a excepção removida o campo é null.
+      alvo: null,
+      // REGIAO (TK-01 §2): a recomendada AUTO + a em uso (fixa, se o dono escolheu uma).
+      regiaoIdeal: regiaoIdeal(), regiaoRecomendada: regiaoRecomendada(),
       mochila: (() => { try { const b = scanBag(); return b ? `${b.used}/${b.cap}` : null; } catch { return null; } })(),
       chefeFatal: (() => { const c = farm.current; if (!c) return null; const r = agregar().find((x) => x.region === c.region); return r?.risco?.morre ? c.boss : null; })(),
     };
@@ -8290,7 +8414,10 @@ const CFG_VER = 2;
     const out = {
       at: Date.now(),
       campeao: (META.champAtual && META.champAtual.id) || null,
-      alvo: campeoesAlvo(),
+      // TK-01: a GUI Painel desenha `est.alvo` como "alvo: yasuo, ryze" — a restrição de campeão
+      // que o dono queixou. Como a excepção de campeão foi REMOIDA (não há mais "alvo" no auto-play),
+      // o campo é null: o painel não mostra nenhuma restrição de campeão.
+      alvo: null,
       local: (() => { try { return readLocation().text || null; } catch { return null; } })(),
       nivel: p.nivel || null,
       ouro: (() => { try { return readGold(); } catch { return null; } })(),
@@ -8445,8 +8572,10 @@ const CFG_VER = 2;
   /** Runeterra é jogado MANUALMENTE — a automação nunca escolhe/visita essas regiões. */
   const ehRuneterra = (l) => /runeterra/i.test(semAcento((l && (l.nome || l.id)) || ''));
 
-  function regiaoIdeal() {
-    if (cfg.regionDefault) return cfg.regionDefault;
+  /** REGIAO RECOMENDADA (a AUTO, sempre) — ignora a regiao FIXA do dono (`cfg.regionDefault`).
+   *  Pedido do dono (2026-10-19, TK-01 §2): a GUI mostra o PREVIEW do modo automatico mesmo
+   *  quando ha regiao fixa, logo precisa da recomendacao AUTO separada da regiao EM USO. */
+  function regiaoRecomendada() {
     const p = player();
     const obj = objDe(cfg.objetivo);
     // FILTRO FAIL-CLOSED (correcção do Lead, 2026-10-14): `!x.e.morte` tratava `undefined` (risco
@@ -8491,6 +8620,10 @@ const CFG_VER = 2;
     (doNivel.length ? doNivel : base).sort((a, b) => score(b) - score(a));
     return (doNivel[0] || base[0])?.l.id || null;
   }
+  /** REGIAO EM USO: a FIXA do dono (`cfg.regionDefault`) quando existe, senao a recomendada.
+   *  Mantem o contrato antigo (a GUI e a `viagem` automatica usam `regiaoIdeal()` como regiao
+   *  a seguir). Para o PREVIEW do modo automatico usa-se `regiaoRecomendada()`. */
+  function regiaoIdeal() { return cfg.regionDefault || regiaoRecomendada(); }
 
   /** A REGIÃO É SEGURA? (regra do dono: "NAO E PRA MORRER, NUNCA, COM ESSE SCRIPT")
    *  Correcção do Lead, 2026-10-14 — MEDIDO AO VIVO: a Katarina (nv 29) estava no COVIL DO
@@ -8824,11 +8957,11 @@ const CFG_VER = 2;
   //     conta NOVA neste perfil. (Com a marca ausente a lista está vazia e "o nome não está na
   //     lista" não prova nada: seria ligar sozinho na conta do dono, que é o que ele proibiu.)
   //
-  // O ÚNICO campo que isto mexe é o interruptor-mestre `cfg.enabled`. A REGRA DE CAMPEÃO MANDA
-  // SEMPRE: `podeFazer('autoplay')` tem a excepção `!ehCampeaoAlvo()` (INTERRUPTORES, ver
-  // `autoplay` na tabela acima), logo ligar `enabled` num campeão que não o `champAlvo` NÃO abre
-  // nada do auto-play (farmar/viajar/chefes/barra por fase). A MANUTENÇÃO — que já nascia ligada e
-  // não depende do mestre — continua a fazer exactamente o que fazia.
+  // O ÚNICO campo que isto mexe é o interruptor-mestre `cfg.enabled`. TK-01: a REGRA DE CAMPEÃO
+  // foi REMOIDA — `podeFazer('autoplay')` já NÃO tem a excepção `!ehCampeaoAlvo()` (ver
+  // `autoplay` na tabela acima), logo ligar `enabled` abre o auto-play para QUALQUER campeão.
+  // `champAlvo` continua a existir como PREFERÊNCIA VISUAL (a GUI mostra-o), mas não é bloqueio.
+  // A MANUTENÇÃO — que já nascia ligada e não depende do mestre — continua a fazer o que fazia.
   const INSTALADO_KEY = STORAGE_KEY + ':instalado';
   /** Chaves que só existem se o MOTOR já correu neste perfil — todas escritas pelo automation.js:
    *  a config (`setConfig`), o farm (FARM_KEY), o meta (META_KEY), o agregado (AGG_KEY), o plano
@@ -8905,8 +9038,7 @@ const CFG_VER = 2;
     const marca = marcarInstalado({ via, ligou: cfg.enabled === true });
     try {
       logEvent('primeira-vez', { via, antes: !!antes, agora: !!cfg.enabled, conta: marca.nome,
-        champ: (META.champAtual || {}).id || null, alvo: cfg.champAlvo === undefined ? 'yasuo' : cfg.champAlvo,
-        campeaoAlvo: ehCampeaoAlvo() });
+        champ: (META.champAtual || {}).id || null, alvo: null, campeaoAlvo: ehCampeaoAlvo() });
     } catch { /* ignore */ }
     return { ok: true, ligado: cfg.enabled === true, via, conta: marca.nome };
   }
@@ -9023,7 +9155,7 @@ const CFG_VER = 2;
     return cfg;
   }
 
-  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertas, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, lerOfertas, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
+  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
     podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser

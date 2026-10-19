@@ -594,8 +594,8 @@ export const CATALOGO = [
   // o ticket P0 da fila W11 ficaria sem assercao nenhuma.
   // Os numeros (ad/ap/vida/cdr/pen) sao os do catalogo do jogo (docs/game-src/itens.js); o
   // catalogo do banco e CONTROLADO, e estes ids mantem as propriedades que os tickets medem.
-  { id: '3153', nome: 'Espada do Rei Destruido', raridade: 'lendario', espaco: 'arma', ad: 55, preco: 3400, de: ['2002'],
-    efeito: 'Ataques basicos causam 5% da vida atual do alvo como dano fisico adicional.' },
+  { id: '3153', nome: 'Espada do Rei Destruido', raridade: 'lendario', espaco: 'arma', ad: 40, va: 0.25, rv: 0.1, preco: 3200, de: ['2002'],
+    efeito: 'Gume da Nevoa: ataques causam 5% da Vida atual do alvo como dano extra. Em chefes e monstros de muita vida, a porcentagem tem um teto.' },
   { id: '3036', nome: 'Lembrancas do Lorde Dominik', raridade: 'lendario', espaco: 'arma', ad: 35, critico: 0.25, penArmadura: 0.3, preco: 3400, de: ['2002'],
     efeito: '30% de penetracao de armadura.' },
   { id: '3031', nome: 'Gume do Infinito', raridade: 'lendario', espaco: 'arma', ad: 70, critico: 0.25, preco: 3400, de: ['2002'],
@@ -715,9 +715,27 @@ export function ofertasEpicas(n) {
   return out;
 }
 
-/** Deixa o mercado SATURADO (10 lendarias) pelo caminho REAL: lerMinhasOfertas -> _ofertasCache. */
+/** Injects a `fetch` stub that returns the given DOM-format offers in SERVER format.
+ *  TK-01: `salvarOfertas` le do SERVIDOR (GET /api/mercado), por isso os testes que montam o
+ *  mercado precisam de um fetch que devolva essas ofertas — senao `salvarOfertas` devolve null
+ *  ("nao sabe") e a cache fica vazia. Sem isto, o mercado NUNCA abre (P0 do dono). */
+export function stubFetchMercado(mundo, ofertas) {
+  const baseLend = '9500';   // lendario no catalogo
+  const baseEpic = '2002';   // epico no catalogo
+  const srv = (ofertas || []).map((o) => {
+    const lend = /lend/i.test(o.txt);
+    return { id: o.id, item: (lend ? baseLend : baseEpic) + '~S', preco: 5000, minha: true };
+  });
+  mundo.sandbox.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ofertas: srv }) });
+  return srv;
+}
+
+/** Deixa o mercado SATURADO (10 lendarias) pelo caminho REAL: salvarOfertas -> _ofertasCache.
+ *  TK-01: a leitura e do SERVIDOR, por isso o fetch e stubado a devolver as ofertas montadas. */
 export async function saturarMercado(auto, mundo) {
-  montarMercado(mundo, ofertasLendarias(10));
+  const ofertas = ofertasLendarias(10);
+  montarMercado(mundo, ofertas);
+  stubFetchMercado(mundo, ofertas);
   const o = await auto.salvarOfertas();
   return o;
 }

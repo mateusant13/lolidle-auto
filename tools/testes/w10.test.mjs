@@ -417,6 +417,10 @@ export const suite = {
       const w1 = novoMundo();
       alimentarCatalogo(w1.m);
       definirCampeao(w1.m, 'adtest');
+      // TK-01: `vender` pende de `irBase` -> `manutencao` -> mestre `autoplay` (`enabled`).
+      // Sem o mestre ligado `n.vender` seria falso por HIERARQUIA, nao pela regra do ouro —
+      // o teste nao provaria nada. Liga-se o mestre para a regra ficar a vista.
+      w1.auto.setConfig({ enabled: true });
       mochila(w1.m, w1.auto, [
         slot('4001~C', 'epico', 'Item Epico. Vale 5.6k de ouro no Lojista.'),
         slot('4002~C', 'epico', 'Item Epico. Vale 5.6k de ouro no Lojista.'),
@@ -432,6 +436,7 @@ export const suite = {
       const w2 = novoMundo();
       alimentarCatalogo(w2.m);
       definirCampeao(w2.m, 'adtest');
+      w2.auto.setConfig({ enabled: true });   // TK-01: idem V1 — o mestre tem de estar ligado
       const muitos = [];
       for (let i = 0; i < 29; i++) muitos.push(slot('4001~C', 'epico', 'Item Epico do teste'));
       mochila(w2.m, w2.auto, muitos, 30);
