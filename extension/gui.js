@@ -3537,18 +3537,6 @@
     'ap-goto-itens': () => setTab('itens'),
     'ap-goto-personagem': () => setTab('personagem'),
     'ap-pin': (btn) => { fixado = !fixado; btn.classList.toggle('ativo', fixado); fb('info', fixado ? 'Painel FIXO: só fecha com o ✕ ou Esc.' : 'Painel solto: fica aberto até você fechar.'); },
-    'ap-champ-add-atual': () => {
-      const ident = identidade() || {};
-      const id = ident.id;
-      if (!id) { fbAviso('O motor ainda não identificou o campeão atual (o HUD ainda não carregou).'); return; }
-      const atuais = (ler('campeoesAlvo', []) || []).slice();
-      if (atuais.indexOf(id) >= 0) { fbAviso('O campeão atual (' + capNome(id) + ') já está na lista de alvos.'); return; }
-      atuais.push(id);
-      definirCfg({ champAlvo: atuais });
-      fb('ok', 'Adicionei ' + capNome(id) + ' à lista de campeões do auto-play.');
-      _ultimoHtml.delete('ap-auto-champ');
-      if (tabAtiva === 'painel') renderAuto();
-    },
     'ap-help': () => { renderAjuda(); const m = $('lolidle-ap-ajuda'); m.hidden = false; m.classList.add('on'); },
     'ap-aj-x': () => { const m = $('lolidle-ap-ajuda'); m.hidden = true; m.classList.remove('on'); },
     // CONTROLES DO AUTO-PLAY (4 estados). `ap-panic` é o botão principal: o handler decide pelo
@@ -3895,17 +3883,6 @@
     'ap-watch-preco': (el) => { const v = Math.max(0, Number(el.value) || 0); definirCfg({ mercadoWatch: novoWatch({ precoMax: v > 0 ? v : null }) }); fb('ok', v > 0 ? 'Preço máximo por oferta: ' + fmt(v) + ' ouro.' : 'Sem limite de preço próprio (fica só a reserva de ouro).'); },
     'ap-watch-teto': (el) => { const v = Math.max(0, Number(el.value) || 0); definirCfg({ mercadoWatch: novoWatch({ tetoCompra: v > 0 ? v : null }) }); fb('ok', 'Limite de gasto por passagem: ' + (v > 0 ? fmt(v) + ' ouro' : 'sem limite') + '.'); },
     'ap-watch-cad': (el) => { const s = Math.max(2, Number(el.value) || 5); definirCfg({ mercadoWatch: novoWatch({ cadenciaMs: s * 1000 }) }); fb('ok', 'Cadência da vigia: ' + s + ' s.'); },
-    // ---- ALVOS DO AUTO-PLAY (2026-10-18): "qualquer campeão" vs lista. Vazio = qualquer. ----
-    'ap-champ-any': (el) => {
-      if (el.checked) { definirCfg({ champAlvo: null }); fb('ok', 'Alvos: QUALQUER campeão (o auto-play corre em todos).'); }
-      else {
-        const lista = (ler('campeoesDoJogo', []) || []).map((ch) => String(ch.id));
-        definirCfg({ champAlvo: lista.length ? lista : ['yasuo', 'ryze'] });
-        fb('ok', lista.length ? 'Alvos: todos os campeões do jogo — desmarque os que não quer.' : 'Alvos: lista restrita — escolha os campeões abaixo.');
-      }
-      _ultimoHtml.delete('ap-auto-champ');
-      if (tabAtiva === 'painel') { renderAuto(); }
-    },
   };
 
   function bind() {
@@ -3990,24 +3967,6 @@
           else { guardarPocao(k, { mode: el.value }); fb('ok', POCAO_NOME[k] + ': unidade mudada para ' + (el.value === 'pct' ? '% da vida perdida' : 'vida perdida') + '.'); }
           ultimoRender = 0;
         } catch (err) { fbErro('Erro ao guardar poção: ' + String((err && err.message) || err)); }
-      }
-      // ALVOS DO AUTO-PLAY: ids compostos ap-champ-<id-do-campeao>. A lista vazia = qualquer
-      // campeão (o motor trata null/vazio como "sem restrição") — coerente com o "Qualquer campeão".
-      const mc = /^ap-champ-(.+)$/.exec(el.id);
-      if (mc) {
-        const id = mc[1];
-        try {
-          const atuais = (ler('campeoesAlvo', []) || []).slice();
-          const i = atuais.indexOf(id);
-          if (el.checked && i < 0) atuais.push(id);
-          if (!el.checked && i >= 0) atuais.splice(i, 1);
-          definirCfg({ champAlvo: atuais.length ? atuais : null });
-          fb('ok', atuais.length
-            ? 'Alvos: ' + atuais.join(', ') + '.'
-            : 'Nenhum campeão selecionado: o motor volta a jogar em QUALQUER um.');
-          _ultimoHtml.delete('ap-auto-champ');
-          if (tabAtiva === 'painel') renderAuto();
-        } catch (err) { fbErro('Erro ao guardar alvos: ' + String((err && err.message) || err)); }
       }
     });
     qa('#lolidle-ap .tab').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
