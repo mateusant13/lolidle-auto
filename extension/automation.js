@@ -5588,7 +5588,10 @@ const CFG_VER = 2;
       // motor.js:1121: o chefe nasce em max(n0+2, min(n1+2, nivel+4)) — nao no topo da faixa.
       const nivel = chefe ? nivelChefeDe({ nm: base }) : base[0];
       const s = statsMonstro(nome, nivel);
-      return s ? { nome, nivel, hp: s.hp } : null;
+      // O scoreSet precisa da ARMADURA (pen vale 0 sem ela) e do `chefe` (execute/%vida
+      // são de alvo único). Devolver só `hp` fazia a build ignorar 3135/pen e escolher
+      // Luden por AP bruto — medido: 40,3 s contra os 25,7 s da build com pen.
+      return s ? { nome, nivel, hp: s.hp, armadura: s.armadura, chefe: !!chefe || !!s.chefe, magico: !!s.magico } : null;
     };
     try {
       const loc = (META.locais || []).find((l) => l.id === localId(readLocation().text));
