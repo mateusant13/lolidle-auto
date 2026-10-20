@@ -46,6 +46,15 @@ ws.addEventListener('message', (ev) => {
 });
 await new Promise((r, j) => { ws.addEventListener('open', r, { once: true }); ws.addEventListener('error', () => j(new Error('ws error')), { once: true }); });
 const sess = (await send('Target.attachToTarget', { targetId: page.id, flatten: true })).result.sessionId;
+// PROVA AO VIVO SEM ROUBAR O FOCO: a janela da sonda fica alpha-0/click-through (bg-window.py)
+// e o Chrome a trata como oculta -> o jogo congela RAF e nao processa os cliques. O lifecycle
+// 'active' + foco emulado mantem a pagina a correr e o `document.hidden` false, sem a trazer
+// para a frente nem mexer no foreground do dono.
+const manterActiva = async () => {
+  try { await send('Emulation.setFocusEmulationEnabled', { enabled: true }, sess); } catch { /* versao antiga */ }
+  try { await send('Page.setWebLifecycleState', { state: 'active' }, sess); } catch { /* versao antiga */ }
+};
+await manterActiva();
 
 // O __lolidleAuto vive no mundo ISOLADO do content script (origem
 // chrome-extension://<id>), NAO no mundo principal da pagina. Sem escolher o
@@ -61,6 +70,7 @@ await new Promise((r) => setTimeout(r, 1500));
 const ctx = ctxs.find((c) => c.origin === EXT_ORIGIN && c.name === '') || ctxs.find((c) => c.origin === EXT_ORIGIN);
 if (!ctx) { console.error('mundo da extensao nao encontrado; contextos: ' + JSON.stringify(ctxs.map((c) => c.origin))); process.exit(4); }
 const evalIn = async (expr) => {
+  await manterActiva();
   const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: false, userGesture: true, contextId: ctx.id }, sess);
   if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.text + ' ' + (r.result.exceptionDetails.exception?.description || ''));
   return r.result?.result?.value;

@@ -231,6 +231,11 @@ try {
       try { $edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('chrome://extensions') } catch { Start-Sleep -Milliseconds 300; continue }
       Start-Sleep -Milliseconds 80
       [UiaWin]::Enter($h)
+      # O WebUI so' expoe a arvore (333 nos) enquanto a janela esta' activa. Se o
+      # guardiao devolver o foco 100 ms depois do Enter, a pagina fica inactiva e o
+      # UIA ve' apenas o chrome (59 nos, sem enableToggle/loadUnpacked) -> falha
+      # com titulo 'Extensoes' e tentativas:3. Manter activa o tempo de render.
+      Start-Sleep -Milliseconds 1200
     } finally { [UiaWin]::GuardarRetomar() }
     $limite = (Get-Date).AddMilliseconds($NavEsperaMs)
     while ((Get-Date) -lt $limite -and -not $pronto) {

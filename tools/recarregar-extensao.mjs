@@ -47,7 +47,7 @@ const dono = Number(fg.foreground || 0)
 if (!dono) { console.log(JSON.stringify({ ok: false, fase: 'ler-foreground', detalhe: fg })); process.exit(1) }
 
 // 2) janela invisivel
-const aberta = suave(PY, [BG, 'open', '--url', 'about:blank', '--label', 'ext-' + acao])
+const aberta = suave(PY, [BG, 'open', '--url', 'about:blank', '--label', 'ext-' + acao, '--uia'])
 if (!aberta.ok) { console.log(JSON.stringify({ ok: false, fase: 'abrir-janela', detalhe: aberta })); process.exit(1) }
 
 let res = { ok: false, error: 'nao correu' }
