@@ -13,6 +13,7 @@
 
 import { criarMundo, carregarAutomation, alimentarCatalogo, definirCampeao, montarMochila, CATALOGO } from './dom-stub.mjs';
 import { ITENS_DADOS } from '../../docs/game-src/itens.js';
+import { KITS } from '../../docs/game-src/motor.js';
 
 const sl = (id, raridade) => ({ id: id, raridade: raridade });
 const basesDe = (arr) => (arr || []).map((i) => String(i.base || i.id));
@@ -32,6 +33,38 @@ function mundo(itens) {
   return { m, auto };
 }
 const quase = (a, b, eps) => Math.abs(Number(a) - Number(b)) <= (eps == null ? 1e-6 : eps);
+
+/* O MESMO filtro do inject.js (serialKit): primitivos, arrays de primitivos e objectos
+ * simples de primitivos. As funcoes do kit do motor nao passam por postMessage; aqui usamos
+ * os KITS REAIS para a varredura de todos os campeoes (B14), sem inventar stats. */
+const prim = (v) => typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean';
+const clonavel = (v, d = 0) => {
+  if (v == null) return true;
+  if (prim(v)) return true;
+  if (Array.isArray(v)) return v.every((e) => prim(e) || e == null);
+  if (typeof v !== 'object' || d >= 2) return false;
+  try {
+    const proto = Object.getPrototypeOf(v);
+    if (proto !== Object.prototype && proto !== null) return false;
+    return Object.keys(v).every((k) => typeof v[k] !== 'function' && clonavel(v[k], d + 1));
+  } catch { return false; }
+};
+const serializarKit = (K) => {
+  if (!K) return null;
+  const out = {};
+  for (const t of Object.keys(K)) {
+    const h = K[t]; if (!h || typeof h !== 'object') continue;
+    const o = {};
+    for (const c of Object.keys(h)) {
+      const v = h[c];
+      if (typeof v === 'function' || v == null) continue;
+      if (clonavel(v)) o[c] = Array.isArray(v) ? v.slice() : v;
+      else if (typeof v !== 'object') o[c] = v;
+    }
+    out[t] = o;
+  }
+  return out;
+};
 
 export const suite = {
   nome: 'motor-matematica',
@@ -192,6 +225,81 @@ export const suite = {
         stats: STATS_EZ, nivel: 32, kit: KIT_EZ, ordem: ['Q', 'W', 'E', 'R'] });
       auto.perfilCampeao();
       t.check('B13: semMana com stats completos -> mana de item continua 0', auto.valorDe('1027') === 0);
+
+      /* ---- B14: a MESMA formula em TODOS os KITS REAIS (nao so no Ezreal) ----------------
+       * O pedido do dono: "faz de modo geral, nao so pro Ezreal". Aqui correm TODOS os
+       * campeoes do motor (KITS), com stats/kit/ordem REAIS, em 4 niveis. Nenhuma lista de
+       * nomes decide o resultado: semMana/fluxo vem do proprio motor e a pressao e calculada. */
+      const niveis = [1, 10, 32, 45];
+      const comPressao = [];
+      for (const id of Object.keys(KITS)) {
+        const K = KITS[id];
+        const kit = serializarKit(K.hab);
+        for (const nivel of niveis) {
+          definirCampeao(m, id, {
+            kit, stats: K.stats, adBase: K.adBase, adNivel: K.adNivel,
+            magia: !!K.magia, semMana: !!K.semMana, fluxo: !!K.fluxo,
+            papel: K.papel || null, ordem: K.ordem || null, nivel,
+          });
+          auto.perfilCampeao();
+          const info = auto.manaInfoDe(auto.getMeta().champAtual);
+          const v = auto.valorDe('1027');
+          t.check('B14: ' + id + ' nv' + nivel + ' -> fator finito em [0,1]',
+            !!info && (info.fator == null || (Number.isFinite(info.fator) && info.fator >= 0 && info.fator <= 1)));
+          t.check('B14: ' + id + ' nv' + nivel + ' -> valor da mana finito e >= 0',
+            Number.isFinite(v) && v >= 0);
+          if (K.semMana || K.fluxo) {
+            t.check('B14: ' + id + ' sem mana -> fator 0', info.fator === 0);
+            t.check('B14: ' + id + ' sem mana -> item de mana vale 0', v === 0);
+          }
+          if (info && info.fator > 0) comPressao.push(id + '@' + nivel);
+        }
+      }
+      t.check('B14: a pressao nao e um caso do Ezreal: >=2 campeoes reais com fator > 0',
+        comPressao.length >= 2);
+      t.check('B14: ...e ha pressao ja no nivel 1 (nao e artefacto do nivel alto)',
+        comPressao.some((x) => x.endsWith('@1')));
+
+      /* ---- B15: mana NAO e defesa. Um item so-mana nao leva o 0,3 de item so-defensivo. */
+      definirCampeao(m, 'ryze', { magia: true, papel: { dano: 1.1, recebido: 0.9 },
+        stats: STATS_EZ, nivel: 32, ordem: ['Q'],
+        kit: { P: { maestria: { poder: 0.06, manaPor100: 0.1, manaMax: 0.5 } },
+          Q: { nivel: 1, max: 10, recarga: [4], custo: [0], base: [60], ratio: [0.4] } } });
+      auto.perfilCampeao();
+      const cRyze = auto.getMeta().champAtual;
+      const wRyze = { mana: 0.03, ap: 1.2 };
+      const esperadoRyze = 300 * auto.pesoMana(cRyze, wRyze);
+      t.check('B15: Cristal de Safira no Ryze vale a mana x peso, sem penalizacao de defesa',
+        esperadoRyze > 0 && quase(auto.valorDe('1027'), esperadoRyze, 1e-6));
+
+      /* ---- B16: habilidade de custo 0 que DEVOLVE mana continua a contar. --------------- */
+      const KIT_ZERO = { N: { nivel: 1, max: 5, recarga: [10], custo: [0], manaVolta: [0.5] } };
+      definirCampeao(m, 'zerocusto', { magia: true, papel: { dano: 1, recebido: 1 },
+        stats: { mp: 300, mpperlevel: 0, mpregen: 0, mpregenperlevel: 0, attackspeed: 0.6 },
+        nivel: 1, kit: KIT_ZERO, ordem: ['N'] });
+      auto.perfilCampeao();
+      const infoZero = auto.manaInfoDe(auto.getMeta().champAtual);
+      t.check('B16: habilidade de custo 0 que devolve mana entra no retorno', infoZero.retorno > 0);
+
+      /* ---- B17: Fluxo Arcano (metadeMana) reduz o custo enquanto o buff esta activo. ----- */
+      const KIT_METADE = { G: { nivel: 1, max: 1, recarga: [10], custo: [100], metadeMana: true, duracao: 10 } };
+      definirCampeao(m, 'metade', { magia: true, papel: { dano: 1, recebido: 1 },
+        stats: { mp: 1000, mpperlevel: 0, mpregen: 0, mpregenperlevel: 0, attackspeed: 0.6 },
+        nivel: 1, kit: KIT_METADE, ordem: ['G'] });
+      auto.perfilCampeao();
+      const infoMetade = auto.manaInfoDe(auto.getMeta().champAtual);
+      t.check('B17: metadeMana com uptime 100% -> gasto e metade', quase(infoMetade.gasto, 5, 1e-6));
+
+      /* ---- B18: manaGolpe e limitado pelos casts * P.ataques, nao por todo ataque. ------ */
+      const KIT_GOLPE = { P: { manaGolpe: 0.1, ataques: 2 },
+        Q: { nivel: 1, max: 1, recarga: [10], custo: [0] } };
+      definirCampeao(m, 'golpe', { magia: true, papel: { dano: 1, recebido: 1 },
+        stats: { mp: 1000, mpperlevel: 0, mpregen: 0, mpregenperlevel: 0, attackspeed: 1 },
+        nivel: 1, kit: KIT_GOLPE, ordem: ['Q'] });
+      auto.perfilCampeao();
+      const infoGolpe = auto.manaInfoDe(auto.getMeta().champAtual);
+      t.check('B18: manaGolpe e limitado pelos casts (0,1/s * 2 = 0,2 procs/s), nao por todo ataque',
+        quase(infoGolpe.retorno, 20, 1e-6));
     }
 
     /* =================================================================================

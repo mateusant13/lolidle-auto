@@ -5908,6 +5908,12 @@ const CFG_VER = 2;
   //   [x] B11 nível entra na conta (stats do motor por nível) — não há lista de campeões.
   //   [x] B12 sem stats do jogo -> fallback declarado: mantém o peso antigo, não inventa 0.
   //   [x] B13 semMana/fluxo continuam 0 mesmo com stats completos.
+  //   [x] B14 os 8 KITS reais do motor passam pela MESMA formula, em 4 niveis - sem lista
+  //           de campeoes: semMana/fluxo vem do kit, pressao e calculada.
+  //   [x] B15 mana NAO e defesa: item so-mana nao leva o 0,3 de item so-defensivo.
+  //   [x] B16 habilidade de custo 0 que devolve mana continua a contar no retorno.
+  //   [x] B17 `metadeMana` (Fluxo Arcano) desconta o custo pela uptime lida do kit.
+  //   [x] B18 `manaGolpe` e limitado por `min(AS, habilidades/s * P.ataques)`, nao por ataque.
   // =====================================================================================
 
   /** PERFIL a partir de um campeão do motor (`magia` + `papel.dano/recebido` + `distancia`). */
@@ -5971,7 +5977,7 @@ const CFG_VER = 2;
     return { ad: 1.4, ap: 0.9, va: 350, critico: 400, rv: rvPeso({ vida: 0.03, ad: 1.4 }), vida: 0.03, armadura: 0.15, rm: 0.15, cdr: 180, penMag: 100, mana: 0.01, regen: 0.2 };   // dano
   }
   // -----------------------------------------------------------------------------------
-  // SECÇÃO B — PRESSÃO DE MANA (B7..B13)
+  // SECÇÃO B — PRESSÃO DE MANA (B7..B18)
   //
   // O DEFEITO: `semMana`/`fluxo` só diziam "tem mana / não tem". Todo o resto levava o mesmo
   // peso fixo (`mana: 0,01..0,03`) e a Coroa (600 de mana) entrava na Katarina e no Ezreal como
@@ -5985,7 +5991,11 @@ const CFG_VER = 2;
   //
   // A conta é a do MOTOR, não uma lista de campeões:
   //   gasto   = soma(custo[rank] / (recarga[rank] * (1 - cdr))) das habilidades usadas
-  //   retorno = devolveMana + manaVolta*pool + manaExplosao*pool + manaGolpe*pool*AS + manaSeg
+  //             (habilidade de custo 0 ainda entra nos RETORNOS abaixo)
+  //   retorno = devolveMana + manaVolta*pool + manaExplosao*pool
+  //             + manaGolpe*pool*min(velAtaque, habilidades/s * P.ataques)
+  //             + manaSeg*pool*duracao/recarga
+  //   cdr     = painel (foco + itens); `metadeMana` reduz o gasto pela uptime `duracao/recarga`
   //   líquido = gasto - retorno - regenMana
   //   fator   = 0 se líquido <= 0 ou se o pool cobre T_REF_MANA segundos; senão 1 - pool/(líquido*T)
   //
@@ -6071,7 +6081,7 @@ const CFG_VER = 2;
       : ((META.kits && c.id && META.kits[c.id] && Array.isArray(META.kits[c.id].ordem) && META.kits[c.id].ordem.length)
         ? META.kits[c.id].ordem
         : Object.keys(kit));
-    let gasto = 0, retorno = 0;
+    let gasto = 0, retorno = 0, metadeUptime = 0, casts = 0;
     for (const t of ordem) {
       const k = kit[t];
       if (!k || k.passiva || t === 'P') continue;
@@ -6081,11 +6091,17 @@ const CFG_VER = 2;
       const rank = rankManaDe(c, t);
       if (!(rank > 0)) continue;                                // rank 0 = não subida
       const custo = valorNoRank(k.custo, rank);
-      if (!(custo > 0)) continue;                               // passiva/ultimate sem custo
       const cdBase = recargaNoRank(k, rank);
       if (!(cdBase > 0)) continue;
       const cd = Math.max(0.5, cdBase * (1 - cdr));             // o `usar()` aplica `1 - reducaoRecarga`
-      gasto += custo / cd;
+      casts += 1 / cd;                                          // habilidades activas por segundo (Bravata)
+      // CUSTO 0 NAO SIGNIFICA "NAO USA": uma habilidade sem mana (ultimate que so devolve,
+      // N do Ezreal em niveis baixos) continua na rotacao e DEVOLVE. O `continue` antigo
+      // deitava fora o retorno de qualquer habilidade de custo 0.
+      if (custo > 0) gasto += custo / cd;
+      // Fluxo Arcano (Ryze, motor.js:924/1690): enquanto activo, TODAS as habilidades custam
+      // metade. A uptime e `duracao/recarga` - lida do kit, sem nome de campeao.
+      if (k.metadeMana) metadeUptime = Math.max(metadeUptime, Math.min(1, (Number(k.duracao) || 1) / cd));
       const devolve = valorNoRank(k.devolveMana, rank);         // motor.js:2041-2043
       if (devolve > 0) retorno += devolve / cd;
       const volta = valorNoRank(k.manaVolta, rank);             // motor.js:2912
@@ -6096,9 +6112,19 @@ const CFG_VER = 2;
       if (manaSeg > 0) retorno += manaSeg * pool * (Number(k.duracao) || 1) / cd;
     }
     // Devoluções da PASSIVA (Taric: `manaGolpe`, motor.js:1809/4084).
+    // Fluxo Arcano: o custo reduzido vale para o tempo em que o buff esta activo. A fracao
+    // `metadeUptime` e a mesma para todas as habilidades; aplica-se UMA vez ao gasto total.
+    if (metadeUptime > 0) gasto *= 1 - 0.5 * metadeUptime;
     const p = kit.P || {};
     const manaGolpe = valorNoRank(p.manaGolpe, 1);
-    if (manaGolpe > 0) retorno += manaGolpe * pool * (Number(stats.attackspeed) || 0.6);
+    // Bravata (Taric, motor.js:820/2051/4084): CADA habilidade carrega `P.ataques` golpes
+    // que devolvem mana; cada golpe consome 1 carga e o maximo fisico e 1 por auto-ataque.
+    // A taxa de procs e, por isso, `min(velocidade de ataque, habilidades/s * P.ataques)`.
+    // Contar todos os autos (o modelo antigo) inflava o retorno; dividir por `ataques`
+    // (a primeira tentativa) subestimava. Os dois numeros vem do kit/stats, sem nome.
+    const golpesBravata = Math.max(1, Number(p.ataques) || 1);
+    const procsBravata = Math.min(Number(stats.attackspeed) || 0.6, casts * golpesBravata);
+    if (manaGolpe > 0) retorno += manaGolpe * pool * procsBravata;
     const manaSegP = valorNoRank(p.manaSeg, 1);
     if (manaSegP > 0) retorno += manaSegP * pool;
     const liquido = gasto - retorno - regen;
@@ -6136,12 +6162,24 @@ const CFG_VER = 2;
    *  é o valor de sempre. MEDIDO: subir para 0.75/1.0 NÃO muda a build da Katarina (o bloqueio dela
    *  é o perfil `mago` com `ad: 0`, não esta penalização). */
   const pesoClasseOposta = () => Math.max(0, Math.min(1, numOr(cfg.pesoClasseOposta, 0.12)));
+  /** Um item e SO-DEFENSIVO quando tem vida/armadura/RM e ZERO stat ofensivo.
+   *  MANA e REGEN nao sao defesa: sao RECURSO. O peso delas vem do perfil (`w.mana`/`w.regen`)
+   *  e da pressao calculada (`pesoMana`). Antes, um Cristal de Safira (so mana) levava 0,3 num
+   *  mago - o item mais barato para quem tem pressao de mana era penalizado como armadura. */
+  function itemSoDefensivo(it) {
+    if (!it) return false;
+    const ofensivo = (it.ad || 0) + (it.ap || 0) + (it.va || 0) + (it.critico || 0) + (it.rv || 0) + (it.cdr || 0) + (it.penMag || 0);
+    const defesa = (it.vida || 0) + (it.armadura || 0) + (it.rm || 0);
+    return ofensivo === 0 && defesa > 0;
+  }
+  /** Multiplicador de item so-defensivo num perfil ofensivo. 1 quando ha mana/regen mas
+   *  nenhuma defesa (recurso nao e defesa). */
+  function multDefensivo(it, perfil) { return (perfil !== 'tanque' && itemSoDefensivo(it)) ? 0.3 : 1; }
   function pesoClasse(base) {
     const c = META.champAtual || {};
     const it = (META.itens || []).find((x) => String(x.id) === String(base)) || {};
     const perfil = perfilCampeao();
-    const ofensivo = (it.ad || 0) + (it.ap || 0) + (it.va || 0) + (it.critico || 0) + (it.rv || 0) + (it.cdr || 0);
-    if (perfil !== 'tanque' && ofensivo === 0) return 0.3;
+    if (perfil !== 'tanque' && itemSoDefensivo(it)) return 0.3;
     const cl = classeItem(base);
     if (cl === 'neutro') return 1;
     return cl === (c.magia ? 'ap' : 'ad') ? 1 : pesoClasseOposta();
@@ -6626,8 +6664,7 @@ const CFG_VER = 2;
     const stats = ad * w.ad + ap * w.ap + va * w.va + critico * w.critico + rv * w.rv
       + vida * w.vida + armadura * w.armadura + rm * w.rm
       + cdr * w.cdr + penMag * w.penMag + mana * w.mana + regen * w.regen;
-    const ofensivo = ad + ap + va + critico + rv + cdr + penMag;
-    const multDef = (perfil !== 'tanque' && ofensivo === 0) ? 0.3 : 1;
+    const multDef = multDefensivo({ ad, ap, va, critico, rv, vida, armadura, rm, cdr, penMag }, perfil);
     const cl = classeItem(base);
     const multClasse = cl === 'neutro' ? 1 : (cl === (c.magia ? 'ap' : 'ad') ? 1 : pesoClasseOposta());
     // TERMO DE RARIDADE (regra do dono: "EPICO e MELHOR que BASICO"). Isto era a peça que
@@ -7800,8 +7837,7 @@ const CFG_VER = 2;
         + valorPctVida(i.id, alvoRef, c);   // passivas que dependem do alvo (3153: 5% da vida DELE)
       const cl = classeItem(i.id);
       const multClasse = cl === 'neutro' ? 1 : (cl === classe ? 1 : 0.12);
-      const ofensivo = (i.ad || 0) + (i.ap || 0) + (i.va || 0) + (i.critico || 0) + (i.rv || 0) + (i.cdr || 0) + (i.penMag || 0);
-      const multDef = (perfil !== 'tanque' && ofensivo === 0) ? 0.3 : 1;
+      const multDef = multDefensivo(i, perfil);
       return v * multClasse * multDef * (({ basico: 1, epico: 1.15, lendario: 1.35 })[i.raridade] || 1) * bonusDe(i.id);
     };
     const todos = (META.itens || []).filter((i) => i.raridade === 'lendario' || i.raridade === 'epico');
