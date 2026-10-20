@@ -3376,7 +3376,9 @@ const CFG_VER = 2;
     // MEMOIZADO: o planBag chama isto a cada passagem; o catálogo não muda entre chamadas.
     let ideal = [];
     try { ideal = (buildIdeal() || []).map(String); } catch { ideal = []; }
-    const chave = ideal.join(',');
+    // A chave inclui o CAMPEÃO (buildIdeal usa META.champAtual): a mesma lista de ids para dois
+    // campeões diferentes não pode partilhar a cache de componentes.
+    const chave = (META.champAtual && META.champAtual.id || '') + ':' + ideal.join(',');
     if (_compCache && _compKey === chave) return _compCache;
     const out = new Set();
     const itens = META.itens || [];
@@ -6880,6 +6882,36 @@ const CFG_VER = 2;
    *  devolviam a MESMA lista que buildIdeal() — MEDIDO pelo Lead: o argumento nao chegava ao
    *  montarBuildDe, apesar de cfg.buildPorFase estar ligado. */
   const normalizaFase = (f) => (f === 'boss' || f === 'chefe') ? 'chefe' : (f === 'mobs' ? 'mobs' : null);
+  // ---- CACHE DA BUILD IDEAL + ORÇAMENTO DO BEAM (TK-06, pedido do Lead 2026-10-19) ----------
+  // MEDIDO pelo Lead (Debugger.pause, 2026-10-19): o ciclo
+  //   supervisarBase -> necessidadesBase -> planBag -> componentesDaBuild -> buildIdeal
+  // recalculava o beam INTEIRO a cada tick e bloqueava a thread ~2,5 s. O beam faz
+  // ~4*K*N avaliações de scoreSet; cada scoreSet chama dpsPorHabilidade -> cdVoraz ->
+  // killsMinAoVivo -> ritmoMobs -> agregar. Com K=12/N=40 são ~2200 avaliações ≈ 2,5 s.
+  // A resposta tem duas partes:
+  //   (1) CACHE: a build ideal só recalcula quando uma ENTRADA REAL muda. A chave cobre
+  //       campeão, fase, catálogo (META.itens), local/alvo, kit, arsenal e equipamento —
+  //       tudo o que scoreSet/dpsPorHabilidade leem. O fingerprint é barato (<0,1 ms)
+  //       contra os ~2,5 s do beam: o ciclo de supervisão passa a custar ~0.
+  //   (2) ORÇAMENTO: o beam tem um tecto de estados avaliados (BEAM_ORCAMENTO). Se o pool
+  //       for grande demais, o beam corta e devolve o melhor até ali — tempo previsível,
+  //       nunca bloqueia a thread por segundos.
+  let _buildCache = null;   // { chave, ids, ms }
+  let _buildExecs = 0;      // contador cumulativo de recalculos (sobrevive a invalidacao)
+  let _beamInfo = { states: 0, execs: 0, ms: 0, maxStates: 0, cortou: false, t0: 0 };
+  const BEAM_ORCAMENTO = 6000;   // tecto de avaliações de scoreSet por build
+  function fingerprintBuild(c, fase) {
+    const itens = META.itens || [];
+    let h = 2166136261 >>> 0;
+    const mix = (s) => { s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } h >>>= 0; };
+    for (const i of itens) mix((i.id || '') + '.' + (i.espaco || '') + '.' + (i.raridade || '') + '.' + (i.efeito || 0) + '.' + ((i.de || []).join('>')));
+    let loc = ''; try { loc = localId(readLocation().text) || ''; } catch { /* sem local */ }
+    let kit = ''; try { kit = JSON.stringify([META.kit || null, META.kits || null]); } catch { /* sem kit */ }
+    let ars = ''; try { ars = [...document.querySelectorAll('#hab-ativas .hab[data-t]')].map((x) => x.dataset.t).join(','); } catch { /* sem arsenal */ }
+    let eq = ''; try { eq = (readEquip() || []).map((e) => e.base + ':' + (e.qual || '') + ':' + (e.refino || 0)).join(','); } catch { /* sem equipamento */ }
+    return [c.id, !!c.magia, fase || 'unica', loc, ars, eq, kit, h >>> 0].join('|');
+  }
+  function buildIdeal(fase) { garantirCampeao(); return montarBuildDe(META.champAtual, normalizaFase(fase)); }
   function buildIdeal(fase) { garantirCampeao(); return montarBuildDe(META.champAtual, normalizaFase(fase)); }
   /** BUILD IDEAL para QUALQUER campeão (perfil próprio) — usado no plano de todos.
    *  `fase` ausente/null = build ÚNICA de sempre (é o que o banco de regressão fixa). */
@@ -6904,46 +6936,95 @@ const CFG_VER = 2;
   function montarBuildDe(c, fase) {
     const todos = (META.itens || []).filter((i) => i.raridade === 'lendario' || i.raridade === 'epico');
     if (!c || !todos.length || typeof scoreSet !== 'function') return montarBuildDePesos(c, fase);
+    // ---- CACHE DA BUILD IDEAL (TK-06) -------------------------------------------------------
+    // A chave (fingerprintBuild) cobre tudo o que o scoreSet le: campeão, fase, catálogo,
+    // local/alvo, kit, arsenal e equipamento. O fingerprint custa <0,1 ms; o beam custa
+    // ~2,5 s (medido). O ciclo de supervisão (supervisarBase -> necessidadesBase -> planBag
+    // -> componentesDaBuild -> buildIdeal) chamava isto a cada tick — agora não recalcula
+    // enquanto nada mudou.
+    const chave = fingerprintBuild(c, fase);
+    if (_buildCache && _buildCache.chave === chave) return _buildCache.ids.slice();
+    const t0 = Date.now();
     const alvoScore = (fase === 'chefe' || fase == null) ? alvoDeReferencia('chefe') : null;
     const classe = c.magia ? 'ap' : 'ad';
     _champScore = c;                       // o scoreSet avalia a build PARA ESTE campeão
+    let ids;
     try {
-      return montarBuildDePorScore(c, fase, alvoScore, classe, todos).map(String);
+      ids = montarBuildDePorScore(c, fase, alvoScore, classe, todos).map(String);
     } finally {
       _champScore = null;
     }
+    _buildExecs++;
+    _buildCache = { chave, ids, ms: Date.now() - t0 };
+    return ids.slice();
   }
   /** A escolha por SCORE MEDIDO: greedy sobre o catálogo — o item que mais sobe o score do
    *  conjunto entra, até encher os 4 slots livres; a bota é a que mais sobe o score final.
    *  SEM Rabadon forçado, SEM objetivoItem: entra o que o score escolher (Rabadon incluído). */
+  // ---- PARÂMETROS DO BEAM SEARCH (TK-06) -----------------------------------------------
+  // O greedy (1 item de cada vez) fica preso num máximo local: não vê que `3003` (Anjo) só rende
+  // depois de `3089` (Rabadon) e `3100` (Lich). O beam mantém K conjuntos parciais vivos por passo e
+  // expande todos, por isso alcança a sinergia que o greedy não alcança.
+  //   N = 40 (K=12) — pool não-bota pré-filtrado pelo score individual (scoreDe([id])).
+  //   O 5º slot é avaliado DE TODO O pool (botas E não-botas): o melhor conjunto do Ryze NÃO tem bota
+  //   (`3171,3003,3089,3100,3135` — todos `espaco:'arma'`), logo o 5º slot tem de ser livre para o
+  //   conjunto ideal ser alcançável. Desempate por `id` (lexicográfico), nunca pela ordem do catálogo.
+  const BEAM_K = 12;   // largura do beam (K=10..12 do ticket)
+  const BEAM_N = 40;   // pré-filtro do pool não-bota por score individual (N=32..48 do ticket)
   function montarBuildDePorScore(c, fase, alvoScore, classe, todos) {
     const scoreDe = (ids) => scoreSet(ids.map(String), alvoScore);
     const pool = todos.filter((i) => { const cl = classeItem(i.id); return cl === 'neutro' || cl === classe; });
     const resto = pool.filter((i) => i.espaco !== 'botas');
-    const botas = pool.filter((i) => i.espaco === 'botas');
-    const usados = new Set();
-    const set = [];
-    let melhor = scoreDe(set);
-    while (set.length < 4) {
-      let add = null, val = melhor;
-      for (const it of resto) {
-        const id = String(it.id);
-        if (usados.has(id)) continue;
-        const v = scoreDe([...set, id]);
-        if (v > val) { val = v; add = id; }
+    if (!pool.length) return [];
+    // ORÇAMENTO DO BEAM (TK-06): tecto de avaliações de scoreSet por build. O beam completo
+    // (K=12, N=40) gasta ~2200 estados; o tecto de 6000 dá ~2,7x de folga. Se o pool for
+    // grande demais, corta e devolve o melhor até ali — tempo previsível, nunca bloqueia a
+    // thread por segundos (pedido do Lead, 2026-10-19).
+    _beamInfo.states = 0; _beamInfo.cortou = false; _beamInfo.t0 = Date.now();
+    // (1) pré-filtro: os N melhores não-bota por score individual. Se o pool for menor, usa tudo.
+    const ordemInd = (a, b) => scoreDe([String(b.id)]) - scoreDe([String(a.id)]) || (String(a.id) < String(b.id) ? -1 : 1);
+    const restoF = resto.slice().sort(ordemInd).slice(0, BEAM_N);
+    const cmpSet = (a, b) => (b.score - a.score) || (a.ids.join(',') < b.ids.join(',') ? -1 : a.ids.join(',') > b.ids.join(',') ? 1 : 0);
+    // (2) beam search determinístico sobre os 4 slots não-bota.
+    let beam = [{ ids: [], score: scoreDe([]) }];
+    _beamInfo.states++;
+    for (let step = 0; step < 4; step++) {
+      const cand = [];
+      for (const b of beam) {
+        for (const it of restoF) {
+          if (_beamInfo.states >= BEAM_ORCAMENTO) { _beamInfo.cortou = true; break; }
+          const id = String(it.id);
+          if (b.ids.indexOf(id) >= 0) continue;
+          const ids = b.ids.concat([id]);
+          cand.push({ ids, score: scoreDe(ids) });
+          _beamInfo.states++;
+        }
+        if (_beamInfo.cortou) break;
       }
-      if (!add) break;
-      usados.add(add); set.push(add); melhor = val;
+      if (!cand.length || _beamInfo.cortou) break;
+      cand.sort(cmpSet);
+      beam = cand.slice(0, BEAM_K);
     }
-    // a BOTA (motor.js:30 — 1 slot só de bota): a que mais sobe o score do conjunto final.
-    let bota = null, valBota = -Infinity;
-    for (const it of botas) {
-      const id = String(it.id);
-      const v = scoreDe([...set, id]);
-      if (v > valBota) { valBota = v; bota = id; }
+    if (!beam.length) return [];
+    // (3) 5º slot: DE TODO o pool (botas e não-botas), a melhor combinação global. Devolve 5 ids.
+    let best = null;
+    for (const b of beam) {
+      for (const it of pool) {
+        if (_beamInfo.states >= BEAM_ORCAMENTO) { _beamInfo.cortou = true; break; }
+        const id = String(it.id);
+        if (b.ids.indexOf(id) >= 0) continue;
+        const ids = b.ids.concat([id]);
+        const score = scoreDe(ids);
+        _beamInfo.states++;
+        if (!best || score > best.score || (score === best.score && ids.join(',') < best.ids.join(','))) best = { ids, score };
+      }
+      if (_beamInfo.cortou) break;
     }
-    const out = bota ? [...set, bota] : set;
-    return out.slice(0, 5);
+    // registo do orçamento para diagnóstico/teste (infoBeam)
+    _beamInfo.ms = Date.now() - _beamInfo.t0;
+    _beamInfo.execs++;
+    _beamInfo.maxStates = Math.max(_beamInfo.maxStates, _beamInfo.states);
+    return best ? best.ids.slice(0, 5) : beam[0].ids.slice(0, 5);
   }
   /** FALLBACK DECLARADO (TK-01) — o caminho ANTIGO por PESO_FASE. Só corre quando o score
    *  não está disponível (sem catálogo/DOM). O `objetivoItem` forçado foi REMOVIDO daqui e
@@ -9336,7 +9417,7 @@ const CFG_VER = 2;
   }
 
   window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
-    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
+    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, cacheBuildEstado: () => (_buildCache ? { chave: _buildCache.chave, execs: _buildExecs, ms: _buildCache.ms, ids: _buildCache.ids.slice() } : null), infoBeam: () => Object.assign({}, _beamInfo), invalidarCacheBuild: () => { _buildCache = null; }, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
     // modeladas com eles: vida com k/M e escudo, recarga exacta, efeitos activos, recarga de item,

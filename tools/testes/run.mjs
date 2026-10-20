@@ -69,6 +69,8 @@ import { suite as suiteObservers } from './observers.test.mjs';
 import { suite as suiteMercadoServidor } from './mercado-servidor.test.mjs';
 // TK-01: BANNER `#rastreio-tarefa.pronta` — so clica pronto E na Fonte.
 import { suite as suiteTarefaBanner } from './tarefa-banner.test.mjs';
+// TK-06: BUILD POR BEAM SEARCH + CACHE + ORÇAMENTO (pedido do Lead 2026-10-19).
+import { suite as suiteBuildBeam } from './build-beam.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -97,6 +99,7 @@ const SUITES = [
   suiteAlvosEstado,
   suiteMercadoServidor,
   suiteTarefaBanner,
+  suiteBuildBeam,
 ];
 const checks = [];
 const notas = [];

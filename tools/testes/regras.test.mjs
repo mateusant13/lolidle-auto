@@ -180,14 +180,22 @@ export const suite = {
       // 4. espaco ao 2006. A assercao agora fixa o 3031 no lugar do 2006 - o que se prova e que o
       // lendario da build esta blindado, e a linha seguinte (T6: 2009 tardio) prova a invalidacao
       // do memo pelo caminho que interessa.
-      t.check('T6: fixture: 2001 esta na build antes', w.auto.buildDaClasse().indexOf('2001') >= 0);
-      t.check('T6: fixture: 2006 esta na build antes', w.auto.buildDaClasse().indexOf('2006') >= 0);
+      const buildAntes = w.auto.buildDaClasse();
+      t.check('T6: fixture: 2001 esta na build antes', buildAntes.indexOf('2001') >= 0);
+      t.check('T6: fixture: 2006 esta na build antes', buildAntes.indexOf('2006') >= 0);
       const novo = { id: '2009', nome: 'Lendario Tardio', raridade: 'lendario', espaco: 'arma', ad: 900, preco: 3000, de: ['2002'] };
       alimentarCatalogo(w.m, CATALOGO.concat([novo]));
+      const buildDepois = w.auto.buildDaClasse();
       t.check('T6: catalogo tardio invalida o memo (memo por tamanho do catalogo)',
-        w.auto.buildDaClasse().indexOf('2009') >= 0);
+        buildDepois.indexOf('2009') >= 0);
       t.check('T6: o lendario novo passa a blindado', w.auto.ehLendarioDaBuild('2009') === true);
-      t.check('T6: o item que saiu da build deixa de ser blindado', w.auto.ehLendarioDaBuild('2006') === false);
+      // DIVERGENCIA AO TICKET (reportada): com o beam search (TK-06), o 2009 (ad 900) substitui
+      // o 3031 (o pior item da build), NAO o 2006. O 2006 continua na build. O contrato que
+      // importa e que o item que SAI da build deixa de ser blindado — o 3031 sai e o seu
+      // lugar de lendarioDaBuild deve ser ocupado pelo 2009.
+      const saiu = buildAntes.filter((id) => buildDepois.indexOf(id) < 0)[0];
+      t.check('T6: o item que saiu da build (' + saiu + ') deixa de ser blindado',
+        saiu !== undefined && w.auto.ehLendarioDaBuild(saiu) === false);
     }
 
     /* ================= T7 - a build e por SCORE, nao pelo PAPEL (TK-01) =================
@@ -201,12 +209,19 @@ export const suite = {
       definirCampeao(w.m, 'adtest');
       const antes = w.auto.buildDaClasse().slice();
       t.check('T7: perfil inicial = dano', w.auto.identidadeCampeao().perfil === 'dano');
-      t.check('T7: fixture: bota AD (2007) na build inicial', antes.indexOf('2007') >= 0);
+      // DIVERGENCIA AO TICKET (reportada): com o beam search (TK-06), a build inicial do adtest
+      // e ["2001","2004","2005","2006","3031"] — o 3031 (Gume do Infinito, +40% critico) da mais
+      // score que o 2007 (Botas AD). O greedy antigo escolhia botas[0] + 4 nao-bota; o beam
+      // escolhe os melhores 4 nao-bota + o melhor 5o slot (que pode ser nao-bota). O contrato
+      // que importa e que a build NAO muda com o papel — isso continua a ser provado abaixo.
+      t.check('T7: fixture: build inicial tem 5 itens', antes.length === 5);
       definirCampeao(w.m, 'adtest', { papel: { dano: 0.8, recebido: 0.5 } });
       t.check('T7: papel muda o perfil (dano -> tanque)', w.auto.identidadeCampeao().perfil === 'tanque');
       const depois = w.auto.buildDaClasse().slice();
       t.check('T7: a build NAO depende do papel (scoreSet manda, nao PESO_FASE)', antes.join(',') === depois.join(','));
-      t.check('T7: o lendario da build continua blindado depois da troca de papel', w.auto.ehLendarioDaBuild('2007') === true);
+      // O lendario da build (seja qual for) continua blindado depois da troca de papel.
+      const lendarioDaBuild = depois.find((id) => w.auto.ehLendarioDaBuild(id));
+      t.check('T7: o lendario da build continua blindado depois da troca de papel', lendarioDaBuild !== undefined);
     }
 
     /* ================= T8 - a build e por SCORE, nao pela DISTANCIA (TK-01) ================= */
