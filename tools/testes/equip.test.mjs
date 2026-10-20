@@ -111,5 +111,24 @@ export const suite = {
     t.check('E6: a Coroa C SAI (peça real A+3 não é bloqueada pela histerese do conjunto)',
       basesDe(pe6.saem).indexOf('664644') >= 0);
     t.check('E6: o plano marca que há troca a fazer', pe6.mexe === true);
+    /* E7 - TROCA DE FASE: o ALVO CONCRETO manda, nao a lista de bases teoricas (2026-10-20).
+     * DEFEITO MEDIDO AO VIVO: `trocarBuildDaFase` usava `montarBuildDe()` (bases do catalogo) e
+     * vestia `6655~C`/`3171+2~B` por cima de `3175+4~A`/`3135+4~A`; `equiparMelhores` desfazia
+     * no tick seguinte = oscilacao. O alvo tem de sair de `alvoEquip`, que compara a peca REAL
+     * (qualidade+refino) e respeita a histerese (`mexe`). */
+    montarEquip(m2, [
+      sl('3175+4~A', 'lendario'), sl('3089+2~B', 'lendario'), sl('3100~C', 'lendario'),
+      sl('3135+4~A', 'lendario'), sl('4629+3~A', 'lendario'),
+    ]);
+    montarMochila(m2, [sl('6655~C', 'epico'), sl('3171+2~B', 'lendario')]);
+    auto2.setConfig({ faseEstavelSeg: 0, trocaBuildCooldownMs: 0, buildPorFase: true });
+    auto2.getFarm().current = { fase: 'mobs' };
+    const antes7 = basesDe(auto2.readEquip()).join(',');
+    const r7 = await auto2.trocarBuildDaFase();
+    const depois7 = basesDe(auto2.readEquip()).join(',');
+    t.check('E7: a troca de fase NAO despe 3175+4/3135+4 por bases teoricas 6655/3171',
+      r7.feito === false && depois7 === antes7);
+    t.check('E7: ...e o motivo diz que o alvo concreto nao supera a histerese',
+      /build de mobs|supera a histerese/.test(String(r7.motivo || '')));
   },
 };

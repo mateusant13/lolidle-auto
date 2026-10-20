@@ -336,5 +336,24 @@ export const suite = {
       t.check('T11: 10 epicas -> sat = false (so lendarias contam)', ms.sat === false);
       t.check('T11: ...e conta 0 lendarias', ms.lend === 0);
     }
+    /* ========= T12 - necessidade `mercado` fecha quando o passo fica INDISPONIVEL =========
+     * P0 MEDIDO (2026-10-20): a base marcava `marcarIndisponivel('mercado')`, mas a guarda
+     * olhava `estaIndisponivel('anunciar')` - chave que nunca era marcada. O `n.mercado`
+     * continuava `true` no tick seguinte e a base repetia `mercado` a cada passagem. */
+    {
+      const w = novoMundo();
+      alimentarCatalogo(w.m);
+      definirCampeao(w.m, 'adtest');
+      w.auto.setConfig({ enabled: true });
+      mochila(w.m, w.auto, [slot('9500~C', 'lendario')]);
+      const n0 = w.auto.necessidadesBase();
+      t.check('T12: sem saturação, o lendário <A abre a necessidade `mercado`', n0.mercado === true);
+      w.auto.marcarIndisponivel('mercado', 'teste de regressão');
+      const n1 = w.auto.necessidadesBase();
+      t.check('T12: `mercado` indisponível -> a necessidade FECHA (não fica eterna)',
+        n1.mercado === false && n1.anunciar === false);
+      t.check('T12: CONTROLO - a chave marcada é a do passo (`mercado`)',
+        w.auto.estaIndisponivel('mercado') === true);
+    }
   },
 };

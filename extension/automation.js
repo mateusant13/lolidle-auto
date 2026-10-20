@@ -3923,7 +3923,14 @@ const CFG_VER = 2;
         motivo: mochilaQuaseCheia ? 'espaco' : 'prioridade',
         mochilaQuaseCheia, used: bag && bag.used, cap: bag && bag.cap, espolios: bag && bag.espacosEspolio };
       n.cofre = podeFazer('cofre').pode && acts.some((a) => a.action === 'GUARDAR_COFRE');
-      n.anunciar = podeFazer('anunciar').pode && acts.some((a) => a.action === 'ANUNCIAR_MERCADO');
+      // P0 MEDIDO (2026-10-20): `planBag` marca o lendário <A para o mercado, mas NÃO sabe
+      // o que JÁ está anunciado. Resultado: `anunciarLendarios` via `minhas` e pulava o item,
+      // devolvia `anunciados:0`, e o `n.anunciar` continuava `true` para sempre -> a base
+      // repetia `mercado` a cada passagem e nunca fechava (`farmar:NAO (falta mercado)`).
+      // A cache de ofertas (`_ofertasCache`, lida do servidor) é a prova de "já está lá".
+      const anunciadas = new Set((Array.isArray(_ofertasCache) ? _ofertasCache : []).map((o) => String(o.base)));
+      n.anunciar = podeFazer('anunciar').pode
+        && acts.some((a) => a.action === 'ANUNCIAR_MERCADO' && !anunciadas.has(String(a.it.base)));
     } catch { /* ignore */ }
     // PRESENTE — P0 MEDIDO AO VIVO (o ciclo que restava): o `#rastreio-login` está SEMPRE no DOM
     // (é um rastreador do HUD) e o jogo só o ESCONDE quando não há nada a pegar — jogo.js:6257
@@ -4023,7 +4030,12 @@ const CFG_VER = 2;
     // NECESSIDADES QUE FALHARAM ficam SILENCIOSAS (ver `marcarIndisponivel`): é isto que
     // impede o ciclo de recall quando a loja não tem o que ele pede.
     for (const k of Object.keys(n)) if (n[k] === true && estaIndisponivel(k)) n[k] = false;
-    if (estaIndisponivel('anunciar')) n.mercado = false;
+    // P0 MEDIDO (2026-10-20): o passo da base chama-se `mercado`, mas a guarda olhava para
+    // `anunciar` — que NUNCA é marcado indisponível. Resultado: com o mercado cheio de 10
+    // lendárias, `anunciarLendarios` devolvia `anunciados:0`, a base marcava `mercado`
+    // indisponível 45 min e a necessidade continuava `true` no tick seguinte. Olha-se para OS
+    // DOIS nomes: o passo (`mercado`) e a necessidade interna (`anunciar`).
+    if (estaIndisponivel('mercado') || estaIndisponivel('anunciar')) { n.mercado = false; n.anunciar = false; }
     return n;
   }
   /** PASSOS da base, na ORDEM DE PRIORIDADE, indexados pela NECESSIDADE que os pede.
@@ -4844,19 +4856,41 @@ const CFG_VER = 2;
       // `falarCom` do jogo faz o caminho.
       const npc = npcVivo(NPCS_DO_COFRE);
       if (npc) {
-        const abriu = await clicarNpcNaTela(npc.nome, 3);
+        // 8 passos de waypoint (4x3 tiles cada) chegam a Tesoureira mesmo quando o servidor
+        // restaura o boneco longe dela (medido: reload em (8,6), NPC em (23,13)). Com 3 o
+        // clique desistia a meio do caminho e o cofre ficava por ler.
+        const abriu = await clicarNpcNaTela(npc.nome, 8);
         if (abriu) via = npc.nome;
-        else motivoSubida = 'clique no NPC ' + npc.nome + ' nao abriu o dialogo';
-      } else if (naBase()) {
-        // Fallback antigo (so quando o inject nao publicou posicoes): sobe 8 tiles.
-        for (let t = 0; t < COFRE_TENTATIVAS_SUBIDA; t++) {
-          const sub = await subirNaFonte(COFRE_TILES_ACIMA);
-          if (!sub.ok) { motivoSubida = sub.motivo || 'nao consegui andar no chao'; break; }
-          subiu += sub.tiles || 0;
-          await humano(180);                    // deixa o `cena.andarPara` assentar antes do proximo
+        else {
+          motivoSubida = 'clique no NPC ' + npc.nome + ' nao abriu o dialogo';
+          // SEGUNDA CHANCE: o `falarCom` pode ter ficado a caminho e o polling de 4,5 s
+          // acabar antes de o boneco chegar. Uma pausa curta e nova tentativa resolve o
+          // caso medido (Fonte, boneco em (20,19), Tesoureira em (23,13)).
+          await humano(700);
+          if (await clicarNpcNaTela(npc.nome, 3)) via = npc.nome;
         }
-        if (subiu > 0) via = await esperarNpcDoCofre();
-      } else {
+      }
+      if (!via && naBase()) {
+        // Fallback de SUBIDA: quando o NPC existe mas nao abriu (longe/fora do ecra),
+        // dois destinos de 4 tiles chegam a Tesoureira. Antes isto so corria quando o
+        // inject nao publicava posicoes - por isso o cofre ficava por ler.
+        const p = posicaoViva(), n = npcVivo(NPCS_DO_COFRE);
+        // Sem posicoes (stub/inject antigo) o fallback antigo MANDA: sobe 8. Com as duas
+        // posicoes, so se sobe quando o NPC ainda esta longe (>1 tile); adjacente, tentar
+        // abrir de novo e melhor do que afastar o boneco.
+        const longe = !(p && n) || Math.max(Math.abs(n.x - p.x), Math.abs(n.y - p.y)) > 1;
+        if (longe) {
+          for (let t = 0; t < COFRE_TENTATIVAS_SUBIDA; t++) {
+            const sub = await subirNaFonte(COFRE_TILES_ACIMA);
+            if (!sub.ok) { motivoSubida = sub.motivo || 'nao consegui andar no chao'; break; }
+            subiu += sub.tiles || 0;
+            await humano(180);                  // deixa o `cena.andarPara` assentar antes do proximo
+          }
+          if (subiu > 0) via = await esperarNpcDoCofre();
+        } else {
+          via = await esperarNpcDoCofre();
+        }
+      } else if (!via) {
         via = await esperarNpcDoCofre();        // cidade/fora da Fonte: so o DOM, sem andar as cegas
       }
     }
@@ -8097,43 +8131,57 @@ const CFG_VER = 2;
       return { ok: true, feito: false, fase: fase, motivo: 'cooldown de troca de build (' + Math.round((cooldown - (_ag - _ultimaTrocaBuildAt)) / 1000) + 's restantes)' };
     }
     garantirCampeao();
-    const alvoIds = (META.champAtual ? montarBuildDe(META.champAtual, fase).map(String) : []);
-    if (!alvoIds.length) return { ok: false, feito: false, fase: fase, motivo: 'sem campeão identificado' };
-    const atual = readEquip().map((e) => baseDe(e.id)).sort().join(',');
+    if (!META.champAtual) return { ok: false, feito: false, fase: fase, motivo: 'sem campeão identificado' };
+    // ALVO CONCRETO, não a lista de bases da build teórica: a build da fase diz o QUE
+    // procurar, mas quem decide o que VESTIR é `alvoEquip` (qualidade+refino das peças
+    // reais). Comparar só bases fazia a troca de fase despejar uma peça A+4 por uma B+2
+    // só porque a base era outra; `equiparMelhores` desfazia no tick seguinte = oscilação.
+    let r = alvoEquip(null, fase);
+    if (!r || !r.alvo || !r.alvo.length) {
+      return { ok: false, feito: false, fase: fase, motivo: 'sem conjunto concreto para ' + fase };
+    }
+    const alvoIds = r.alvo.map((i) => String(i.base));
+    const atualIds = readEquip().map((e) => String(e.base));
     const alvoTxt = alvoIds.slice().sort().join(',');
-    if (atual === alvoTxt) {
+    const atualTxt = atualIds.slice().sort().join(',');
+    if (atualTxt === alvoTxt && !r.mexe) {
       _ultimaFaseBuild = fase; _ultimaBuildAplicada = { fase: fase, itens: alvoIds.slice(), at: Date.now() };
-      return { ok: true, feito: false, fase: fase, motivo: 'já é a build de ' + fase };
+      return { ok: true, feito: false, fase: fase, motivo: 'já é a build de ' + fase, alvo: alvoIds };
     }
     if (_ultimaFaseBuild === fase && _ultimaBuildAplicada && _ultimaBuildAplicada.itens.slice().sort().join(',') === alvoTxt) {
       return { ok: true, feito: false, fase: fase, motivo: 'build de ' + fase + ' já aplicada nesta fase (sem oscilar)' };
     }
-    const fontes = fontesDeItens();
-    const falta = alvoIds.filter((b) => !fontes.has(String(b)));
-    const saem = readEquip().map((e) => String(e.base)).filter((b) => alvoIds.indexOf(b) < 0);
-    const entram = alvoIds.filter((b) => !readEquip().some((e) => String(e.base) === b));
-    if (falta.length) {
-      logEvent('build-fase', { fase: fase, trocou: false, motivo: 'peças indisponíveis (nem equipado, nem mochila, nem mercado, nem cofre)', falta: falta.map((b) => ({ base: b, nome: (infoItem(b) || {}).nome || b })), alvo: alvoIds });
-      return { ok: true, feito: false, fase: fase, falta: falta, motivo: 'faltam ' + falta.length + ' peça(s) da build de ' + fase };
+    // A histerese continua a mandar: a fase decide QUANDO se olha, mas o valor da peça
+    // concreta decide SE se mexe. Sem isto, a build de mobs (base 6655/3171) substituía
+    // 3175+4/3135+4 melhores e o `equiparMelhores` revertia no tick seguinte.
+    if (!r.mexe) {
+      _ultimaFaseBuild = fase; _ultimaBuildAplicada = { fase: fase, itens: alvoIds.slice(), at: Date.now() };
+      logEvent('build-fase', { fase: fase, trocou: false, motivo: 'alvo concreto não supera a histerese', alvo: alvoIds, atual: atualIds, ganho: r.ganho, ganhoSlot: r.ganhoSlot });
+      return { ok: true, feito: false, fase: fase, motivo: 'alvo concreto de ' + fase + ' não supera a histerese', alvo: alvoIds };
     }
     itensBusy = true; itensAt = Date.now();
     try {
       // (1) O QUE ESTÁ NO COFRE/MERCADO VEM PRIMEIRO PARA A MOCHILA
-      const doCofre = alvoIds.filter((b) => { const x = fontes.get(String(b)); return x && x.fonte === 'cofre'; });
-      const doMercado = alvoIds.filter((b) => { const x = fontes.get(String(b)); return x && x.fonte === 'mercado'; });
+      const doCofre = (r.buscar || []).filter((b) => { const x = r.fontes && r.fontes.get(String(b)); return x && x.fonte === 'cofre'; });
+      const doMercado = (r.buscar || []).filter((b) => { const x = r.fontes && r.fontes.get(String(b)); return x && x.fonte === 'mercado'; });
       const busca = {};
       if (doCofre.length) busca.cofre = await puxarDoCofre(doCofre);
       if (doMercado.length) busca.mercado = await puxarDoMercado(doMercado);
-      // (2) VESTE a build da fase (o que sai fica na mochila — e é reservado)
-      const r = await aplicarItens(alvoIds);
-      _ultimaFaseBuild = fase; _ultimaBuildAplicada = { fase: fase, itens: alvoIds.slice(), at: Date.now() };
+      if (doCofre.length || doMercado.length) {
+        // Recalcula com as peças que acabaram de chegar à mochila.
+        r = alvoEquip(null, fase) || r;
+      }
+      // (2) VESTE o conjunto concreto da fase (o que sai fica na mochila - e é reservado)
+      const alvoFinal = (r.alvo || []).map((i) => String(i.base));
+      const aplic = await aplicarItens(alvoFinal.length ? alvoFinal : alvoIds);
+      _ultimaFaseBuild = fase; _ultimaBuildAplicada = { fase: fase, itens: alvoFinal.slice(), at: Date.now() };
       logEvent('build-fase', {
         fase: fase, trocou: true,
-        entram: entram.map((b) => ({ base: b, nome: (infoItem(b) || {}).nome || b })),
-        saem: saem.map((b) => ({ base: b, nome: (infoItem(b) || {}).nome || b, ficou: 'mochila (reservada)' })),
-        porque: 'a fase mudou para ' + fase, busca: busca,
+        entram: (r.entram || []).map((i) => ({ base: String(i.base), id: i.id || null, nome: (infoItem(i.base) || {}).nome || String(i.base), qual: i.qual || null, refino: i.refino || 0 })),
+        saem: (r.saem || []).map((e) => ({ base: String(e.base), id: e.id || null, nome: (infoItem(e.base) || {}).nome || String(e.base), qual: e.qual || null, refino: e.refino || 0, ficou: 'mochila (reservada)' })),
+        porque: 'a fase mudou para ' + fase + ' (alvo concreto por qualidade/refino)', busca: busca,
       });
-      return { ok: !!(r && r.ok), feito: true, fase: fase, entram: entram, saem: saem, busca: busca, equipado: r && r.equipado };
+      return { ok: !!(aplic && aplic.ok), feito: true, fase: fase, entram: r.entram, saem: r.saem, busca: busca, equipado: aplic && aplic.equipado };
     } finally { itensBusy = false; }
   }
 
