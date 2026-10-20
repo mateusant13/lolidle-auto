@@ -3358,7 +3358,37 @@ const CFG_VER = 2;
     if (!naBase()) return { ok: false, tiles: 0, motivo: 'nao esta na Fonte' };
     // `humanoTile` só nesta rota (a caminhada humana na Fonte); o `andarParaCima` directo
     // mantém o pixel exacto que os testes medem.
-    return andarParaCima(nTiles, { ...opts, humanoTile: true });
+    return andarParaCimaDeUmaVez(nTiles, opts);
+  }
+
+  /** UM clique de destino N tiles acima (o jogo faz o caminho com `cena.andarPara`).
+   *  Porque nao um clique por tile: o boneco chega a Fonte em `CY+3` e a Tesoureira esta em
+   *  `CY-5` (mundo.js:20/201). Clicar 1 tile de cada vez bate no chafariz/NPC do centro e
+   *  fica preso; 12 cliques ao vivo nao a fizeram aparecer. Dois destinos de 4 tiles
+   *  (=8) sao o "andar pra cima duas vezes" do dono.
+   *  IMPORTANTE: usa-se `new MouseEvent` sintetico no canvas. NUNCA CDP
+   *  `Input.dispatchMouseEvent` com botao direito: isso abre o menu de contexto do Chrome
+   *  em cima da janela do dono (aconteceu em 2026-10-19). Evento nao confiavel nao abre menu. */
+  let _ladoSubida = 1;
+  async function andarParaCimaDeUmaVez(nTiles = 1, opts = {}) {
+    const pedidos = Math.max(1, Math.round(Number(nTiles) || 1));
+    const cv = q1('#tela');
+    if (!cv) return { ok: false, tiles: 0, motivo: 'sem canvas #tela' };
+    const esperadoAltura = VIS_A_JOGO * TAM_TILE_JOGO * ESCALA_JOGO;
+    if (cv.height && cv.height !== esperadoAltura) return { ok: false, tiles: 0, motivo: 'canvas #tela com altura ' + cv.height + ' (esperava ' + esperadoAltura + '): nao sei converter tile->ecra' };
+    const r = (typeof cv.getBoundingClientRect === 'function') ? cv.getBoundingClientRect() : null;
+    if (!r || !(r.width > 0) || !(r.height > 0)) return { ok: false, tiles: 0, motivo: 'canvas #tela sem tamanho medivel' };
+    const pxTile = r.height / VIS_A_JOGO;
+    const xCentro = r.left + r.width / 2;
+    const mag = pxTile * (HUM_JX_MIN + Math.random() * (HUM_JX_MAX - HUM_JX_MIN));
+    const x = xCentro + _ladoSubida * mag;
+    _ladoSubida = -_ladoSubida;
+    // O alvo pode ficar acima da borda do canvas; o jogo converte para tile na mesma.
+    const y = Math.max(r.top + 1, r.top + r.height / 2 - pedidos * pxTile);
+    try { cv.dispatchEvent(eventoRato('mousedown', { button: 2, clientX: x, clientY: y })); }
+    catch (e) { return { ok: false, tiles: 0, motivo: 'nao consegui clicar no chao: ' + e }; }
+    await humano(Math.max(700, pedidos * 200));
+    return { ok: true, tiles: pedidos };
   }
 
   /** Cura na base via Soraka. */
@@ -4544,17 +4574,15 @@ const CFG_VER = 2;
    *  clicar pra cima, a partir da fonte, duas vezes (andar pra cima) e achar a tesoureira". Confere com
    *  o fonte do jogo: a Tesoureira não está na praça, está ACIMA dela (`mundo.js:19-21` NPCS_FONTE, em
    *  `CY - 5`) e só entra em `#npcs` depois de o boneco subir. O código antigo procurava o NPC PARADO
-   *  onde o boneco estava. Agora, na FONTE e sem a Tesoureira no DOM, ele ANDA 2 TILES PARA CIMA
-   *  (clique no chão do canvas — ver o bloco "ANDAR NO CHÃO") e só depois procura o NPC. */
-  // A TESOUREIRA ESTA A 5 TILES ACIMA DO CENTRO DA PRACA: `mundo.js:20` NPCS_FONTE da-lhe
-  // `y: CY - 5` (e `mundo.js:131`: "acima da fonte: o cofre de ferro e o barril da Tesoureira").
-  // O boneco chega a Fonte no CENTRO (CY), logo 4 tiles (o antigo 2+2) ficavam UM TILE AQUEM e o
-  // NPC nunca entrava em `#npcs` — defeito relatado pelo dono, verbatim: "subi 4 tiles na Fonte e a
-  // Tesoureira nao apareceu em #npcs" / "e pra andar la em cima do canvas, duas vezes".
-  // 6 tiles = CY-5 com 1 de margem; o `opts.ate` verifica o `#npcs` DEPOIS DE CADA TILE, logo para
-  // assim que a Tesoureira aparece (tipicamente no 5.º) e nunca anda mais do que o preciso.
-  const COFRE_TILES_ACIMA = 6;
-  const COFRE_TENTATIVAS_SUBIDA = 2;  // o "duas vezes" do dono: 1.ª passagem e, se algo a interromper, 2.ª
+   *  onde o boneco estava. Agora, na FONTE e sem a Tesoureira no DOM, ele ANDA 4 TILES PARA CIMA,
+   *  DUAS VEZES (dois destinos no chao), e so depois procura o NPC. */
+  // A TESOUREIRA ESTA A 8 TILES DO PONTO DE CHEGADA: `mundo.js:20` poe-a em `y: CY - 5`;
+  // `mundo.js:201` poe o boneco em `cy + 3` (`pontoLivre`). 5 + 3 = 8 tiles. Um clique por tile
+  // ficava preso no chafariz/NPC do centro; ao vivo, 12 cliques nao a revelaram (2026-10-19).
+  // Dois cliques de 4 tiles = 8, cada um um DESTINO no chao: o `cena.andarPara` faz o caminho e
+  // contorna o chafariz, em vez de re-clicar um tile de cada vez contra o mesmo obstaculo.
+  const COFRE_TILES_ACIMA = 4;
+  const COFRE_TENTATIVAS_SUBIDA = 2;  // duas subidas de 4 = 8 tiles ate a Tesoureira (CY-5, boneco em CY+3)
   async function abrirCofreTesoureira() {
     if (document.querySelector('.cofre-slot[data-k]')) return { ok: true, ja: true };
     fecharJanelas(); await humano(250);
@@ -4569,7 +4597,7 @@ const CFG_VER = 2;
     }
     if (!via) {
       // MOTIVO VERDADEIRO (antes era sempre o genérico, que escondia a causa real na Fonte)
-      return { ok: false, motivo: subiu
+      return { ok: false, subiu, motivo: subiu
         ? `subi ${subiu} tiles na Fonte e a Tesoureira nao apareceu em #npcs`
         : (motivoSubida ? 'nao cheguei a Tesoureira: ' + motivoSubida : 'sem Tesoureira/Burrinho aqui (cofre abre na Fonte ou na cidade)') };
     }

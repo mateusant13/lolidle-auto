@@ -317,7 +317,7 @@ export function criarMundo(opts) {
     // automation.js clicou no canvas #tela (andarParaCima/subirNaFonte). Registar nao muda nada
     // para quem so quer o "true" de volta.
     el.dispatchEvent = (ev) => {
-      estado.eventos.push({ label: el.label, tipo: (ev && ev.type) || '', button: ev && ev.button, clientX: ev && ev.clientX, clientY: ev && ev.clientY });
+      estado.eventos.push({ label: el.label, tipo: (ev && ev.type) || '', button: ev && ev.button, clientX: ev && ev.clientX, clientY: ev && ev.clientY, isTrusted: ev && ev.isTrusted });
       return true;
     };
     el.addEventListener = () => {};
@@ -460,7 +460,13 @@ const __TO_MSG = (fn, ms, n) => { const st = String(new Error().stack).split(Str
    *  da bancada do Ornn rebentava com "MouseEvent is not defined" — buraco do HARNESS,
    *  nao do automation.js. */
   const MouseEventStub = class MouseEvent {
-    constructor(tipo, opts) { this.type = String(tipo || ''); Object.assign(this, opts || {}); }
+    constructor(tipo, opts) {
+      this.type = String(tipo || '');
+      Object.assign(this, opts || {});
+      // Um evento criado por script NUNCA e trusted. E isso que garante que o browser nao
+      // abre o menu de contexto com um `mousedown` de botao direito sintetico (2026-10-19).
+      this.isTrusted = false;
+    }
   };
 
   const sandbox = {

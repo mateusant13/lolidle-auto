@@ -11,7 +11,9 @@
  * O QUE ESTE BANCO PROVA (contra o automation.js REAL, em vm com DOM stubado):
  *   1. `andarParaCima(n)` clica no chao do canvas `#tela` com o BOTAO DIREITO, exactamente a
  *      `rect.height/VIS_A` px de CSS acima do centro (a camera centra o campeao: cena.js:4060),
- *      1 clique por tile — a conversao tile->ecra tem de ser a do jogo, nao um numero inventado.
+ *      1 clique por tile na funcao directa `andarParaCima` (conversao tile->ecra do jogo).
+ *      `subirNaFonte(n)` faz UM clique de DESTINO n tiles acima (o jogo faz o caminho com
+ *      `cena.andarPara`) e `abrirCofreTesoureira` faz DUAS subidas de 4 tiles = 8 (CY+3 -> CY-5).
  *   2. Na FONTE e sem a Tesoureira no DOM, o motor ANDA e so depois a procura: se ela aparecer
  *      depois de subir, o cofre abre (via='Tesoureira de Piltover').
  *   3. Se mesmo assim ela nao aparecer, o motivo devolvido e o VERDADEIRO ("subi N tiles..."), nao
@@ -133,7 +135,7 @@ function montarGradeCofreMotor(m, specs, opts) {
 
 export const suite = {
   nome: 'cofre',
-  titulo: 'Cofre na Fonte (Tesoureira em CY-5: subir ate ela, verificando #npcs a cada tile)',
+  titulo: 'Cofre na Fonte (Tesoureira em CY-5: duas subidas de 4 tiles, CY+3 -> CY-5)',
 
   async run(t) {
 
@@ -177,8 +179,8 @@ export const suite = {
       const r = await auto.abrirCofreTesoureira();
       t.check('C3: o cofre ABRIU (antes: motivo generico, nunca abria na Fonte)', r.ok === true);
       t.check('C3: abriu pela Tesoureira de Piltover', r.via === 'Tesoureira de Piltover');
-      t.check('C3: CONTROLO - andou 1 tile e parou (a Tesoureira apareceu e o resto do caminho nao se faz)',
-        r.subiu === 1 && m.eventosDe('tela').length === 1);
+      t.check('C3: CONTROLO - um clique de destino de 4 tiles e parou (a Tesoureira apareceu)',
+        r.subiu === 4 && m.eventosDe('tela').length === 1);
       t.check('C3: CONTROLO - o clique no NPC e na palavra "cofre" aconteceram de verdade',
         m.cliqueDe('npc-tesoureira') === true && m.cliqueDe('palavra-cofre') === true);
     }
@@ -217,16 +219,14 @@ export const suite = {
       const r = await auto.abrirCofreTesoureira();
       const evs = m.eventosDe('tela');
       t.check('C6: o cofre nao abriu (nao ha NPC nenhum no DOM)', r.ok === false);
-      // ACTUALIZADO (2026-10-15, Regra N.o 6): o tecto de subida passou de 2 para 6 tiles POR
-      // TENTATIVA. Motivo MEDIDO na fonte do jogo: a Tesoureira esta em \`mundo.js:20\` NPCS_FONTE com
-      // \`y: CY - 5\` — 5 tiles acima do centro — e o dono reportou ao vivo "subi 4 tiles na Fonte e a
-      // Tesoureira nao apareceu em #npcs". Com 2+2=4 o boneco ficava UM TILE AQUEM. A assercao antiga
-      // (4 cliques) codificava o comportamento errado; a nova exige os 12 (2 tentativas x 6) e que o
-      // motivo reporte o numero REAL de tiles andados.
+      // ACTUALIZADO (2026-10-19, Regra N.o 6): nao sao 6+6 cliques de 1 tile. O boneco chega a
+      // Fonte em `mundo.js:201` `cy + 3`; a Tesoureira esta em `mundo.js:20` `CY - 5`: 8 tiles.
+      // Dois DESTINOS de 4 tiles (o "duas vezes" do dono) deixam o `cena.andarPara` contornar o
+      // chafariz; o antigo 1-clique-por-tile ficava preso e nunca a revelava.
       t.check('C6: o motivo e o VERDADEIRO, nao o generico antigo',
-        r.motivo === 'subi ' + evs.length + ' tiles na Fonte e a Tesoureira nao apareceu em #npcs');
-      t.check('C6: CONTROLO - tentou mesmo andar: 12 cliques no canvas (2 tentativas x 6 tiles = CY-5 com margem)',
-        evs.length === 12 && soDireito(evs));
+        r.motivo === 'subi 8 tiles na Fonte e a Tesoureira nao apareceu em #npcs');
+      t.check('C6: CONTROLO - tentou mesmo andar: 2 destinos de 4 tiles = 8 tiles (2 cliques no canvas)',
+        evs.length === 2 && r.subiu === 8 && soDireito(evs));
       // GUARDA (2026-10-14): o 1.º parametro de esperarNpcDoCofre sao TENTATIVAS, nao ms. Com um
       // "2000" colado ali (como no tempo em ms) o jogo ficaria 2000 x 180 ms ~ 6 MINUTOS a esperar.
       const procuras = m.estado.queries.filter((q) => q.sel === '#npcs button[data-npc="Tesoureira de Piltover"]').length;
@@ -262,26 +262,18 @@ export const suite = {
       const auto = carregarAutomation(m);
       montarLocal(m, 'Fonte');
       montarTela(m, 480, 352);                    // 352/11 = 32 px por tile; centro (240,176)
-      const r = await auto.subirNaFonte(8);
+      const r1 = await auto.subirNaFonte(4);
+      const r2 = await auto.subirNaFonte(4);
       const evs = m.eventosDe('tela');
       const centro = 240;
-      t.check('C9: subirNaFonte(8) corre e conta 8 tiles', r.ok === true && r.tiles === 8 && evs.length === 8);
-      // (a) o 1.º clique NAO e o centro — a caminhada humanizada desvia ja no 1.º passo
-      t.check('C9: 1.º clique NAO e o centro (a caminhada nao e uma linha exacta)', evs[0].clientX !== centro);
-      // (b) x alterna de lado: o deslocamento entre cliques consecutivos inverte o sinal
-      const xs = [centro, ...evs.map((e) => e.clientX)];
-      const deltas = [];
-      for (let i = 1; i < xs.length; i++) deltas.push(xs[i] - xs[i - 1]);
-      t.check('C9: todos os passos tem deslocamento x NAO-zero', deltas.every((d) => d !== 0));
-      t.check('C9: x alterna de lado (cada passo inverte o sinal do anterior)',
-        deltas.every((d, i) => i === 0 || d * deltas[i - 1] < 0));
-      // (c) y entre centro-1.5 tile e centro-0.5 tile (sempre acima do boneco: tem de subir)
-      t.check('C9: y > centro-1.5 tile e < centro-0.5 tile', evs.every((e) => e.clientY > 128 && e.clientY < 160));
-      // (d) todos os cliques dentro da coluna do tile alvo (meio tile = 16 px)
-      t.check('C9: todos os cliques dentro do tile alvo (|x-centro| < 16)', evs.every((e) => Math.abs(e.clientX - centro) < 16));
-      // deriva limitada a ±0,45 tile (14,4 px): nunca sai da coluna da Tesoureira
-      t.check('C9: deriva limitada a ±0,45 tile (14,4 px)', evs.every((e) => Math.abs(e.clientX - centro) <= 14.45));
-      t.check('C9: CONTROLO - todos os cliques sao mousedown do botao direito', soDireito(evs));
+      t.check('C9: dois destinos de 4 tiles = o "duas vezes" do dono', r1.ok && r2.ok && r1.tiles === 4 && r2.tiles === 4 && evs.length === 2);
+      t.check('C9: 1.o clique NAO e o centro (a caminhada nao e uma linha exacta)', evs[0].clientX !== centro);
+      t.check('C9: os dois cliques alternam de lado', evs[0].clientX !== evs[1].clientX && (evs[0].clientX - centro) * (evs[1].clientX - centro) < 0);
+      t.check('C9: y = centro - 4 tiles (48), dentro do canvas', evs.every((e) => e.clientY === 48));
+      t.check('C9: cliques dentro da coluna do alvo (|x-centro| <= 0,45 tile = 14,4 px)', evs.every((e) => Math.abs(e.clientX - centro) <= 14.45));
+      t.check('C9: CONTROLO - os dois sao mousedown do botao direito', soDireito(evs));
+      t.check('C9: eventos sao sinteticos (isTrusted=false): nunca abrem o menu de contexto do Chrome',
+        evs.every((e) => e.isTrusted === false));
     }
 
     /* ============ C10 - LIXO DO COFRE: classificacao (TK-03, TODO §8) ============ */
