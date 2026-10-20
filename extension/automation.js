@@ -21,7 +21,7 @@
 
   const RARITY = { basico: 0, epico: 1, lendario: 2 };
   const QUAL = ['C', 'B', 'A', 'S', 'SS'];
-  const qIdx = (q) => QUAL.indexOf(q);   // -1 = qualidade DESCONHECIDA ('?' sendo avaliada) — nunca tratar como C
+  const qIdx = (q) => QUAL.indexOf(q);   // -1 = qualidade DESCONHECIDA ('?' sendo avaliada), nunca tratar como C
   const RABADON = '3089';
   /** ============ ITENS DE PRIORIDADE EXTREMA — POR CLASSE (regra do dono, 2026-10-14) ============
    *  REGRA DO DONO (verbatim): "todos os bonecos tem que saber a build ideal deles, e quais
@@ -126,6 +126,11 @@
     pocaoPisoPct: 0.75,       // piso de HP FORA de chefe (% do máx)
     pocaoPisoChefe: 0.9,      // piso de HP NO CHEFE (mais seguro; a carga cobre o burst)
     pocaoMargem: 1.1,         // margem só na previsão da CARGA (física/mágica)
+    // DECISÃO INTELIGENTE DE POÇÃO: interruptor próprio (ordem do dono, 2026-10-20).
+    // Vale SÓ no PvE do mapa (`decidirPocao`). Em PvP (motor.js:44 `POCAO_PVP`), na Arena,
+    // em Runeterra e nas dungeons a poção é por LIMIAR de vida, porque nesses sítios a cura
+    // é 30%, a exaustão é 6 s e a cura das habilidades cai para 65% (motor.js:1390).
+    pocaoSmart: true,
     ultWaveSeg: 12,           // segundos p/ 3 waves: acima disso a fase e DIFICIL (a ultimate so entra aí/chefe)
     killLentoMs: 3500,        // tempo mediano entre kills acima disso = área difícil (fallback sem burst)
     testeForcar: false,       // permite iniciar teste em região letal (default: recusa)
@@ -240,19 +245,27 @@
     // de 2026-10-14 que ligava o refino por omissao deixou de valer: o Ornn (refino E montagem)
     // e uma APOSTA e nasce DESLIGADO. Sem o default de `autoMontar`, `podeFazer` via `undefined`
     // !== false e a montagem ficava ligada implicitamente — era esse o clique na forja.
-    autoRefino: false,        // Ornn: refinar lendarios A+ ate +3 — DESLIGADO por ordem do dono
-    autoMontar: false,        // Ornn: montar pecas — DESLIGADO por ordem do dono
+    autoRefino: false,        // Ornn: refinar lendarios A+ ate +3, DESLIGADO por ordem do dono
+    autoMontar: false,        // Ornn: montar pecas, DESLIGADO por ordem do dono
     // REGRA DO DONO (inviolável): "Equipar SEMPRE o melhor item disponível em cada slot".
     // Logo o default é LIGADO; `false` explícito desliga.
     autoEquip: true,
     // HISTERESE do equipador: só serve para trocas LATERAIS (mesmo degrau de raridade e sem
     // item especial). Trocas de RARIDADE SUPERIOR e itens ESPECIAIS ignoram-na (regra do dono:
     // a raridade decide "antes de qualquer histerese"). 1.05 = valor que já existia (docs/itens-ideal.md D10).
+    // ORDEM DE 2026-10-20 (verbatim): "o botao de auto play é fazer TUDO do autoplay.
+    // ativar o auto play ativa todos os switches. desativar, deixa os switches escolhidos
+    // por mim anteriormente (salva). nos outros switches, tem que ter um botao de desligar
+    // tudo. religar por esse botao, religa oq tava ligado q eu tinha escolhido antes."
+    // `_escolhas` é o retrato do que o dono escolheu (o mestre devolve isto ao desligar);
+    // `_todosOff` diz que o botão "Desligar tudo" está ativo e `_escolhas` é o que volta.
+    _escolhas: null,
+    _todosOff: false,
     equipHisterese: 1.05,
   };
   let cfg = structuredClone(DEFAULT);
 
-  const SUFIXO = { k: 1e3, K: 1e3, m: 1e6, M: 1e6 };   // cena.js:225 — k = x1000, M = x1000000
+  const SUFIXO = { k: 1e3, K: 1e3, m: 1e6, M: 1e6 };   // cena.js:225, k = x1000, M = x1000000
   const parseNum = (s, suf) => {
     const t = String(s == null ? '' : s).trim();
     if (!t) return NaN;
@@ -409,7 +422,7 @@
   const isProtected = (it) => it.kind === 'item' && (
     !QUAL.includes(it.qual) ||                                  // '?' (sendo avaliado) = BLINDADO: pode virar A
     (it.raridade === 'lendario' && qIdx(it.qual) >= qIdx('A')) ||
-    ehPrioridadeExtrema(it.base) ||                             // PRIORIDADE EXTREMA por classe (3031/3089): nem venda, nem mercado — NEM DUPLICADO
+    ehPrioridadeExtrema(it.base) ||                             // PRIORIDADE EXTREMA por classe (3031/3089): nem venda, nem mercado, NEM DUPLICADO
     ehEspecialMeu(it.base) ||                                   // TRATAMENTO ESPECIAL da minha classe (ver ITENS_ESPECIAIS)
     (it.raridade === 'lendario' && ehLendarioDaBuild(it.base)) || // lendário da BUILD DA CLASSE: intocável
     ehReservado(it.base)                                        // peça das builds mob/chefe (troca por fase): reservada
@@ -467,7 +480,7 @@
     if (el.checked) return { ok: false, motivo: 'ja ligado' };
     const B = folhasDeReceitaFaltando();
     if (B > 0) return { ok: false, motivo: 'faltam folhas de receita', B };
-    el.click();                                   // dispara o change do jogo — nunca .checked
+    el.click();                                   // dispara o change do jogo, nunca .checked
     const ligou = !!el.checked;
     logEvent('filtro-basicos', { B, clicado: true, ligou });
     return { ok: true, B, ligou };
@@ -546,12 +559,12 @@
     }
 
     for (const it of itens) {
-      if (it.raridade === 'lendario' && ehLendarioDaBuild(it.base)) acts.push({ action: 'PROTEGER', it, why: `LENDÁRIO DA BUILD DA CLASSE (${ident.perfil}/${ident.classe}) — nem mercado, nem Lojista` });
-      else if (!QUAL.includes(it.qual)) acts.push({ action: 'PROTEGER', it, why: "qualidade '?' sendo avaliada — nunca mexer" });
-      else if (it.raridade === 'lendario' && acimaDeA(it)) acts.push({ action: 'PROTEGER', it, why: 'lendário A/S/SS — nunca mexer' });
+      if (it.raridade === 'lendario' && ehLendarioDaBuild(it.base)) acts.push({ action: 'PROTEGER', it, why: `LENDÁRIO DA BUILD DA CLASSE (${ident.perfil}/${ident.classe}), nem mercado, nem Lojista` });
+      else if (!QUAL.includes(it.qual)) acts.push({ action: 'PROTEGER', it, why: "qualidade '?' sendo avaliada, nunca mexer" });
+      else if (it.raridade === 'lendario' && acimaDeA(it)) acts.push({ action: 'PROTEGER', it, why: 'lendário A/S/SS, nunca mexer' });
       // ALINHADO com o `venderBase` (que agora só protege S+): antes mandava épico A+ para o cofre
       // enquanto o ator podia vendê-lo — risco de venda não intencional.
-      else if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('S')) acts.push({ action: 'GUARDAR_COFRE', it, why: `épico ${it.qual} (S+) — só pro cofre` });
+      else if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('S')) acts.push({ action: 'GUARDAR_COFRE', it, why: `épico ${it.qual} (S+), só pro cofre` });
       // ============ REGRA DO DONO (verbatim, 2026-10-14) ============
       // "item basico, epico, duplicado: vende no lojista. a nao ser q seja tier s mais."
       // As excepções S+ já estão tratadas ACIMA (lendário A/S/SS -> PROTEGER; épico A/S/SS
@@ -583,8 +596,8 @@
       // o Rabadon passa a ser um caso da regra, com o comportamento dele INTACTO, e o Gume do
       // Infinito ganha a mesma protecção. Vem ANTES de todos os ramos de venda (incluindo a
       // duplicata) e depois das protecções por raridade/qualidade, para não lhes roubar o motivo.
-      else if (ehPrioridadeExtrema(it.base)) { const e = prioExtremaDe(it.base); acts.push({ action: 'PROTEGER', it, why: `PRIORIDADE EXTREMA (${e.classe}/${e.tipo}) — ${e.motivo} [${e.fonte}]: nunca se vende nem se anuncia, nem duplicado` }); }
-      else if (qIdx(it.qual) >= qIdx('S')) acts.push({ action: 'PROTEGER', it, why: `tier ${it.qual} — S+ nunca se vende (regra do dono)` });
+      else if (ehPrioridadeExtrema(it.base)) { const e = prioExtremaDe(it.base); acts.push({ action: 'PROTEGER', it, why: `PRIORIDADE EXTREMA (${e.classe}/${e.tipo}), ${e.motivo} [${e.fonte}]: nunca se vende nem se anuncia, nem duplicado` }); }
+      else if (qIdx(it.qual) >= qIdx('S')) acts.push({ action: 'PROTEGER', it, why: `tier ${it.qual}, S+ nunca se vende (regra do dono)` });
       // ---- TRATAMENTO ESPECIAL POR CAMPEÃO (ver ITENS_ESPECIAIS) ----
       // Um item especial DA MINHA CLASSE é intocável: o motor gasta-o em mim (ex.: Gume do
       // Infinito +40% no crítico, motor.js:515; Rabadon +35% AP, motor.js:522). O motivo e o
@@ -597,13 +610,13 @@
       // SÓ UMA cópia por base: o `id` do slot ('1006~A') repete-se em duplicados, e casar por `id`
       // marcava TODAS as cópias como EQUIPAR (nenhuma era vendida). A 2.ª cópia cai nos ramos
       // seguintes (duplicado -> Lojista), que é a regra do dono.
-      else if ((equiparIds.has(it.id) || equiparBases.has(String(it.base))) && !equiparJaPosto.has(String(it.base))) { equiparJaPosto.add(String(it.base)); acts.push({ action: 'EQUIPAR', it, why: `melhor disponível para o slot (${it.raridade} ${it.qual}${it.refino ? ' +' + it.refino : ''}) — desloca equipado de degrau inferior` }); }
+      else if ((equiparIds.has(it.id) || equiparBases.has(String(it.base))) && !equiparJaPosto.has(String(it.base))) { equiparJaPosto.add(String(it.base)); acts.push({ action: 'EQUIPAR', it, why: `melhor disponível para o slot (${it.raridade} ${it.qual}${it.refino ? ' +' + it.refino : ''}), desloca equipado de degrau inferior` }); }
       // ---- PEÇAS RESERVADAS (as DUAS builds: mob × chefe) ---------------------------------
       // PEDIDO DO DONO: "o que sai fica na MOCHILA e NUNCA e vendido (sao as pecas da outra
       // build)". A troca por fase despe a build que não está em uso; se estas peças fossem
       // vendidas, a build da outra fase desaparecia. Vem DEPOIS do EQUIPAR (um reservado que
       // é o melhor do slot ainda é vestido) e ANTES de qualquer ramo de venda.
-      else if (ehReservado(it.base)) { const fsR = fasesDoItem(it.base); acts.push({ action: 'PROTEGER', it, why: 'peça da build de ' + (fsR.length ? fsR.join(' + ') : 'fase') + ' — RESERVADA para a troca por fase (não se vende nem se anuncia)' }); }
+      else if (ehReservado(it.base)) { const fsR = fasesDoItem(it.base); acts.push({ action: 'PROTEGER', it, why: 'peça da build de ' + (fsR.length ? fsR.join(' + ') : 'fase') + ', RESERVADA para a troca por fase (não se vende nem se anuncia)' }); }
       // BÁSICO que NÃO serve a build -> Lojista (regra do dono: "basico ... vende no lojista").
       else if (it.raridade === 'basico' && !componentesDaBuild().has(String(it.base))) acts.push({ action: 'VENDER_LOJISTA', it, why: 'regra do dono: básico → Lojista (não serve a build)' });
       // BÁSICO COMPONENTE DA BUILD: GUARDA até ao número que a RECEITA pede (`basicosDaBuild`
@@ -633,7 +646,7 @@
       // -> LENDARIO duplicado vai ao MERCADO; basico/epico duplicado vai ao Lojista.
       else if (duplicado.has(it)) acts.push(it.raridade === 'lendario'
         ? (mercadoSaturado().sat
-          ? { action: 'PROTEGER', it, why: 'duplicata de lendário — mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista)' }
+          ? { action: 'PROTEGER', it, why: 'duplicata de lendário, mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista)' }
           : { action: 'ANUNCIAR_MERCADO', it, why: 'duplicata de lendário (fica a de maior tier) → mercado' })
         : { action: 'VENDER_LOJISTA', it, why: 'duplicata (fica 1, o de maior tier)' });
       // LENDÁRIO < A: via antiga (mercado/saturado), DEPOIS da duplicata — é a ordem original
@@ -643,7 +656,7 @@
       // Lojista, nem quando o mercado está saturado (antes: `ms.sat ? VENDER_LOJISTA : mercado`).
       // A saturação só decide SE anuncia agora; se não puder anunciar, o item FICA na mochila.
       else if (it.raridade === 'lendario') { const ms = mercadoSaturado(); acts.push(ms.sat
-        ? { action: 'PROTEGER', it, why: 'lendário < A — mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista, regra do dono)' }
+        ? { action: 'PROTEGER', it, why: 'lendário < A, mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista, regra do dono)' }
         : { action: 'ANUNCIAR_MERCADO', it, why: 'lendário < A → mercado (lendário nunca vai ao Lojista)' }); }
       else acts.push({ action: 'GUARDAR', it, why: 'sem regra' });
     }
@@ -1121,7 +1134,7 @@
       const r = (h.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
       const dica = h.getAttribute('data-dica') || '';
       return {
-        t: h.dataset.t, name: dica.split('—')[0].trim(),
+        t: h.dataset.t, name: dica.split('-')[0].trim(),
         dica,
         rank: r ? +r[1] : null, maxRank: r ? +r[2] : null,
         // REQUISITO DE NÍVEL da habilidade (do kit do motor). Sem isto a GUI recomendava
@@ -1149,7 +1162,7 @@
       const em = b.querySelector('em');
       const seg = em && em.textContent ? Number(em.textContent) : null;
       const recarga = b.classList.contains('recarga');
-      const nome = (b.getAttribute('data-dica') || '').split('—')[0].trim() || (b.title || '').split('—')[0].trim() || t;
+      const nome = (b.getAttribute('data-dica') || '').split('-')[0].trim() || (b.title || '').split('-')[0].trim() || t;
       const frac = varCd(b);
       const ex = cdExatoHud(frac, t, rankDe[t] || null, cdrUsado);
       const cd = ex && ex.seg != null ? ex.seg : (recarga ? (seg != null ? seg : 0) : 0);
@@ -1854,7 +1867,7 @@ const CFG_VER = 2;
     { ver: 1, chave: 'autoRefino', de: false, para: true,
       porquê: 'a unica accao que nascia DESLIGADA era o refino; o dono mandou ligar por defeito' },
     { ver: 2, chave: 'champAlvo', de: 'yasuo', para: ['yasuo', 'ryze'],
-      porquê: 'o dono passou a jogar de Ryze (17/10/2026); a lista de alvos passa de "so o Yasuo" para incluir o Ryze — so migra quem tinha o default antigo' },
+      porquê: 'o dono passou a jogar de Ryze (17/10/2026); a lista de alvos passa de "so o Yasuo" para incluir o Ryze, so migra quem tinha o default antigo' },
   ];
 
   const NIVEL_DIF_FB = { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5, danoJogador: 0.12, minDanoJogador: 0.25 };
@@ -1864,9 +1877,9 @@ const CFG_VER = 2;
   /** motor.js:1200 — diferença de nível EFECTIVA (desconta a faixa livre). É a base do fJ. */
   const difNivelMotor = (nivelAlvo, nivelJogador) => Math.max(0, (Number(nivelAlvo) || 0) - (Number(nivelJogador) || 1) - NIVEL_DIF_FB.livre);
   /** motor.js:1201 — o MONSTRO bem acima do nível bate mais forte (tecto maxDanoMonstro). */
-  const fatorDanoMonstroMotor = (d) => d ? Math.min(NIVEL_DIF_FB.maxDanoMonstro, 1 + NIVEL_DIF_FB.danoMonstro * d) : 1;   // motor.js:1201 — recebe a DIFICULDADE
+  const fatorDanoMonstroMotor = (d) => d ? Math.min(NIVEL_DIF_FB.maxDanoMonstro, 1 + NIVEL_DIF_FB.danoMonstro * d) : 1;   // motor.js:1201, recebe a DIFICULDADE
   /** motor.js:1202 — o JOGADOR contra monstro bem acima do nível: o dano DELE é reduzido (piso 0,25). */
-  const fatorDanoJogadorMotor = (d) => d ? Math.max(NIVEL_DIF_FB.minDanoJogador, 1 - NIVEL_DIF_FB.danoJogador * d) : 1;   // motor.js:1202 — recebe a DIFICULDADE
+  const fatorDanoJogadorMotor = (d) => d ? Math.max(NIVEL_DIF_FB.minDanoJogador, 1 - NIVEL_DIF_FB.danoJogador * d) : 1;   // motor.js:1202, recebe a DIFICULDADE
 
   const KAT_FB = {
     Q: { max: 10, rec: (r) => 10 - 0.35 * (r - 1), base: (r) => 80 + 35 * (r - 1), ratio: (r) => 0.45 + 0.03 * (r - 1), mult: 3, alvo: '3 alvos', adaga: true },
@@ -2545,10 +2558,10 @@ const CFG_VER = 2;
     olho:       { mult: 2.6, magico: true  },   // motor.js:3104 `mag(2.6)`
     sopro:      { mult: 2.2, magico: true  },   // motor.js:3105 `mag(2.2)`
     chuva:      { mult: 1.8, magico: true  },   // motor.js:3106 `mag(1.8)`
-    rugido:     { mult: 0,   magico: true  },   // motor.js:3107 — NAO e golpe: `as ×1,5` por 5 s
+    rugido:     { mult: 0,   magico: true  },   // motor.js:3107, NAO e golpe: `as ×1,5` por 5 s
     acido:      { mult: 1.2, magico: true  },   // motor.js:3108 `mag(1.2)`
     tentaculos: { mult: 2.6, magico: false },   // motor.js:3109 `fis(2.6)`
-    invocar:    { mult: 0,   magico: true  },   // motor.js:3117-3120 — NAO e golpe: invoca 2 larvas
+    invocar:    { mult: 0,   magico: true  },   // motor.js:3117-3120, NAO e golpe: invoca 2 larvas
   };
   /** A mecânica `mec` do motor: multiplicador de dano, se é mágica, o NOME (do HAB_CHEFE, que o
    *  motor manda) e os tempos. Sem o motor, cai nos valores acima — cada um com o seu file:linha. */
@@ -2584,7 +2597,28 @@ const CFG_VER = 2;
    *  - piso = % do HP máx, pra aguentar o golpe CARREGADO (que é maior que o normal) —
    *    sem esse piso o boneco morre no burst (a regra "só o último golpe" morre feio).
    *  Devolve { k, reason } ou null. */
+  /** Modo de poção EM USO (para a GUI dizer a verdade, em vez de adivinhar pelo nome do mapa).
+   *  `inteligente` só existe no PvE do mapa: em PvP/Arena/Runeterra/dungeon é limiar. */
+  function modoPocao() {
+    const lv = _estadoVivo || {};
+    const local = lv.local || null;
+    const foraDoMapa = local === 'arena' || local === 'aram' || !!lv.dg;
+    const pvp = (lv.combatePvp || 0) > 0;
+    const smart = cfg.pocaoSmart !== false;
+    if (pvp) return { modo: 'limiar-pvp', smart, pvp, foraDoMapa, local, motivo: 'PvP: cura 30%, exaustão 6 s' };
+    if (foraDoMapa) return { modo: 'limiar', smart, pvp, foraDoMapa, local, motivo: 'fora do mapa: limiar de vida' };
+    if (!smart) return { modo: 'limiar', smart, pvp, foraDoMapa, local, motivo: 'decisão inteligente desligada' };
+    return { modo: 'inteligente', smart, pvp, foraDoMapa, local, motivo: 'PvE do mapa: golpe real' };
+  }
+
   function decidirPocao() {
+    // SÓ NO PvE DO MAPA (ordem do dono, 2026-10-20). Fora daqui a poção é por limiar:
+    //   - PvP (`combatePvp`, motor.js:1410): cura 30% e exaustão 6 s (POCAO_PVP, motor.js:44);
+    //   - Runeterra / Arena / dungeon: mesma coisa, e a cura das habilidades cai a 65%
+    //     (CURA_PVP, motor.js:1390). Devolver `null` deixa o `content.js` cair no limiar.
+    if (cfg.pocaoSmart === false) return null;
+    const _lv = _estadoVivo || null;
+    if (_lv && (_lv.local === 'arena' || _lv.local === 'aram' || _lv.dg || (_lv.combatePvp || 0) > 0)) return null;
     const pot = readPotions();
     const live = (typeof window !== 'undefined' && window.__lolidleLive) || null;
     const hp = live?.hp?.cur;
@@ -2650,21 +2684,21 @@ const CFG_VER = 2;
       const golpeMax = Math.max(iminente, sequencia, ultGolpe);
       if (golpeMax >= hp + escudo + bestHeal) {
         live.fatal = true;
-        live.fatalMotivo = `${base} — golpe ${Math.round(golpeMax)} ≥ HP ${Math.round(hp)} + ${bestK || 'nada'} (${bestHeal}): injogável, SAIR (B)`;
+        live.fatalMotivo = `${base}, golpe ${Math.round(golpeMax)} ≥ HP ${Math.round(hp)} + ${bestK || 'nada'} (${bestHeal}): injogável, SAIR (B)`;
         return { k: bestK, fatal: true, flee: true, reason: live.fatalMotivo };
       }
       live.fatal = false;
     }
     if (fatal) {
       const forte = ['vidaS', 'vidaF', 'vida'].find((x) => pot[x] > 0) || null;
-      return { k: forte, fatal: true, reason: `${base} — CARGA FATAL (${Math.round(golpeCarga)} ≥ HP máx ${Math.round(max)}): nenhuma poção salva; usar a mais forte${forte ? ' → ' + forte : ''} e sair (B)` };
+      return { k: forte, fatal: true, reason: `${base}, CARGA FATAL (${Math.round(golpeCarga)} ≥ HP máx ${Math.round(max)}): nenhuma poção salva; usar a mais forte${forte ? ' → ' + forte : ''} e sair (B)` };
     }
     // PISO É PISO: se o HP está abaixo do piso, NÃO deixa a cura de skill (que é medida de forma
     // ruidosa no canvas) "cancelar" a poção. Isto é o que faltava e deixou o char entrar na
     // CARGA do Dragão a 57% e morrer.
     const faltaProj = alvo - proj;
     const falta = hp < piso ? Math.max(faltaProj, alvo - hp) : faltaProj;
-    if (falta <= 0) return { k: null, reason: `${base} — seguro, sem poção` };
+    if (falta <= 0) return { k: null, reason: `${base}, seguro, sem poção` };
     // JANELA: usa UMA poção que cubra o buraco (o sim provou que "picar" com 2×P1 é
     // mais arriscado — a 2ª chega 1 s depois e o chefe bate no meio). nSlots=1.
     const nSlots = 1;
@@ -2673,7 +2707,7 @@ const CFG_VER = 2;
     let k = null;
     if (mix) for (const [x, cx] of [['vida', 'a'], ['vidaF', 'b'], ['vidaS', 'c']]) { if (mix[cx] > 0 && pot[x] > 0) { k = x; break; } }
     if (!k) { const escolha = falta <= HEALVAL.vida ? 'vida' : falta <= HEALVAL.vidaF ? 'vidaF' : 'vidaS'; k = (pot[escolha] > 0) ? escolha : ['vidaS', 'vidaF', 'vida'].find((x) => pot[x] > 0); }
-    if (!k) return { k: null, reason: `${base} — falta ${Math.round(falta)}, sem poção disponível` };
+    if (!k) return { k: null, reason: `${base}, falta ${Math.round(falta)}, sem poção disponível` };
     const mixTxt = mix ? mixLabel(mix) : null;
     return { k, falta: Math.round(falta), ultGolpe, alvo: Math.round(alvo), healSkill: Math.round(healSkill), hpPct: Math.round((hp / max) * 100), nSlots, mixTxt, reason: `${base} → ${k} (+${Math.round(falta)}${mixTxt ? `, mix ${mixTxt}` : ''})` };
   }
@@ -2938,7 +2972,7 @@ const CFG_VER = 2;
 
     const porqueReg = r
       ? `Região ${r.regiao}: ouro líquido ${r.ouroLiquidoMin != null ? Math.round(r.ouroLiquidoMin) + '/min' : 'sem medida'}, sobrevive=${r.sobrevive}. Wave média=${wm} mobs/wave (grupoSpawn do motor). chegadaExtra=${ce != null ? ce : 'não lido'}.`
-      : 'Sem região recomendada com segurança provada ainda — o motor decide depois de medir.';
+      : 'Sem região recomendada com segurança provada ainda, o motor decide depois de medir.';
     return {
       regiao: r ? r.regiao : null, porque: porqueReg, ouroLiquidoMin: r ? r.ouroLiquidoMin : null,
       sobrevive: r ? r.sobrevive : false, waveMedia: wm, chegadaExtra: ce,
@@ -3435,9 +3469,9 @@ const CFG_VER = 2;
    *     fora da arena. Na Fonte do Rift nao ha `m.mundo`, logo o centro e sempre o boneco.)
    *  Consequencia pratica (sem ler estado nenhum do jogo): subir N tiles = UM mousedown do botao
    *  direito em (centro-x, centro-y - N * rect.height/VIS_A). */
-  const TAM_TILE_JOGO = 32;    // pixel.js:4  — "export const T = 32; // tamanho do tile"
-  const VIS_A_JOGO = 11;       // cena.js:33  — "export const VIS_A = 11;"
-  const ESCALA_JOGO = 2;       // cena.js:34  — "const ESCALA = 2;" (bitmap = CSS * ESCALA)
+  const TAM_TILE_JOGO = 32;    // pixel.js:4, "export const T = 32; // tamanho do tile"
+  const VIS_A_JOGO = 11;       // cena.js:33, "export const VIS_A = 11;"
+  const ESCALA_JOGO = 2;       // cena.js:34, "const ESCALA = 2;" (bitmap = CSS * ESCALA)
 
   // HUMANIZAÇÃO DA CAMINHADA (TK-03, pedido do dono 2026-10-19): a caminhada na Fonte não pode ser
   // uma linha de pixels idêntica. Cada passo escolhe um lado (alternado) e uma magnitude dentro do
@@ -3681,27 +3715,27 @@ const CFG_VER = 2;
       if (id.startsWith('esp:')) continue;                       // espólio já foi em lote
       if (apenas && !forcar(id)) continue;                       // modo cofre: só os ids retirados
       const puro = id.replace(/[+~].*$/, '');                    // '3089+2~A' → '3089'
-      if (ehPrioridadeExtrema(puro)) continue;                   // PRIORIDADE EXTREMA (3031/3089, automation.js:47): nunca vai ao Lojista — nem duplicado (antes só o Rabadon era poupado aqui)
+      if (ehPrioridadeExtrema(puro)) continue;                   // PRIORIDADE EXTREMA (3031/3089, automation.js:47): nunca vai ao Lojista, nem duplicado (antes só o Rabadon era poupado aqui)
       // TRATAMENTO ESPECIAL POR CAMPEÃO (ver ITENS_ESPECIAIS): o motor lê estes itens pelo
       // ID para mudar a REGRA do campeão (ex.: motor.js:515 Gume do Infinito, motor.js:522
       // Rabadon). Um deles DA MINHA CLASSE nunca vai ao Lojista.
       if (ehEspecialMeu(puro)) { const e = especialDe(puro); regras.protegidos.push({ id, motivo: 'tratamento especial (' + e.papel + '/' + e.tipo + '): ' + e.motivo + ' [' + e.fonte + ']' }); continue; }
-      if (equiparAgora.has(String(puro)) && !equiparJaProtegido.has(String(puro))) { equiparJaProtegido.add(String(puro)); regras.protegidos.push({ id, motivo: 'vai ser EQUIPADO (melhor do slot) — nunca vender' }); continue; }
+      if (equiparAgora.has(String(puro)) && !equiparJaProtegido.has(String(puro))) { equiparJaProtegido.add(String(puro)); regras.protegidos.push({ id, motivo: 'vai ser EQUIPADO (melhor do slot), nunca vender' }); continue; }
       const mq = id.match(/~([A-Za-z?]{1,2})$/);
-      if (!mq || !QUAL.includes(mq[1].toUpperCase())) { regras.protegidos.push({ id, motivo: "qualidade '?'/ilegível — nunca mexer" }); continue; }
+      if (!mq || !QUAL.includes(mq[1].toUpperCase())) { regras.protegidos.push({ id, motivo: "qualidade '?'/ilegível, nunca mexer" }); continue; }
       const qual = mq[1].toUpperCase();
       const lend = /lend[áa]rio/i.test(dica), epi = /[ée]pico/i.test(dica);
       if (lend && lendaBuild.has(String(puro))) { regras.protegidos.push({ id, motivo: 'lendário da build da classe' }); continue; }
       // L4 (regra do dono): LENDÁRIO DUPLICADO com o mercado SATURADO fica na MOCHILA — nunca ao
       // Lojista nem anunciado. A contagem de duplicados é o `dups` do topo desta função (3032).
       if (lend && mercadoSaturado().sat) {   // L4: mercado saturado -> o lendario NAO vai ao Lojista
-        regras.protegidos.push({ id, motivo: 'duplicata de lendário — mercado saturado (fica na mochila)' });
+        regras.protegidos.push({ id, motivo: 'duplicata de lendário, mercado saturado (fica na mochila)' });
         continue;
       }
       // PEÇAS RESERVADAS DAS DUAS BUILDS (mob × chefe): NUNCA vão ao Lojista — são as peças da
       // build da outra fase (o que sai da troca fica na mochila). Vem DEPOIS do lendário-da-build
       // para o motivo desse caso continuar a ser o dele (o banco de regressão fixa essa string).
-      if (ehReservado(puro)) { const fsR2 = fasesDoItem(puro); regras.protegidos.push({ id, motivo: 'peça da build de ' + (fsR2.length ? fsR2.join(' + ') : 'fase') + ' — reservada para a troca por fase' }); continue; }
+      if (ehReservado(puro)) { const fsR2 = fasesDoItem(puro); regras.protegidos.push({ id, motivo: 'peça da build de ' + (fsR2.length ? fsR2.join(' + ') : 'fase') + ', reservada para a troca por fase' }); continue; }
       // REGRA DO DONO: só tier S ou acima é intocável. A NÃO está protegido ("basico, epico,
       // duplicado: vende no lojista. a nao ser q seja tier s mais").
       if (qIdx(qual) >= qIdx('S')) continue;                     // S / SS: NÃO MEXE (qualquer raridade)
@@ -3781,7 +3815,7 @@ const CFG_VER = 2;
     const semBotao = [];
     for (const k of compraveis) {                               // mais caras primeiro
       const antes = readPotions()[k] || 0;
-      if (antes >= alvo[k]) continue;                             // já tem o suficiente — NÃO compra de novo
+      if (antes >= alvo[k]) continue;                             // já tem o suficiente, NÃO compra de novo
       const inp = q1(`#janela-npc [data-qtd="${k}"]`);
       const btn = q1(`#janela-npc [data-comprar="${k}"]`);
       if (!inp || !btn || btn.disabled) { semBotao.push(k); continue; }   // nível baixo / sem botão
@@ -3948,13 +3982,72 @@ const CFG_VER = 2;
     // A lista (itens/jogadores) É o interruptor: vazia = não vigia nada; com algo = vigia
     // e compra. Só herda a MANUTENÇÃO para o auto-play global poder parar tudo.
     vigiarMercado: { pai: 'manutencao', cfg: 'autoVigiarMercado', ignorarCfg: true },
+    // POÇÃO INTELIGENTE: só no PvE do mapa. Desligada, a poção volta ao limiar de vida.
+    // Em PvP/Arena/Runeterra/dungeon o limiar já é o modo certo e este switch não muda nada.
+    pocaoSmart:   { pai: 'manutencao', cfg: 'pocaoSmart' },
   };
+  // ---- MEMÓRIA DAS ESCOLHAS DO DONO (ordem de 2026-10-20) --------------------------------
+  // Exceção declarada: os dois switches do ORNN (refino e montagem) ficam FORA do "liga
+  // tudo". O dono mandou-os desligar e reclamou do clique na forja; um mestre que os liga
+  // sozinho voltaria a comprar a aposta sem ele pedir. Ligam-se à mão, um a um.
+  const SWITCHES_APOSTA = ['autoRefino', 'autoMontar'];
+  /** Chaves de TODOS os switches (menos o mestre). `comAposta` inclui o Ornn. */
+  function chavesSwitches(comAposta) {
+    const ks = [];
+    for (const nome of Object.keys(INTERRUPTORES)) {
+      const s = INTERRUPTORES[nome];
+      if (!s || !s.cfg || s.cfg === 'enabled') continue;
+      if (!comAposta && SWITCHES_APOSTA.indexOf(s.cfg) >= 0) continue;
+      if (ks.indexOf(s.cfg) < 0) ks.push(s.cfg);
+    }
+    return ks;
+  }
+  /** Retrato do que o dono escolheu em cada switch (undefined conta como ligado). */
+  function guardarEscolhasSwitches() {
+    const snap = {};
+    for (const k of chavesSwitches(true)) snap[k] = cfg[k] !== false;
+    return snap;
+  }
+  /** Devolve ao cfg o retrato guardado. Devolve quantas chaves foram repostas. */
+  function aplicarEscolhasSwitches(snap) {
+    if (!snap || typeof snap !== 'object') return 0;
+    let n = 0;
+    for (const k of chavesSwitches(true)) {
+      if (Object.prototype.hasOwnProperty.call(snap, k)) { cfg[k] = snap[k] !== false; n++; }
+    }
+    return n;
+  }
+  /** Botão "Desligar tudo" dos switches filhos. O mesmo botão religa o que estava ligado. */
+  function alternarTodosSwitches() {
+    if (!cfg._todosOff) {
+      cfg._escolhas = guardarEscolhasSwitches();   // o que ele tinha escolhido
+      for (const k of chavesSwitches(true)) cfg[k] = false;
+      cfg._todosOff = true;
+    } else {
+      aplicarEscolhasSwitches(cfg._escolhas);
+      cfg._todosOff = false;
+    }
+    persistirCfg();
+    logEvent('switches', { todos: true, desligados: !!cfg._todosOff });
+    return estadoSwitches();
+  }
+  /** Estado para a GUI: quantos estão ligados e se o "Desligar tudo" está ativo. */
+  function estadoSwitches() {
+    const ks = chavesSwitches(true);
+    const ligados = ks.filter((k) => cfg[k] !== false).length;
+    const guardados = cfg._escolhas ? ks.filter((k) => cfg._escolhas[k] !== false).length : null;
+    return { todosOff: !!cfg._todosOff, total: ks.length, ligados, guardados };
+  }
+
   /** Este interruptor pode agir AGORA? Sobe a cadeia de pais e avalia a excepcao.
    *  Devolve { pode, porque } — o `porque` e para a GUI poder dizer PORQUE esta desligado. */
   function podeFazer(nome) {
     let n = String(nome || ''), guarda = 0;
     while (n && INTERRUPTORES[n] && guarda++ < 16) {
       const s = INTERRUPTORES[n];
+      // SWITCH SEM TOGGLE (ex.: a vigia do mercado): não depende de NENHUM switch. O dono foi
+      // explícito (2026-10-20): "é pra extensão gravar as coisas ou vigiar mesmo com switches off".
+      try { if (s.ignorarCfg) return { pode: true, porque: null }; } catch { /* ignore */ }
       try { if (!s.ignorarCfg && s.cfg && cfg[s.cfg] === false) return { pode: false, porque: n + ': desligado pelo dono' }; } catch { /* ignore */ }
       try { if (s.excecao && s.excecao()) return { pode: false, porque: n + ': excepcao activa' }; } catch { /* ignore */ }
       n = s.pai;
@@ -4416,10 +4509,10 @@ const CFG_VER = 2;
     const src = b.querySelector('img')?.getAttribute('src') || '';
     const alt = String(b.getAttribute?.('data-id') || b.dataset?.escolher || b.dataset?.id || '');
     const baseCandidato = (src.match(/\/(\d+)\./) || alt.match(/(\d+)/) || [])[1] || null;
-    if (baseCandidato && ehLendarioDaBuild(baseCandidato)) return { ok: false, motivo: 'lendario da build da classe — nao anuncia' };
+    if (baseCandidato && ehLendarioDaBuild(baseCandidato)) return { ok: false, motivo: 'lendario da build da classe, nao anuncia' };
     // PRIORIDADE EXTREMA (3031/3089, automation.js:47): o mercado também não toca neles — nem duplicados.
-    if (baseCandidato && ehPrioridadeExtrema(baseCandidato)) { const e = prioExtremaDe(baseCandidato); return { ok: false, motivo: `PRIORIDADE EXTREMA (${e.motivo}) — nao anuncia [${e.fonte}]` }; }
-    if (!baseCandidato) return { ok: false, motivo: 'slot sem id legivel — nao anuncia sem identificar o item' };
+    if (baseCandidato && ehPrioridadeExtrema(baseCandidato)) { const e = prioExtremaDe(baseCandidato); return { ok: false, motivo: `PRIORIDADE EXTREMA (${e.motivo}), nao anuncia [${e.fonte}]` }; }
+    if (!baseCandidato) return { ok: false, motivo: 'slot sem id legivel, nao anuncia sem identificar o item' };
     b.click();
     await humano(200);
     const inp = m.querySelector('#vender-preco');
@@ -5689,7 +5782,7 @@ const CFG_VER = 2;
     }
     // D (TK-01-42): cada celula traz as JANELAS em que foi medida e o AVISO de nao-comparabilidade
     // entre janelas (duas medidas de execucoes diferentes nao se comparam directamente).
-    return [...seen.values()].map((s) => { const p = preverBuild(s.itens, regiaoId); const jan = Array.isArray(s.janelas) ? s.janelas : []; return { ...s, ...p, janelas: jan, avisoJanela: jan.length > 1 ? 'medida em ' + jan.length + ' janelas — nao comparavel directamente' : null }; });
+    return [...seen.values()].map((s) => { const p = preverBuild(s.itens, regiaoId); const jan = Array.isArray(s.janelas) ? s.janelas : []; return { ...s, ...p, janelas: jan, avisoJanela: jan.length > 1 ? 'medida em ' + jan.length + ' janelas, nao comparavel directamente' : null }; });
   }
 
   /** Ranking NORMALIZADO: TODAS as builds medidas no MESMO patamar (tier A, refino 0) — comparação justa.
@@ -6044,9 +6137,9 @@ const CFG_VER = 2;
 
   /** Anuncia um item da mochila pelo id-base (aba Vender), com preço. */
   async function anunciarItemPorBase(base, preco) {
-    if (ehLendarioDaBuild(base)) return { ok: false, motivo: 'lendario da build da classe — nao anuncia' };   // REGRA DO DONO
+    if (ehLendarioDaBuild(base)) return { ok: false, motivo: 'lendario da build da classe, nao anuncia' };   // REGRA DO DONO
     // PRIORIDADE EXTREMA (3031/3089, automation.js:47): nunca anunciado, NEM DUPLICADO (regra do dono).
-    if (ehPrioridadeExtrema(base)) { const e = prioExtremaDe(base); return { ok: false, motivo: `PRIORIDADE EXTREMA (${e.motivo}) — nao anuncia [${e.fonte}]` }; }
+    if (ehPrioridadeExtrema(base)) { const e = prioExtremaDe(base); return { ok: false, motivo: `PRIORIDADE EXTREMA (${e.motivo}), nao anuncia [${e.fonte}]` }; }
     const m = mercadoEl(true); if (!m) return { ok: false, motivo: 'sem mercado' };
     if (m.hidden) { press('j'); await humano(500); }
     m.querySelector('[data-aba="vender"]')?.click();
@@ -6496,7 +6589,7 @@ const CFG_VER = 2;
         // CALIBRAÇÃO sobre a direcção que o motor fixa (o valor da passiva da Liandry já entra
         // a +140 pelo texto; a do Eco não tem regra em `valorPassiva`).
         '6655': { mult: 1.9, why: 'Eco de Luden: a cada 6 s a habilidade bate em até 3 inimigos, 100 + 10% do AP [motor.js:1945]' },
-        '3742': { mult: 1.2, why: 'Couraça do Defunto: +40 de dano fixo a cada 4 s — pesa mais contra vida baixa [motor.js:1698]' },
+        '3742': { mult: 1.2, why: 'Couraça do Defunto: +40 de dano fixo a cada 4 s, pesa mais contra vida baixa [motor.js:1698]' },
       },
     },
     chefe: {
@@ -6504,13 +6597,13 @@ const CFG_VER = 2;
       itens: {
         '3036': { mult: 2.2, why: 'Lembranças do Lorde Dominik: 30% de penetração de armadura [motor.js:539] + 15% de dano CONTRA CHEFES [motor.js:1214]' },
         '3031': { mult: 1.7, why: 'Gume do Infinito: +40% no dano do acerto crítico [motor.js:515 → motor.js:1213]' },
-        '3071': { mult: 1.5, why: 'Cutelo Negro: −6% de armadura do alvo por ataque, até 30% — só rende em luta longa [motor.js:1705]' },
-        '3153': { mult: 1.45, why: 'Espada do Rei Destruído: 5% da vida atual do alvo, com teto de 3× a curva — o chefe bate no teto [motor.js:1702, motor.js:1191]' },
-        '6653': { mult: 1.4, why: 'Liandry: queima 1,5% da vida máxima por segundo, com teto — o chefe bate no teto [motor.js:1207, motor.js:1191]' },
+        '3071': { mult: 1.5, why: 'Cutelo Negro: −6% de armadura do alvo por ataque, até 30%, só rende em luta longa [motor.js:1705]' },
+        '3153': { mult: 1.45, why: 'Espada do Rei Destruído: 5% da vida atual do alvo, com teto de 3× a curva, o chefe bate no teto [motor.js:1702, motor.js:1191]' },
+        '6653': { mult: 1.4, why: 'Liandry: queima 1,5% da vida máxima por segundo, com teto, o chefe bate no teto [motor.js:1207, motor.js:1191]' },
         '3135': { mult: 1.35, why: 'Cajado do Vazio: 40% de penetração mágica [motor.js:529]' },
-        '3065': { mult: 1.2, why: 'Rookern: +25% em TODA a cura recebida — luta longa [motor.js:1286]' },
+        '3065': { mult: 1.2, why: 'Rookern: +25% em TODA a cura recebida, luta longa [motor.js:1286]' },
         '6333': { mult: 1.25, why: '30% do dano recebido vira sangramento; abater cura 15% [motor.js:1790, motor.js:2701]' },
-        '3026': { mult: 1.3, why: 'Renascimento: volta com 50% da vida — morrer no chefe custa muito [motor.js:2729]' },
+        '3026': { mult: 1.3, why: 'Renascimento: volta com 50% da vida, morrer no chefe custa muito [motor.js:2729]' },
         '3053': { mult: 1.25, why: 'Escudo de 60% da vida bónus abaixo de 30% de vida [motor.js:2725]' },
         '3157': { mult: 1.2, why: 'Stasis: invulnerável 2,5 s abaixo de 25% de vida [motor.js:2722]' },
       },
@@ -6723,7 +6816,7 @@ const CFG_VER = 2;
     // (0,15×700 + 15×7 = 210 de valor). O 3135 NÃO tem campo — o motor dá os 40% por
     // `tem('3135')` (motor.js:542) — logo o texto é o ÚNICO portador e continua a contar.
     if (it.penMag == null) v += n(/([\d,]+)%\s*de penetração mágica/i) * (ap ? 7 : 1);
-    if (/queimam o alvo/i.test(e)) v += ap ? 140 : 20;                        // Liandry (queima % da vida — ótimo no chefe)
+    if (/queimam o alvo/i.test(e)) v += ap ? 140 : 20;                        // Liandry (queima % da vida, ótimo no chefe)
     if (/menos de 40% de Vida/i.test(e)) v += ap ? 90 : 15;                   // Chama Sombria (execução)
     v += n(/próximo ataque causa \+([\d,]+)%/i) * (ap ? 2.2 : 1.2);           // Lich
     v += n(/Dano de Ataque total em ([\d,]+)%/i) * (ap ? 1 : 9);              // AD%
@@ -7397,8 +7490,8 @@ const CFG_VER = 2;
       k === 'forca' ? (magia ? 'motor.js:467 (+2 Poder) + motor.js:516' : 'motor.js:455 (+1,2 dano) + motor.js:516')
         : k === 'agilidade' ? 'motor.js:461 (+0,8% vel. ataque) + motor.js:547'
           : k === 'foco' ? 'motor.js:463 (−0,4% recarga) + motor.js:550'
-            : k === 'vitalidade' ? 'motor.js:457 (+20 vida) — sem dano'
-              : 'motor.js:459 (+1,5 armadura/+1 RM) — sem dano' }))
+            : k === 'vitalidade' ? 'motor.js:457 (+20 vida), sem dano'
+              : 'motor.js:459 (+1,5 armadura/+1 RM), sem dano' }))
       .sort((a, b) => b.danoPorPonto - a.danoPorPonto);
   }
 
@@ -7477,7 +7570,7 @@ const CFG_VER = 2;
         logEvent('evento:abate', { nome: d.nome || null, ouro: Number.isFinite(ouro) ? ouro : null, xp: Number.isFinite(xp) ? xp : null, chefe: !!d.chefe, furioso: !!d.furioso, itens: (d.itens || []).length, gemas: (d.gemas || []).length });
         return;
       }
-      if (tipo === 'chefeInvoca') {           // motor.js:3142 — as 2 larvas do Barão
+      if (tipo === 'chefeInvoca') {           // motor.js:3142, as 2 larvas do Barão
         if (c) { c.chefeInvoca = (c.chefeInvoca || 0) + 1; }
         // TK-02-148: as 2 larvas (motor.js:3141-3142) CONTAM para a Voracidade (motor.js:1811, sem
         // guarda `i.invocado`) e NAO dao loot (motor.js:1792) — nao passam pelo log, entram aqui.
@@ -8611,7 +8704,7 @@ const CFG_VER = 2;
       else if (melhorSub && cbiMuleta > cbiIdeal * 1.3 && melhorSub.ganhoPct >= 60) acao = `FARMAR ${esperaMuletaMin}min → MULETA ${melhorSub.nome} (${melhorSub.ganhoPct}% do ideal); ideal depois`;
       else if (of && esperaMin != null && esperaMin <= 60) acao = `FARMAR ${esperaMin}min → IDEAL (≤1h)`;
       else if (of) acao = `FARMAR ${esperaMin}min → IDEAL`;
-      else acao = melhorSub ? `SEM OFERTA do ideal; muleta ${melhorSub.nome} em ${esperaMuletaMin}min` : 'SEM OFERTA — farmar o drop';
+      else acao = melhorSub ? `SEM OFERTA do ideal; muleta ${melhorSub.nome} em ${esperaMuletaMin}min` : 'SEM OFERTA, farmar o drop';
       decisao.push({ item: b.nome, id: b.id, poderIdeal: pIdeal, ofertaIdeal: of, cabeIdeal, esperaMin, muleta: melhorSub, esperaMuletaMin, cbiIdeal: Math.round(cbiIdeal), cbiMuleta: Math.round(cbiMuleta), acao });
     }
     decisao.sort((a, b) => (a.acao.startsWith('COMPRAR') ? 0 : 1) - (b.acao.startsWith('COMPRAR') ? 0 : 1));
@@ -8675,7 +8768,7 @@ const CFG_VER = 2;
       if (fora && fora.hidden === false) { return { ok: false, motivo: 'nao esta no Mercador (botoes desactivados)' }; }
       mm?.querySelector('[data-aba="comprar"]')?.click(); await esperar(650);
       const ofertas = lerOfertasCompra();
-      if (!ofertas.length) { /* os grupos carregam sob demanda — segue mesmo assim */ }
+      if (!ofertas.length) { /* os grupos carregam sob demanda, segue mesmo assim */ }
       const ideal = cfg.buildPorFase !== false ? buildDaFase(faseAtual()) : buildIdeal();
       const tenho = new Set(readEquip().map((e) => e.base));
       try { for (const i of (scanBag().items || [])) if (i.kind === 'item') tenho.add(i.base); } catch { /* ignore */ }
@@ -9323,7 +9416,7 @@ const CFG_VER = 2;
     const teorico = { itens: set, score: Math.round(melhor) };
     let escolhido = teorico, fonte = 'teorico';
     try {
-      if (contexto === 'mob') {   // FARM: o empírico manda (a teoria inverte o ranking de farm — ex.: Chama)
+      if (contexto === 'mob') {   // FARM: o empírico manda (a teoria inverte o ranking de farm, ex.: Chama)
         const rank = rankBuildsTestadas(id).filter((r) => r.mob && r.mob.goldMin != null && (r.confianca?.mob || 0) >= 2);
         rank.sort((a, b) => (b.mob.goldMin || 0) - (a.mob.goldMin || 0));
         if (rank[0]) { escolhido = { itens: rank[0].itens.map(String), score: Math.round(rank[0].mob.goldMin) }; fonte = 'empirico'; }
@@ -9559,7 +9652,11 @@ const CFG_VER = 2;
     // isso a barra mudava a cada 2 s") — o dono diz que era o comportamento PERFEITO, logo a
     // ordem passa a ser dele. Com `cfg.barraPorDisponibilidade === false` volta a ordenação
     // estável de hoje (DPS/rank/ordem do motor), que é o que os testes do banco fixam.
-    const porDisp = cfg.barraPorDisponibilidade !== false;
+    // PREVIEW (GUI) NUNCA ordena por DISPONIBILIDADE: a recarga muda a cada segundo e a lista
+    // "Barra ideal" da aba Personagem ficava a alternar entre conjuntos (queixa do dono,
+    // 2026-10-20: "por que isso fica alternando no gui? ajeita"). O motor em jogo continua a
+    // usar a disponibilidade; o que a GUI MOSTRA é a ordenação estável por dano da fase.
+    const porDisp = !opt.preview && cfg.barraPorDisponibilidade !== false;
     // RECARGA RESTANTE por skill, lida do HUD (`readSkills().bar[].cd`, em segundos; 0 = pronta).
     // Uma skill FORA da barra não tem recarga legível no HUD -> 0 (disponível): é a regra do
     // dono ("usava tudo disponivel"). O que NÃO se pode fazer é re-adicionar uma skill que
@@ -10115,9 +10212,13 @@ const CFG_VER = 2;
   // `estaPausado()`, portanto vale em TODOS os pontos que consultam a pausa.
   let _pausaAte = 0;
   function pausarPor(ms) {
+    // O prazo devolvido é EXACTAMENTE o que foi aplicado. Antes era medido de novo com
+    // `Date.now()`, e se o relógio andasse 1 ms entre as duas chamadas o teste (e a GUI)
+    // viam 999 em vez de 1000. Determinístico agora.
+    const dur = Math.max(1000, Math.min(600000, Number(ms) || 60000));
     pausar();
-    _pausaAte = Date.now() + Math.max(1000, Math.min(600000, Number(ms) || 60000));
-    return { ok: true, retomaEmMs: _pausaAte - Date.now() };
+    _pausaAte = Date.now() + dur;
+    return { ok: true, retomaEmMs: dur, retomaEm: _pausaAte };
   }
   /** PORTÃO ÚNICO de escrita: qualquer acção que mexa no jogo tem de passar por aqui.
    *  Usa isto (e não `estaPausado`) nos pontos de execução — foi por as acções correrem
@@ -10350,7 +10451,7 @@ const CFG_VER = 2;
         if (Date.now() - _ultimaBase < 20000) return;
         _ultimaBase = Date.now();
         const regF = regiaoIdeal();
-        if (regF) { logEvent('base', { farmar: 'FORCADO (modo farm — a base não fecha o que falta)', regiao: regF, falta, restaMin: Math.ceil((_farmForcadoAte - Date.now()) / 60000) }); marcarAtiva(); viajarPara(regF); }
+        if (regF) { logEvent('base', { farmar: 'FORCADO (modo farm, a base não fecha o que falta)', regiao: regF, falta, restaMin: Math.ceil((_farmForcadoAte - Date.now()) / 60000) }); marcarAtiva(); viajarPara(regF); }
         return;
       }
       // NA BASE com algo pendente → roda a rotina AGORA (antes só esperava o AFK de 3 min)
@@ -10395,7 +10496,7 @@ const CFG_VER = 2;
                 _recallsSemFechar = 0;
                 _farmForcadoAte = Date.now() + FARM_FORCADO_MS;
                 const reg = regiaoIdeal();
-                logEvent('base', { farmar: 'FORCADO (3 visitas sem fechar nada — modo farm)', regiao: reg, falta: faltaAgora, restou: (res && res.restou) || null, minutos: FARM_FORCADO_MS / 60000 });
+                logEvent('base', { farmar: 'FORCADO (3 visitas sem fechar nada, modo farm)', regiao: reg, falta: faltaAgora, restou: (res && res.restou) || null, minutos: FARM_FORCADO_MS / 60000 });
                 if (reg && podeFazer('autoplay').pode && !ocupado && !pausado && !baseLock) { marcarAtiva(); viajarPara(reg); }   // hierarquia, não cfg.enabled
                 return;
               }
@@ -10769,23 +10870,48 @@ const CFG_VER = 2;
 
   // expõe helpers de leitura para o gui.js (mesmo mundo isolado)
   /** Aplica ajustes no cfg em runtime E persiste (mesmo formato que o loader lê). */
-  function setConfig(patch) {
-    if (patch && typeof patch === 'object') {
-      // A GUI passa por AQUI para ligar/desligar o interruptor-mestre. Se o dono mexer nele antes
-      // do prazo da "primeira vez", o prazo NÃO o volta a ligar sozinho (a decisão dele manda).
-      if (!_pvAuto && Object.prototype.hasOwnProperty.call(patch, 'enabled')) _pvMexeu = true;
-      Object.assign(cfg, patch);
-    }
+  /** Escreve `cfg` no storage (uma só verdade para a GUI, o motor e o reload). */
+  function persistirCfg() {
     try {
       chrome.storage.local.get(STORAGE_KEY, (r) => {
         const cur = (r && r[STORAGE_KEY]) || {};
         chrome.storage.local.set({ [STORAGE_KEY]: { ...cur, enabled: cfg.enabled, automation: { ...(cur.automation || {}), ...cfg } } });
       });
     } catch { /* ignore */ }
+  }
+  function setConfig(patch) {
+    if (patch && typeof patch === 'object') {
+      // A GUI passa por AQUI para ligar/desligar o interruptor-mestre. Se o dono mexer nele antes
+      // do prazo da "primeira vez", o prazo NÃO o volta a ligar sozinho (a decisão dele manda).
+      if (!_pvAuto && Object.prototype.hasOwnProperty.call(patch, 'enabled')) _pvMexeu = true;
+      // MESTRE = TUDO (ordem de 2026-10-20): ligar guarda as escolhas dele e liga todos os
+      // switches; desligar devolve exatamente as escolhas que ele tinha.
+      if (Object.prototype.hasOwnProperty.call(patch, 'enabled')) {
+        const antesLigado = cfg.enabled !== false;
+        const querLigado = patch.enabled !== false;
+        if (querLigado && !antesLigado) {
+          cfg._escolhas = guardarEscolhasSwitches();
+          for (const k of chavesSwitches(false)) cfg[k] = true;
+          cfg._todosOff = false;
+        } else if (!querLigado && antesLigado) {
+          aplicarEscolhasSwitches(cfg._escolhas);
+          cfg._todosOff = false;
+        }
+      }
+      // Toda a escolha INDIVIDUAL do dono fica guardada: é isso que o mestre devolve ao desligar.
+      for (const k of chavesSwitches(true)) {
+        if (Object.prototype.hasOwnProperty.call(patch, k)) {
+          if (!cfg._escolhas || typeof cfg._escolhas !== 'object') cfg._escolhas = guardarEscolhasSwitches();
+          cfg._escolhas[k] = patch[k] !== false;
+        }
+      }
+      Object.assign(cfg, patch);
+    }
+    persistirCfg();
     return cfg;
   }
 
-  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
+  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },

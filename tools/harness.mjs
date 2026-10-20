@@ -171,7 +171,7 @@ async function lutar(o) {
     mecanica: { carregou: eventos.chefeCarrega || 0, interrompeu: eventos.chefeInterrompido || 0, golpeou: eventos.chefeGolpe || 0 },
     eventos,
     atrib: { hp: Math.round(a.vida), ad: n1(a.ad), ap: n1(a.ap), armadura: n1(a.armadura), rm: n1(a.rm),
-      cdr: n1(a.cdr || 0), penMag: n1(a.penMagica || 0), penArmadura: n1(a.penArmadura || 0), as: n1(a.asVel || 0) },
+      cdr: n1(a.reducaoRecarga || 0), penMag: n1(a.penMagica || 0), penArmadura: n1(a.penArmadura || 0), as: n1(a.velAtaque || 0) },
     inimigosRestantes: c.inimigos.filter((i) => i.hp > 0).length,
   };
 }

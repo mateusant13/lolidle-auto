@@ -34,6 +34,10 @@
     emergencySeconds: 2.5,    // HP/DPS_recebido abaixo disto = emergência
     bossEmergencySeconds: 4,
     bossMarginPct: 0.12,      // dispara 12% mais cedo durante chefe
+    // DECISÃO INTELIGENTE: interruptor próprio, e SÓ vale no PvE do mapa. Fora dele
+    // (PvP, Runeterra, Arena, dungeon) a poção é por limiar de vida, porque no PvP a
+    // cura é 30% e a exaustão é 6 s (motor.js:44) e a cura das skills cai a 65%.
+    pocaoSmart: true,
     cooldownMs: 1100,         // EXAUSTAO do jogo = 1s (folga)
     pollMs: 300,
     windowMs: 5000,
@@ -134,6 +138,24 @@ let config = structuredClone(DEFAULT_CONFIG);
     return false;
   }
 
+  /** ONDE a poção está a ser decidida, lido do MOTOR (`estadoVivo` = o snapshot do inject.js):
+   *  `pvp` só é verdade em luta contra jogador (`arena.combatePvp > 0`, motor.js:1410);
+   *  `foraDoMapa` cobre Runeterra/Arena/dungeon. Sem leitura, cai no texto do local. */
+  function modoJogo() {
+    try {
+      const e = window.__lolidleAuto && window.__lolidleAuto.estadoVivo && window.__lolidleAuto.estadoVivo();
+      if (e) {
+        return {
+          local: e.local || null,
+          pvp: (Number(e.combatePvp) || 0) > 0,
+          foraDoMapa: e.local === 'arena' || e.local === 'aram' || !!e.dg,
+        };
+      }
+    } catch { /* motor antigo */ }
+    const r = emRuneterra();
+    return { local: null, pvp: false, foraDoMapa: r };
+  }
+
   function potionButton(k) {
     return document.querySelector(`#hud-pocoes [data-pocao="${k}"]`)
       || document.querySelector(`#pocoes [data-pocao="${k}"]`);
@@ -199,7 +221,7 @@ let config = structuredClone(DEFAULT_CONFIG);
   }
 
   let cargaAtual = null;   // mecânica carregada do chefe (aviso do cena.js, via inject.js)
-  let bossHp = null;       // HP do chefe (fração 0..1) — fonte da verdade (inject: chefeBarra)
+  let bossHp = null;       // HP do chefe (fração 0..1), fonte da verdade (inject: chefeBarra)
   let dmgOutTotal = 0, dmgInTotal = 0;                  // dano REAL acumulado (eventos do jogo)
   const dmgFonteTotal = {};                             // dano REAL por fonte (Q/W/E/R/ataque/queima/item...)
   const danoHist = [];                                  // amostras {at,out,in,porSkill} p/ o DPS por luta
@@ -334,7 +356,7 @@ let config = structuredClone(DEFAULT_CONFIG);
     // FONTE DA VERDADE = BARRA DE HP (não os números do canvas, que se repetem/erram).
     // A barra é universal: toda cura e todo dano passam por ela. Os números coloridos
     // do canvas servem só p/ ATRIBUIR (cor/poção), nunca p/ decidir.
-    const pts = ev.hp;                       // [{t, v: cur}] — preenchido no tick a partir da barra
+    const pts = ev.hp;                       // [{t, v: cur}], preenchido no tick a partir da barra
     let w = config.windowMs / 1000;
     if (pts.length >= 2) { const span = (pts[pts.length - 1].t - pts[0].t) / 1000; if (span > 0.5) w = span; }
     let quedas = 0, subidas = 0;
@@ -392,20 +414,16 @@ let config = structuredClone(DEFAULT_CONFIG);
       if (k) return { k, reason: `emergência (ttd ${ttd === Infinity ? '∞' : ttd.toFixed(1)}s)` };
     }
 
-    // PvP (Runeterra) = LIMIAR DE HP, não smart — pedido do dono, 2026-10-19:
-    //   Runeterra é o mapa de PvP (mundo aberto). Lá a poção é outra: cura 30% e a
-    //   exaustão é 6 s (motor.js:44, POCAO_PVP) — o smart, que mede DPS recebido / cura
-    //   das skills, não se aplica bem a PvP. A decisão em PvP é por LIMIAR DE HP: em
-    //   Runeterra entramos SEMPRE no ramo 'strongest', mesmo com config.mode === 'bands',
-    //   e saltamos o smart. A rede de emergência (acima) e a margem de chefe
-    //   (lostOf/triggerHp) continuam valendo.
-    const emPvpMapa = emRuneterra();
-    const pvp = config.mode === 'strongest' || emPvpMapa;
-
-    // SMART (PvE, padrão): cobre o dano real. Se não conseguir decidir (sem medição), cai pro limiar.
-    // SEMPRE ligado (pedido do dono, 2026-10-19): não há interruptor — um `smart:false`
-    // antigo do storage não o desliga (o merge força out.smart = true).
-    if (!pvp) {
+    // LIMIAR em tudo o que NÃO é o PvE do mapa (ordem do dono, 2026-10-20):
+    //   - PvP real (`combatePvp > 0`, motor.js:1410): cura 30% e exaustão 6 s (motor.js:44);
+    //   - Runeterra (mapa aberto), Arena e dungeon: cura das skills a 65% (motor.js:1390)
+    //     e a poção não se mede pelo golpe do monstro.
+    // O modo `strongest` da configuração também força o limiar.
+    const mj = modoJogo();
+    const emLimiar = config.mode === 'strongest' || mj.pvp || mj.foraDoMapa || emRuneterra();
+    // SMART: só no PvE do mapa E com o interruptor ligado.
+    const smartOn = config.pocaoSmart !== false;
+    if (!emLimiar && smartOn) {
       let d = null;
       try { d = window.__lolidleAuto && window.__lolidleAuto.decidirPocao && window.__lolidleAuto.decidirPocao(); } catch { d = null; }
       if (d) {
@@ -415,14 +433,15 @@ let config = structuredClone(DEFAULT_CONFIG);
       // d === null → não decidiu (sem HP medido) → cai pro limiar (segurança)
     }
 
-    // Limiar de HP (modo 'strongest' OU Runeterra/PvP): da mais forte para a mais fraca
-    if (pvp) {
+    // Limiar de HP (modo 'strongest', PvP, Runeterra, Arena e dungeon)
+    if (emLimiar) {
+      const etiqueta = mj.pvp ? 'PvP ' : mj.foraDoMapa ? 'fora do mapa ' : '';
       for (const k of ORDER) {
         if (!config.potions[k]?.enabled) continue;
-        if (hp <= triggerHp(k, max, ctx.boss) && available(k)) return { k, reason: `${emPvpMapa ? 'PvP ' : ''}mais forte (HP ≤ ${Math.round(triggerHp(k, max, ctx.boss))})` };
+        if (hp <= triggerHp(k, max, ctx.boss) && available(k)) return { k, reason: `${etiqueta}mais forte (HP ≤ ${Math.round(triggerHp(k, max, ctx.boss))})` };
       }
       if (config.combine && available('vida') && available('vidaF') && hp <= triggerHp('vidaS', max, ctx.boss)) {
-        return { k: chainNext(), reason: `${emPvpMapa ? 'PvP ' : ''}combina normal+forte (suprema bloqueada)` };
+        return { k: chainNext(), reason: `${etiqueta}combina normal+forte (suprema bloqueada)` };
       }
       return null;
     }
@@ -594,7 +613,7 @@ let config = structuredClone(DEFAULT_CONFIG);
   let _hpObsAt = 0, _hpObsVal = null;
   const onHpChange = () => {
     const now = Date.now();
-    if (now - _hpObsAt < 100) return;                 // throttle 10 Hz (o cooldown da poção é 1 s — sobra)
+    if (now - _hpObsAt < 100) return;                 // throttle 10 Hz (o cooldown da poção é 1 s, sobra)
     _hpObsAt = now;
     const hp = readHP();
     if (!hp || !Number.isFinite(hp.cur)) return;
@@ -624,8 +643,8 @@ let config = structuredClone(DEFAULT_CONFIG);
     const s = saved && typeof saved === 'object' ? saved : {};
     const out = { ...DEFAULT_CONFIG, ...s, potions: {} };
     for (const k of ORDER) out.potions[k] = { ...DEFAULT_CONFIG.potions[k], ...(s.potions?.[k] || {}) };
-    // SMART SEMPRE LIGADO (pedido do dono, 2026-10-19): sem interruptor, sem toggle na GUI —
-    // um `smart: false` num storage antigo NÃO pode desligar a decisão smart.
+    // O interruptor da decisão inteligente é `pocaoSmart` (ordem do dono, 2026-10-20).
+    // `smart` fica forçado a true só para não haver duas verdades no storage antigo.
     out.smart = true;
     // O modo 'strongest' era um interruptor da GUI antiga. O PvP (Runeterra) passou a ser
     // detectado pelo mapa e usa o limiar automaticamente; um storage antigo com 'strongest'

@@ -445,15 +445,15 @@
         co[s] = c;
       }
       meta.curva = faltou ? CURVA_FALLBACK : co;
-      meta.curvaErro = faltou ? 'coeficiente de ' + faltou + ' nao reproduz o motor (a forma da curva mudou?) — fallback congelado' : null;
+      meta.curvaErro = faltou ? 'coeficiente de ' + faltou + ' nao reproduz o motor (a forma da curva mudou?), fallback congelado' : null;
     } else {
       meta.curvaPorNivel = null;
       meta.curva = CURVA_FALLBACK;   // chaves actuais como fallback, com o motivo no log
-      meta.curvaErro = 'CURVA nao avaliada: ' + ((av && av.erro) || 'motor indisponivel') + ' — fallback congelado';
+      meta.curvaErro = 'CURVA nao avaliada: ' + ((av && av.erro) || 'motor indisponivel') + ', fallback congelado';
     }    meta.mochila = { inicio: M.MOCHILA_INICIO, niveis: M.MOCHILA_GANHO.niveis, espacos: M.MOCHILA_GANHO.espacos };
     meta.ciclo = M.CICLO; meta.fuso = M.FUSO;
-    meta.nivelDif = M.NIVEL_DIF || null;        // fator de nível (livre/+dano/cap/piso) — direto do motor
-    meta.rmMonstro = M.RM_MONSTRO != null ? M.RM_MONSTRO : null;   // motor.js:1194 — RM dos monstros = 60% da armadura (lido, nao copiado)
+    meta.nivelDif = M.NIVEL_DIF || null;        // fator de nível (livre/+dano/cap/piso), direto do motor
+    meta.rmMonstro = M.RM_MONSTRO != null ? M.RM_MONSTRO : null;   // motor.js:1194, RM dos monstros = 60% da armadura (lido, nao copiado)
     meta.habChefe = M.HAB_CHEFE || null;         // carrega/espera de cada mecânica do chefe
     // grupoSpawn (motor.js:1137) e respawn (motor.js:1646 wave limpa / :3069 troca de
     // local) sao LITERAIS INLINE no motor e nao sao exportados: a unica forma de os
@@ -673,6 +673,12 @@
         return {
           v: 1, at: Date.now(), t: n1(combate.tempo),
           local: (cena && cena.local && cena.local.id) || null, arena: !!(cena && cena.arena),
+          // PvP REAL e dungeon: o motor só trata a poção como PvP quando
+          // `arena.combatePvp > 0` (motor.js:1410), e a cura das skills cai a 65%
+          // (motor.js:1390). Sem estes dois campos a extensão adivinhava "PvP" só por
+          // estar em Runeterra (o mapa aberto), o que não é a mesma coisa.
+          combatePvp: n1((combate.arena && combate.arena.combatePvp) || 0),
+          dg: !!combate.dg,
           // POSIÇÃO REAL (mundo MAIN) para a extensão não andar às cegas na Fonte: o
           // `darius` é o boneco do jogador e `npcs` são os NPCs do mapa (mundo.js). Sem
           // isto, `abrirCofreTesoureira` subia 8 tiles a partir de uma posição SUPOSTA

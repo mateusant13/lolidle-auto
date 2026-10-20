@@ -132,5 +132,35 @@ export const suite = {
       a2.setConfig({ autoVender: false });
       t.check('I10: sem campeao e autoVender:false -> vender NAO pode', a2.podeFazer('vender').pode === false);
     }
+
+    /* I11 - MESTRE = TUDO (ordem do dono, 2026-10-20): ligar liga todos os switches;
+     * desligar devolve exactamente as escolhas que ele tinha. O botao "desligar tudo"
+     * desliga todos e o MESMO botao religa o conjunto anterior. */
+    {
+      const m3 = criarMundo();
+      const a3 = carregarAutomation(m3);
+      a3.setConfig({ enabled: true });                       // liga: tudo ligado
+      const chaves = a3.chavesSwitches(false);               // sem os dois do Ornn (aposta)
+      t.check('I11: ligar o mestre liga TODOS os switches', chaves.every((k) => a3.getConfig()[k] !== false));
+      a3.setConfig({ autoEquip: false, autoHab: false });    // escolhas dele com o mestre ligado
+      a3.setConfig({ enabled: false });                      // desliga: devolve a escolha
+      const c3 = a3.getConfig();
+      t.check('I11: desligar o mestre devolve as escolhas dele (equipar desligado)', c3.autoEquip === false);
+      t.check('I11: desligar o mestre devolve as escolhas dele (habilidades desligadas)', c3.autoHab === false);
+      t.check('I11: desligar o mestre NAO deixa tudo ligado', c3.autoVender !== false || c3.autoEquip === false);
+      // "desligar tudo": todos off; o mesmo botao religa o que ele tinha escolhido
+      a3.setConfig({ enabled: true });
+      a3.setConfig({ autoEquip: false });
+      const antes = a3.estadoSwitches();
+      const off = a3.alternarTodosSwitches();
+      t.check('I11: desligar tudo desliga todos os switches', off.todosOff === true && off.ligados === 0);
+      t.check('I11: desligar tudo guarda quantos estavam ligados', off.guardados === antes.ligados);
+      const volta = a3.alternarTodosSwitches();
+      t.check('I11: o mesmo botao religa o conjunto anterior', volta.todosOff === false && volta.ligados === antes.ligados);
+      t.check('I11: e a escolha individual volta igual (equipar desligado)', a3.getConfig().autoEquip === false);
+      // a vigia do mercado nao depende de switch nenhum (ordem do dono: vigia mesmo com tudo off)
+      a3.setConfig({ enabled: false, manutencao: false });
+      t.check('I11: a vigia do mercado age mesmo com os switches desligados', a3.podeFazer('vigiarMercado').pode === true);
+    }
   },
 };

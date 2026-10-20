@@ -40,8 +40,8 @@
   const TESTES_KEY = STORAGE_KEY + ':testes';
   // Chaves que o MOTOR grava (automation.js: salvarCofre/salvarOfertas). A GUI lê-as para
   // MOSTRAR o que já foi recolhido, sem obrigar o usuário carregando em botões.
-  const COFRE_KEY = STORAGE_KEY + ':cofre';       // { at, itens }   — conteúdo do cofre
-  const OFERTAS_KEY = STORAGE_KEY + ':ofertas';   // { at, ofertas } — minhas ofertas
+  const COFRE_KEY = STORAGE_KEY + ':cofre';       // { at, itens }, conteúdo do cofre
+  const OFERTAS_KEY = STORAGE_KEY + ':ofertas';   // { at, ofertas }, minhas ofertas
   // ESTADO COMPLETO do jogo (automation.js: `estadoCompleto`, gravado a cada 20 s). A GUI lê-o
   // para mostrar inventário/cofre/habilidades/mobs/bosses SEM varrer o DOM nem custar nada.
   const ESTADO_KEY = STORAGE_KEY + ':estado';     // { at, campeao, inventario, cofre, ... }
@@ -93,7 +93,7 @@
 
   // Nomes de usuário para as ações que o motor dá em MAIÚSCULAS técnicas.
   const ACAO_ITEM = {
-    PROTEGER: { txt: 'Protegido — não sai da mochila', cls: 'proteg' },
+    PROTEGER: { txt: 'Protegido, não sai da mochila', cls: 'proteg' },
     GUARDAR: { txt: 'Fica guardado na mochila', cls: 'guard' },
     GUARDAR_COFRE: { txt: 'Vai para o cofre', cls: 'guard' },
     ANUNCIAR_MERCADO: { txt: 'Vai para o mercado (venda a jogadores)', cls: 'mkt' },
@@ -104,7 +104,7 @@
     [/^enabled=false$/, 'o auto-play está DESLIGADO (liga no switch aqui em cima)'],
     [/^pausado$/, 'está PAUSADO (botão ⏸)'],
     [/^nao-esta-na-base$/, 'você já não está na Fonte'],
-    [/^ocupado/, 'há uma janela do jogo aberta (mercado/loja) — o motor espera que você feche'],
+    [/^ocupado/, 'há uma janela do jogo aberta (mercado/loja), o motor espera que você feche'],
     [/^_baseBusy/, 'a rotina da base está rodando neste momento'],
     [/^baseLock/, 'a rotina da base ficou presa (destranca sozinha em segundos)'],
     [/^idle (\d+)s < (\d+)s$/, 'só sai da Fonte depois de estar parado tempo suficiente'],
@@ -135,6 +135,7 @@
     novidades: 'novidades do jogo', habilidades: 'subir habilidades', atributos: 'atributos',
     runeterra: 'Runeterra (manual)', mercado: 'mercado', compra: 'compra', refino: 'refino',
     ciclo: 'ciclo', wave: 'onda', alvo: 'alvo', loot: 'loot', chefe: 'chefe', xp: 'experiência', ouro: 'ouro',
+switches: 'interruptores',
     'build-fase': 'troca de build (mobs ↔ chefe)',
   };
 
@@ -142,8 +143,8 @@
   let status = null;      // espelho de STATUS_KEY (content.js: HP, poções, última ação)
   let farmStore = null;   // espelho de FARM_KEY
   let aggStore = null;    // espelho de AGG_KEY
-  let cofreStore = null;  // espelho de COFRE_KEY: { at, itens } — última leitura GRAVADA do cofre
-  let ofertasStore = null;// espelho de OFERTAS_KEY: { at, ofertas } — última leitura do mercado
+  let cofreStore = null;  // espelho de COFRE_KEY: { at, itens }, última leitura GRAVADA do cofre
+  let ofertasStore = null;// espelho de OFERTAS_KEY: { at, ofertas }, última leitura do mercado
   let estadoStore = null; // espelho de ESTADO_KEY: estado COMPLETO do jogo (motor grava a cada 20 s)
   let aberto = false, fixado = false, saveTimer = null, tabAtiva = 'painel', ultimoRender = 0, cacheAgora = { at: 0, v: null };
   // Espelho de GUI_KEY (preferências da GUI, não do motor). `bfAberto`: o bloco da build por
@@ -156,9 +157,9 @@
   const q1 = (s) => document.querySelector(s);
   const qa = (s) => Array.prototype.slice.call(document.querySelectorAll(s));
   const esc = (s) => String(s == null ? '' : s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
-  const fmt = (n) => (Number.isFinite(Number(n)) ? Math.round(Number(n)).toLocaleString('pt-BR') : '—');
-  const fmt1 = (n) => (Number.isFinite(Number(n)) ? (Math.round(Number(n) * 10) / 10).toLocaleString('pt-BR') : '—');
-  const pct = (n) => (Number.isFinite(Number(n)) ? (Math.round(Number(n) * 1000) / 10).toFixed(1) + '%' : '—');
+  const fmt = (n) => (Number.isFinite(Number(n)) ? Math.round(Number(n)).toLocaleString('pt-BR') : '-');
+  const fmt1 = (n) => (Number.isFinite(Number(n)) ? (Math.round(Number(n) * 10) / 10).toLocaleString('pt-BR') : '-');
+  const pct = (n) => (Number.isFinite(Number(n)) ? (Math.round(Number(n) * 1000) / 10).toFixed(1) + '%' : '-');
   const fmtDur = (ms) => {
     const s = Math.max(0, Math.round((Number(ms) || 0) / 1000));
     if (s < 60) return s + 's';
@@ -166,7 +167,7 @@
     if (m < 60) return m + 'min ' + String(s % 60).padStart(2, '0') + 's';
     return Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'min';
   };
-  const hora = (t) => (t ? new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—');
+  const hora = (t) => (t ? new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-');
   const limparNivel = (s) => String(s || '?').replace(/\s*n[íi]vel.*$/i, '').replace(/\s*\(.*?\)\s*$/, '').trim();
   const capNome = (id) => { const s = String(id == null ? '' : id).trim(); return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; };
   const potIcon = (k) => (q1('#hud-pocoes [data-pocao="' + k + '"] img') || {}).src || '';
@@ -222,7 +223,7 @@
     return r.ok && r.v != null ? r.v : (rec === undefined ? null : rec);
   }
   const erroLegivel = (erro, nome) => {
-    if (erro === 'sem-motor') return 'o motor do auto-play ainda não carregou nesta página — recarrega com F5';
+    if (erro === 'sem-motor') return 'o motor do auto-play ainda não carregou nesta página, recarrega com F5';
     if (erro === 'sem-funcao') return 'esta versão do motor não tem a função "' + nome + '" (nada foi feito)';
     return String(erro);
   };
@@ -266,7 +267,7 @@
   /** Cópia ordenada (não mexe no array do motor): lendários → maior tier → maior refino. */
   const ordenarItens = (arr) => (Array.isArray(arr) ? arr.slice().sort(ordemItemGui) : []);
   const locais = () => (ler('getMeta', {}) || {}).locais || [];
-  const nomeRegiao = (id) => { const l = locais().find((x) => x.id === id); return l ? limparNivel(l.nome) : String(id || '—'); };
+  const nomeRegiao = (id) => { const l = locais().find((x) => x.id === id); return l ? limparNivel(l.nome) : String(id || '-'); };
   const idRegiaoDe = (txt) => ler('localId', null, txt) || null;
 
   // ============================================================ 2. KIT DE INTERFACE
@@ -363,7 +364,7 @@
     opt = opt || {};
     if (opt.confirma) {
       const sim = await confirmar(opt.confirma.titulo, opt.confirma.linhas, opt.confirma.ok, opt.confirma.perigo);
-      if (!sim) { fbAviso('Cancelado — nada foi feito.'); return null; }
+      if (!sim) { fbAviso('Cancelado, nada foi feito.'); return null; }
     }
     ocupar(btn, true);
     fbCorrer(rotulo + '…');
@@ -746,7 +747,7 @@
       + '  <div class="hrow">'
       + '    <img class="logo" src="' + LOGO + '" alt="LoL Idle">'
       + '    <span class="tit">Auto-play</span>'
-      + '    <span class="pill off" id="ap-estado"><i></i><b>—</b></span>'
+      + '    <span class="pill off" id="ap-estado"><i></i><b>, </b></span>'
       + '    <span class="fase" id="ap-fase">carregando…</span>'
       + '    <span class="sp"></span>'
       + '    <button class="ic" id="ap-pin" title="Fixar aberto (mantém o painel visível)">📌</button>'
@@ -754,11 +755,11 @@
       + '    <button class="ic" id="ap-close" title="Fechar (Esc)">✕</button>'
       + '  </div>'
       + '  <div class="hrow">'
-      + '    <span class="mini"><b id="ap-h-nivel">—</b><small>nível</small></span>'
-      + '    <span class="mini"><b id="ap-h-ouro">—</b><small>ouro</small></span>'
-      + '    <span class="mini"><b id="ap-h-hp">—</b><small>vida</small></span>'
-      + '    <span class="mini wide"><b id="ap-h-local">—</b><small>onde você está</small></span>'
-      + '    <span class="mini wide"><b id="ap-h-regiao">—</b><small>melhor região agora</small></span>'
+      + '    <span class="mini"><b id="ap-h-nivel">, </b><small>nível</small></span>'
+      + '    <span class="mini"><b id="ap-h-ouro">, </b><small>ouro</small></span>'
+      + '    <span class="mini"><b id="ap-h-hp">, </b><small>vida</small></span>'
+      + '    <span class="mini wide"><b id="ap-h-local">, </b><small>onde você está</small></span>'
+      + '    <span class="mini wide"><b id="ap-h-regiao">, </b><small>melhor região agora</small></span>'
       // O CABEÇALHO MOSTRA O ESTADO, NÃO O CONTROLA (pedido do dono, TK-02): o interruptor
       // mestre é UM só e vive no cartão grande AUTO-PLAY, no topo do Painel. Antes havia aqui
       // um switch (`ap-on`) E um botão grande (`ap-panic`) a fazer o mesmo que o cartão — três
@@ -787,7 +788,7 @@
       // ESTADO + CONTROLE primeiro: é a primeira aba. Um indicador de estado e UM botão
       // principal cujo rótulo diz o que muda; pausar/parar tudo ficam secundários.
       + '    <div id="ap-painel-estado"></div>'
-      + '    <p class="intro">PAINEL DE CONTROLE: o que está acontecendo agora, o que o motor vai fazer, o que está bloqueado e os switches que mandam no auto-play. É aqui que se liga e desliga — as ações manuais ficam no fim, em Manutenção manual.</p>'
+      + '    <p class="intro">PAINEL DE CONTROLE: o que está acontecendo agora, o que o motor vai fazer, o que está bloqueado e os switches que mandam no auto-play. É aqui que se liga e desliga, as ações manuais ficam no fim, em Manutenção manual.</p>'
       + '    <div class="grid2">'
       + '      <div id="ap-now-estado"></div>'
       + '      <div id="ap-now-fase"></div>'
@@ -801,14 +802,11 @@
       // cartão AUTO-PLAY (`renderPainelEstado` cria o `#ap-auto-arvore`). Um cartão separado
       // abaixo do mestre era a queixa do dono ("tudo tem que estar dentro do auto play").
       + '    <div id="ap-auto-champ"></div>'
-      + '    <div class="grid2"><div id="ap-auto-obj"></div><div id="ap-auto-regiao"></div></div>'
-      + '    <div id="ap-auto-extras"></div>'
-      + '    <div id="ap-auto-falta"></div>'
+      + '    <div class="grid2"><div id="ap-auto-regiao"></div><div id="ap-auto-falta"></div></div>'
       + '    <div id="ap-now-jogo"></div>'
       + '    <div id="ap-auto-tarefa"></div>'
       + '    <div id="ap-auto-base"></div>'
       + '    <div id="ap-auto-ferramentas"></div>'
-      + '    <div id="ap-auto-diag"></div>'
       + '  </section>'
       + '  <section class="pane" id="ap-t-itens">'
       + '    <p class="intro">Tudo o que é ITEM: a build por fase (mobs ↔ chefe), a build de agora contra a ideal, o que está blindado, a mochila e o cofre. O mercado e o Ornn têm aba própria.</p>'
@@ -845,6 +843,7 @@
       + '  </section>'
       + '  <section class="pane" id="ap-t-ganhos">'
       + '    <p class="intro">FARM e GANHOS: as duas modalidades (o motor escolhe a região, ou você escolhe os itens que quer dropar), o que você está ganhando por minuto, o histórico por região e o que já aconteceu (mortes, chefes, eventos).</p>'
+      + '    <div id="ap-fm-objetivo"></div>'
       + '    <div id="ap-fm-modo"></div>'
       + '    <div id="ap-fm-itens"></div>'
       + '    <div id="ap-fm-agora"></div>'
@@ -867,14 +866,14 @@
       // POÇÃO — a auto-poção tem a sua própria aba. A decisão inteligente é SEMPRE ligada
       // (não há interruptor); em Runeterra (PvP) usa o limiar de vida.
       + '  <section class="pane" id="ap-t-pocao">'
-      + '    <p class="intro">AUTO-POÇÃO: quando usar cada poção, quantas você tem e o que a decisão inteligente está a fazer. A inteligência é <b>sempre ligada</b> — em PvE cobre o golpe real; em Runeterra (PvP) usa o limiar de vida.</p>'
+      + '    <p class="intro">AUTO-POÇÃO: quando usar cada poção, quantas você tem e o que a decisão inteligente está a fazer. A inteligência é <b>sempre ligada</b>, em PvE cobre o golpe real; em Runeterra (PvP) usa o limiar de vida.</p>'
       + '    <div id="ap-pc-resumo"></div>'
       + '    <div id="ap-now-pocoes"></div>'
       + '    <div id="ap-auto-pocoes"></div>'
       + '  </section>'
       // MANUAL — tudo o que é clique humano, fora do caminho automático.
       + '  <section class="pane" id="ap-t-manual">'
-      + '    <p class="intro">MANUTENÇÃO MANUAL: forçar um passo, medir ou calibrar. Nada aqui é necessário para o auto-play — o motor faz tudo sozinho quando o switch está ligado. Serve para forçar ou testar.</p>'
+      + '    <p class="intro">MANUTENÇÃO MANUAL: forçar um passo, medir ou calibrar. Nada aqui é necessário para o auto-play, o motor faz tudo sozinho quando o switch está ligado. Serve para forçar ou testar.</p>'
       + '    <div id="ap-manual-info"></div>'
       + '    <div id="ap-manual-dinamicas"></div>'
       + '    <div id="ap-auto-acoes"></div>'
@@ -935,7 +934,7 @@
     if (!$('lolidle-ap-ajuda')) {
       const m = document.createElement('div');
       m.id = 'lolidle-ap-ajuda'; m.hidden = true;
-      m.innerHTML = '<div class="box lolidle-box"><header><b>Ajuda — como usar e o que querem dizer as palavras</b><span class="sp"></span>'
+      m.innerHTML = '<div class="box lolidle-box"><header><b>Ajuda, como usar e o que querem dizer as palavras</b><span class="sp"></span>'
         + '<button id="ap-aj-x" class="sec">Fechar</button></header>'
         + '<div class="corpo" id="ap-aj-corpo"></div></div>';
       corpo.appendChild(m);
@@ -1110,7 +1109,7 @@
     const info = EST_AUTO[e] || EST_AUTO.observacao;
     const ligadoAgora = !!cfg().enabled;                 // o switch mostra o que o MOTOR tem
     const acaoSec = e === 'pausado'
-      ? acao('ap-painel-retomar', '▶ Retomar', 'Muda de PAUSADO para LIGADO: volta a agir do ponto onde parou — a medição acumulada não se perde.', 'sec')
+      ? acao('ap-painel-retomar', '▶ Retomar', 'Muda de PAUSADO para LIGADO: volta a agir do ponto onde parou, a medição acumulada não se perde.', 'sec')
       : acao('ap-painel-pausar', '⏸ Pausar', e === 'ligado'
         ? 'Congela as ações agora e continua medindo; Retomar devolve tudo do mesmo ponto.'
         : 'Só faz sentido com o auto-play LIGADO (agora: ' + esc(info.titulo.toLowerCase()) + ').', 'sec', e !== 'ligado');
@@ -1130,9 +1129,8 @@
       + '<div id="ap-auto-arvore" class="mestre-arvore"></div>'
       + '<div class="sec-acoes">'
       + acaoSec
-      + acao('ap-painel-kill', '⛔ Parar tudo', 'Para tudo e grava a decisão no navegador: nem recarregando a página (F5) o motor volta sozinho.', 'danger')
       + '</div>'
-      + '<p class="hint">Este é o <b>único</b> interruptor mestre. <b>Pausar</b> congela as ações e continua medindo; <b>Parar tudo</b> limpa o estado ativo e fica gravado até você religar.</p>');
+      + '<p class="hint">Este é o <b>único</b> interruptor mestre: <b>ligar</b> liga todos os switches, <b>desligar</b> devolve os que <b>você</b> tinha escolhido (fica guardado). A lista abaixo tem o botão que desliga tudo de uma vez e religa o mesmo conjunto. <b>Pausar</b> só congela as ações: o motor continua a ler, a medir e a vigiar o mercado.</p>');
   }
   /** Estado resumido do cabeçalho — cache de 2 s. */
   function estadoAgora() {
@@ -1151,16 +1149,16 @@
     let pill, fase;
     if (!m) {
       pill = { cls: 'err', txt: 'sem motor' };
-      fase = 'O motor do auto-play não carregou nesta página — recarregue com F5.';
+      fase = 'O motor do auto-play não carregou nesta página, recarregue com F5.';
     } else if (est === 'desligado') {
       pill = { cls: 'err', txt: 'DESLIGADO' };
-      fase = 'DESLIGADO — parou tudo e a decisão ficou gravada no navegador. Ao religar, o motor começa limpo.';
+      fase = 'DESLIGADO, parou tudo e a decisão ficou gravada no navegador. Ao religar, o motor começa limpo.';
     } else if (est === 'pausado') {
       pill = { cls: 'run', txt: 'PAUSADO' };
-      fase = 'PAUSADO — parou de agir, mas continua medindo. Retomar devolve tudo do mesmo ponto.';
+      fase = 'PAUSADO, parou de agir, mas continua medindo. Retomar devolve tudo do mesmo ponto.';
     } else if (est === 'observacao') {
       pill = { cls: 'off', txt: 'DESLIGADO' };
-      fase = 'OBSERVAÇÃO — o motor só lê o jogo, não clica em nada.';
+      fase = 'OBSERVAÇÃO, o motor só lê o jogo, não clica em nada.';
     } else {
       pill = { cls: 'on', txt: 'LIGADO' };
       const dg = diagBase();
@@ -1172,7 +1170,7 @@
         const quem = cur.fase === 'boss' ? 'lutando com o chefe ' + limparNivel(cur.boss) : 'farmando mobs';
         fase = 'Rodando: ' + quem + ' em ' + limparNivel(cur.region) + ' (há ' + fmtDur(Date.now() - (cur.startedAt || Date.now())) + ').';
       } else {
-        fase = 'Ligado, mas sem ciclo de farm ativo — o motor só conta ciclos enquanto você está no mapa.';
+        fase = 'Ligado, mas sem ciclo de farm ativo, o motor só conta ciclos enquanto você está no mapa.';
       }
     }
     const rec = recomendacao();
@@ -1181,7 +1179,7 @@
       nivel: pl.nivel || null,
       ouro: ler('readGold', null),
       hp,
-      local: String(loc.text || '—'),
+      local: String(loc.text || '-'),
       regiao: rec ? limparNivel(rec.regiao) : null,
       regiaoInfo: rec,
       farm: f, cur,
@@ -1200,11 +1198,11 @@
     // Valores que podem ficar cortados (`.mini b` e `.fase` têm ellipsis) ganham `title`
     // com o texto inteiro — nada fica ilegível por omissão.
     const set = (id, txt) => { const e = $(id); if (e && e.textContent !== txt) e.textContent = txt; if (e) e.title = txt; };
-    set('ap-h-nivel', a.nivel ? String(a.nivel) : '—');
+    set('ap-h-nivel', a.nivel ? String(a.nivel) : '-');
     set('ap-h-ouro', fmt(a.ouro));
-    set('ap-h-hp', a.hp ? fmt(a.hp.cur) + ' / ' + fmt(a.hp.max) : '—');
+    set('ap-h-hp', a.hp ? fmt(a.hp.cur) + ' / ' + fmt(a.hp.max) : '-');
     set('ap-h-local', a.local);
-    set('ap-h-regiao', a.regiao || '—');
+    set('ap-h-regiao', a.regiao || '-');
     // O CABEÇALHO NÃO TEM CONTROLO do auto-play: mostra só o ESTADO (a pílula `ap-estado`, agora
     // LIGADO/DESLIGADO/PAUSADO) e o MOTIVO (a linha `ap-fase`). O único interruptor mestre está no
     // cartão AUTO-PLAY, no topo do Painel — deixar um switch e um botão aqui seria a duplicação
@@ -1222,14 +1220,14 @@
     mochila: 'está na sua mochila, pronto a vestir',
     mercado: 'está anunciado por você no mercado (o motor cancela a oferta e volta a vesti-lo)',
     cofre: 'está guardado no cofre (o motor vai buscá-lo quando for à Fonte)',
-    falta: 'não está em lado nenhum — só farmando ou comprando a outro jogador',
+    falta: 'não está em lado nenhum, só farmando ou comprando a outro jogador',
   };
   /** Plano de uma fase (mobs/chefe), do motor — cache de 6 s. */
   const planoFase = (f) => cache('bf-' + f, 6000, () => { const r = chamar('planoBuildFase', f); return r.ok && r.v ? r.v : null; });
   /** Uma peça da build: ícone + qualidade + DE ONDE VEM. */
   function bfItem(i) {
     const fonte = FONTE_NOME[i.fonte] ? i.fonte : 'falta';
-    const titulo = i.nome + ' — ' + (FONTE_NOME[fonte] || fonte) + (i.porque ? ' · ' + i.porque : '') + ' · ' + (FONTE_AJUDA[fonte] || '');
+    const titulo = i.nome + ', ' + (FONTE_NOME[fonte] || fonte) + (i.porque ? ' · ' + i.porque : '') + ' · ' + (FONTE_AJUDA[fonte] || '');
     // O chip mostra o NOME do item além do selo de qualidade e da fonte (o `i.nome` sempre
     // existiu nos dados; faltava renderizá-lo).
     const nome = i.nome || i.base || '?';
@@ -1257,7 +1255,7 @@
       + '<p class="bf-dica">' + dica + '</p>'
       + '<div class="bf-itens">' + ordenarItens(p.itens || []).map(bfItem).join('') + '</div>'
       + (faltam.length
-        ? '<p class="hint">Falta: ' + faltam.map((i) => '<b>' + esc(i.nome) + '</b>').join(', ') + ' — farmar ou comprar no mercado.</p>'
+        ? '<p class="hint">Falta: ' + faltam.map((i) => '<b>' + esc(i.nome) + '</b>').join(', ') + ', farmar ou comprar no mercado.</p>'
         : '<p class="hint">Você tem as ' + (p.itens || []).length + ' peças desta build.</p>')
       + (buscar.length
         ? '<p class="hint">Ir buscar: ' + buscar.map((i) => esc(i.nome) + ' (' + (FONTE_NOME[i.fonte] || i.fonte) + ')').join(', ') + '</p>'
@@ -1282,17 +1280,17 @@
     const estado = !temMotor ? 'o motor ainda não carregou nesta página (F5)'
       : !on ? 'desligado: uma build só, como antes'
         : !pMob ? 'à espera do campeão (o HUD ainda não carregou)'
-          : (pMob.ativa ? 'em mobs agora — veste a build de limpeza'
-            : (pChefe && pChefe.ativa ? 'no chefe agora — veste a build de alvo único' : 'fora de um ciclo de farm'));
+          : (pMob.ativa ? 'em mobs agora, veste a build de limpeza'
+            : (pChefe && pChefe.ativa ? 'no chefe agora, veste a build de alvo único' : 'fora de um ciclo de farm'));
     const corpo = tg('ap-cfg-buildPorFase', 'Trocar a build sozinho quando a luta muda',
       'Em mobs veste a build de limpeza; quando o chefe aparece veste a de alvo único. O que sai fica na mochila e nunca é vendido.', on)
       + (on ? '' : '<p class="aviso warn">Desligado: o motor volta usando uma build só e deixa de reservar as peças da outra.</p>')
       + '<div class="bf-grid">' + bfColuna(pMob, 'mobs') + bfColuna(pChefe, 'chefe') + '</div>'
-      + '<p class="hint">Campeão: <b>' + esc(ident.nome || '—') + '</b>. Cada peça diz DE ONDE vem: <b>equipado</b>, <b>na mochila</b>, <b>no mercado</b> (oferta sua) ou <b>no cofre</b>. "Falta" = não existe em lado nenhum.</p>';
+      + '<p class="hint">Campeão: <b>' + esc(ident.nome || '-') + '</b>. Cada peça diz DE ONDE vem: <b>equipado</b>, <b>na mochila</b>, <b>no mercado</b> (oferta sua) ou <b>no cofre</b>. "Falta" = não existe em lado nenhum.</p>';
     // Cabeçalho próprio (não usa card()) porque leva o botão de minimizar ao lado do estado.
     setHtml('ap-build-fase',
       '<section class="card bf' + (abertoBf ? '' : ' min') + '">'
-      + '<h3><span>Build por fase — mobs ↔ chefe</span><span class="obs">' + esc(estado) + '</span>'
+      + '<h3><span>Build por fase, mobs ↔ chefe</span><span class="obs">' + esc(estado) + '</span>'
       + '<button class="ic bf-min" id="ap-bf-min" title="'
       + (abertoBf ? 'Minimizar: deixa só o título (o mesmo botão volta abrindo)' : 'Abrir o bloco da build por fase') + '">'
       + (abertoBf ? '▾' : '▸') + '</button></h3>'
@@ -1309,7 +1307,7 @@
     if (!MOTOR()) { setHtml('ap-painel-build', ''); return; }
     const c = cfg();
     if (c.buildPorFase === false) {
-      setHtml('ap-painel-build', '<p class="hint">Build por fase (mobs ↔ chefe): <b>desligada</b> — o motor usa uma build só. Liga-a em <b>Itens</b> ▸ Build por fase.</p>');
+      setHtml('ap-painel-build', '<p class="hint">Build por fase (mobs ↔ chefe): <b>desligada</b>, o motor usa uma build só. Liga-a em <b>Itens</b> ▸ Build por fase.</p>');
       return;
     }
     const pMob = planoFase('mobs'), pChefe = planoFase('chefe');
@@ -1337,9 +1335,9 @@
     })();
     setHtml('ap-now-estado', card('Estado do personagem', 'lido do HUD do jogo',
       '<div class="kvs">'
-      + kv('nível', a.nivel ? String(a.nivel) : '—')
+      + kv('nível', a.nivel ? String(a.nivel) : '-')
       + kv('ouro', fmt(a.ouro))
-      + kv('campeão', esc(a.campeao || '—') + (a.classe ? ' <small>' + esc(a.classe) + '</small>' : ''))
+      + kv('campeão', esc(a.campeao || '-') + (a.classe ? ' <small>' + esc(a.classe) + '</small>' : ''))
       + kv('onde você está', esc(a.local))
       + '</div>'
       + barra
@@ -1375,34 +1373,33 @@
     setHtml('ap-now-fase', card('O que o auto-play está fazendo AGORA', 'medido neste ciclo',
       '<p class="aviso ' + (a.ligado && !a.pausado ? 'ok' : 'warn') + '">' + esc(a.fase) + '</p>' + corpoFase));
 
-    // 3) porque está parado (leitura completa)
+    // 3) PORQUE está parado (ou a correr). UM cartão estável, que NUNCA desaparece: a GUI não
+    // pode mudar de estrutura (queixa do dono, 2026-10-20). Sem métricas internas: "último
+    // batimento", "temporizadores" e "catálogo lido há X" não dizem nada a quem joga.
     const dg = diagBase();
+    let bloqueio;
     if (!a.ligado || a.pausado) {
-      const saude = ler('saudeAutoplay', null) || {};
-      setHtml('ap-now-parado', card('Por que NADA está acontecendo', 'leitura do motor',
-        '<p class="aviso warn">' + (a.pausado ? 'O motor está <b>pausado</b>.' : 'O auto-play está <b>desligado</b> (modo observação).') + '</p>'
-        + '<p class="hint">Último "batimento" do motor: ' + (saude.ultimoTickHaMs == null ? 'nunca' : 'há ' + fmtDur(saude.ultimoTickHaMs)) + ' · temporizadores ativos: ' + (saude.timers == null ? '—' : saude.timers) + '</p>'
-        + '<div class="acoes">' + acao('ap-retomar', '▶ Retomar tudo', 'Liga o auto-play e a auto-poção e despausa o motor.') + '</div>'));
+      bloqueio = '<p class="aviso warn">' + (a.pausado ? 'O motor está <b>pausado</b>.' : 'O auto-play está <b>desligado</b> (só observa).') + '</p>'
+        + '<div class="acoes">' + acao('ap-retomar', '▶ Retomar', 'Volta a agir do ponto onde parou.') + '</div>';
     } else if (dg && dg.naBase) {
       const fb2 = faltasBase();
       const lista = fb2 && fb2.faltam && fb2.faltam.length
         ? '<ul style="margin:2px 0 0;padding-left:18px">' + fb2.faltam.map((k) => '<li>' + esc(NECESSIDADE_NOME[k] || k) + '</li>').join('') + '</ul>'
-        : '<p class="aviso ok">A base está completa — nada falta fazer aqui.</p>';
-      setHtml('ap-now-parado', card('O que falta fazer na base', 'necessidades reais, lidas pelo motor',
-        (dg.motivo ? '<p class="aviso warn">Motivo mais urgente: <b>' + esc(dg.motivo) + '</b></p>' : '')
+        : '<p class="aviso ok">A base está completa: nada falta fazer aqui.</p>';
+      bloqueio = (dg.motivo ? '<p class="aviso warn">Motivo mais urgente: <b>' + esc(dg.motivo) + '</b></p>' : '')
         + lista
         + '<p class="hint">Quando esta lista fica vazia, o motor viaja para ' + esc(a.regiao || 'a melhor região') + '.</p>'
         + diag('Forçar agora (manutenção manual)',
-          '<div class="acoes">' + acaoD('ap-base-go-agora', '🏠 Rodar a rotina de base agora', 'Executa todos os passos pendentes de uma vez (com confirmação). O motor faz isto sozinho quando decide voltar à Fonte.') + '</div>')));
+          '<div class="acoes">' + acaoD('ap-base-go-agora', '🏠 Rodar a rotina de base agora', 'Executa todos os passos pendentes de uma vez. O motor faz isto sozinho quando decide voltar à Fonte.') + '</div>');
     } else if (dg && travaReal(dg).length) {
       const esp = esperaReal(dg);
-      setHtml('ap-now-parado', card('O que está travando o motor', 'leitura direta das travas do motor',
-        '<ul style="margin:2px 0 0;padding-left:18px">' + travaReal(dg).map((t) => '<li>' + esc(traduzTrava(t)) + '</li>').join('') + '</ul>'
+      bloqueio = '<ul style="margin:2px 0 0;padding-left:18px">' + travaReal(dg).map((t) => '<li>' + esc(traduzTrava(t)) + '</li>').join('') + '</ul>'
         + (esp.length ? '<p class="aviso warn">Aguardando: ' + esc(esp.map(traduzTrava).join(' · ')) + '</p>' : '')
-        + '<p class="hint">Quando nenhuma destas travas estiver ativa, o motor viaja sozinho para ' + esc(a.regiao || 'a melhor região') + '.</p>'));
+        + '<p class="hint">Quando nenhuma destas travas estiver ativa, o motor viaja sozinho para ' + esc(a.regiao || 'a melhor região') + '.</p>';
     } else {
-      setHtml('ap-now-parado', '');
+      bloqueio = '<p class="aviso ok">Nada a travar: o motor está a jogar.</p>';
     }
+    setHtml('ap-now-parado', card('O que está a travar agora', 'o motor diz, em português, o que o impede de agir', bloqueio));
 
     // 4) combate ao vivo
     const L = live();
@@ -1425,7 +1422,7 @@
         + '</div>'
         + (t ? '<p class="aviso">Alvo: <b>' + esc(t.name || '?') + '</b>' + (t.level ? ' nível ' + esc(t.level) : '') + (t.boss ? ' 👑 CHEFE' : '') + '</p>' : '<p class="vazio">sem alvo neste momento</p>')
         + (L.bossHp ? '<p class="aviso warn">Chefe <b>' + esc(L.bossHp.nome || '') + '</b> com ' + esc(L.bossHp.pct) + '% de vida</p>' : '')
-        + (L.carga ? '<p class="aviso err">⚠ Golpe especial carregado: <b>' + esc(L.carga.mec) + '</b> — a poção mais forte dispara antes do golpe.</p>' : '')
+        + (L.carga ? '<p class="aviso err">⚠ Golpe especial carregado: <b>' + esc(L.carga.mec) + '</b>, a poção mais forte dispara antes do golpe.</p>' : '')
         + (L.furia ? '<p class="aviso warn">O chefe está FURIOSO: ataca 1,5× mais rápido durante alguns segundos.</p>' : '')
         + (fontes.length ? '<div class="chips">' + fontes.map((x) => '<span class="tag">' + esc(nomeF(x[0])) + ' ' + fmt(x[1]) + '/s</span>').join('') + '</div>' : '<p class="hint">ainda sem dano medido por fonte</p>')));
     }
@@ -1445,10 +1442,10 @@
     setHtml('ap-now-pocoes', card('Poções', 'a auto-poção usa a mais fraca que for suficiente',
       '<div class="pots">' + cartoes + '</div>'
       + '<p class="hint">A auto-poção decide pelo <b>golpe que o monstro acabou de dar</b> (não por médias) e conta a cura das suas habilidades. Se a cura chegar, não gasta poção.</p>'
-      + (ultima ? '<p class="aviso ok">Última decisão: usou <b>' + esc(POCAO_NOME[ultima.k] || ultima.k) + '</b> — ' + esc(ultima.reason || '') + '</p>' : '<p class="vazio">ainda não usou nenhuma poção</p>')
+      + (ultima ? '<p class="aviso ok">Última decisão: usou <b>' + esc(POCAO_NOME[ultima.k] || ultima.k) + '</b>, ' + esc(ultima.reason || '') + '</p>' : '<p class="vazio">ainda não usou nenhuma poção</p>')
       + (planoPocao ? '<p class="aviso warn">Em falta: ' + esc((planoPocao.faltas || []).map((k) => POCAO_NOME[k]).join(', ')) + '. Vai comprar: '
         + esc(ORDER.filter((k) => planoPocao.comprar[k] > 0).map((k) => POCAO_NOME[k] + ' ×' + fmt(planoPocao.comprar[k])).join(' · ') || 'nada (sem ouro)') + '</p>'
-        : '<p class="hint">Poções acima do mínimo — nada comprando.</p>')));
+        : '<p class="hint">Poções acima do mínimo, nada comprando.</p>')));
 
     // 6) ESTADO COMPLETO DO JOGO — inventário, equipamento, habilidades, cofre, mobs/bosses e o
     // próximo passo. É o retrato que o MOTOR mantém atualizado (automation.js: `estadoCompleto`,
@@ -1475,33 +1472,33 @@
       const prox = est.proximoPasso;
       setHtml('ap-now-jogo', card('Estado completo do jogo', 'o motor mantém isto atualizado sozinho (a cada 20 s)',
         '<div class="kvs">'
-        + kv('campeão', esc(est.campeao || '—') + (est.alvo && est.alvo.length ? ' <small>alvo: ' + esc(est.alvo.join(', ')) + '</small>' : ''))
-        + kv('nível', est.nivel == null ? '—' : String(est.nivel))
+        + kv('campeão', esc(est.campeao || '-') + (est.alvo && est.alvo.length ? ' <small>alvo: ' + esc(est.alvo.join(', ')) + '</small>' : ''))
+        + kv('nível', est.nivel == null ? '-' : String(est.nivel))
         + kv('ouro', fmt(est.ouro))
-        + kv('onde', esc(est.local || '—'))
+        + kv('onde', esc(est.local || '-'))
         + kv('atualizado', 'há ' + fmtDur(Date.now() - est.at))
         + '</div>'
-        + '<p class="diag-t">Mochila — ' + (inv ? fmt(inv.used) + '/' + fmt(inv.cap) + ' espaços' : 'não lida') + '</p>'
+        + '<p class="diag-t">Mochila, ' + (inv ? fmt(inv.used) + '/' + fmt(inv.cap) + ' espaços' : 'não lida') + '</p>'
         + '<div class="chips">' + (invRes || '<span class="vazio">vazia</span>') + (itensInv.length > 10 ? '<span class="tag">+ ' + (itensInv.length - 10) + '</span>' : '') + '</div>'
         + '<p class="diag-t">Equipado</p>'
         + '<div class="chips">' + eqRes + '</div>'
         + '<p class="diag-t">Habilidades</p>'
         + '<div class="kvs">'
-        + kv('na barra', barra || '—', hab.prontas && hab.prontas.length ? '(a bold = pronta)' : '')
-        + kv('pontos por gastar', hab.pontos == null ? '—' : String(hab.pontos))
-        + kv('ranks', esc((hab.ranks || []).join(' · ') || '—'))
+        + kv('na barra', barra || '-', hab.prontas && hab.prontas.length ? '(a bold = pronta)' : '')
+        + kv('pontos por gastar', hab.pontos == null ? '-' : String(hab.pontos))
+        + kv('ranks', esc((hab.ranks || []).join(' · ') || '-'))
         + '</div>'
-        + '<p class="diag-t">Cofre — ' + fmt(cofre.length) + ' peças conhecidas</p>'
+        + '<p class="diag-t">Cofre, ' + fmt(cofre.length) + ' peças conhecidas</p>'
         + '<div class="chips">' + (cofre.slice(0, 10).map((c) => '<span class="tag">' + esc(nomeDe(c.nome || c.base)) + (c.qual && c.qual !== 'C' ? ' <b>' + esc(c.qual) + '</b>' : '') + '</span>').join('') || '<span class="vazio">nada guardado lido</span>') + '</div>'
         + '<p class="diag-t">Mobs e bosses</p>'
         + '<div class="kvs">'
-        + kv('alvo agora', alvo ? esc(alvo.name || '?') + (alvo.boss ? ' 👑' : '') : '—')
-        + kv('chefe', chefe ? esc(chefe.nome || chefe) + (chefe.pct != null ? ' — ' + esc(chefe.pct) + '% de vida' : '') : '—')
+        + kv('alvo agora', alvo ? esc(alvo.name || '?') + (alvo.boss ? ' 👑' : '') : '-')
+        + kv('chefe', chefe ? esc(chefe.nome || chefe) + (chefe.pct != null ? ', ' + esc(chefe.pct) + '% de vida' : '') : '-')
         + kv('poções', ORDER.map((k) => POCAO_NOME[k] + ' ' + fmt(pot[k] || 0)).join(' · '))
         + '</div>'
         + '<p class="hint">' + (prox && prox.sobrevive === true
-          ? 'Próximo passo por omissão: farmar <b>' + esc(limparNivel(prox.regiao)) + '</b> — ' + fmt(prox.ouroLiquidoMin) + ' ouro limpo/min · ' + fmt(prox.xpMin) + ' xp/min.'
-          : 'Nenhuma região com segurança provada ainda — o motor decide após medir as regiões.') + '</p>'));
+          ? 'Próximo passo por omissão: farmar <b>' + esc(limparNivel(prox.regiao)) + '</b>, ' + fmt(prox.ouroLiquidoMin) + ' ouro limpo/min · ' + fmt(prox.xpMin) + ' xp/min.'
+          : 'Nenhuma região com segurança provada ainda, o motor decide após medir as regiões.') + '</p>'));
     }
   }
 
@@ -1531,7 +1528,7 @@
     vigiarMercado: 'Vigiar o mercado (itens e jogadores) e comprar',
   };
   const ARV_AJUDA = {
-    manutencao: 'recurso base (vender, equipar, mercado, pontos, cofre) — funciona em qualquer campeão',
+    manutencao: 'recurso base (vender, equipar, mercado, pontos, cofre), funciona em qualquer campeão',
     autoplay: 'o switch mestre: desligado, o motor só observa (não clica em nada)',
     irBase: 'voltar à Fonte para tratar de tudo o que é da base',
     vender: 'vende ao lojista só o que o plano da mochila diz que é lixo',
@@ -1540,7 +1537,7 @@
     refino: 'gasta ouro refinando seus lendários tier A+ até o teto',
     montar: 'tenta montar no Ornn a receita mais barata que serve a build (é uma aposta)',
     cofre: 'guarda no cofre e vai buscar o que está lá',
-    fugir: 'foge da região (tecla B) quando o golpe passa da cura possível, quando a região mata ou quando a luta está perdida sem poções que cheguem — e volta sozinho à região quando a fuga não foi por morte certa',
+    fugir: 'foge da região (tecla B) quando o golpe passa da cura possível, quando a região mata ou quando a luta está perdida sem poções que cheguem, e volta sozinho à região quando a fuga não foi por morte certa',
     equip: 'troca sempre que aparecer uma peça melhor para o slot',
     atrib: 'gasta sozinho os pontos de atributo livres',
     hab: 'sobe as habilidades quando há pontos',
@@ -1548,7 +1545,7 @@
     buildPorFase: 'em mobs veste a build de limpeza; no chefe a de alvo único',
     skillsPorFase: 'em mobs prefere as habilidades de área; no chefe as de alvo único',
     rotacao: 'põe na barra as 4 habilidades prontas que dão mais dano',
-    vigiarMercado: 'lê o mercado dos jogadores em tempo real e compra as ofertas que casam com a sua watch (itens e/ou nomes de jogador) — só gasta ouro e nunca abaixo da reserva',
+    vigiarMercado: 'lê o mercado dos jogadores em tempo real e compra as ofertas que casam com a sua watch (itens e/ou nomes de jogador), só gasta ouro e nunca abaixo da reserva',
   };
   /** O QUE CADA SWITCH COBRE — é a linha colorida ao lado dele: VERDE quando está ligado (o que
    *  passa a acontecer) e VERMELHA quando está desligado (o que deixa de acontecer). O texto fala
@@ -1558,24 +1555,24 @@
    *  distribuirAtributos, subirHabilidades, anunciarLendarios, trocarBuildDaFase, rotacaoSkills,
    *  checarChefeFatal). */
   const ARV_COBRE = {
-    manutencao: { on: 'Vende, equipa, gasta pontos e mexe no cofre quando vale a pena — em qualquer campeão.', off: 'Nada de manutenção: a mochila enche, os pontos ficam parados e o cofre não é lido.' },
+    manutencao: { on: 'Vende, equipa, gasta pontos e mexe no cofre quando vale a pena, em qualquer campeão.', off: 'Nada de manutenção: a mochila enche, os pontos ficam parados e o cofre não é lido.' },
     autoplay: { on: 'Farma, viaja e escolhe a região sozinho.', off: 'Não farma nem viaja: só observa e mede.' },
     irBase: { on: 'Volta à Fonte quando alguma pendência paga a viagem.', off: 'Não volta à Fonte: nenhuma ação de base acontece.' },
-    vender: { on: 'Vende no Lojista o básico, o épico e o duplicado (tier S+ nunca).', off: 'Nada é vendido — a mochila enche e você perde loot.' },
+    vender: { on: 'Vende no Lojista o básico, o épico e o duplicado (tier S+ nunca).', off: 'Nada é vendido, a mochila enche e você perde loot.' },
     repor: { on: 'Compra poções no Lojista até o mínimo que você escolheu.', off: 'As poções acabam e faltam curas no meio da luta.' },
     comprar: { on: 'Compra no mercado o item da build ideal que falta.', off: 'A build só completa com o que cair no chão.' },
     refino: { on: 'Refina no Ornn os lendários tier A+ até o teto.', off: 'Os itens ficam no refino em que estão.' },
     montar: { on: 'Tenta montar no Ornn a receita mais barata que serve a build.', off: 'Nenhuma tentativa de montagem: nenhum item novo sai das peças.' },
-    cofre: { on: 'Lê o cofre na Fonte e guarda o que deve ficar guardado.', off: 'O cofre nunca é lido — o painel fica sem saber o que está guardado.' },
-    fugir: { on: 'Foge para a Fonte quando algo mata você — e volta sozinho à região quando a fuga não foi por morte certa.', off: 'Nada foge: se o golpe ou a região mata, você morre.' },
+    cofre: { on: 'Lê o cofre na Fonte e guarda o que deve ficar guardado.', off: 'O cofre nunca é lido, o painel fica sem saber o que está guardado.' },
+    fugir: { on: 'Foge para a Fonte quando algo mata você, e volta sozinho à região quando a fuga não foi por morte certa.', off: 'Nada foge: se o golpe ou a região mata, você morre.' },
     equip: { on: 'Equipa sempre a melhor peça de cada slot.', off: 'O que está vestido fica como está, mesmo com peça melhor na mochila.' },
     atrib: { on: 'Gasta os pontos de atributo pelo modelo escolhido.', off: 'Os pontos de atributo ficam parados.' },
     hab: { on: 'Sobe as habilidades quando há pontos.', off: 'Os pontos de habilidade ficam parados.' },
     anunciar: { on: 'Anuncia no mercado os lendários abaixo de A, a ~90% do menor preço.', off: 'Nada é anunciado: os lendários ficam ocupando espaço na mochila.' },
     buildPorFase: { on: 'Troca a build entre mobs e chefe conforme a luta.', off: 'Uma build só: as peças da outra fase não são reservadas.' },
     skillsPorFase: { on: 'Prefere habilidades de área em mobs e de alvo único no chefe.', off: 'A barra não muda com o contexto da luta.' },
-    rotacao: { on: 'Mantém na barra as melhores habilidades, com a ultimate.', off: 'A barra fica como está — pode ficar sem a ultimate.' },
-    vigiarMercado: { on: 'Deteta em tempo real as ofertas dos itens que você vigia e dos jogadores da lista, e compra-as sozinho pelo mercado (no Mercador).', off: 'O mercado deixa de ser vigiado: nenhuma oferta da watch é comprada.' },
+    rotacao: { on: 'Mantém na barra as melhores habilidades, com a ultimate.', off: 'A barra fica como está, pode ficar sem a ultimate.' },
+    vigiarMercado: { on: 'Detecta em tempo real as ofertas dos itens que você vigia e dos jogadores da lista, e compra-as sozinho pelo mercado (no Mercador).', off: 'O mercado deixa de ser vigiado: nenhuma oferta da watch é comprada.' },
   };
   /** Marca dos switches com EXCEÇÃO. O motor já manda o texto (`excecaoTxt` em
    *  `arvoreInterruptores()`, automation.js:2293); este mapa é só o recurso para um motor antigo. */
@@ -1606,30 +1603,35 @@
     const temCfg = !semChave;
     const proprio = temCfg ? c[s.cfg] !== false : true;
     const z = arvQuemBloqueia(s.porque);
+    // ---------------- ESTADO de cada switch (do MOTOR)
+    // O TEXTO do estado NÃO se repete no motivo: antes o cartão mostrava "desligado por você"
+    // duas vezes na mesma linha (queixa do dono, 2026-10-20). O motivo só aparece quando
+    // acrescenta informação (pai que bloqueia, exceção, motor antigo).
     const bloqueado = s.pode === false;
     const porExcecao = !semChave && bloqueado && /excep/i.test(z.motivo);
     const porPai = !semChave && bloqueado && !porExcecao && !!z.quem && z.quem !== nome;
     const inerte = !semChave && bloqueado && !porExcecao && proprio;     // o switch está LIGADO; o pai é que fecha
     let cls, est;
-    if (semChave) { cls = 'erro'; est = 'sem chave no motor'; }
+    if (s.ignorarCfg) { cls = 'on'; est = 'sempre ligado'; }             // sem toggle por desenho
+    else if (semChave) { cls = 'erro'; est = 'sem chave no motor'; }
     else if (porExcecao) { cls = 'skip'; est = 'ligado, mas skippado'; }
     else if (inerte) { cls = 'bloq'; est = 'ligado, mas inerte'; }
     else if (bloqueado) { cls = 'bloq'; est = 'desligado por você'; }
     else { cls = 'on'; est = c[s.cfg] === undefined ? 'ligado (padrão)' : 'ligado e agindo'; }
     let motivo = '';
-    if (semChave) motivo = '<span class="arv-motivo err">⚠ motor antigo: recarregue a página (F5) — este switch não tem chave própria no motor.</span>';
-    else if (porExcecao) motivo = '<span class="arv-motivo">⚠ o motor pula este agora — ' + esc(arvExc(nome, s)) + '</span>';
+    if (semChave) motivo = '<span class="arv-motivo err">⚠ motor antigo: recarregue a página (F5), este switch não tem chave própria no motor.</span>';
+    else if (porExcecao) motivo = '<span class="arv-motivo">⚠ o motor pula este agora: ' + esc(arvExc(nome, s)) + '</span>';
     else if (porPai) motivo = '<span class="arv-motivo">' + (inerte ? 'não age enquanto ' : 'bloqueado por ')
       + '<b>' + esc(ARV_NOME[z.quem] || z.quem) + '</b>' + (inerte ? ' estiver desligado' : ' (está desligado)') + '</span>';
-    else if (bloqueado) motivo = '<span class="arv-motivo">' + (!z.quem ? 'desligado (o motor não disse por quem)'
-      : 'desligado por você') + '</span>';
     const cobre = ARV_COBRE[nome] || null;
     const linha = cobre ? '<p class="arv-cobre ' + (bloqueado ? 'off' : 'on') + '">' + esc(bloqueado ? cobre.off : cobre.on) + '</p>' : '';
-    const ctrl = temCfg
+    const ctrl = s.ignorarCfg
+      ? '<span class="tag" title="este switch não tem liga/desliga: a vigia trabalha sempre, mesmo com os switches desligados">sempre</span>'
+      : temCfg
       ? '<label class="arv-tg" title="' + esc((ARV_AJUDA[nome] || '') + ' (nome técnico no motor: ' + s.cfg + ')') + '"><input type="checkbox" id="ap-arv-' + esc(nome)
         + '" data-arv="' + esc(nome) + '" data-cfg="' + esc(s.cfg) + '"' + (proprio ? ' checked' : '')
         + '><span class="sw"></span></label>'
-      : '<span class="arv-erro" title="este switch não tem chave no motor desta página — recarregue (F5) para a versão nova">motor antigo: recarregue</span>';
+      : '<span class="arv-erro" title="este switch não tem chave no motor desta página, recarregue (F5) para a versão nova">motor antigo: recarregue</span>';
     const meus = ramos[nome] || [];
     // SWITCH À ESQUERDA: o interruptor vem antes do nome, não no fim da linha.
     // `.arv-item` agrupa o nó + a linha do que ele cobre + os filhos. Sem este invólucro o
@@ -1660,12 +1662,12 @@
       setHtml('ap-auto-arvore',
         '<div class="mestre-sub"><b>O que o mestre liga e desliga</b><span>lista declarada pelo motor</span></div>'
         + '<p class="vazio">' + (semMotor
-          ? 'O motor do auto-play ainda não carregou nesta página — não há switches para mostrar.'
+          ? 'O motor do auto-play ainda não carregou nesta página, não há switches para mostrar.'
           : r.erro === 'sem-funcao'
             ? 'Esta versão do motor ainda não expõe a lista de switches (falta <b>arvoreInterruptores</b>).'
             : 'O motor respondeu, mas não declarou nenhum switch.') + '</p>'
         + '<p class="hint">Este bloco não inventa nada: mostra exatamente os switches que o motor declara'
-        + (semMotor ? ' — recarregue a página com <b>F5</b>.' : '.') + '</p>');
+        + (semMotor ? ', recarregue a página com <b>F5</b>.' : '.') + '</p>');
       return;
     }
     const lista = r.v.filter((x) => x && x.nome);
@@ -1712,64 +1714,59 @@
     for (const x of (ramos.autoplay || [])) bases.push(x);
     for (const x of raizes) if (x.nome !== 'autoplay') bases.push(x);
     if (!bases.length) bases.push(...raizes);
+    // BOTÃO "DESLIGAR TUDO" (ordem de 2026-10-20): um clique desliga todos os switches
+    // filhos; o mesmo botão, agora "Religar o que estava", devolve o conjunto que o dono
+    // tinha escolhido. O retrato é do MOTOR (`estadoSwitches`), não da GUI.
+    const es = chamar('estadoSwitches');
+    const todos = (es.ok && es.v) || { todosOff: false, guardados: null };
+    const btnTudo = '<div class="acoes"><button class="btn ' + (todos.todosOff ? 'ok' : 'sec') + '" id="ap-sw-todos">'
+      + (todos.todosOff
+        ? 'Religar o que estava ligado' + (todos.guardados != null ? ' (' + String(todos.guardados) + ')' : '')
+        : 'Desligar todos os switches')
+      + '</button></div>';
     setHtml('ap-auto-arvore',
       '<div class="mestre-sub"><b>O que o mestre liga e desliga</b><span>'
-      + String(lista.length) + ' funções declaradas pelo motor — o mestre é o switch grande acima</span></div>'
+      + String(lista.length) + ' funções declaradas pelo motor, o mestre é o switch grande acima</span></div>'
       + alertaMotor
       + alerta
+      + btnTudo
       + '<p class="hint">' + String(lista.length) + ' switches · <b>' + String(agindo) + ' ligados e agindo</b> · '
       + String(desligados) + ' desligados por você · ' + String(inerte.length) + ' ligados mas <b>inertes</b> (o pai está desligado) · '
       + String(skip.length) + ' skippados por exceção.</p>'
       + '<p class="hint"><b>Manutenção</b> é o ramo de recurso base (vender, equipar, mercado, pontos, cofre), filho do auto-play; os switches dentro dele servem para desligar só uma capacidade sem parar o farm.</p>'
       + '<div class="arv">' + bases.map((x) => arvNo(x, ramos, 0)).join('') + '</div>'
-      + '<p class="hint">Ligar uma capacidade <b>não</b> liga o switch mestre, e o mestre desligado <b>não</b> desliga os filhos: eles ficam <b>inertes</b> (ligados, sem agir). '
-      + 'A linha verde diz o que o switch cobre; a vermelha, o que deixa de acontecer com ele desligado.</p>');
+      + '<p class="hint">Ligar o auto-play liga <b>todos</b> estes switches; desligar devolve os que <b>você</b> tinha escolhido (fica guardado). '
+      + 'O botão acima desliga tudo de uma vez e religa o mesmo conjunto. O Ornn (refinar e montar) fica de fora do "ligar tudo" e só liga à mão.</p>');
   }
 
 
-  /** CARTÃO "Automatismos do motor": um interruptor REAL por capacidade, com a CHAVE lida do
-   *  próprio motor (`arvoreInterruptores()`) — a GUI não escreve `autoVender` & cia. à mão em lado
-   *  nenhum (REGRA N.º 3). A chave viaja no `data-cfg` e o handler genérico escreve por `definirCfg`.
-   *  Redesenha SEMPRE (como a árvore): as chaves só existem depois de o motor declarar a tabela, e
-   *  um motor antigo (nó sem `cfg`) aparece como ERRO — nunca como um switch "implícito" falso. */
-  function renderExtrasMotor() {
-    const c = cfg();
-    const r = chamar('arvoreInterruptores');
-    const arv = (r.ok && Array.isArray(r.v)) ? r.v : [];
-    const porNome = {}; for (const x of arv) if (x && x.nome) porNome[x.nome] = x;
-    // [nó do motor, rótulo de usuário, ajuda]. O RÓTULO é nosso; a CHAVE vem do motor.
-    const NOS = [
-      ['irBase', 'Ir à base (Fonte)', 'Volta à Fonte quando alguma pendência paga a viagem.'],
-      ['vender', 'Vender o lixo ao lojista', 'Vende só o que o plano da mochila diz que é lixo; os protegidos nunca são tocados.'],
-      ['repor', 'Repor poções', 'Compra poções no Lojista até o mínimo que você escolheu.'],
-      ['cofre', 'Cofre (guardar e retirar)', 'Guarda no cofre os épicos tier S/SS e vai buscar o que está lá.'],
-      ['anunciar', 'Anunciar lendários no mercado', 'Põe à venda os lendários abaixo de tier A, a ~90% do preço mais baixo.'],
-      ['hab', 'Subir habilidades', 'Sobe as habilidades quando há pontos livres.'],
-      ['equip', 'Trocar por peça melhor', 'Troca sempre que aparecer uma peça melhor para o slot.'],
-      ['atrib', 'Distribuir pontos de atributo', 'Gasta sozinho os pontos de atributo livres pelo modelo escolhido na aba Personagem.'],
-      ['refino', 'Refinar no Ornn', 'Refina os seus LENDÁRIOS já tier A ou melhor até +3 (acima de +2 pode descer).'],
-    ];
-    const linhas = NOS.map(([nome, rotulo, ajuda]) => {
-      const s = porNome[nome];
-      if (!s) return '';                              // o motor não declarou este nó: nada a mostrar
-      if (!s.cfg) {                                   // motor antigo: erro visível, nunca switch falso
-        return '<div class="erro-motor">⚠ <b>' + esc(rotulo) + '</b> — motor antigo: recarregue (F5) para este interruptor ganhar chave.</div>';
-      }
-      // `autoAtrib` e `autoHab` nascem DESLIGADOS (contrato TK-01); os restantes nascem LIGADOS.
-      const padrao = (s.cfg === 'autoAtrib' || s.cfg === 'autoHab') ? false : true;
-      const on = c[s.cfg] === undefined ? padrao : (c[s.cfg] !== false);
-      return tgCfg('ap-cfg-' + s.cfg, s.cfg, rotulo, ajuda, on);
-    }).join('');
-    // Estes dois NÃO são nós do motor (são config própria): ficam com o id/handler de sempre.
-    const estaticos = tg('ap-cfg-trocaItens', 'Trocar itens conforme a luta', 'Use o conjunto de FARM contra mobs e o conjunto de CHEFE contra chefes.', !!c.trocaItens)
-      + tg('ap-cfg-barraDisp', 'Barra pelas habilidades PRONTAS', 'Põe na barra as habilidades DISPONÍVEIS e as que ficam prontas mais cedo (o dono: "usava tudo disponivel ... o tempo inteiro"). Desligado, a barra fica presa às 4 de maior dano.', c.barraPorDisponibilidade !== false);
-    setHtml('ap-auto-extras', card('Automatismos do motor', 'cada interruptor é um switch real do motor',
-      '<div class="grid2">' + linhas + estaticos + '</div>'
-      + '<p class="hint">Cada switch escreve a chave que o <b>motor</b> declarou — nada é inventado aqui. Um interruptor sem chave aparece como <b>erro</b> (motor antigo), nunca como ligado.</p>'));
-  }
-
+  // O cartão "Automatismos do motor" foi REMOVIDO: era uma cópia da árvore de switches que já
+  // vive dentro do cartão AUTO-PLAY (queixa do dono, 2026-10-20). O switch da barra por
+  // disponibilidade passou para a aba Personagem; o "trocaItens" antigo saiu (o buildPorFase
+  // faz o mesmo e é o caminho do motor).
 
   // ---------------------------------------------------------------- ABA AUTO-PLAY
+  /** Sincroniza os campos de poção com a config, sem reconstruir o HTML (perderia o foco). */
+  function sincronizarPocao() {
+    const maxVida = (hpAgora() && hpAgora().max) || (ler('player', {}) || {}).vida || 4188;
+    for (const k of ORDER) {
+      const v = Object.assign({ enabled: true, mode: 'pct', value: k === 'vidaS' ? 60 : k === 'vidaF' ? 43 : 21 }, (config && config.potions && config.potions[k]) || {});
+      const on = $('ap-pc-on-' + k); if (on && on.checked !== !!v.enabled) on.checked = !!v.enabled;
+      const vi = $('ap-pc-v-' + k); if (vi && String(vi.value) !== String(v.value)) vi.value = v.value;
+      const mo = $('ap-pc-m-' + k); if (mo && mo.value !== v.mode) mo.value = v.mode;
+      const tx = $('ap-pc-t-' + k);
+      if (tx) {
+        const val = Number(v.value) || 0;
+        const perdido = v.mode === 'pct' ? (val / 100) * maxVida : val;
+        const gatilho = Math.max(0, maxVida - perdido);
+        const hp = hpAgora();
+        const agora = hp && hp.cur <= gatilho ? ' · <b>AGORA!</b>' : '';
+        tx.innerHTML = 'usa quando você perder <b>' + fmt(perdido) + ' de vida</b> (' + (v.mode === 'pct' ? val + '%' : 'valor fixo') + '), com vida abaixo de <b>' + fmt(gatilho) + '</b>' + agora;
+      }
+    }
+    const minP2 = cfg().minPotion || { vida: 200, vidaF: 100, vidaS: 30 };
+    for (const k of ORDER) { const e = $('ap-min-' + k); if (e && String(e.value) !== String(minP2[k])) e.value = minP2[k]; }
+  }
   let autoConstruido = false;
   function renderAuto() {
     const a = estadoAgora();
@@ -1789,44 +1786,31 @@
       // explicar o mesmo controlo.
 
       const regioes = (ler('rankRegioes', []) || []).slice(0, 40);
-      setHtml('ap-auto-obj', card('O que você quer ganhar', 'critério da região escolhida',
-        linha('Objetivo do farm', 'muda a região que o motor escolhe',
-          '<select id="ap-obj"><option value="xp">Experiência (subir de nível)</option><option value="ouro">Ouro (comprar itens)</option><option value="runas">Runas</option></select>')));
+      // O OBJETIVO DO FARM vive na aba GANHOS (junto do que ele decide): antes estava no
+      // Painel e a aba de ganhos não tinha como escolher (queixa do dono, 2026-10-20).
       setHtml('ap-auto-regiao', card('Onde farmar', 'automático ou escolhido por você',
         linha('Região', 'automático = o motor escolhe a melhor para o seu nível',
           '<select id="ap-reg-modo"><option value="auto">Automática (recomendada)</option><option value="fixa">Fixa (escolho eu)</option></select>')
         + linha('Região fixa', 'escolher uma região aqui passa a região para FIXA (o automático desliga e você vê isso no aviso abaixo)',
-          '<select id="ap-reg-id">' + regioes.map((r) => '<option value="' + esc(r.id) + '">' + esc(r.nome) + ' — ' + fmt(r.xpMin) + ' xp/min · ' + fmt(r.goldMin) + ' ouro/min</option>').join('') + '</select>')
+          '<select id="ap-reg-id">' + regioes.map((r) => '<option value="' + esc(r.id) + '">' + esc(r.nome) + ', ' + fmt(r.xpMin) + ' xp/min · ' + fmt(r.goldMin) + ' ouro/min</option>').join('') + '</select>')
         + diag('Forçar viagem (manutenção manual)',
           '<div class="acoes">' + acaoD('ap-ir-agora', '🧭 Ir agora para a região escolhida', 'Viaja já para a região selecionada. O motor viaja sozinho quando está ligado e a região é a melhor para o seu nível.') + '</div>')
         + '<div id="ap-reg-info"></div>'));
 
-      // O cartão "Automatismos do motor" NÃO é construído aqui: ele depende das chaves que o
-      // MOTOR declara em `arvoreInterruptores()` e por isso é redesenhado a cada render
-      // (`renderExtrasMotor`), tal como a árvore. Ver abaixo, no fim do `renderAuto`.
+      // A lista de switches vive DENTRO do cartão AUTO-PLAY (uma só, `renderArvore`). Não há
+      // segundo cartão "Automatismos do motor": era a mesma lista duas vezes.
 
-      const pc = (k) => Object.assign({ enabled: true, mode: 'pct', value: k === 'vidaS' ? 60 : k === 'vidaF' ? 43 : 21 }, (config && config.potions && config.potions[k]) || {});
-      const minP = (config && config.automation && config.automation.minPotion) || (c.minPotion) || { vida: 200, vidaF: 100, vidaS: 30 };
-      setHtml('ap-auto-pocoes', card('Auto-poção — quando usar cada uma', 'usa a mais fraca que for suficiente para você sobreviver',
-        ORDER.map((k) => '<div class="ctl"><div class="ctl-l"><b>' + POCAO_NOME[k] + ' — cura ' + fmt(POCAO_CURA[k]) + '</b><small id="ap-pc-t-' + k + '">—</small></div>'
-          + '<div class="ctl-c"><label class="tg" style="padding:3px 7px"><input type="checkbox" id="ap-pc-on-' + k + '"><span class="sw"></span></label>'
-          + '<input type="number" id="ap-pc-v-' + k + '" min="0" step="1">'
-          + '<select id="ap-pc-m-' + k + '"><option value="pct">% da vida perdida</option><option value="lost">vida perdida (valor)</option></select></div></div>').join('')
-        // A DECISÃO INTELIGENTE NÃO TEM INTERRUPTOR (pedido do dono, 2026-10-19): é sempre
-        // ligada. Em Runeterra (PvP) o `content.js` troca automaticamente para o limiar de vida.
-        + '<p class="aviso ok"><b>Decisão inteligente: sempre ligada.</b> Em PvE usa o golpe real; em Runeterra (PvP) usa o limiar de vida. Não há botão para desligar.</p>'
-        + linha('Mínimo na mochila (repor na base)', 'quando desce abaixo disto, o motor volta à Fonte para comprar',
-          ORDER.map((k) => '<span class="hint">' + POCAO_NOME[k] + '</span><input type="number" id="ap-min-' + k + '" min="0" style="width:64px" value="' + esc(minP[k]) + '">').join(' '))
-        + '<p class="hint">As faixas acima são a regra simples (por vida perdida). Com a "decisão inteligente" ligada, o motor sobrepõe-se a elas quando sabe exatamente quanto vai doer o próximo golpe.</p>'));
+      // POÇÃO: tudo o que é poção vive na ABA POÇÃO. O Painel não repete estes controlos
+      // (eram um cartão duplicado, queixa do dono em 2026-10-20).
 
       // TODAS as ações manuais (o que você pode fazer no jogo com um clique) ficam AQUI, no
       // fim do Painel, tracejadas e rotuladas como manutenção manual. O que aparece em cima é o
       // que acontece sozinho: estado, switches, o que o motor vai fazer e o que está bloqueado.
-      setHtml('ap-auto-acoes', card('Manutenção manual — forçar e medir', 'o motor faz isto sozinho quando o switch está ligado; use só para forçar ou medir',
+      setHtml('ap-auto-acoes', card('Manutenção manual, forçar e medir', 'o motor faz isto sozinho quando o switch está ligado; use só para forçar ou medir',
         diag('Forçar agora (o automático deveria estar fazendo)',
           '<div class="acoes">'
           + acaoD('ap-farm-go', '▶ Ir agora para a melhor região', 'Liga o auto-play e viaja agora. O motor escolhe e viaja sozinho com o switch Tudo (auto-play) ligado.')
-          + acaoD('ap-base-go', '🏠 Rodar a rotina de base agora', 'Na Fonte: cura, vende, repõe poções, tarefas, cofre, mercado e atributos — só o que é preciso.')
+          + acaoD('ap-base-go', '🏠 Rodar a rotina de base agora', 'Na Fonte: cura, vende, repõe poções, tarefas, cofre, mercado e atributos, só o que é preciso.')
           + acaoD('ap-curar', '❤ Curar (Soraka)', 'Fala com a Soraka e cura o personagem a 100%.')
           + acaoD('ap-repor', '🧪 Repor poções', 'Compra poções no Lojista até o mínimo que você escolheu (mais caras primeiro).')
           + acaoD('ap-vender', '💰 Vender o que não presta', 'Vende ao Lojista só o que o plano da mochila diz que é lixo. Os protegidos nunca são tocados.')
@@ -1854,8 +1838,8 @@
 
       // ESTADO, não ação: quem decide é o switch. Os botões para forçar cada passo vivem no
       // cartão de manutenção manual, no fim do Painel — a GUI é para o que é automático.
-      setHtml('ap-auto-base', card('Ações de base — quem decide', 'o motor executa sozinho quando vai à Fonte',
-        '<p class="hint">Ir à Fonte, vender, repor poções, cofre, mercado, atributos e tarefas são decididos pelos <b>switches</b> da lista acima. Quando o switch está ligado e alguma pendência paga a viagem, o motor vai e faz — não há nada para clicar aqui.</p>'
+      setHtml('ap-auto-base', card('Ações de base, quem decide', 'o motor executa sozinho quando vai à Fonte',
+        '<p class="hint">Ir à Fonte, vender, repor poções, cofre, mercado, atributos e tarefas são decididos pelos <b>switches</b> da lista acima. Quando o switch está ligado e alguma pendência paga a viagem, o motor vai e faz, não há nada para clicar aqui.</p>'
         + '<p class="hint">Para forçar um passo agora, use <b>Manutenção manual</b>, no fim deste painel.</p>'));
 
       setHtml('ap-auto-tarefa', card('Tarefas e recompensas', 'Capitão da Legião, na Fonte',
@@ -1868,8 +1852,6 @@
     // A ÁRVORE DE INTERRUPTORES redesenha SEMPRE (o estado dela muda com a config, com o campeão
     // e com o local) — não faz parte do bloco "constrói uma vez" acima.
     renderArvore();
-    // "Automatismos do motor": as chaves vêm do motor, logo também redesenha sempre.
-    renderExtrasMotor();
     // ---- ALVOS DO AUTO-PLAY: em que campeões o motor pode jogar (pedido do dono, 2026-10-18) --
     // A LISTA de campeões do jogo é a mesma que o motor lê do KITS (nunca escrita à mão — REGRA
     // N.º 3); o motor ainda não a pode ter quando este render corre, e por isso este cartão
@@ -1879,12 +1861,12 @@
       // do motor; manter aqui "katarina alvo: yasuo, ryze" era uma mentira visual (o dono
       // reportou exactamente isso). Este cartão passa a ser só informação do campeão actual.
       const ident = identidade() || {};
-      const nomeAtual = ident.nome || capNome(ident.id) || '—';
+      const nomeAtual = ident.nome || capNome(ident.id) || '-';
       setHtml('ap-auto-champ', card('Campeão actual', 'o auto-play corre em qualquer campeão',
         '<p class="aviso ' + (ident.id ? 'ok' : 'warn') + '">Campeão actual: <b>' + esc(nomeAtual) + '</b>'
-        + (ident.id ? '' : ' — o motor ainda não identificou o campeão (F5 se demorar).') + '</p>'
+        + (ident.id ? '' : ', o motor ainda não identificou o campeão (F5 se demorar).') + '</p>'
         + '<p class="hint">Não há lista de alvos: o motor joga com o campeão que estiver na conta. '
-        + 'Trocar de campeão não exige mudar nenhum switch. Isto <b>não</b> liga o auto-play — quem liga é o switch mestre.</p>'));
+        + 'Trocar de campeão não exige mudar nenhum switch. Isto <b>não</b> liga o auto-play, quem liga é o switch mestre.</p>'));
     }
     // valores dinâmicos
     const obj = $('ap-obj'); if (obj && obj.value !== (c.objetivo || 'xp')) obj.value = c.objetivo || 'xp';
@@ -1916,48 +1898,28 @@
     const fb3 = faltasBase();
     if (fb3) {
       const chaves = Object.keys(fb3.n).filter((k) => NECESSIDADE_NOME[k]);
-      setHtml('ap-auto-falta', card('O que falta fazer na base', 'lista do motor — só o que é preciso',
+      setHtml('ap-auto-falta', card('O que falta fazer na base', 'lista do motor, só o que é preciso',
         '<div class="chips">' + chaves.map((k) => '<span class="chip" style="border-color:' + (fb3.n[k] ? '#7a5f2a' : '#2b5c33') + '">'
           + (fb3.n[k] ? '⏳ ' : '✔ ') + esc(NECESSIDADE_NOME[k]) + '</span>').join('') + '</div>'
         + '<p class="hint">' + (fb3.faltam.length
           ? 'Pendente agora: <b>' + esc(fb3.faltam.map((k) => NECESSIDADE_NOME[k] || k).join(' · ')) + '</b>.'
           : 'Nada pendente: a base está completa.') + '</p>'
-        + (naBase() ? '' : '<p class="hint">Você não está na Fonte — esta lista só se executa lá.</p>')));
+        + (naBase() ? '' : '<p class="hint">Você não está na Fonte, esta lista só se executa lá.</p>')));
     } else {
       setHtml('ap-auto-falta', '');
     }
     // auto-poção: valores actuais (sem reconstruir o cartão, para não perder o foco)
-    const maxVida = (hpAgora() && hpAgora().max) || (ler('player', {}) || {}).vida || 4188;
-    for (const k of ORDER) {
-      const v = Object.assign({ enabled: true, mode: 'pct', value: k === 'vidaS' ? 60 : k === 'vidaF' ? 43 : 21 }, (config && config.potions && config.potions[k]) || {});
-      const on = $('ap-pc-on-' + k); if (on && on.checked !== !!v.enabled) on.checked = !!v.enabled;
-      const vi = $('ap-pc-v-' + k); if (vi && String(vi.value) !== String(v.value)) vi.value = v.value;
-      const mo = $('ap-pc-m-' + k); if (mo && mo.value !== v.mode) mo.value = v.mode;
-      const tx = $('ap-pc-t-' + k);
-      if (tx) {
-        const val = Number(v.value) || 0;
-        const perdido = v.mode === 'pct' ? (val / 100) * maxVida : val;
-        const gatilho = Math.max(0, maxVida - perdido);
-        const hp = hpAgora();
-        const agora = hp && hp.cur <= gatilho ? ' — <b>AGORA!</b>' : '';
-        tx.innerHTML = 'usa quando você perder <b>' + fmt(perdido) + ' de vida</b> (' + (v.mode === 'pct' ? val + '%' : 'valor fixo') + ') → com vida abaixo de <b>' + fmt(gatilho) + '</b>' + agora;
-      }
-    }
-    const setChk2 = (id, val) => { const e = $(id); if (e && e.checked !== !!val) e.checked = !!val; };
-    // sem toggles de smart/strongest: a decisão inteligente é sempre ligada e o PvP é
-    // detectado pelo mapa (Runeterra), não por um switch.
-    const minP2 = c.minPotion || { vida: 200, vidaF: 100, vidaS: 30 };
-    for (const k of ORDER) { const e = $('ap-min-' + k); if (e && String(e.value) !== String(minP2[k])) e.value = minP2[k]; }
+    sincronizarPocao();
     const rec = recomendacao();
     // REGIÃO EM USO, dita por palavras. Nunca fica ambíguo: ou é automática (com o nome que o
     // motor escolheu), ou é fixa (com o nome que você escolheu).
     const emUso = c.regionDefault
       ? 'FIXA (você escolheu: <b>' + esc(nomeRegiao(c.regionDefault)) + '</b>)'
-      : 'automática (o motor recomenda: <b>' + esc(regRec ? nomeRegiao(regRec) : (rec ? limparNivel(rec.regiao) : (idIdeal ? nomeRegiao(idIdeal) : '—'))) + '</b>)';
+      : 'automática (o motor recomenda: <b>' + esc(regRec ? nomeRegiao(regRec) : (rec ? limparNivel(rec.regiao) : (idIdeal ? nomeRegiao(idIdeal) : '-'))) + '</b>)';
     const autoEscolha = regRec ? nomeRegiao(regRec) : (rec ? limparNivel(rec.regiao) : (idIdeal ? nomeRegiao(idIdeal) : null));
     setHtml('ap-reg-info', '<p class="aviso ' + (c.regionDefault ? 'warn' : 'ok') + '">Região em uso: ' + emUso + '.'
-      + (c.regionDefault ? ' Enquanto estiver fixa, o motor <b>não</b> escolhe sozinho — mude para <b>Automática</b> para ele voltar a decidir.' : ' O motor muda de região sozinho quando compensa.') + '</p>'
-      + '<p class="hint">No automático, o motor escolheria: <b>' + esc(autoEscolha || '—') + '</b>' + (rec ? ' · ' + fmt(rec.ouroLiquidoMin) + ' ouro limpo/min · ' + fmt(rec.xpMin) + ' xp/min' : '') + '.</p>'
+      + (c.regionDefault ? ' Enquanto estiver fixa, o motor <b>não</b> escolhe sozinho, mude para <b>Automática</b> para ele voltar a decidir.' : ' O motor muda de região sozinho quando compensa.') + '</p>'
+      + '<p class="hint">No automático, o motor escolheria: <b>' + esc(autoEscolha || '-') + '</b>' + (rec ? ' · ' + fmt(rec.ouroLiquidoMin) + ' ouro limpo/min · ' + fmt(rec.xpMin) + ' xp/min' : '') + '.</p>'
       + (rec && rec.sobrevive === false ? '<p class="aviso warn">⚠ Nessa região o chefe mata você: no automático o motor ficaria só nos mobs.</p>' : '')
       + (rec && rec.sinalUlt ? '<p class="hint">⚠ mobs lentos: a ultimate passa a valer a pena.</p>' : ''));
     const nota = $('ap-base-nota');
@@ -1967,32 +1929,14 @@
     if (te) {
       const st = ler('tarefaEstado', {}) || {};
       te.innerHTML = st.tem
-        ? '<p class="aviso ' + (st.pronta ? 'ok' : '') + '">Tarefa atual: ' + esc(st.texto || '—') + (st.pronta ? ' — <b>PRONTA para entregar</b>' : '') + '</p>'
+        ? '<p class="aviso ' + (st.pronta ? 'ok' : '') + '">Tarefa atual: ' + esc(st.texto || '-') + (st.pronta ? ', <b>PRONTA para entregar</b>' : '') + '</p>'
         : '<p class="vazio">Sem tarefa ativa. Fala com o Capitão da Legião na Fonte.</p>';
     }
     // leitura do que trava
     const dg = diagBase();
-    const saude = ler('saudeAutoplay', null) || {};
     const meta = ler('getMeta', {}) || {};
     const travas = travaReal(dg);
     const esperas = esperaReal(dg);
-    setHtml('ap-auto-diag', card('O que está travando', 'leitura direta do motor',
-      '<div class="kvs">'
-      + kv('auto-play', a.ligado ? 'ligado' : 'desligado')
-      + kv('pausa', a.pausado ? 'pausado' : 'livre')
-      + kv('na Fonte', dg ? (dg.naBase ? 'sim' : 'não') : '—')
-      + kv('último batimento', saude.ultimoTickHaMs == null ? '—' : 'há ' + fmtDur(saude.ultimoTickHaMs))
-      + kv('temporizadores', saude.timers == null ? '—' : String(saude.timers))
-      + kv('catálogo do jogo', meta.at ? 'lido há ' + fmtDur(Date.now() - meta.at) : 'não lido')
-      + '</div>'
-      + (meta.erro ? '<p class="aviso err">O motor não conseguiu ler o catálogo do jogo: ' + esc(meta.erro) + '</p>' : '')
-      // SENTINELA DE PATCH: se o jogo mudou de forma, o aviso aparece AQUI (e na observabilidade).
-      + (meta.contrato && meta.contrato.ok === false
-        ? '<p class="aviso err">⚠ O jogo mudou desde a última leitura (contrato). ' + (Array.isArray(meta.contrato.faltando) && meta.contrato.faltando.length ? 'Faltando: ' + esc(meta.contrato.faltando.join(', ')) + '. ' : '') + 'O motor usa os fallbacks declarados — confirme os números antes de confiar.</p>'
-        : '')
-      + (travas.length ? '<p class="aviso warn">Travando agora: ' + esc(travas.map(traduzTrava).join(' · ')) + '</p>' : '<p class="aviso ok">Nada está travando o motor.</p>')
-      + (esperas.length ? '<p class="aviso warn">Aguardando: ' + esc(esperas.map(traduzTrava).join(' · ')) + '</p>' : '')
-      + '<p class="hint">Se "último batimento" passar de 10 s com o auto-play ligado, algo travou o motor: recarrega a página (F5).</p>'));
   }
 
   // ------------------------------------- COFRE + MERCADO (leituras GRAVADAS pelo motor)
@@ -2051,9 +1995,9 @@
   function motivoCofre(m) {
     const t = String(m || '');
     if (/sem Tesoureira\/Burrinho|sem cofre aqui/i.test(t)) return 'o cofre só abre na Fonte ou na cidade (Tesoureira de Piltover / Burrinho de Carga). Você está em ' + (localTexto() || '?') + '.';
-    if (/sem opcao cofre/i.test(t)) return 'o NPC respondeu, mas não apareceu a opção "cofre" — tenta outra vez na Fonte ou na cidade.';
-    if (/^sem .* no cofre$|slot nao achado/i.test(t)) return 'esse item já não está no cofre (a leitura pode estar desatualizada) — use "Forçar leitura do cofre agora" (manutenção manual).';
-    if (/sem slot guardar/i.test(t)) return 'não encontrei esse item no cofre para o guardar — abre o cofre na Fonte ou na cidade.';
+    if (/sem opcao cofre/i.test(t)) return 'o NPC respondeu, mas não apareceu a opção "cofre", tenta outra vez na Fonte ou na cidade.';
+    if (/^sem .* no cofre$|slot nao achado/i.test(t)) return 'esse item já não está no cofre (a leitura pode estar desatualizada), use "Forçar leitura do cofre agora" (manutenção manual).';
+    if (/sem slot guardar/i.test(t)) return 'não encontrei esse item no cofre para o guardar, abre o cofre na Fonte ou na cidade.';
     return t || 'não foi possível (o motor não disse porquê)';
   }
   /** Cartão do cofre: PRIMEIRO o que está guardado; as ações ficam em baixo e só quando dão. */
@@ -2072,18 +2016,18 @@
     const lista = itens.length
       ? tabela(['slot', 'item', 'qualidade', 'refino', 'quantidade'], itens.map((i, n) => '<tr><td>' + esc(cofreSlot(i, n)) + '</td><td>'
         + (i.base ? itemImgTag(i.base, i.refino, nomeCofre(i)) : '') + esc(nomeCofre(i))
-        + '</td><td>' + esc(i.qual || 'C') + '</td><td>' + (i.refino ? '+' + esc(i.refino) : '—') + '</td><td>' + (i.qtd == null ? '—' : '×' + fmt(i.qtd)) + '</td></tr>').join(''))
-      : '<p class="vazio">Ainda não há leitura do cofre — não sei o que está guardado.</p>'
+        + '</td><td>' + esc(i.qual || 'C') + '</td><td>' + (i.refino ? '+' + esc(i.refino) : '-') + '</td><td>' + (i.qtd == null ? '-' : '×' + fmt(i.qtd)) + '</td></tr>').join(''))
+      : '<p class="vazio">Ainda não há leitura do cofre, não sei o que está guardado.</p>'
         + '<p class="hint">O motor lê o cofre sozinho quando passa pela Fonte e <b>grava</b> o que lá está. A partir daí esta lista aparece aqui sempre que você quiser, onde você estiver.</p>';
     const corpo = lista
-      + (pode ? '' : '<p class="hint">O cofre só abre na Fonte ou na cidade (Tesoureira de Piltover / Burrinho de Carga) — você está em <b>' + esc(local) + '</b>. A lista acima é a última leitura gravada.</p>')
+      + (pode ? '' : '<p class="hint">O cofre só abre na Fonte ou na cidade (Tesoureira de Piltover / Burrinho de Carga), você está em <b>' + esc(local) + '</b>. A lista acima é a última leitura gravada.</p>')
       + diag('Cofre: forçar leitura e ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-cofre-ler', '👀 Forçar leitura do cofre agora',
-        pode ? 'Fala com a Tesoureira (Fonte) ou o Burrinho (cidade), lê o que está guardado e <b>grava</b> — esta lista passa a ser a verdade.'
+        pode ? 'Fala com a Tesoureira (Fonte) ou o Burrinho (cidade), lê o que está guardado e <b>grava</b>, esta lista passa a ser a verdade.'
           : 'Só funciona na Fonte ou na cidade. Você está em <b>' + esc(local) + '</b>.', !pode)
       + acaoD('ap-cofre-melhor', '⬆ Retirar o melhor item',
-        melhor ? 'Tira <b>' + esc(nomeCofre(melhor)) + '</b> ' + esc(tagCofre(melhor)) + ' — maior qualidade e, depois, maior refino. Abre o cofre sozinho se for preciso.'
+        melhor ? 'Tira <b>' + esc(nomeCofre(melhor)) + '</b> ' + esc(tagCofre(melhor)) + ', maior qualidade e, depois, maior refino. Abre o cofre sozinho se for preciso.'
           : 'Ainda não há leitura do cofre: use "Forçar leitura do cofre agora" (manutenção manual) para o motor saber o que lá está.', !pode || !melhor)
       + acaoD('ap-cofre-lixo', '🧹 Vender o lixo do cofre',
         'Percorre o cofre, retira só o que a regra do motor marca como lixo (épico/básico abaixo de S, sem ser peça da build, componente, reservado ou especial) e vende ao Lojista. É a mesma rotina que o auto-play corre a cada 10 min; aqui é sob demanda.', !pode)
@@ -2093,9 +2037,9 @@
           '<select id="ap-cofre-alvo">' + itens.map((i) => '<option value="' + esc(i.base || '') + '">' + esc(nomeCofre(i)) + ' ' + esc(tagCofre(i)) + '</option>').join('') + '</select>'
           + '<button id="ap-cofre-tirar" class="btn sec"' + (pode ? '' : ' disabled') + '>⬆ Retirar<small class="tagd">manual</small></button>')
         : '');
-    setHtml('ap-it-cofre', card('Cofre — o que está guardado', '<span id="ap-cofre-quando">—</span>', corpo));
+    setHtml('ap-it-cofre', card('Cofre, o que está guardado', '<span id="ap-cofre-quando">, </span>', corpo));
     const q = $('ap-cofre-quando');
-    if (q) q.textContent = abertoAgora ? 'cofre aberto agora — leitura viva do jogo'
+    if (q) q.textContent = abertoAgora ? 'cofre aberto agora, leitura viva do jogo'
       : (at ? 'lido há ' + fmtDur(Date.now() - at) + ' · às ' + hora(at) + (itens.length ? ' · ' + itens.length + ' item(ns)' : '')
         : (itens.length ? itens.length + ' item(ns) guardados' : 'sem leitura gravada'));
   }
@@ -2104,7 +2048,7 @@
   let bagLida = null, bagLidaEm = 0, bagAuto = false;   // bagAuto: leitura passiva (sem clique)
   const protegidos = () => cache('proteg', 30000, () => {
     const mapa = new Map();
-    mapa.set(RABADON, 'Rabadon — nunca é vendido nem anunciado, nem duplicado');
+    mapa.set(RABADON, 'Rabadon, nunca é vendido nem anunciado, nem duplicado');
     const m = MOTOR();
     // PRIORIDADE EXTREMA: a tabela é do MOTOR (automation.js:47, exposta em window.__lolidleAuto
     // junto do resto) — nada desta lista foi escrito à mão. O critério é o item ser multiplicador
@@ -2143,7 +2087,7 @@
         if (mapa.has(chaveR)) return;
         const f = chamar('fasesDoItem', chaveR);
         const fases = (f.ok && Array.isArray(f.v) && f.v.length) ? f.v.join(' + ') : 'fase';
-        mapa.set(chaveR, 'peça da build de ' + fases + ' — fica reservada para a troca por fase');
+        mapa.set(chaveR, 'peça da build de ' + fases + ', fica reservada para a troca por fase');
       });
     }
     return mapa;
@@ -2158,7 +2102,7 @@
     const eq = ler('readEquip', []) || [];
     const ident = identidade() || {};
     const tecnica = '<details><summary>Ver a lista técnica (DPS por item e a build ideal crua)</summary>'
-      + '<div class="kvs">' + kv('campeão', esc(ident.nome || '—')) + kv('classe', esc(String(ident.classe || '').toUpperCase() || '—')) + kv('perfil', esc(ident.perfil || '—')) + '</div>'
+      + '<div class="kvs">' + kv('campeão', esc(ident.nome || '-')) + kv('classe', esc(String(ident.classe || '').toUpperCase() || '-')) + kv('perfil', esc(ident.perfil || '-')) + '</div>'
       + '<p class="hint">Equipado agora (' + eq.length + '):</p>'
       + '<div class="frames">' + ordenarItens(eq).map((e) => itemFrame(String(e.base), e.qual || '', e.refino || '', e.raridade || '', nomeItem(e.base))).join('') + '</div>'
       + '<p class="hint">Build ideal (' + ideal.length + '):</p>'
@@ -2166,7 +2110,7 @@
       + '</details>';
     if (!bh || typeof bh !== 'object') {
       setHtml('ap-it-build', card('Sua build explicada', 'como o motor monta os itens para o seu campeão',
-        '<p class="aviso warn">Esta versão do motor ainda não expõe a função <b>buildHumana</b> — não há explicação humana para mostrar.</p>'
+        '<p class="aviso warn">Esta versão do motor ainda não expõe a função <b>buildHumana</b>, não há explicação humana para mostrar.</p>'
         + tecnica));
       return;
     }
@@ -2180,13 +2124,13 @@
     const chipsHab = (conjunto, tipos) => {
       const arr = Array.isArray(conjunto) ? conjunto : String(conjunto == null ? '' : conjunto).split(/[,;/]/).map((s) => String(s).trim()).filter(Boolean);
       const tp = Array.isArray(tipos) ? tipos : [];
-      return arr.map((s, i) => '<span class="tag">' + esc(tp[i] || ['Q', 'W', 'E', 'R'][i] || '') + ' ' + esc(s) + '</span>').join(' ') || '<span class="vazio">—</span>';
+      return arr.map((s, i) => '<span class="tag">' + esc(tp[i] || ['Q', 'W', 'E', 'R'][i] || '') + ' ' + esc(s) + '</span>').join(' ') || '<span class="vazio">, </span>';
     };
     const listaItens = itens.length ? '<div class="frames">' + itens.map((i) => {
       const nome = i.nome || nomeItem(i.base);
       const ref = i.refino ? '+' + i.refino : '';
       const titulo = nome + (i.qual ? ' [' + i.qual + ']' : '') + (i.refino ? ' refino +' + i.refino : '') + (i.espaco ? ' · ' + (ESPACO_NOME[i.espaco] || i.espaco) : '')
-        + (i.dano != null ? ' · +' + fmt(i.dano) + ' dano/s no conjunto' : '') + (i.porque ? ' — ' + i.porque : '');
+        + (i.dano != null ? ' · +' + fmt(i.dano) + ' dano/s no conjunto' : '') + (i.porque ? ', ' + i.porque : '');
       return '<span class="bf-item" title="' + esc(titulo) + '">' + itemImgTag(i.base, i.refino)
         + '<b class="q">' + esc(i.qual || '') + ref + '</b>'
         + '<small><span class="bf-nome">' + esc(nome) + '</span>' + (i.espaco ? ' · ' + esc(ESPACO_NOME[i.espaco] || i.espaco) : '')
@@ -2202,9 +2146,9 @@
     }).join('') : '<p class="vazio">O motor ainda não sugeriu variações de habilidades.</p>';
     setHtml('ap-it-build', card('Sua build explicada', 'por que cada item está aqui, na língua do jogo',
       '<div class="kvs">'
-      + kv('campeão', esc(bh.campeao || ident.nome || '—'))
-      + kv('classe', esc(String(bh.classe || ident.classe || '').toUpperCase() || '—'))
-      + kv('nível', bh.nivel == null ? '—' : String(bh.nivel))
+      + kv('campeão', esc(bh.campeao || ident.nome || '-'))
+      + kv('classe', esc(String(bh.classe || ident.classe || '').toUpperCase() || '-'))
+      + kv('nível', bh.nivel == null ? '-' : String(bh.nivel))
       + '</div>'
       + '<p class="hint"><b>Os itens desta build</b> (' + itens.length + '):</p>'
       + listaItens
@@ -2228,7 +2172,7 @@
     }).join('') + '</div>';
     renderBuildHumana();
     const ident = identidade() || {};
-    setHtml('ap-it-proteg', card('Blindados — nunca são vendidos', 'o mesmo critério que o motor aplica',
+    setHtml('ap-it-proteg', card('Blindados, nunca são vendidos', 'o mesmo critério que o motor aplica',
       '<div class="chips" data-blindados="motor">' + Array.from(prot.entries()).sort((x, y) => ordemItemGui({ base: x[0] }, { base: y[0] })).map(([b, motivo]) =>
         '<span class="chip ' + (String(b) === RABADON ? 'lendario' : '') + '" title="' + esc(motivo) + '">' + (ITEM_IMG(b) ? '<img src="' + ITEM_IMG(b) + '" alt="">' : '') + esc(nomeItem(b)) + ' <small>🔒</small></span>').join('') + '</div>'
       + '<p class="hint">A lista sai do <b>motor</b>: multiplicadores de classe (o Gume do Infinito <b>3031</b> e o Rabadon <b>3089</b> ficam protegidos em qualquer campeão, duplicados incluídos), itens de tratamento especial do seu campeão, lendários da build, peças reservadas das builds de mobs e de chefe e o que está equipado em qualidade S ou SS. Um item que ainda está a ser avaliado (qualidade "?") também não é tocado.</p>'));
@@ -2241,7 +2185,7 @@
         '<p class="vazio">A mochila ainda não está legível.</p>'
         + '<p class="hint">Se você ainda não abriu a bolsa desde que a página carregou, abra uma vez no jogo (tecla I). A partir daí o motor lê-a sozinho, sem voltando abrindo.</p>'
         + diag('Leitura da mochila (manutenção manual)')
-      + '<div class="acoes">' + acaoD('ap-scan', '🎒 Forçar leitura da mochila', 'Lê o conteúdo da mochila — não abre nem fecha nada no jogo.') + '</div>'));
+      + '<div class="acoes">' + acaoD('ap-scan', '🎒 Forçar leitura da mochila', 'Lê o conteúdo da mochila, não abre nem fecha nada no jogo.') + '</div>'));
       setHtml('ap-it-plano', '');
     } else {
       const b = bagLida;
@@ -2311,7 +2255,7 @@
     }).join('') || '<span class="vazio">nenhuma habilidade na barra</span>';
     setHtml('ap-sk-barra', card('Barra de combate', 'as habilidades que o jogo usa sozinho',
       '<div class="chips">' + barra + '</div>'
-      + '<p class="hint">A <b>ultimate</b> só é usada contra chefes (ou em áreas muito difíceis) — em mobs normais o motor guarda-a.</p>'));
+      + '<p class="hint">A <b>ultimate</b> só é usada contra chefes (ou em áreas muito difíceis), em mobs normais o motor guarda-a.</p>'));
 
     const pontos = sk.pontos || 0, pontosAtrib = sk.pontosAtrib || 0;
     setHtml('ap-sk-pontos', card('Pontos para gastar', 'lido do HUD dourado do jogo',
@@ -2337,18 +2281,18 @@
     setHtml('ap-sk-ordem', card('Ordem de subida', 'a mesma regra que o motor usa no botão de subir',
       tabela(['#', 'habilidade', 'rank', 'dano/s', 'na barra', 'situação'],
         arsenal.map((h, i) => '<tr class="' + (proximo && proximo.t === h.t ? 'melhor' : '') + '"><td>' + (i + 1) + '</td><td>' + esc(h.name || h.t)
-          + (ler('ehUltimate', false, h.t) ? ' 👑' : '') + '</td><td>' + (h.rank == null ? '—' : h.rank + '/' + (h.maxRank || '?')) + '</td><td>' + fmt(dpsDe[h.t] || 0)
+          + (ler('ehUltimate', false, h.t) ? ' 👑' : '') + '</td><td>' + (h.rank == null ? '-' : h.rank + '/' + (h.maxRank || '?')) + '</td><td>' + fmt(dpsDe[h.t] || 0)
           + '</td><td>' + (h.onBar ? 'sim' : 'não') + '</td><td>' + (h.max ? 'no máximo' : (!liberada(h) ? ('bloqueada (nível ' + (h.nivel || '?') + ')') : (h.rank === 0 ? 'por desbloquear' : 'pode subir'))) + '</td></tr>').join(''),
         'sem habilidades lidas')
-      + (proximo ? '<p class="aviso ok">O próximo ponto vai para <b>' + esc(proximo.name || proximo.t) + '</b>' + ((proximo.rank || 0) === 0 ? ' (desbloquear — ao desbloquear entra sozinha na barra)' : ' (a que dá mais dano)') + '.</p>'
+      + (proximo ? '<p class="aviso ok">O próximo ponto vai para <b>' + esc(proximo.name || proximo.t) + '</b>' + ((proximo.rank || 0) === 0 ? ' (desbloquear, ao desbloquear entra sozinha na barra)' : ' (a que dá mais dano)') + '.</p>'
         : '<p class="aviso">Nada para subir agora (tudo no máximo ou sem pontos).</p>')));
 
     setHtml('ap-sk-dps', card('Dano de cada habilidade', 'estimativa do motor com os seus stats',
       dps ? '<div class="kvs">' + kv('poder de habilidade', fmt(dps.ap)) + kv('dano de ataque', fmt(dps.ad)) + kv('nível', String(dps.nivel)) + '</div>'
         + tabela(['habilidade', 'rank', 'dano direto/s', 'adaga/s', 'Lich/s', 'total/s', 'recarga'],
-          (dps.habs || []).filter((h) => h.dano || h.passiva).slice(0, 16).map((h) => '<tr><td>' + esc(h.nome || h.t) + (h.naBarra ? ' *' : '') + (h.adaga ? ' 🗡' : '') + '</td><td>' + (h.rank == null ? '—' : h.rank)
-            + '</td><td>' + (h.dpsDireto ? fmt(h.dpsDireto) : '—') + '</td><td>' + (h.dpsAdaga ? fmt(h.dpsAdaga) : '—') + '</td><td>' + (h.dpsLich ? fmt(h.dpsLich) : '—')
-            + '</td><td><b>' + (h.dps != null ? fmt(h.dps) : '—') + '</b></td><td>' + (h.cd != null ? h.cd + 's' : '—') + '</td></tr>').join(''), 'sem dados')
+          (dps.habs || []).filter((h) => h.dano || h.passiva).slice(0, 16).map((h) => '<tr><td>' + esc(h.nome || h.t) + (h.naBarra ? ' *' : '') + (h.adaga ? ' 🗡' : '') + '</td><td>' + (h.rank == null ? '-' : h.rank)
+            + '</td><td>' + (h.dpsDireto ? fmt(h.dpsDireto) : '-') + '</td><td>' + (h.dpsAdaga ? fmt(h.dpsAdaga) : '-') + '</td><td>' + (h.dpsLich ? fmt(h.dpsLich) : '-')
+            + '</td><td><b>' + (h.dps != null ? fmt(h.dps) : '-') + '</b></td><td>' + (h.cd != null ? h.cd + 's' : '-') + '</td></tr>').join(''), 'sem dados')
         + '<p class="hint">* = está na barra de combate · 🗡 = deixa adaga (dispara a Voracidade)</p>'
         : '<p class="aviso err">O motor não conseguiu calcular o dano das habilidades.</p>'));
 
@@ -2362,9 +2306,16 @@
       const nomeDe = (t) => { const h = (sk.arsenal || []).find((x) => x.t === t); return (h && (h.name || h.t)) || t; };
       setHtml('ap-sk-ideal', card('Barra ideal (recomendada)', 'as 4 habilidades que mais rendem agora',
         '<div class="chips">' + idealBarra.map((t) => '<span class="tag">' + esc(nomeDe(t)) + (ler('ehUltimate', false, t) ? ' 👑' : '') + '</span>').join('') + '</div>'
-        + '<p class="aviso ' + (igual ? 'ok' : 'warn') + '">' + (igual ? 'A sua barra já está igual à ideal.' : 'A sua barra está diferente da ideal — o switch "Repor a rotação na barra" corrige isto sozinho.') + '</p>'));
+        // A lista é ESTÁVEL (o preview não ordena por recarga). Se o switch de disponibilidade
+        // estiver ligado, a barra em jogo roda de propósito e isso NÃO é erro.
+        + '<p class="aviso ' + (igual ? 'ok' : '') + '">' + (igual
+          ? 'A sua barra já está igual à ideal.'
+          : (cfg().barraPorDisponibilidade !== false
+            ? 'Em jogo a barra troca pelas habilidades prontas; esta é a que mais rende.'
+            : 'A sua barra está diferente da ideal: o switch "Repor a rotação na barra" corrige isto sozinho.')) + '</p>'
+        + tg('ap-cfg-barraDisp', 'Barra pelas habilidades prontas', 'Põe na barra as habilidades disponíveis e as que ficam prontas mais cedo. Desligado, a barra fica presa às 4 de maior dano.', cfg().barraPorDisponibilidade !== false)));
     } else setHtml('ap-sk-ideal', '');
-    setHtml('ap-sk-acoes', card('Habilidades — o que o motor sobe sozinho', 'o switch "Subir habilidades" faz isto; os botões abaixo são manutenção manual',
+    setHtml('ap-sk-acoes', card('Habilidades, o que o motor sobe sozinho', 'o switch "Subir habilidades" faz isto; os botões abaixo são manutenção manual',
       diag('Habilidades: ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-subir-habs', '⬆ Subir habilidades (' + fmt(pontos) + ' ponto(s))', 'Gasta todos os pontos livres: primeiro desbloqueia, depois sobe a que dá mais dano.', pontos ? '' : 'sec')
@@ -2408,7 +2359,7 @@
     setHtml('ap-at-lista', card('Distribuição atual', 'lida do painel do jogo',
       atrs.length
         ? tabela(['atributo', 'pontos', 'total com equipamento'],
-          atrs.map((a) => '<tr><td>' + esc(a.nome) + '</td><td><b>' + (a.valor == null ? '—' : a.valor) + '</b></td><td>' + (a.total == null ? '—' : a.total) + '</td></tr>'))
+          atrs.map((a) => '<tr><td>' + esc(a.nome) + '</td><td><b>' + (a.valor == null ? '-' : a.valor) + '</b></td><td>' + (a.total == null ? '-' : a.total) + '</td></tr>'))
         : '<p class="vazio">O painel de atributos do jogo ainda não está na página. Abra a aba "Atributos" no jogo e volte aqui.</p>'));
 
     const modelos = meta.modelos || null;
@@ -2428,12 +2379,12 @@
       + Object.keys(st).map((k) => kv(k, fmt1(st[k]))).join('')
       + '</div>'));
 
-    setHtml('ap-at-acoes', card('Atributos — o que o motor gasta sozinho', 'o switch "Distribuir pontos de atributo" faz isto; o botão abaixo é manutenção manual',
+    setHtml('ap-at-acoes', card('Atributos, o que o motor gasta sozinho', 'o switch "Distribuir pontos de atributo" faz isto; o botão abaixo é manutenção manual',
       diag('Atributos: ação manual (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-distribuir', '➕ Distribuir ' + fmt(sk.pontosAtrib || 0) + ' ponto(s)', 'Gasta todos os pontos livres pelo modelo escolhido. Não há como desfazer.', (sk.pontosAtrib || 0) > 0 ? '' : 'sec')
       + '</div>'
-      + '<p class="hint">Regra do motor: cada ponto vai ao atributo que está mais atrasado em relação ao peso do modelo — o resultado fica equilibrado, não todo no mesmo.</p>'));
+      + '<p class="hint">Regra do motor: cada ponto vai ao atributo que está mais atrasado em relação ao peso do modelo, o resultado fica equilibrado, não todo no mesmo.</p>'));
     const sel = $('ap-at-modelo-sel');
     const sugerido = ler('modeloAtribDe', null);
     if (sel) {
@@ -2468,11 +2419,22 @@
    *  "—" em vez de 0. */
   const potTxt = (fase, porMinuto) => {
     const v = porMinuto != null ? porMinuto : (fase ? (fase.potions || 0) : null);
-    if (v == null) return '—';
-    if (!v && fase && (fase.kills || 0) > 0) return '—';
+    if (v == null) return '-';
+    if (!v && fase && (fase.kills || 0) > 0) return '-';
     return fmt1(v);
   };
   function renderFarm() {
+    // OBJETIVO DO FARM: o critério que escolhe a região (xp, ouro ou runas). Fica AQUI, na aba
+    // dos ganhos, ao lado do que ele decide.
+    const c0 = cfg();
+    const objAtual = String(c0.objetivo || 'xp');
+    setHtml('ap-fm-objetivo', card('O que você quer ganhar', 'o objetivo muda a região que o motor escolhe',
+      linha('Objetivo do farm', 'a região ideal passa a ser escolhida por isto',
+        '<select id="ap-obj">'
+        + '<option value="xp"' + (objAtual === 'xp' ? ' selected' : '') + '>Experiência (subir de nível)</option>'
+        + '<option value="ouro"' + (objAtual === 'ouro' ? ' selected' : '') + '>Ouro (comprar itens)</option>'
+        + '<option value="runas"' + (objAtual === 'runas' ? ' selected' : '') + '>Runas</option>'
+        + '</select>')));
     const f = farm();
     const cur = f.current;
     if (cur) {
@@ -2483,11 +2445,11 @@
       const pk = boss ? porAbate(fase) : null;
       const kvs = boss
         ? '<div class="kvs">'
-          + kv('ouro por chefe', pk ? fmt(pk.gold) : '—') + kv('xp por chefe', pk ? fmt(pk.xp) : '—')
+          + kv('ouro por chefe', pk ? fmt(pk.gold) : '-') + kv('xp por chefe', pk ? fmt(pk.xp) : '-')
           + kv('tempo do chefe', fmtDur(ms)) + kv('poções usadas', potTxt(fase, pm(fase && fase.potions)))
           + '</div>'
           + '<p class="hint">A fase do chefe mede <b>um</b> chefe, então os números são <b>por chefe</b> (loot ÷ abates), com o tempo ao lado como custo. '
-          + 'Por minuto aqui não compara chefes: o xp do chefe é quase fixo e o loot varia — dividir pelo tempo só premia quem morre rápido.</p>'
+          + 'Por minuto aqui não compara chefes: o xp do chefe é quase fixo e o loot varia, dividir pelo tempo só premia quem morre rápido.</p>'
         : '<div class="kvs">'
           + kv('ouro por minuto', fmt(pm(fase && fase.gold))) + kv('xp por minuto', fmt(pm(fase && fase.xp)))
           + kv('poções por minuto', potTxt(fase, pm(fase && fase.potions))) + kv('abates por minuto', fmt(pm(fase && fase.kills)))
@@ -2510,13 +2472,13 @@
         if (!x) return '<p class="hint">' + nome + ': sem previsão.</p>';
         const detalhe = (x.fonte === 'historico' ? 'medido no jogo' : 'estimativa') + (x.n != null ? ' · amostra n=' + x.n : '');
         const val = x.goldMin != null ? fmt(x.goldMin) + ' ouro/min · ' + fmt(x.xpMin) + ' xp/min'
-          : (x.dps != null ? fmt(x.dps) + ' dano/s' : '—');
-        return '<p class="aviso ' + (x.fonte === 'historico' ? 'ok' : '') + '">' + nome + ' — ' + val + ' <b>(' + detalhe + ')</b></p>';
+          : (x.dps != null ? fmt(x.dps) + ' dano/s' : '-');
+        return '<p class="aviso ' + (x.fonte === 'historico' ? 'ok' : '') + '">' + nome + ', ' + val + ' <b>(' + detalhe + ')</b></p>';
       };
       setHtml('ap-fm-previsor', card('Previsão para a sua build de agora', 'medido quando existe; teoria quando não',
         bloco('Mobs', prev.mob, prev.teorico && prev.teorico.mob)
         + bloco('Chefe', prev.chefe, prev.teorico && prev.teorico.chefe)
-        + '<p class="hint">Assinatura da build: ' + esc(prev.assinatura || '—') + '. O motor prefere sempre o que foi <b>medido</b>; a teoria serve só para começar.</p>'
+        + '<p class="hint">Assinatura da build: ' + esc(prev.assinatura || '-') + '. O motor prefere sempre o que foi <b>medido</b>; a teoria serve só para começar.</p>'
         + diag('Medição (manutenção manual)')
         + '<div class="acoes">' + acaoD('ap-fm-testes', '🧪 Medir conjuntos de itens', 'O teste mede cada conjunto no jogo e alimenta esta previsão.') + '</div>'));
     } else setHtml('ap-fm-previsor', '');
@@ -2524,19 +2486,19 @@
     // regiões (medido × meta)
     const agg = agregado();
     const rec = recomendacao();
-    setHtml('ap-fm-regioes', card('Regiões — o que foi medido', 'ouro/xp reais por minuto, com o risco calculado',
+    setHtml('ap-fm-regioes', card('Regiões, o que foi medido', 'ouro/xp reais por minuto, com o risco calculado',
       agg.length
         ? tabela(['região', 'chefe', 'ouro/min', 'xp/min', 'abates/min', 'mortes', 'você sobrevive ao chefe?', 'poções (ouro/min)'],
           agg.map((r) => {
             const z = r.risco;
             const melhor = rec && rec.regiao === r.region;
-            const risco = z ? (z.morte ? '💀 o golpe do chefe mata você' : (z.morre ? '⚠ você morre em ' + fmt1(z.tMorrer) + 's' : '✔ você sobrevive')) : '—';
-            return '<tr class="' + (melhor ? 'melhor' : '') + '"><td>' + (melhor ? '⭐ ' : '') + esc(limparNivel(r.region)) + '</td><td>' + esc(limparNivel(r.boss || '—'))
+            const risco = z ? (z.morte ? '💀 o golpe do chefe mata você' : (z.morre ? '⚠ você morre em ' + fmt1(z.tMorrer) + 's' : '✔ você sobrevive')) : '-';
+            return '<tr class="' + (melhor ? 'melhor' : '') + '"><td>' + (melhor ? '⭐ ' : '') + esc(limparNivel(r.region)) + '</td><td>' + esc(limparNivel(r.boss || '-'))
               + '</td><td>' + fmt(r.goldMin) + '</td><td>' + fmt(r.xpMin) + '</td><td>' + fmt1(r.killsMin) + '</td><td>' + (r.deaths || 0)
               + '</td><td>' + risco + '</td><td>' + fmt(r.goldPotionMin) + '</td></tr>';
           }), 'Ainda não há ciclos medidos')
         : '<p class="vazio">Ainda não há ciclos medidos. Farmar um pouco numa região já cria histórico.</p>'
-        + (rec ? '<p class="aviso ok">Recomendação agora: <b>' + esc(limparNivel(rec.regiao)) + '</b> — ' + fmt(rec.ouroLiquidoMin) + ' ouro limpo/min (' + (rec.sobrevive ? 'você sobrevive ao chefe' : 'só mobs: o chefe mata') + ').</p>' : '')));
+        + (rec ? '<p class="aviso ok">Recomendação agora: <b>' + esc(limparNivel(rec.regiao)) + '</b>, ' + fmt(rec.ouroLiquidoMin) + ' ouro limpo/min (' + (rec.sobrevive ? 'você sobrevive ao chefe' : 'só mobs: o chefe mata') + ').</p>' : '')));
 
     // ranking teórico
     const obj = cfg().objetivo || 'xp';
@@ -2545,10 +2507,10 @@
       rank.length
         ? tabela(['#', 'região', 'chefe', 'xp/min', 'ouro/min', 'runas/hora'],
           rank.slice(0, 20).map((x, i) => '<tr class="' + (i === 0 ? 'melhor' : '') + '"><td>' + (i + 1) + '</td><td>' + (i === 0 ? '⭐ ' : '') + esc(x.nome)
-            + '</td><td>' + esc(x.chefe || '—') + '</td><td>' + fmt(x.xpMin) + '</td><td>' + fmt(x.goldMin) + '</td><td>' + fmt(x.runasH) + '</td></tr>'),
+            + '</td><td>' + esc(x.chefe || '-') + '</td><td>' + fmt(x.xpMin) + '</td><td>' + fmt(x.goldMin) + '</td><td>' + fmt(x.runasH) + '</td></tr>'),
           'sem dados do catálogo')
         : '<p class="vazio">O motor ainda não leu o catálogo do jogo.</p>'
-        + '<p class="hint">Esta tabela é <b>teoria</b> (calculada). A tabela de cima é o que foi <b>medido</b> — vale mais.</p>'));
+        + '<p class="hint">Esta tabela é <b>teoria</b> (calculada). A tabela de cima é o que foi <b>medido</b>, vale mais.</p>'));
 
     // últimos ciclos: MOBS por minuto, CHEFE por abate (ver a nota no topo desta seção)
     const ciclos = (f.cycles || []).slice(0, 30);
@@ -2560,12 +2522,12 @@
           const fim = c2.fim === 'chefe' ? ' ✅' : c2.fim === 'viagem' ? ' ↩' : c2.fim === 'morte' ? ' 💀' : (c2.incompleto ? ' ⚠' : '');
           return '<tr><td>' + (i + 1) + '</td><td>' + hora(c2.endedAt || c2.startedAt) + '</td><td>' + esc(limparNivel(c2.region)) + (c2.boss ? ' / ' + esc(limparNivel(c2.boss)) : '') + fim
             + '</td><td>' + fmt(mm.gold) + '</td><td>' + fmt(mm.xp) + '</td><td>' + potTxt(c2.mobFase, mm.potions) + '</td>'
-            + '<td>' + (c2.boss ? (pk ? fmt(pk.gold) : '—') : '—') + '</td><td>' + (c2.boss ? (pk ? fmt(pk.xp) : '—') : '—')
-            + '</td><td>' + (c2.bossDurMs ? fmtDur(c2.bossDurMs) : '—') + '</td></tr>';
+            + '<td>' + (c2.boss ? (pk ? fmt(pk.gold) : '-') : '-') + '</td><td>' + (c2.boss ? (pk ? fmt(pk.xp) : '-') : '-')
+            + '</td><td>' + (c2.bossDurMs ? fmtDur(c2.bossDurMs) : '-') + '</td></tr>';
         }), 'sem ciclos registados')
       + '<p class="hint">Nas colunas do <b>chefe</b> o número é <b>por abate</b> (loot ÷ abates), não por minuto: comparar chefes pela taxa da janela premia quem morre rápido. '
       + 'Nas colunas de <b>mobs</b> a taxa é <b>por minuto</b>, que é o que faz sentido com muitos abates.</p>'
-      + '<p class="hint">Poções aparece como <b>—</b> quando a fase teve abates e nenhuma poção foi usada: 0/min não é medição de combate — é o motor sem agir (modo observação) ou sem precisar de poção.</p>'));
+      + '<p class="hint">Poções aparece como <b>, </b> quando a fase teve abates e nenhuma poção foi usada: 0/min não é medição de combate, é o motor sem agir (modo observação) ou sem precisar de poção.</p>'));
   }
 
 
@@ -2618,7 +2580,7 @@
   function renderPlanoItens() {
     const ids = Array.from(selItens);
     if (!ids.length) {
-      setHtml('ap-plan-out', '<p class="vazio">Nenhum item escolhido ainda — o plano aparece aqui assim que você marcar.</p>');
+      setHtml('ap-plan-out', '<p class="vazio">Nenhum item escolhido ainda, o plano aparece aqui assim que você marcar.</p>');
       return;
     }
     const plano = planoItens();
@@ -2630,7 +2592,7 @@
       const oi = ondeItemMapa();
       setHtml('ap-plan-out', '<p class="aviso warn">' + (oi
         ? 'O motor não conhece nenhuma zona que drope estes itens.'
-        : 'O motor ainda não leu o catálogo do jogo (o mapa de drops está vazio) — recarregue a página com F5.') + '</p>');
+        : 'O motor ainda não leu o catálogo do jogo (o mapa de drops está vazio), recarregue a página com F5.') + '</p>');
       return;
     }
     const porItem = new Map();
@@ -2644,11 +2606,11 @@
         linhas.push('<tr class="' + (i === 0 ? 'melhor' : '') + '">'
           + '<td>' + (i === 0 ? '<img src="' + ITEM_IMG(id) + '" alt="" loading="lazy" onerror="this.style.opacity=.2">' : '↳ ') + esc(x.nome || nomeItem(id)) + '</td>'
           + '<td>' + esc(limparNivel(x.zonaNome || x.zona)) + '</td>'
-          + '<td>' + (x.faixa ? esc(String(x.faixa[0]) + '–' + String(x.faixa[1])) : '—') + '</td>'
-          + '<td>' + (x.chance ? (x.chance * 100).toFixed(4) + '%' : '—') + '</td>'
-          + '<td>' + (x.dropsH == null ? '—' : fmt1(x.dropsH)) + '</td>'
-          + '<td>' + (x.sobreviveMob === false ? '💀 morre' : x.sobreviveMob === true ? '✔ ok' : '—') + '</td>'
-          + '<td>' + (x.chefeFatal === true ? '💀 mata você' : x.chefeFatal === false ? '✔ ok' : '—') + '</td>'
+          + '<td>' + (x.faixa ? esc(String(x.faixa[0]) + '–' + String(x.faixa[1])) : '-') + '</td>'
+          + '<td>' + (x.chance ? (x.chance * 100).toFixed(4) + '%' : '-') + '</td>'
+          + '<td>' + (x.dropsH == null ? '-' : fmt1(x.dropsH)) + '</td>'
+          + '<td>' + (x.sobreviveMob === false ? '💀 morre' : x.sobreviveMob === true ? '✔ ok' : '-') + '</td>'
+          + '<td>' + (x.chefeFatal === true ? '💀 mata você' : x.chefeFatal === false ? '✔ ok' : '-') + '</td>'
           + '</tr>');
       });
     }
@@ -2665,7 +2627,7 @@
           + (alvo.dropsH != null ? ' · ' + fmt1(alvo.dropsH) + ' drops/hora de ' + esc(alvo.nome) : '')
           + (alvo.chefeFatal === true ? ' · ⚠ o chefe dessa zona mata você (o motor fica só nos mobs)' : '') + '.</p>'
         : '')
-      + '<p class="hint">A primeira linha de cada item é a melhor zona dele. <b>Chance por abate</b> e <b>drops/hora</b> são contas do motor (catálogo do jogo × abates medidos na região); "—" = o motor não tem esse número.</p>');
+      + '<p class="hint">A primeira linha de cada item é a melhor zona dele. <b>Chance por abate</b> e <b>drops/hora</b> são contas do motor (catálogo do jogo × abates medidos na região); ", " = o motor não tem esse número.</p>');
   }
   /** Chips dos itens escolhidos (com o × para tirar). Vive no cartão do auto farm pra item. */
   function renderChips() {
@@ -2691,9 +2653,9 @@
     const corpoSozinho = '<div class="kvs">'
       + kv('objetivo', esc(objTxt))
       + kv('região em uso', fixa ? 'FIXA (você escolheu)' : 'automática (o motor escolhe)')
-      + kv(fixa ? 'região fixa' : 'o motor escolheu', esc(fixa ? nomeRegiao(fixa) : (rec ? limparNivel(rec.regiao) : '—')))
+      + kv(fixa ? 'região fixa' : 'o motor escolheu', esc(fixa ? nomeRegiao(fixa) : (rec ? limparNivel(rec.regiao) : '-')))
       + '</div>'
-      + (fixa ? '<p class="aviso warn">A região está <b>FIXA</b> em <b>' + esc(nomeRegiao(fixa)) + '</b> (você escolheu). Enquanto for assim, o auto farm sozinho <b>não</b> escolhe a melhor região — volta ao automático no botão abaixo ou na aba Painel.</p>' : '')
+      + (fixa ? '<p class="aviso warn">A região está <b>FIXA</b> em <b>' + esc(nomeRegiao(fixa)) + '</b> (você escolheu). Enquanto for assim, o auto farm sozinho <b>não</b> escolhe a melhor região, volta ao automático no botão abaixo ou na aba Painel.</p>' : '')
       + '<div class="acoes">'
       + acao('ap-fm-auto', '🎯 Voltar a escolher a região sozinho', fixa ? 'Limpa a região fixa: o motor volta a escolher a melhor região para o seu nível.' : 'Já está automática: o motor escolhe a região sozinho.', '', !fixa)
       + '</div>'
@@ -2704,7 +2666,7 @@
       + '<p class="hint">O motor escolhe a região sozinho e muda quando compensa. Para mudar o objetivo, use a aba <b>Painel</b>.</p>';
     const corpoItem = '<p class="hint">Marque abaixo os itens que você quer dropar: o motor diz em que região cada um cai, com a chance e os drops/hora, e leva você até lá.</p>';
     const minModo = guiPrefs.fmModoMin === true;
-    setHtml('ap-fm-modo', cardMin(null, 'Como você quer farmar', 'duas modalidades — escolha uma',
+    setHtml('ap-fm-modo', cardMin(null, 'Como você quer farmar', 'duas modalidades, escolha uma',
       '<div class="modos">'
       + '<button class="modo' + (modo === 'sozinho' ? ' ativa' : '') + '" id="ap-fm-modo-sozinho"><b>🤖 Auto farm sozinho</b><small>o motor escolhe a região, muda quando compensa e não pergunta nada</small></button>'
       + '<button class="modo' + (modo === 'item' ? ' ativa' : '') + '" id="ap-fm-modo-item"><b>🎯 Auto farm pra item</b><small>você escolhe os itens que quer dropar e o motor vai à região que os dropa</small></button>'
@@ -2717,18 +2679,18 @@
     const n = selItens.size;
     const total = metaItens().length;
     const minItens = guiPrefs.fmItensMin === true;
-    setHtml('ap-fm-itens', cardMin(null, 'Auto farm pra item — o que quero dropar', n ? n + ' item(ns) escolhido(s)' : 'nenhum item escolhido',
+    setHtml('ap-fm-itens', cardMin(null, 'Auto farm pra item, o que quero dropar', n ? n + ' item(ns) escolhido(s)' : 'nenhum item escolhido',
       '<div class="chips" id="ap-fm-chips"></div>'
       + (n ? '' : '<p class="vazio">Nenhum item escolhido ainda.</p>'
         + '<p class="hint">Clique em <b>Escolher itens</b> e marque o que você quer. A lista mostra os itens do jogo agrupados por raridade e por espaço (arma, armadura, cabeça, mão, botas, acessório)'
-        + (total ? ' — ' + total + ' itens no catálogo' : '') + '.</p>')
+        + (total ? ', ' + total + ' itens no catálogo' : '') + '.</p>')
       + '<div class="acoes">'
       + acao('ap-pick', '🔍 Escolher itens (<b id="ap-sel-n">' + n + '</b>)', 'Abre a lista de itens do jogo para você marcar o que quer dropar.')
       + acao('ap-plan-go', '🧭 Farmar estes itens', n ? 'Confirma o destino e leva você até lá: liga o auto-play, fixa a região e viaja.' : 'Escolha primeiro os itens que você quer dropar.', n ? '' : 'sec', !n)
       + acao('ap-plan-limpar', '✖ Limpar escolha', 'Tira todos os itens da escolha (não mexe em nada no jogo).', 'sec', !n)
       + '</div>'
       + '<div id="ap-plan-out"></div>'
-      + '<p class="hint">O motor não tem (ainda) um modo "farmar até cair": a região fica <b>fixa</b> e ele continua lá até você mudar — não para sozinho quando o item cai.</p>', minItens, 'ap-fm-min-itens', !minItens));
+      + '<p class="hint">O motor não tem (ainda) um modo "farmar até cair": a região fica <b>fixa</b> e ele continua lá até você mudar, não para sozinho quando o item cai.</p>', minItens, 'ap-fm-min-itens', !minItens));
     renderPlanoItens();
     renderChips();
   }
@@ -2743,16 +2705,16 @@
     // As ofertas que o MOTOR já leu ficam gravadas (OFERTAS_KEY): mostram-se sem pedir nada.
     const ofertas = ofertasCache || (ofertasStore && ofertasStore.ofertas) || ler('minhasOfertas', []) || [];
     const ofAt = (ofertasStore && Number(ofertasStore.at)) || 0;
-    setHtml('ap-mk-ofertas', card('As minhas ofertas no mercado', '<span id="ap-mk-quando">—</span>',
+    setHtml('ap-mk-ofertas', card('As minhas ofertas no mercado', '<span id="ap-mk-quando">, </span>',
       '<div class="kvs">'
       + kv('ofertas', String(ofertas.length))
-      + kv('mercado cheio?', sat == null ? '—' : (cheio ? 'sim' : 'não') + (lend == null ? '' : ' <small>' + fmt(lend) + '/10 lendários</small>'))
+      + kv('mercado cheio?', sat == null ? '-' : (cheio ? 'sim' : 'não') + (lend == null ? '' : ' <small>' + fmt(lend) + '/10 lendários</small>'))
       + '</div>'
       + (ofertas.length
-        ? tabela(['item', 'raridade', 'qualidade', 'preço'], ordenarItens(ofertas).map((o) => '<tr><td>' + esc(o.nome || o.base || '?') + '</td><td>' + esc(o.raridade || '—')
-          + '</td><td>' + esc(o.qual || '—') + '</td><td>' + fmt(o.preco) + '</td></tr>'))
+        ? tabela(['item', 'raridade', 'qualidade', 'preço'], ordenarItens(ofertas).map((o) => '<tr><td>' + esc(o.nome || o.base || '?') + '</td><td>' + esc(o.raridade || '-')
+          + '</td><td>' + esc(o.qual || '-') + '</td><td>' + fmt(o.preco) + '</td></tr>'))
         : '<p class="vazio">Ainda não há leitura das suas ofertas.</p>'
-          + '<p class="hint">O motor lê-as quando passa pelo mercado e grava a lista — a partir daí aparece aqui, sem precisar clicar em nada. O botão abaixo força uma leitura nova.</p>')
+          + '<p class="hint">O motor lê-as quando passa pelo mercado e grava a lista, a partir daí aparece aqui, sem precisar clicar em nada. O botão abaixo força uma leitura nova.</p>')
       + diag('Mercado: leitura e ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-mk-ler', '📖 Forçar leitura das minhas ofertas', 'Abre o mercado, lê a aba "Minhas ofertas", grava e fecha. Não muda nada.')
@@ -2819,14 +2781,14 @@
     const chipsItens = wItens.length
       ? '<div class="chips" id="ap-watch-chips">' + ordenarItens(wItens).map((b) => '<span class="chip" title="' + esc(b) + '">' + itemImgTag(b) + esc(nomeItem(b))
         + ' <b data-wrem="' + esc(b) + '" style="cursor:pointer;color:#ff9a6a">×</b></span>').join('') + '</div>'
-      : '<p class="vazio" id="ap-watch-chips">Nenhum item escolhido — marque nos ícones abaixo (ou vigie só um jogador).</p>';
+      : '<p class="vazio" id="ap-watch-chips">Nenhum item escolhido, marque nos ícones abaixo (ou vigie só um jogador).</p>';
     const vendedoresWatch = cfgWatch.vendedores || w.vendedores || [];
     const chipsVendedores = vendedoresWatch.length
       ? '<div class="chips" id="ap-watch-vendedores-chips">' + vendedoresWatch.map((v) => '<span class="chip">' + esc(v)
         + ' <b data-wvend="' + esc(v) + '" style="cursor:pointer;color:#ff9a6a" title="remover">×</b></span>').join('') + '</div>'
-      : '<p class="vazio" id="ap-watch-vendedores-chips">Nenhum jogador escolhido — escreva o nome abaixo e clique em Adicionar.</p>';
-    setHtml('ap-mk-watch', card('Watch do mercado — itens e jogadores', 'deteta em tempo real e compra sozinho',
-      '<p class="hint">Vigia o mercado dos jogadores pelo SERVIDOR (todas as ofertas, com vendedor) e, quando algo casa, compra pelo próprio mercado do jogo. <b>Só gasta ouro</b> (nunca Gemas/diamantes) e nunca abaixo da reserva de poções. Para comprar sozinho tem de estar no <b>Mercador</b> (base) — a deteção corre em qualquer sítio.</p>'
+      : '<p class="vazio" id="ap-watch-vendedores-chips">Nenhum jogador escolhido, escreva o nome abaixo e clique em Adicionar.</p>';
+    setHtml('ap-mk-watch', card('Watch do mercado, itens e jogadores', 'detecta em tempo real e compra sozinho',
+      '<p class="hint">Vigia o mercado dos jogadores pelo SERVIDOR (todas as ofertas, com vendedor) e, quando algo casa, compra pelo próprio mercado do jogo. <b>Só gasta ouro</b> (nunca Gemas/diamantes) e nunca abaixo da reserva de poções. Para comprar sozinho tem de estar no <b>Mercador</b> (base), a deteção corre em qualquer sítio.</p>'
       + '<p class="hint">A vigia não tem liga/desliga: se há itens ou jogadores na lista, ela está ativa e compra sozinha. Lista vazia = não vigia nada.</p>'
       + '<p class="hint">Itens que você quer (escolha nos ícones abaixo):</p>'
       + chipsItens
@@ -2880,7 +2842,7 @@
         return cads.sort((a, b) => a - b).map((v) => '<option value="' + v + '"' + (v === wCad ? ' selected' : '') + '>a cada ' + v + ' s</option>').join('');
       })() + '</select></label>'
       + '<div id="ap-watch-out">' + wOut
-        + (wUlt ? '<p class="hint">Última compra: ' + (wUlt.ok ? 'COMPROU ' + esc(wUlt.vendedor || '') + ' por ' + fmt(wUlt.preco) + ' ouro' : 'falhou — ' + esc(wUlt.motivo || '?')) + '.</p>' : '')
+        + (wUlt ? '<p class="hint">Última compra: ' + (wUlt.ok ? 'COMPROU ' + esc(wUlt.vendedor || '') + ' por ' + fmt(wUlt.preco) + ' ouro' : 'falhou, ' + esc(wUlt.motivo || '?')) + '.</p>' : '')
       + '</div>'
       + diag('Watch do mercado: ações manuais (manutenção manual)')
       + '<div class="acoes">'
@@ -2913,11 +2875,11 @@
       mortes.length
         ? '<div class="lista">' + mortes.map((m) => '<div class="ln loj"><time>' + hora(m.at) + '</time><b>💀 ' + esc(m.by || '?') + '</b>'
           + '<span class="d">em ' + esc(limparNivel(m.region || '?')) + ' · perdeu ' + fmt(m.xpLost) + ' XP'
-          + (m.recursos ? ' · ouro ' + fmt(m.recursos.ouro) + ' · nível ' + esc(m.recursos.nivel) + ' · poções ' + esc(m.recursos.pocoes ? ORDER.map((k) => POCAO_NOME[k] + ' ' + fmt(m.recursos.pocoes[k])).join('/') : '—') : '') + '</span></div>').join('') + '</div>'
-        : '<p class="vazio">Sem mortes registadas. (Só conta morte de verdade — o motor filtra avisos de NPC.)</p>'));
+          + (m.recursos ? ' · ouro ' + fmt(m.recursos.ouro) + ' · nível ' + esc(m.recursos.nivel) + ' · poções ' + esc(m.recursos.pocoes ? ORDER.map((k) => POCAO_NOME[k] + ' ' + fmt(m.recursos.pocoes[k])).join('/') : '-') : '') + '</span></div>').join('') + '</div>'
+        : '<p class="vazio">Sem mortes registadas. (Só conta morte de verdade, o motor filtra avisos de NPC.)</p>'));
 
     const lutas = (f.lutas || []).filter((l) => l.est && l.potUsadas != null).slice(0, 20);
-    setHtml('ap-hi-lutas', card('Lutas de chefe — previsto vs. real', 'valida se a previsão de poções está certa',
+    setHtml('ap-hi-lutas', card('Lutas de chefe, previsto vs. real', 'valida se a previsão de poções está certa',
       lutas.length
         ? tabela(['hora', 'chefe', 'resultado', 'poções previstas', 'poções usadas', 'erro', 'tempo previsto', 'tempo real', 'seu dano/s', 'dano recebido/s'],
           lutas.map((l) => {
@@ -2925,13 +2887,17 @@
             const erro = (l.potUsadas != null && e.potTotal != null) ? (l.potUsadas - e.potTotal) : null;
             const mau = erro != null && Math.abs(erro) > Math.max(2, (e.potTotal || 0) * 0.5);
             return '<tr><td>' + hora(l.at) + '</td><td>' + esc(limparNivel(l.boss || '?')) + '</td><td>' + (l.mortes ? '💀 você morreu' : '✅ você ganhou')
-              + '</td><td>' + (e.potTotal == null ? '—' : e.potTotal) + '</td><td>' + (l.potUsadas == null ? '—' : l.potUsadas) + '</td><td class="' + (mau ? 'pend' : '') + '">' + (erro == null ? '—' : (erro > 0 ? '+' : '') + erro)
-              + '</td><td>' + (e.tKillS == null ? '—' : e.tKillS + 's') + '</td><td>' + (l.durS == null ? '—' : l.durS + 's')
-              + '</td><td>' + ((l.analise && l.analise.outDps) || '—') + '</td><td>' + ((l.analise && l.analise.inDps) || '—') + '</td></tr>';
+              + '</td><td>' + (e.potTotal == null ? '-' : e.potTotal) + '</td><td>' + (l.potUsadas == null ? '-' : l.potUsadas) + '</td><td class="' + (mau ? 'pend' : '') + '">' + (erro == null ? '-' : (erro > 0 ? '+' : '') + erro)
+              + '</td><td>' + (e.tKillS == null ? '-' : e.tKillS + 's') + '</td><td>' + (l.durS == null ? '-' : l.durS + 's')
+              + '</td><td>' + ((l.analise && l.analise.outDps) || '-') + '</td><td>' + ((l.analise && l.analise.inDps) || '-') + '</td></tr>';
           }), 'sem lutas registadas')
         : '<p class="vazio">Ainda não há lutas de chefe registadas com poções. Precisa de matar um chefe com o auto-play ligado.</p>'));
 
-    const log = (f.log || []).slice(0, 60);
+    // HISTÓRICO = o que importa ao dono: dinheiro, loot, mortes, chefes, problemas. Subir
+    // habilidade e repor a rotação é rotina do motor e não diz nada a quem lê (pedido do
+    // dono, 2026-10-20: "mostrar habilidade e rotacao e burro").
+    const RUIDO = new Set(['habilidades', 'rotacao', 'skills', 'barra']);
+    const log = (f.log || []).filter((e) => !RUIDO.has(e && e.type)).slice(0, 60);
     setHtml('ap-hi-eventos', card('Últimos acontecimentos', 'o que o motor fez, por ordem',
       log.length
         ? '<div class="lista">' + log.map((e) => {
@@ -2955,7 +2921,7 @@
   function eventoDesc(e) {
     const d = e || {};
     const t = String(d.type || '');
-    const f = (x) => (Number.isFinite(Number(x)) ? fmt(x) : '—');
+    const f = (x) => (Number.isFinite(Number(x)) ? fmt(x) : '-');
     if (t === 'evento:abate') return 'matou ' + (d.nome || '?') + (d.chefe ? ' 👑' : '') + (d.furioso ? ' (furioso)' : '')
       + ' · +' + f(d.ouro) + ' ouro · +' + f(d.xp) + ' xp' + (d.itens ? ' · ' + d.itens + ' item(ns)' : '') + (d.gemas ? ' · ' + d.gemas + ' gema(s)' : '');
     if (t === 'evento:item') return 'caiu item: ' + (d.id || '?');
@@ -3021,6 +2987,10 @@
     let h = ler('historico48h', []) || [];
     let fonte = '48 h';
     if (!h.length) { h = farm().log || []; fonte = 'sessão atual'; }
+    // Ruído de rotina (subir habilidades, repor a rotação) não entra no histórico: o dono
+    // quer ver o que mexeu no bolso ou na vida, não a manutenção do motor.
+    const RUIDO48 = new Set(['habilidades', 'rotacao', 'skills', 'barra']);
+    h = h.filter((e) => !RUIDO48.has(e && e.type));
     const abates = h.filter((e) => e.type === 'evento:abate');
     const ouro = abates.reduce((s, e) => s + (Number(e.ouro) || 0), 0);
     const xp = abates.reduce((s, e) => s + (Number(e.xp) || 0), 0);
@@ -3045,7 +3015,7 @@
     const lista = h.slice(0, 300).map((e) => '<div class="ln ' + (e.type === 'morte' || e.type === 'evento:morreu' ? 'loj' : '') + '">'
       + '<time>' + hora(e.at) + '</time><b>' + esc(EVENTO_NOME[e.type] || String(e.type || '').replace(/^evento:/, '')) + '</b>'
       + '<span class="d" title="' + esc(eventoDesc(e)) + '">' + esc(eventoDesc(e)) + (eventoLocal(e) ? ' · ' + esc(eventoLocal(e)) : '') + '</span></div>').join('');
-    setHtml('ap-hi-48h', card('O que aconteceu, por ordem', h.length ? h.length + ' evento(s) — ' + fonte : 'sem eventos',
+    setHtml('ap-hi-48h', card('O que aconteceu, por ordem', h.length ? h.length + ' evento(s), ' + fonte : 'sem eventos',
       h.length ? '<div class="lista">' + lista + '</div>' : '<p class="vazio">Ainda não há eventos. Farme um pouco com o auto-play ligado.</p>'));
     renderHist();
   }
@@ -3054,22 +3024,36 @@
   function renderPocao() {
     renderAgora();
     renderAuto();
-    const c = cfg();
-    const loc = ler('readLocation', null) || {};
-    const pvp = /runeterra/i.test(String(loc.text || '')) || !!(c && c.mode === 'strongest');
+    // O MODO EFETIVO vem do MOTOR (`modoPocao`): a GUI não adivinha pelo nome do mapa.
+    const mp = ler('modoPocao', null) || {};
+    const modo = String(mp.modo || 'inteligente');
+    const smart = mp.smart !== false;
+    const inteligente = modo === 'inteligente';
+    const motivo = String(mp.motivo || '');
     const pot = (status && status.potions) || null;
     const ultima = status && status.lastAction;
-    setHtml('ap-pc-resumo', card('Como a auto-poção decide', 'decisão inteligente sempre ligada',
-      '<p class="aviso ok"><b>Decisão inteligente: SEMPRE LIGADA.</b> Não há botão para desligar — é a rede de segurança.</p>'
-      + '<p class="hint">Em PvE ela olha o <b>golpe que o monstro acabou de dar</b> (não a média) e conta a cura das suas habilidades. Se a cura das skills chegar, não gasta poção.</p>'
-      + '<p class="aviso ' + (pvp ? 'warn' : '') + '"><b>Mapa atual: ' + (pvp ? 'Runeterra (PvP)' : 'PvE') + '.</b> ' + (pvp
-        ? 'Em Runeterra a poção é por <b>limiar de vida</b> (a mais forte que você tiver), porque a cura é 30% e a exaustão é curta.'
-        : 'Fora de Runeterra a decisão é pelo dano real; ao entrar em Runeterra o limiar assume automaticamente.') + '</p>'
+    const minP = (config && config.minPotion) || { vida: 200, vidaF: 100, vidaS: 30 };
+    setHtml('ap-pc-resumo', card('Como a auto-poção decide', 'inteligente no PvE do mapa, limiar de vida fora dele',
+      tgCfg('ap-pc-smart', 'pocaoSmart', 'Decisão inteligente de poção',
+        'Ligada, usa o golpe que o monstro acabou de dar e conta a cura das suas habilidades. Desligada, usa o limiar de vida. Só vale no PvE do mapa.', smart)
+      + '<p class="hint">No <b>PvE do mapa</b> ela olha o <b>golpe que o monstro acabou de dar</b> (não a média) e conta a cura das suas habilidades. Se a cura das skills chegar, não gasta poção.</p>'
+      + '<p class="aviso ' + (inteligente ? 'ok' : 'warn') + '"><b>Agora: ' + esc(motivo || modo) + '.</b> '
+      + (inteligente
+        ? 'A decisão inteligente está a mandar.'
+        : 'Fora do PvE do mapa a poção é por <b>limiar de vida</b>: no PvP a cura é 30% e a exaustão é 6 s, e nas dungeons e na Arena a cura das habilidades cai.') + '</p>'
       + '<div class="kvs">'
-      + kv('modo efetivo', pvp ? 'limiar de vida (PvP)' : 'inteligente (PvE)')
-      + kv('última ação', ultima ? esc(ultima.reason || ultima.k || '—') : '—')
+      + kv('modo efetivo', inteligente ? 'inteligente (PvE)' : 'limiar de vida')
+      + kv('última ação', ultima ? esc(ultima.reason || ultima.k || '-') : '-')
       + kv('poções agora', ORDER.map((k) => POCAO_NOME[k] + ' ' + fmt((pot && pot[k]) || 0)).join(' · '))
-      + '</div>'));
+      + '</div>'
+      + '<p class="diag-t">Gatilho de cada poção (regra simples, por vida perdida)</p>'
+      + ORDER.map((k) => '<div class="ctl"><div class="ctl-l"><b>' + POCAO_NOME[k] + ' (cura ' + fmt(POCAO_CURA[k]) + ')</b><small id="ap-pc-t-' + k + '">-</small></div>'
+        + '<div class="ctl-c"><label class="tg" style="padding:3px 7px"><input type="checkbox" id="ap-pc-on-' + k + '"><span class="sw"></span></label>'
+        + '<input type="number" id="ap-pc-v-' + k + '" min="0" step="1">'
+        + '<select id="ap-pc-m-' + k + '"><option value="pct">% da vida perdida</option><option value="lost">vida perdida (valor)</option></select></div></div>').join('')
+      + linha('Mínimo na mochila (repor na base)', 'quando desce abaixo disto, o motor volta à Fonte para comprar',
+        ORDER.map((k) => '<span class="hint">' + POCAO_NOME[k] + '</span><input type="number" id="ap-min-' + k + '" min="0" style="width:64px" value="' + esc(minP[k]) + '">').join(' '))));
+    sincronizarPocao();
   }
 
   // ---------------------------------------------------------------- MANUAL
@@ -3102,7 +3086,7 @@
     const glossario = [
       ['Auto-play', 'O motor que joga por você: escolhe a região, luta, usa poções, volta à base e organiza o inventário.'],
       ['Auto-poção', 'Só a parte das poções: usa a mais fraca que chega para você sobreviver, em vez de gastar sempre a Suprema.'],
-      ['Switch pai (hierarquia)', 'Os switches estão em ÁRVORE: o auto-play é o mestre e cada um depende de outro. Desligar um pai fecha tudo o que está por baixo dele — a aba Painel mostra quem manda em quem, indentado.'],
+      ['Switch pai (hierarquia)', 'Os switches estão em ÁRVORE: o auto-play é o mestre e cada um depende de outro. Desligar um pai fecha tudo o que está por baixo dele, a aba Painel mostra quem manda em quem, indentado.'],
       ['Skippado (exceção)', 'O switch está ligado mas o motor não age naquele sítio. Exemplo: no mapa de Runeterra o motor não vende nem mexe no cofre.'],
       ['Mob', 'Monstro comum do mapa.'],
       ['Chefe', 'Monstro forte da região; ao ser derrotado fecha o ciclo.'],
@@ -3111,10 +3095,10 @@
       ['Build ideal', 'Os 5 melhores itens para o seu campeão, calculados pelo motor a partir dos stats e das passivas.'],
       ['Qualidade (C, B, A, S, SS)', 'Quanto melhor o item é. C é o mais fraco, SS o melhor. A partir de A o motor não vende nem desmancha.'],
       ['Refino (+1, +2, +3)', 'Melhoria no Ornn que aumenta os stats do item. Acima de +2 pode descer se falhar.'],
-      ['Tier / "abaixo de A"', 'Qualidade inferior a A — são estes os itens que o motor vende ou anuncia.'],
+      ['Tier / "abaixo de A"', 'Qualidade inferior a A, são estes os itens que o motor vende ou anuncia.'],
       ['Blindado / protegido', 'Item que o motor NUNCA vende: Rabadon, os lendários da sua build ideal e o que está equipado em S/SS.'],
       ['Espólio', 'Material que cai dos monstros e que se vende ou se usa em receitas.'],
-      ['Cofre', 'Arca da Tesoureira (Fonte) ou do Burrinho (cidade) para guardar itens sem gastar espaço na mochila. Só abre nesses sítios — mas o painel mostra sempre a última leitura que o motor gravou, mesmo que estejas farmando longe.'],
+      ['Cofre', 'Arca da Tesoureira (Fonte) ou do Burrinho (cidade) para guardar itens sem gastar espaço na mochila. Só abre nesses sítios, mas o painel mostra sempre a última leitura que o motor gravou, mesmo que estejas farmando longe.'],
       ['Mercado', 'Venda a outros jogadores. O motor anuncia a ~90% do preço mais baixo.'],
       ['Ornn', 'NPC que monta itens a partir de peças. É uma aposta: ~1,2% por tentativa.'],
       ['Poção Suprema / Forte / Normal', 'As três poções de vida: curam 2200, 900 e 300.'],
@@ -3122,7 +3106,7 @@
       ['Calibrar', 'Corrigir as previsões do motor comparando com o que realmente aconteceu.'],
       ['Previsão teórica vs. medida', 'Teórica = calculada com fórmulas. Medida = o que o jogo realmente deu. A medida manda.'],
       ['Giro', 'Testar várias regiões seguidas, alguns minutos em cada, para medir ganhos reais.'],
-      ['Pausado x Desligado', 'Pausar congela as ações e continua medindo: Retomar volta do mesmo ponto. Desligar (ou Parar tudo) limpa o estado ativo — prazos, testes, farm forçado — e ao religar o motor começa do zero.'],
+      ['Pausado x Desligado', 'Pausar congela as ações e continua medindo: Retomar volta do mesmo ponto. Desligar (ou Parar tudo) limpa o estado ativo, prazos, testes, farm forçado, e ao religar o motor começa do zero.'],
       ['Switch mestre x capacidade', 'O switch Tudo (auto-play) faz o motor jogar. As capacidades (vender, equipar, cofre, rotação…) são switches independentes: ligar uma não liga o mestre, e com o mestre desligado elas ficam inertes (ligadas, sem agir).'],
     ];
     const corpo = $('ap-aj-corpo');
@@ -3135,10 +3119,10 @@
       + '<h4>Ordem do auto-play (o ciclo)</h4>'
       + macro.map((m) => '<div class="macro"><b>' + m[0] + '</b> <span class="muted">· ' + m[1] + '</span><br>' + m[2] + '<br><span class="muted">quando: ' + m[3] + '</span></div>').join('')
       + '<p>O passo <b>7</b> volta ao <b>1</b>: é um ciclo. Nenhum passo existe sozinho.</p>'
-      + '<h4>Glossário — o que querem dizer as palavras</h4>'
+      + '<h4>Glossário, o que querem dizer as palavras</h4>'
       + '<dl>' + glossario.map((g) => '<dt>' + g[0] + '</dt><dd>' + g[1] + '</dd>').join('') + '</dl>'
       + '<h4>O que a GUI é (e o que não é)</h4>'
-      + '<p>Esta janela é para <b>coisas automáticas</b>: o que está acontecendo, o que o motor vai fazer, o que está bloqueado e os <b>switches</b> que ligam e desligam cada capacidade. O que você mesmo faz no jogo com um clique (vender, curar, comprar, subir habilidade) fica no fim do Painel, em <b>Manutenção manual</b> — serve para forçar ou medir, não é o caminho normal.</p>'
+      + '<p>Esta janela é para <b>coisas automáticas</b>: o que está acontecendo, o que o motor vai fazer, o que está bloqueado e os <b>switches</b> que ligam e desligam cada capacidade. O que você mesmo faz no jogo com um clique (vender, curar, comprar, subir habilidade) fica no fim do Painel, em <b>Manutenção manual</b>, serve para forçar ou medir, não é o caminho normal.</p>'
       + '<h4>Botões de segurança</h4>'
       + '<p><b>O botão grande</b> (topo) faz sempre o próximo passo a partir do estado de agora: <b>▶ Ligar auto-play</b> (observação → ligado), <b>⏸ Desligar</b> (ligado → observação), <b>▶ Retomar</b> (pausado → ligado) ou <b>▶ Religar</b> (desligado → ligado). O rótulo diz o que vai mudar.</p>'
       + '<p><b>⏸ Pausar</b> congela as ações e continua medindo; <b>⛔ Parar tudo</b> limpa o estado ativo e fica gravado no navegador até você religar.</p>'
@@ -3227,7 +3211,7 @@
     cacheAgora = { at: 0, v: null };
     renderCabecalho();
     renderPainelEstado();                        // o estado mudou: o cartão de controle sabe já
-    if (tabAtiva === 'painel') renderArvore();   // o mestre é a RAIZ da árvore: ela muda com ele
+    if (tabAtiva === 'painel') renderArvore();   // o mestre manda na árvore
     return r.ok;
   }
   function salvarTopo(patch) {
@@ -3250,7 +3234,7 @@
   function alternarInterruptor(nome, chave, ligado) {
     const legivel = ARV_NOME[nome] || nome;
     // Sem chave = motor antigo: NÃO se escreve nada (não há chave para escrever) e diz-se o erro.
-    if (!chave) { fbAviso(legivel + ' não tem chave própria no motor desta página — nada foi mudado. Recarregue (F5).'); return; }
+    if (!chave) { fbAviso(legivel + ' não tem chave própria no motor desta página, nada foi mudado. Recarregue (F5).'); return; }
     const patch = {}; patch[chave] = !!ligado;
     const r = chamar('setConfig', patch);
     if (!r.ok) {
@@ -3258,7 +3242,7 @@
       // (o setHtml não volta escrevendo um HTML igual, e o checkbox ficaria mentiroso).
       _ultimoHtml.delete('ap-auto-arvore');
       renderArvore();
-      fbErro(legivel + ': ' + erroLegivel(r.erro, 'setConfig') + ' — nada foi mudado.');
+      fbErro(legivel + ': ' + erroLegivel(r.erro, 'setConfig') + ', nada foi mudado.');
       return;
     }
     cacheAgora = { at: 0, v: null };
@@ -3266,7 +3250,7 @@
     ultimoRender = 0;
     renderCabecalho();
     renderArvore();
-    fb(ligado ? 'ok' : 'info', legivel + ': ' + (ligado ? 'LIGADO.' : 'DESLIGADO — o que está por baixo dele deixa de agir.'));
+    fb(ligado ? 'ok' : 'info', legivel + ': ' + (ligado ? 'LIGADO.' : 'DESLIGADO, o que está por baixo dele deixa de agir.'));
   }
 
   /** LIGAR (de OBSERVAÇÃO para LIGADO). Não mexe nas capacidades: o que estava desligado nelas
@@ -3275,7 +3259,7 @@
     await executar(btn, 'Ligar auto-play', async () => {
       if (estaDesligado()) chamar('religarTudo');
       definirLigado(true);
-      return { ok: true, msg: 'LIGADO — farma, viaja e decide sozinho. As capacidades que você desligou continuam desligadas.' };
+      return { ok: true, msg: 'LIGADO, farma, viaja e decide sozinho. As capacidades que você desligou continuam desligadas.' };
     });
   }
   /** DESLIGAR (de LIGADO para OBSERVAÇÃO): para as ações e LIMPA o estado ativo. */
@@ -3283,7 +3267,7 @@
     await executar(btn, 'Desligar', async () => {
       definirLigado(false);
       chamar('limparEstadoAtivo');          // prazos, throttles, farm forçado, backoff, testes
-      return { ok: true, msg: 'OBSERVAÇÃO — o motor só lê o jogo. O estado ativo foi limpo: ao religar, começa do zero.' };
+      return { ok: true, msg: 'OBSERVAÇÃO, o motor só lê o jogo. O estado ativo foi limpo: ao religar, começa do zero.' };
     });
   }
   /** PAUSAR (só com o auto-play LIGADO): congela as ações e continua medindo. */
@@ -3291,7 +3275,7 @@
     await executar(btn, 'Pausar', async () => {
       const r = chamar('pausar');
       if (!r.ok) return { ok: false, motivo: erroLegivel(r.erro, 'pausar') };
-      return { ok: true, msg: 'PAUSADO — parou de agir, mas continua medindo. Retomar devolve tudo do mesmo ponto.' };
+      return { ok: true, msg: 'PAUSADO, parou de agir, mas continua medindo. Retomar devolve tudo do mesmo ponto.' };
     });
   }
   /** RETOMAR (de PAUSADO para LIGADO): volta do mesmo ponto, sem perder a medição. */
@@ -3316,7 +3300,7 @@
       const r = chamar('religarTudo');
       if (!r.ok) return { ok: false, motivo: erroLegivel(r.erro, 'religarTudo') };
       definirLigado(true);
-      return { ok: true, msg: 'RELIGADO — o motor volta a agir (o estado ativo foi limpo quando você parou tudo).' };
+      return { ok: true, msg: 'RELIGADO, o motor volta a agir (o estado ativo foi limpo quando você parou tudo).' };
     });
   }
   /** "Retomar tudo": usado pelo aviso "porque nada está acontecendo" — religa, liga e despausa. */
@@ -3354,7 +3338,7 @@
       const rec = ler('recomendar', null) || {};
       const reg = (rec && rec.regiao) || ler('regiaoIdeal', null)
         || ((ler('rankRegioes', []) || []).find((r) => r && r.sobrevive === true) || {}).id || null;
-      if (!reg) return { ok: false, motivo: 'o motor ainda não tem uma região com segurança provada para o seu nível. Ele precisa medir algumas regiões primeiro — deixe o auto-play ligado por um ciclo.' };
+      if (!reg) return { ok: false, motivo: 'o motor ainda não tem uma região com segurança provada para o seu nível. Ele precisa medir algumas regiões primeiro, deixe o auto-play ligado por um ciclo.' };
       chamar('viajarPara', reg);
       const seguro = rec && rec.sobrevive === true;
       return { ok: true, msg: 'ligado e viajando para ' + nomeRegiao(reg) + (seguro ? ' (região onde você sobrevive ao chefe).' : '.') };
@@ -3397,7 +3381,7 @@
       let r = await chamarA('salvarOfertas');
       if (!r.ok && r.erro === 'sem-funcao') r = await chamarA('lerMinhasOfertas');
       if (!r.ok) return { ok: false, motivo: erroLegivel(r.erro, 'salvarOfertas') };
-      if (r.v == null) return { ok: false, motivo: 'o mercado não abriu — as ofertas só se lêem com o mercado acessível.' };
+      if (r.v == null) return { ok: false, motivo: 'o mercado não abriu, as ofertas só se lêem com o mercado acessível.' };
       ofertasCache = r.v || [];
       chamar('fecharMercado');
       await lerOfertasGravadas();
@@ -3416,7 +3400,7 @@
       setHtml('ap-mk-plano-out', re.length
         ? '<p class="aviso warn">' + re.length + ' oferta(s) para baixar de preço (mercado: ' + fmt(p.mercado) + ' · suas: ' + fmt(p.minhas) + (p.saturado ? ' · mercado cheio' : '') + ')</p>'
           + '<div class="lista">' + re.slice(0, 8).map((a) => '<div class="ln mkt"><b>' + esc(a.nome || '?') + '</b><span class="d">' + fmt(a.de) + ' → <b>' + fmt(a.para) + '</b> ouro</span></div>').join('') + '</div>'
-        : '<p class="aviso ok">Nenhum reajuste necessário — os seus preços já são competitivos.</p>');
+        : '<p class="aviso ok">Nenhum reajuste necessário, os seus preços já são competitivos.</p>');
       return { ok: true, msg: re.length ? re.length + ' oferta(s) para reajustar. Veja a lista na aba.' : 'nada a reajustar.' };
     });
   }
@@ -3443,7 +3427,7 @@
       const num2 = (s) => parseInt(String(s || '').replace(/\D/g, ''), 10) || 0;
       setHtml('ap-mk-ornn-out', ornnCache.length
         ? tabela(['item', 'chance', 'tentativas em média', 'custo por tentativa', 'custo esperado', 'peças'],
-          ordenarItens(ornnCache).map((x) => '<tr><td>' + esc(x.nome || x.id) + '</td><td>' + esc(x.chance || '—') + '</td><td>' + (x.tentativasMedias || '—')
+          ordenarItens(ornnCache).map((x) => '<tr><td>' + esc(x.nome || x.id) + '</td><td>' + esc(x.chance || '-') + '</td><td>' + (x.tentativasMedias || '-')
             + '</td><td>' + fmt(num2(x.ouro)) + '</td><td>' + fmt(num2(x.ouro) * (x.tentativasMedias || 83)) + '</td><td>'
             + (x.pode ? '✔ você tem todas' : (x.comps || []).filter((c) => !c.tem).length + ' em falta') + '</td></tr>').join(''))
         : '<p class="aviso">O Ornn não tem receitas disponíveis agora.</p>');
@@ -3462,7 +3446,7 @@
       setHtml('ap-mk-compra-out', '<p class="aviso ok">' + txt + '</p>'
         + (dec.length ? tabela(['item', 'preço no mercado', 'o que fazer', 'espera'],
           ordenarItens(dec).map((x) => '<tr><td>' + esc(x.item || x.id) + '</td><td>' + (x.ofertaIdeal ? fmt(x.ofertaIdeal.menor) : 'sem oferta')
-            + '</td><td>' + esc(x.acao || '—') + '</td><td>' + (x.esperaMin == null ? '—' : x.esperaMin + ' min') + '</td></tr>')) : '')
+            + '</td><td>' + esc(x.acao || '-') + '</td><td>' + (x.esperaMin == null ? '-' : x.esperaMin + ' min') + '</td></tr>')) : '')
         + '<p class="hint">O motor compara comprar já, comprar um substituto mais barato, ou continuar farmando. O ouro/min usado é o que você mediu, não um valor inventado.</p>');
       return { ok: true, msg: v.resumo ? String(v.resumo) : (v.motivo || 'calculado (veja a resposta na aba).') };
     });
@@ -3509,13 +3493,13 @@
       await lerCofreGravado();
       renderCofre();
       const n = cofreSabido().length;
-      return { ok: true, msg: n ? n + ' item(ns) no cofre — a lista está no cartão.' : 'o cofre está vazio (nada guardado).' };
+      return { ok: true, msg: n ? n + ' item(ns) no cofre, a lista está no cartão.' : 'o cofre está vazio (nada guardado).' };
     });
   }
   /** Retira do cofre: `alvo` = base do item, ou null para o MELHOR que o motor conhece. */
   async function retirarCofre(btn, alvo) {
     const escolhido = alvo ? { base: alvo, nome: nomeItem(alvo) } : melhorConhecido();
-    if (!escolhido) { fbAviso('Ainda não há leitura do cofre — use "Forçar leitura do cofre agora" (manutenção manual) para o motor saber o que lá está.'); return; }
+    if (!escolhido) { fbAviso('Ainda não há leitura do cofre, use "Forçar leitura do cofre agora" (manutenção manual) para o motor saber o que lá está.'); return; }
     await executar(btn, 'Retirar do cofre', async () => {
       if (!cofreAberto().length) {                        // o motor só retira com o cofre ABERTO
         const abriu = await chamarA('abrirCofreTesoureira');
@@ -3600,7 +3584,7 @@
         + lista.map((i) => {
           const sem = oi ? !oi[String(i.id)] : false;
           const sel = selItens.has(String(i.id));
-          const titulo = String(i.nome) + ' — ' + espacoNome(esp) + (sem ? ' · NÃO dropa em zona nenhuma' : '') + (sel ? ' · escolhido' : '');
+          const titulo = String(i.nome) + ', ' + espacoNome(esp) + (sem ? ' · NÃO dropa em zona nenhuma' : '') + (sel ? ' · escolhido' : '');
           return '<button class="frame ' + esc(rar) + (sel ? ' sel' : '') + (sem ? ' sem-drop' : '') + '" data-item="' + esc(i.id) + '" title="' + esc(titulo) + '">'
             + '<img src="' + ITEM_IMG(i.id) + '" alt="" loading="lazy" onerror="this.style.opacity=.2">'
             + (sem ? '<i class="nd">sem drop</i>' : '') + '<span>' + esc(i.nome) + '</span></button>';
@@ -3635,7 +3619,7 @@
         'Isto liga o auto-play e viaja já para lá.',
         viaveis.length ? '' : '⚠ Nenhuma região é segura para você: o chefe dessa zona mata, e o motor vai ficar só nos mobs.',
       ].filter(Boolean), 'Ligar e viajar');
-      if (!sim) { fbAviso('Cancelado — o plano está calculado, mas não viajei.'); return { ok: true, msg: 'plano calculado (não viajei).' }; }
+      if (!sim) { fbAviso('Cancelado, o plano está calculado, mas não viajei.'); return { ok: true, msg: 'plano calculado (não viajei).' }; }
       definirLigado(true);
       definirCfg({ regionDefault: alvo.zona });
       chamar('viajarPara', alvo.zona);
@@ -3667,7 +3651,7 @@
     const fixo = pool.find((p) => p.id === RABADON);
     el.innerHTML = sets.map((s, i) => '<div class="set">'
       + '<input data-set-nome="' + i + '" value="' + esc(s.nome) + '" placeholder="nome do conjunto">'
-      + [0, 1, 2, 3].map((k) => '<select data-set-slot="' + i + ':' + k + '"><option value="">— vazio —</option>'
+      + [0, 1, 2, 3].map((k) => '<select data-set-slot="' + i + ':' + k + '"><option value="">, vazio, </option>'
         + pool.map((p) => '<option value="' + esc(p.id) + '"' + (String(s.itens[k]) === String(p.id) ? ' selected' : '') + '>' + esc(p.nome) + (p.qual ? ' [' + p.qual + ']' : '') + (p.refino ? '+' + p.refino : '') + '</option>').join('') + '</select>').join('')
       + '<span class="fixo">🔒 Rabadon' + (fixo ? ' [' + (fixo.qual || '?') + ']' : '') + '</span>'
       + '<button class="danger" data-set-del="' + i + '" style="padding:4px 7px">×</button></div>').join('') || '<p class="vazio">nenhum conjunto</p>';
@@ -3761,7 +3745,7 @@
       if (!r.ok) return { ok: false, motivo: erroLegivel(r.erro, 'reporPocoes') };
       const v = r.v || {};
       if (v.ok === false) return { ok: false, motivo: v.motivo || 'não consegui comprar (você está no Lojista?)' };
-      if (v.nada) return { ok: true, msg: 'já tinhas poções acima do mínimo — nada comprado.' };
+      if (v.nada) return { ok: true, msg: 'já tinhas poções acima do mínimo, nada comprado.' };
       const f = v.feitos || {};
       return { ok: true, msg: 'comprado: ' + ORDER.filter((k) => f[k] > 0).map((k) => POCAO_NOME[k] + ' ×' + fmt(f[k])).join(' · ') + '.' };
     }),
@@ -3827,7 +3811,7 @@
       if (!r.ok) return { ok: false, motivo: erroLegivel(r.erro, 'aceitarTarefa') };
       const v = r.v || {};
       if (v.ok === false) return { ok: false, motivo: v.motivo || 'não deu' };
-      return { ok: true, msg: 'tarefa aceite: ' + (v.tipo || '—') + (v.min ? ' · ~' + v.min + ' min' : '') + (v.xp ? ' · ' + fmt(v.xp) + ' xp' : '') + (v.ouro ? ' · ' + fmt(v.ouro) + ' ouro' : '') + (v.item ? ' · item ' + v.item : '') + '.' };
+      return { ok: true, msg: 'tarefa aceite: ' + (v.tipo || '-') + (v.min ? ' · ~' + v.min + ' min' : '') + (v.xp ? ' · ' + fmt(v.xp) + ' xp' : '') + (v.ouro ? ' · ' + fmt(v.ouro) + ' ouro' : '') + (v.item ? ' · item ' + v.item : '') + '.' };
     }),
     'ap-entregar': (b) => executar(b, 'Entregar tarefa', async () => {
       const r = await chamarA('entregarTarefa');
@@ -3853,7 +3837,7 @@
     }),
     'ap-reload': (b) => executar(b, 'Recarregar extensão', async () => {
       try { chrome.runtime.sendMessage({ type: 'lolidle:reload' }); } catch (e) { return { ok: false, motivo: 'não consegui falar com a extensão: ' + String(e) }; }
-      return { ok: true, msg: 'extensão a recarregar — actualiza a página (F5) para os scripts novos entrarem.' };
+      return { ok: true, msg: 'extensão a recarregar, actualiza a página (F5) para os scripts novos entrarem.' };
     }),
     'ap-ir-agora': (b) => executar(b, 'Viajar', async () => {
       const sel = $('ap-reg-id');
@@ -3869,18 +3853,18 @@
       const v = r.v || {};
       const antes = (v.antes || []).join(' ');
       const desejadas = (v.desejadas || []).join(' ');
-      if (!v.mudou) return { ok: true, msg: 'A barra já estava correta (' + (desejadas || '—') + ') — nada mudou.' };
+      if (!v.mudou) return { ok: true, msg: 'A barra já estava correta (' + (desejadas || '-') + '), nada mudou.' };
       const ap = v.aplicado;
       if (!ap || ap.ok === false) {
-        return { ok: false, motivo: 'não consegui pôr a barra nova (' + (ap && ap.motivo ? ap.motivo : 'o motor não disse porquê') + '). Tentei: ' + (desejadas || '—') + '.' };
+        return { ok: false, motivo: 'não consegui pôr a barra nova (' + (ap && ap.motivo ? ap.motivo : 'o motor não disse porquê') + '). Tentei: ' + (desejadas || '-') + '.' };
       }
-      return { ok: true, msg: 'Barra atualizada: ' + (desejadas || '—') + (antes && antes !== desejadas ? ' (antes: ' + antes + ')' : '') + '.' };
+      return { ok: true, msg: 'Barra atualizada: ' + (desejadas || '-') + (antes && antes !== desejadas ? ' (antes: ' + antes + ')' : '') + '.' };
     }),
     'ap-trocar-skills': (b) => executar(b, 'Trocar skills em recarga', async () => { const r = await chamarA('trocarSkills', false); if (!r.ok) return { ok: false, motivo: erroLegivel(r.erro, 'trocarSkills') }; return { ok: true, msg: 'troca feita.' }; }),
     'ap-distribuir': (b) => distribuirAtributos(b),
     'ap-pick': () => { renderItemGrade(); const m = $('lolidle-ap-modal'); m.hidden = false; m.classList.add('on'); },
     'ap-plan-go': (b) => planearItens(b),
-    'ap-plan-limpar': () => { if (!selItens.size) { fbAviso('Não há nada escolhido para limpar.'); return; } selItens.clear(); mudouEscolha(); fb('ok', 'Escolha limpa — nenhum item marcado.'); },
+    'ap-plan-limpar': () => { if (!selItens.size) { fbAviso('Não há nada escolhido para limpar.'); return; } selItens.clear(); mudouEscolha(); fb('ok', 'Escolha limpa, nenhum item marcado.'); },
     // MODALIDADES DE FARM (aba Ganhos): a escolha é uma preferência da GUI (GUI_KEY), não do motor.
     'ap-fm-modo-sozinho': () => {
       // A modalidade "pra item" fixa a região (`regionDefault`). Escolher o modo sozinho LIMPA
@@ -3888,8 +3872,8 @@
       // `regiaoIdeal()`).
       salvarPrefs({ farmModo: 'sozinho' });
       const tinha = cfg().regionDefault || null;
-      if (tinha) { definirCfg({ regionDefault: null }); fb('ok', 'AUTO FARM SOZINHO — a região fixa (' + nomeRegiao(tinha) + ') foi limpa: o motor volta a escolher sozinho.'); }
-      else fb('ok', 'Modalidade: AUTO FARM SOZINHO — o motor escolhe a região.');
+      if (tinha) { definirCfg({ regionDefault: null }); fb('ok', 'AUTO FARM SOZINHO, a região fixa (' + nomeRegiao(tinha) + ') foi limpa: o motor volta a escolher sozinho.'); }
+      else fb('ok', 'Modalidade: AUTO FARM SOZINHO, o motor escolhe a região.');
       ultimoRender = 0; renderFarmModo(); renderFarmItens(); renderAuto();
     },
     // Voltar ao automático a partir da aba Ganhos (sem ter de ir ao Painel).
@@ -3899,7 +3883,7 @@
       ultimoRender = 0; renderFarmModo(); renderFarmItens(); renderAuto();
       fb('ok', 'Região AUTOMÁTICA de novo: o motor escolhe a melhor para o seu nível.');
     },
-    'ap-fm-modo-item': () => { salvarPrefs({ farmModo: 'item' }); ultimoRender = 0; renderFarmModo(); renderFarmItens(); fb('ok', 'Modalidade: AUTO FARM PRA ITEM — escolha os itens e o motor leva você à região que os dropa.'); },
+    'ap-fm-modo-item': () => { salvarPrefs({ farmModo: 'item' }); ultimoRender = 0; renderFarmModo(); renderFarmItens(); fb('ok', 'Modalidade: AUTO FARM PRA ITEM, escolha os itens e o motor leva você à região que os dropa.'); },
     'ap-fm-go': (b) => farmarAgora(b),
     // MINIMIZAR do bloco da build por fase (aba Itens). O estado fica em GUI_KEY e sobrevive ao F5.
     'ap-bf-min': () => {
@@ -3907,7 +3891,7 @@
       salvarPrefs({ bfAberto: abrir });
       _ultimoHtml.delete('ap-build-fase');                // o HTML muda (classe min + seta): força o redesenho
       renderBuildFase();
-      fb('info', abrir ? 'Build por fase: aberta.' : 'Build por fase: minimizada — fica só o título.');
+      fb('info', abrir ? 'Build por fase: aberta.' : 'Build por fase: minimizada, fica só o título.');
     },
     // MINIMIZAR dos cartões de farm (aba Ganhos): o estado vive em GUI_KEY e sobrevive ao F5.
     'ap-fm-min-modo': () => {
@@ -3915,14 +3899,14 @@
       salvarPrefs({ fmModoMin: !abrir });
       _ultimoHtml.delete('ap-fm-modo');
       renderFarmModo();
-      fb('info', abrir ? 'Como você quer farmar: aberto.' : 'Como você quer farmar: minimizado — fica só o título.');
+      fb('info', abrir ? 'Como você quer farmar: aberto.' : 'Como você quer farmar: minimizado, fica só o título.');
     },
     'ap-fm-min-itens': () => {
       const abrir = guiPrefs.fmItensMin === true;
       salvarPrefs({ fmItensMin: !abrir });
       _ultimoHtml.delete('ap-fm-itens');
       renderFarmItens();
-      fb('info', abrir ? 'Auto farm pra item: aberto.' : 'Auto farm pra item: minimizado — fica só o título.');
+      fb('info', abrir ? 'Auto farm pra item: aberto.' : 'Auto farm pra item: minimizado, fica só o título.');
     },
     // O botão da aba Painel tem id próprio porque o da mochila (aba Itens) também é `ap-scan`.
     'ap-scan-painel': (b) => ACOES['ap-scan'](b),
@@ -4022,11 +4006,11 @@
       if (on) {
         if (estaDesligado()) chamar('religarTudo');
         definirLigado(true);
-        fb('ok', 'AUTO-PLAY LIGADO — farma, viaja e decide sozinho.');
+        fb('ok', 'AUTO-PLAY LIGADO: todos os switches foram ligados e o motor farma, viaja e decide sozinho.');
       } else {
         definirLigado(false);
         chamar('limparEstadoAtivo');
-        fb('info', 'AUTO-PLAY DESLIGADO — o motor só observa (não clica em nada).');
+        fb('info', 'AUTO-PLAY DESLIGADO: os switches voltaram ao que você tinha escolhido e o motor só observa (não clica em nada).');
       }
       ultimoRender = 0;
     },
@@ -4052,7 +4036,7 @@
       definirCfg({ buildPorFase: !!el.checked });
       cacheLimpar('bf-mobs'); cacheLimpar('bf-chefe');
       fb('ok', el.checked
-        ? 'Build por fase LIGADA: em mobs veste a de limpeza, no chefe a de alvo único — e as peças da outra ficam reservadas na mochila.'
+        ? 'Build por fase LIGADA: em mobs veste a de limpeza, no chefe a de alvo único, e as peças da outra ficam reservadas na mochila.'
         : 'Build por fase DESLIGADA: volta a uma build só e as peças deixam de ser reservadas.');
       ultimoRender = 0;
     },
@@ -4110,6 +4094,22 @@
     const painel = $('lolidle-ap');
     if (!painel) return;
     painel.addEventListener('click', (e) => {
+      // BOTÃO "DESLIGAR TUDO" dos switches filhos (o mesmo botão religa o conjunto anterior).
+      const swTudo = e.target.closest ? e.target.closest('#ap-sw-todos') : null;
+      if (swTudo && painel.contains(swTudo)) {
+        const r = chamar('alternarTodosSwitches');
+        _ultimoHtml.delete('ap-auto-arvore');
+        cacheAgora = { at: 0, v: null };
+        cacheLimpar();
+        ultimoRender = 0;
+        renderCabecalho();
+        renderArvore();
+        if (!r.ok) fbErro('Não consegui mudar os switches: ' + erroLegivel(r.erro, 'alternarTodosSwitches'));
+        else fb('ok', (r.v && r.v.todosOff)
+          ? 'Todos os switches DESLIGADOS. Este mesmo botão religa o conjunto que você tinha escolhido.'
+          : 'Switches religados como você tinha escolhido antes.');
+        return;
+      }
       // remover um item escolhido (delegação: o contentor dos chips nasce só quando a aba Ganhos desenha)
       const rem = e.target.closest ? e.target.closest('[data-rem]') : null;
       if (rem && rem.dataset && painel.contains(rem)) { selItens.delete(String(rem.dataset.rem)); mudouEscolha(); return; }
@@ -4183,7 +4183,7 @@
           const ok = definirCfg({ [el.dataset.cfg]: !!el.checked });
           ultimoRender = 0;
           if (ok) fb(el.checked ? 'ok' : 'info', 'Interruptor ' + (el.checked ? 'LIGADO.' : 'DESLIGADO.'));
-          else fbErro('Não consegui mudar o interruptor — o motor não aceitou a escrita.');
+          else fbErro('Não consegui mudar o interruptor, o motor não aceitou a escrita.');
         } catch (err) { fbErro('Erro ao mudar o switch: ' + String((err && err.message) || err)); }
         return;
       }
