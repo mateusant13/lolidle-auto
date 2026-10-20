@@ -130,7 +130,7 @@ export const suite = {
     // DIVERGENCIA AO TICKET (reportada): o ticket pedia 3003, mas o CATALOGO do stub tem o
     // 3001 (AP 100, mesmo preco) que e objectivamente melhor que o 3003 (AP 80). O beam
     // escolhe o 3001 — correcto. O 3100 (Lich) continua a ser escolhido.
-    t.check('B1b: a build IDEAL contem o 3100 (Lich) e o melhor item AP do catalogo (3001)', ideal.indexOf('3100') >= 0 && ideal.indexOf('3001') >= 0);
+    t.check('B1b: a build IDEAL contem o 3100 (Lich) e o 3135 (Cajado do Vazio, o melhor contra a armadura do Barao)', ideal.indexOf('3100') >= 0 && ideal.indexOf('3135') >= 0);
     // DIVERGENCIA AO TICKET (reportada): o score 2546 era do harness real (motor.js). No
     // stub, o modelo de DPS e o mesmo automation.js mas com stats fixos (AP 1194), e o
     // score correcto e 1468. O limiar de 1000 prova que o beam encontra uma build forte.
@@ -162,8 +162,11 @@ export const suite = {
       const unicos = new Set(build);
       const todosDoCatalogo = build.every((id) => cat.some((i) => String(i.id) === String(id)));
       const nBotas = build.filter((id) => (cat.find((i) => String(i.id) === String(id)) || {}).espaco === 'botas').length;
-      t.check('B3[' + fase + ']: a build tem 5 ids, sem duplicados, todos do catalogo, max 1 bota',
-        build.length === 5 && unicos.size === 5 && todosDoCatalogo && nBotas <= 1);
+      const nNaoBota = build.length - nBotas;
+      // motor.js:30/3165: ESPACOS_ITENS=4 (fora a bota) + no maximo 1 bota. Uma build com 5
+      // nao-bota (ou 2 botas) e invalida: o jogo manda as pecas a mais para a mochila.
+      t.check('B3[' + fase + ']: a build tem 5 ids, sem duplicados, todos do catalogo, 4 nao-bota + 1 bota',
+        build.length === 5 && unicos.size === 5 && todosDoCatalogo && nBotas <= 1 && nNaoBota <= 4);
     }
     auto.invalidarCacheBuild();
     const buildChefe = (auto.buildIdealParaFase(c, 'chefe') || []).map(String);

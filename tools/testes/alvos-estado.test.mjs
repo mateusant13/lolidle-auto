@@ -82,6 +82,7 @@ function provaBarra(t) {
   t.check('B2: no CHEFE o E sai (alvo unico: F/Q/A sao mais fortes)', bSemBar.indexOf('E') < 0);
   t.check('B2: as duas barras diferem (o espalha muda o CONJUNTO)',
     mSemBar.slice().sort().join(',') !== bSemBar.slice().sort().join(','));
+
 }
 
 /* ------------------------------------------------------------------------------------ *

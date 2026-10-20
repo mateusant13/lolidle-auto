@@ -117,6 +117,12 @@ export const suite = {
     t.check('W6: em Gemas NUNCA auto-compra (dinheiro a serio)', auto.podeComprarOfertaWatch(OFERTA(44, 'gema:arcana:10', 100, 'orbs', 'srdog'), OURO_ALTO, {}).ok === false);
     t.check('W6: sem saldo para a reserva NAO pode', auto.podeComprarOfertaWatch(OFERTA(45, '3031~A', 1000000, 'ouro', 'srdog'), 100, {}).ok === false);
     t.check('W6: acima do teto por passagem NAO pode', auto.podeComprarOfertaWatch(OFERTA(46, '3031~A', 600000, 'ouro', 'srdog'), OURO_ALTO, { tetoCompra: 100000 }).ok === false);
+    /* LOCK DE 3 MIN (motor.js:126 ESPERA_MERCADO; o servidor manda `libera`). Nao e timer
+     * fixo: a mesma oferta passa a compravel no instante em que `libera <= agora`. */
+    const travada = auto.podeComprarOfertaWatch(OFERTA(47, '3031~A', 5000, 'ouro', 'srdog', { libera: Date.now() + 5000 }), OURO_ALTO, {});
+    t.check('W6: oferta com `libera` no futuro NAO pode e diz que esta travada', travada.ok === false && /travada/i.test(travada.motivo || ''));
+    t.check('W6: a MESMA oferta com `libera` vencido PODE (deteccao na hora)', auto.podeComprarOfertaWatch(OFERTA(48, '3031~A', 5000, 'ouro', 'srdog', { libera: Date.now() - 1 }), OURO_ALTO, {}).ok === true);
+    t.check('W6: oferta expirada NAO pode', auto.podeComprarOfertaWatch(OFERTA(49, '3031~A', 5000, 'ouro', 'srdog', { expira: Date.now() - 1 }), OURO_ALTO, {}).ok === false);
 
     /* W7 - pelo DOM: o vendedor (.mj-vend b) e a moeda (.preco) sao lidos do ecra. */
     montarMercadoCompra(m, [
@@ -135,14 +141,29 @@ export const suite = {
     const pDom = lidas.map((o) => ({ id: Number(o.id), item: o.base, preco: o.preco, moeda: o.moeda, vendedor: o.vendedor }));
     const achDom = auto.casarOfertas(pDom, { itens: [], vendedores: ['srdog'] });
     t.check('W7: pelo DOM, a do srdog e DETETADA e as outras IGNORADAS', achDom.length === 1 && achDom[0].id === 51);
+    /* ESTRITO (dono 2026-10-20): com `srdog` na lista, uma oferta de OUTRO jogador que casa
+     * um item escolhido NAO pode ser comprada. Antes a semantica era UNIAO e comprou de outro. */
+    const estrito = auto.casarOfertas(pDom, { itens: ['3031'], vendedores: ['srdog'], filtroVendedores: 'so' });
+    t.check('W7: modo ESTRITO ignora item de outro vendedor', estrito.length === 1 && estrito[0].vendedor === 'srdog');
+    const uniao = auto.casarOfertas(pDom, { itens: ['3031'], vendedores: ['srdog'], filtroVendedores: 'qualquer' });
+    t.check('W7: modo QUALQUER soma item de outro vendedor (escolha explicita)', uniao.length === 2);
+    /* O DEFEITO REAL (dono 2026-10-20): a compra normal da BUILD comprava o item da vigia
+     * do vendedor mais barato (outro jogador). `baseReservadaWatch` e a porta que a impede. */
+    auto.setConfig({ mercadoWatch: { itens: ['3031'], vendedores: ['srdog'], filtroVendedores: 'so' } });
+    t.check('W7: compra normal RESPEITA a vigia estrita (item reservado)', auto.baseReservadaWatch('3031') === true);
+    t.check('W7: item fora da watch nao fica reservado', auto.baseReservadaWatch('3071') === false);
+    auto.setConfig({ mercadoWatch: { itens: ['3031'], vendedores: ['srdog'], filtroVendedores: 'qualquer' } });
+    t.check('W7: no modo QUALQUER a compra normal pode comprar o item', auto.baseReservadaWatch('3031') === false);
 
     /* W8 - o interruptor e a config persistente. */
     t.check('W8: vigiarMercado pende da manutencao', auto.INTERRUPTORES.vigiarMercado && auto.INTERRUPTORES.vigiarMercado.pai === 'manutencao');
-    t.check('W8: vigiarMercado usa a chave autoVigiarMercado', auto.INTERRUPTORES.vigiarMercado.cfg === 'autoVigiarMercado');
+    // Dono 2026-10-20: "vigia ativa = compra ... mesmo ativa ou desativada, a vigia funciona".
+    // Nao ha chave propria; a LISTA e o interruptor. So a manutencao/auto-play para tudo.
+    t.check('W8: vigiarMercado tem chave (contrato I10) mas IGNORA o valor', !!auto.INTERRUPTORES.vigiarMercado.cfg && auto.INTERRUPTORES.vigiarMercado.ignorarCfg === true);
     auto.setConfig({ enabled: true });
-    t.check('W8: por defeito pode (fail-open, chave ausente = ligada)', auto.podeFazer('vigiarMercado').pode === true);
+    t.check('W8: por defeito pode (fail-open)', auto.podeFazer('vigiarMercado').pode === true);
     auto.setConfig({ autoVigiarMercado: false });
-    t.check('W8: desligado, NAO pode', auto.podeFazer('vigiarMercado').pode === false);
+    t.check('W8: a chave antiga desligada NAO impede a vigia', auto.podeFazer('vigiarMercado').pode === true);
     auto.setConfig({ autoVigiarMercado: true, mercadoWatch: { itens: ['3031'], vendedores: ['srdog'], precoMax: 200000, tetoCompra: 500000, cadenciaMs: 5000 } });
     const est = auto.mercadoWatchEstado();
     t.check('W8: a watch persiste e e legivel (itens)', (est.itens || []).join(',') === '3031');
@@ -152,5 +173,38 @@ export const suite = {
     /* W9 - sem rede (o banco nao tem fetch) o passo falha fechado, sem rebentar. */
     const passo = await auto.vigiarMercadoPasso();
     t.check('W9: sem fetch, o passo devolve motivo em vez de rebentar', passo && passo.ok === false && passo.motivo === 'sem fetch');
+
+    /* W10 - o modal de confirmacao TEM PRIORIDADE sobre os "Comprar" do mercado.
+     * Sem isto, clicarDialogo() clicava o primeiro [data-comprar] da lista (que esta antes
+     * do modal no DOM), o modal ficava aberto e a compra nao acontecia. */
+    const dialogoOk = m.el({ tag: 'button', label: 'dialogo-ok', textContent: 'Comprar', rect: { width: 20, height: 20 } });
+    const btnMercado = m.el({ tag: 'button', label: 'comprar-mercado', textContent: 'Comprar', rect: { width: 20, height: 20 } });
+    m.montar('.dialogo-fundo button, .dialogo-fundo .botao', [dialogoOk]);
+    m.montar('button, .botao', [btnMercado, dialogoOk]);
+    m.estado.clicks.length = 0;
+    const clicado = auto.clicarDialogo(/comprar/i);
+    t.check('W10: clicarDialogo prefere o botao do MODAL ao "Comprar" da lista', clicado === 'Comprar' && m.estado.clicks[0] === 'dialogo-ok');
+    t.check('W10: o "Comprar" da lista NAO foi clicado', m.cliqueDe('comprar-mercado') === false);
+
+    /* W11 - prepararFiltrosMercado limpa categoria/busca/classe/moeda/qualidade.
+     * Um filtro antigo escondia a ficha e a compra falhava com "oferta nao esta no ecra". */
+    const busca = m.el({ tag: 'input', label: 'mercado-busca', value: 'lendario' });
+    const catTodos = m.el({ tag: 'button', label: 'cat-todos' });
+    const classe = m.el({ tag: 'select', label: 'mercado-classe', value: 'mago' });
+    const moeda = m.el({ tag: 'select', label: 'mercado-moeda', value: 'orbs' });
+    const qual = m.el({ tag: 'select', label: 'mercado-qual', value: 'S' });
+    const janela = m.el({
+      label: 'janela-mercado-filtros',
+      find: {
+        '[data-cat=""]': [catTodos], '#mercado-busca': [busca], '#mercado-classe': [classe],
+        '#mercado-moeda': [moeda], '#mercado-qual': [qual],
+      },
+    });
+    auto.prepararFiltrosMercado(janela);
+    t.check('W11: categoria Todos e clicada', m.cliqueDe('cat-todos') === true);
+    t.check('W11: busca/classe/moeda/qualidade ficam vazias',
+      busca.value === '' && classe.value === '' && moeda.value === '' && qual.value === '');
+    t.check('W11: o redesenho do mercado e pedido (evento input)',
+      m.eventosDe('mercado-busca').some((e) => e.tipo === 'input'));
   },
 };

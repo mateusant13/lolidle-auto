@@ -409,9 +409,11 @@ export const suite = {
       t.check('M1: sem alvo refinavel devolve ok e diz por que', r2.ok === true && String(r2.motivo || '').length > 0);
     }
     /* ============ V1 - A VENDA AO LOJISTA NAO E DECIDIDA POR OURO (TK-02-85) ============
-     * Prova exigida pelo ticket: "com a mochila NAO cheia e valor alto, n.vender tem de ficar
-     * FALSO; com a mochila cheia, continua verdadeiro". O valor da venda continua calculado —
-     * mas como INFORMACAO (n._venda.valor), nunca como receita (n._venda.receita === 0). */
+     * REGRA CORRIGIDA AO VIVO (2026-10-20): o dono estava na Fonte com 23/32 e 15 itens
+     * marcados (epicos + espolios) e NADA era vendido porque o codigo exigia `mochilaQuaseCheia`.
+     * O `planBag` e a decisao (basico/epico/duplicado -> Lojista; tier S+ protegido): se ele
+     * marcou VENDER_LOJISTA, vende-se, com mochila cheia ou nao. O que NAO entra na decisao e o
+     * OURO (valor alto nao vende; valor baixo nao impede). A receita continua ZERO. */
     {
       // mochila COM espaco (1/30) e itens de valor ALTO (lendarios/Epicos com dica de 5.6k)
       const w1 = novoMundo();
@@ -428,9 +430,10 @@ export const suite = {
       const n1 = w1.auto.necessidadesBase();
       t.check('V1: ha itens para vender (o plano marca VENDER_LOJISTA)', (n1._venda || {}).itens === 2);
       t.check('V1: o VALOR da venda e alto (11.2k) — e continua calculado', (n1._venda || {}).valor === 11200);
-      t.check('V1: mochila NAO cheia + valor ALTO -> n.vender FALSO (nao vende por ouro)', n1.vender === false);
+      t.check('V1: mochila NAO cheia + itens marcados -> n.vender VERDADEIRO (decide o plano, nao o ouro)', n1.vender === true);
+      t.check('V1: ...e a mochila nao estava cheia (a venda nao foi por espaco)', (n1._venda || {}).mochilaQuaseCheia === false);
+      t.check('V1: o motivo registado e PRIORIDADE (o plano marcou)', (n1._venda || {}).motivo === 'prioridade');
       t.check('V1: a receita do Lojista e ZERO (nao e ganho)', (n1._venda || {}).receita === 0);
-      t.check('V1: o motivo registado nao e o ouro', (n1._venda || {}).motivo === 'prioridade' || (n1._venda || {}).motivo === 'espaco');
 
       // mochila QUASE CHEIA: vender passa a verdadeiro (espaco e a razao real)
       const w2 = novoMundo();

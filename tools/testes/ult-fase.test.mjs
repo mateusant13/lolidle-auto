@@ -89,10 +89,45 @@ function provaUltimate(t) {
     auto.podeFazer('comprar').pode === true);
 }
 
+/** U7-U9 - A PONTE entre a frase do jogo e a barra: `handleLog` cria o ciclo, marca
+ *  `fase = 'boss'` quando o chefe aparece, e a ROTACAO le essa fase e poe a ultimate.
+ *
+ *  PORQUE ESTE TESTE EXISTE: os testes U1-U3 provam `barraIdeal` com a fase INJECTADA;
+ *  nenhum provava que a fase REAL chegava la. Medido ao vivo (2026-10-20): `farm.current`
+ *  ficava `null` porque `naBase` (funcao) era usado como booleano em `!naBase`; como
+ *  `faseAtual()` devolve 'mobs' sem ciclo, o chefe NUNCA mudava a fase e a ultimate NUNCA
+ *  entrava - exactamente a queixa do dono. Este teste atravessa o caminho inteiro:
+ *  frase -> handleLog -> farm.current.fase -> rotacaoSkills -> desejadas. */
+async function provaCicloChefe(t) {
+  const { m, auto } = mundo();
+  m.montar('#local-nome', [m.el({ label: 'local-nome', textContent: 'Toca dos Lobos nível 1-8' })]);
+  const f = auto.getFarm();
+  f.current = null; f.cycles = [];
+
+  // Uma frase de abate tem de ABRIR o ciclo (o bug era isto nao acontecer nunca).
+  auto.handleLog({ body: 'Loot de lobo: 100 de ouro. +50 de experiencia.' });
+  t.check('U7: a frase de abate CRIA o ciclo da regiao (farm.current nao fica null)',
+    !!f.current && /Toca dos Lobos/.test(String(f.current.region || '')),
+    JSON.stringify(f.current && { region: f.current.region, fase: f.current.fase }));
+
+  // A frase do chefe (cena.js) tem de mudar a fase para 'boss'.
+  auto.handleLog({ body: 'Um chefe apareceu: Dragao Anciao' });
+  t.check('U8: a frase do chefe marca farm.current.fase = boss',
+    !!f.current && f.current.fase === 'boss' && /Dragao Anciao/.test(String(f.current.boss || '')),
+    JSON.stringify(f.current && { fase: f.current.fase, boss: f.current.boss }));
+
+  // E a rotacao REAL tem de ler essa fase e incluir a ultimate.
+  const rot = await auto.rotacaoSkills(true);
+  t.check('U9: rotacaoSkills na fase de chefe medida inclui a ULTIMATE',
+    !!rot && rot.fase === 'chefe' && (rot.desejadas || []).indexOf('R') >= 0,
+    JSON.stringify(rot && { fase: rot.fase, desejadas: rot.desejadas }));
+}
+
 export const suite = {
   nome: 'ult-fase',
   titulo: 'Regra da ultimate por fase (facil/dificil/chefe) e portao do mercado (auto-play)',
   async run(t) {
     provaUltimate(t);
+    await provaCicloChefe(t);
   },
 };

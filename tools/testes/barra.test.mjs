@@ -73,5 +73,30 @@ export const suite = {
       off.indexOf('R') >= 0);
     t.check('B4: desligado nao rebenta nem perde slots', off.length >= 1 && off.length <= 4);
     auto.setConfig({ skillsPorFase: true });
-    t.check('B4: o config volta a ficar ligado por defeito', auto.skillsPorFase() === true);  },
+    t.check('B4: o config volta a ficar ligado por defeito', auto.skillsPorFase() === true);
+
+    /* B5 - ANTI-OSCILACAO (bug medido ao vivo 2026-10-20): uma skill que ACABOU de sair da
+     * barra nao pode voltar no ciclo seguinte enquanto a barra estiver CHEIA. Sem isto, a
+     * que saia nao tinha recarga no HUD (pronta=0) e era re-escolhida, trocando 3 skills a
+     * cada 2 s. Com uma VAGA, a trava NAO se aplica: encher os 4 slots manda mais. */
+    auto.barraLimparSaidas();
+    const barraCheia = { arsenal: clon(), bar: [
+      { t: 'Q', cd: 5 }, { t: 'W', cd: 5 }, { t: 'E', cd: 5 }, { t: 'G', cd: 5 }] };
+    auto.barraIdeal(barraCheia, 'mobs', false);          // fixa o contexto (fase/ranks/cfg)
+    auto.barraMarcarSaida('A');
+    auto.barraMarcarSaida('F');
+    const travada = auto.barraIdeal(barraCheia, 'mobs', false);
+    t.check('B5: skill que acabou de sair NAO volta com a barra cheia (anti-oscilacao)',
+      travada.indexOf('A') < 0 && travada.indexOf('F') < 0, JSON.stringify(travada));
+    t.check('B5: com a barra cheia e as saídas travadas, continuam 4 slots',
+      travada.length === 4, JSON.stringify(travada));
+
+    const comVaga = { arsenal: clon(), bar: [
+      { t: 'Q', cd: 5 }, { t: 'W', cd: 5 }, { t: 'E', cd: 5 }] };
+    const reposta = auto.barraIdeal(comVaga, 'mobs', false);
+    t.check('B5: com uma VAGA a trava NAO se aplica e a barra enche (o dono nao ve 3 slots)',
+      reposta.length === 4 && (reposta.indexOf('A') >= 0 || reposta.indexOf('F') >= 0),
+      JSON.stringify(reposta));
+    auto.barraLimparSaidas();
+  },
 };

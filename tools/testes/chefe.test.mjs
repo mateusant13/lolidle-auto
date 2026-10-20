@@ -95,7 +95,10 @@ export const suite = {
       t.check('B1[' + nome + ']: a build IDEAL leva a peca de chefe da classe (' + pecaChefe + ')', ideal.indexOf(pecaChefe) >= 0);
       t.check('B2[' + nome + ']: a build de CHEFE leva a peca de chefe da classe (' + pecaChefe + ')', chefe.indexOf(pecaChefe) >= 0);
       t.check('B3[' + nome + ']: a build de MOBS NAO leva a 3153 (vida baixa: o teto morde)', mobs.indexOf('3153') < 0);
-      t.check('B4[' + nome + ']: a build de CHEFE tem 5 itens (1 bota + 4)', chefe.length === 5);
+      const espDe = (x) => ((cat.find((i) => String(i.id) === String(x)) || {}).espaco);
+      const nB = chefe.filter((x) => espDe(x) === 'botas').length;
+      t.check('B4[' + nome + ']: a build de CHEFE tem 5 itens e respeita os slots do motor (4 fora a bota + no maximo 1 bota)',
+        chefe.length === 5 && (chefe.length - nB) <= 4 && nB <= 1);
       t.check('B5[' + nome + ']: a build IDEAL tem 5 itens', ideal.length === 5);
       t.check('B6[' + nome + ']: a build de MOBS tem 5 itens', mobs.length === 5);
     }

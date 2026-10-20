@@ -92,5 +92,20 @@ export const suite = {
       const cliques = m.estado.clicks.filter((c) => c === 'rastreio-tarefa').length;
       t.check('B5: cada chamada clica uma vez (sem loop)', cliques === 2);
     }
+
+    /* ---- B6 - BUG MEDIDO 2026-10-20: `#janela-npc` escondida deixa o botao
+     * "entregar" no DOM. O `dialogoAberto:true` apanhava esse FANTASMA e dizia que
+     * entregou. Tem de recusar o fantasma e nunca clicar nele. ---- */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      baseComBanner(m, { local: 'Fonte', pronta: true });
+      m.montar('#npcs button[data-npc="Capitão da Legião"]', [m.el({ tag: 'button', label: 'npc-capitao' })]);
+      m.montar('#janela-npc', [m.el({ tag: 'section', label: 'janela-npc', className: 'janela', hidden: true })]);
+      m.montar('#janela-npc [data-palavra="entregar"]', [m.el({ tag: 'button', label: 'palavra-entregar-fantasma' })]);
+      const r = await auto.entregarTarefa({ dialogoAberto: true });
+      t.check('B6: janela NPC escondida + botao fantasma -> NAO entrega', r.ok === false);
+      t.check('B6: o botao fantasma NUNCA foi clicado', m.cliqueDe('palavra-entregar-fantasma') === false);
+    }
   },
 };

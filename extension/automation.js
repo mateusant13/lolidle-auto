@@ -112,20 +112,17 @@
     //    chefe prefere o dano de alvo unico. A ultimate continua SEMPRE dentro e em 1.o lugar.
     //    `false` desliga e volta a uma barra so (comportamento antigo).
     skillsPorFase: true,
-    // BARRA POR DISPONIBILIDADE — PEDIDO DO DONO (2026-10-14, verbatim): "tu entende oq eu falo
-    // das skills da barra? tu entende que antes funcionava de forma perfeita, onde usava tudo
-    // disponivel (sem clicar nas skills, ja que o farm usa skill automatico, e coisa do jogo, por
-    // isso idle) e ai removia dos slots pra colocar nos slots as que tavam mais proximas de serem
-    // usadas, e assim em loop, o tempo inteiro?"
-    // CONTRADIÇÃO DECLARADA (e resolvida a favor do dono): o comentário antigo da `barraIdeal`
-    // chamava a isto O DEFEITO — "a versão antiga ordenava por `pronto` (recarga) e por isso a
-    // barra mudava a cada 2 s". O dono diz que funcionava "de forma perfeita": era uma correcção
-    // antiga ao que ele queria. -> DEFAULT TRUE. Com `false` explícito o motor volta ao
-    // comportamento estável de hoje (há testes a depender dele).
-    // Nada aqui CLICA em skills: a barra só decide QUAIS ficam equipadas (o farm usa as skills
-    // automaticamente, é coisa do jogo).
+    // BARRA ESTÁVEL (correcção do dono, 2026-10-20, verbatim: "essa merda burra fica
+    // alternando. ??????? por que? nao é pra ter um ideal? por que alterna?").
+    // O dono quer a barra a TROCAR enquanto farma mobs (2026-10-20: "meu boneco parou de
+    // trocar as skills toda hora contra mobs. arruma."). A ordenação por disponibilidade é
+    // o comportamento certo; o anti-churn (`_barraSaidas`) impede que a MESMA skill volte
+    // no ciclo seguinte. O switch da GUI continua a permitir fixar a barra.
     barraPorDisponibilidade: true,
-    barraCadenciaMs: 2000,    // cadência própria da reavaliação da barra ("o tempo inteiro")
+    // Quarentena da skill que sai da barra (ms). Curta de proposito: impede re-escolher
+    // no poll seguinte (2 s) mas deixa a skill VOLTAR (o dono quer troca continua).
+    barraQuarentenaMs: 6000,
+    barraCadenciaMs: 2000,    // reavalia a barra (sem clicar se o alvo não mudou)
     pocaoPisoPct: 0.75,       // piso de HP FORA de chefe (% do máx)
     pocaoPisoChefe: 0.9,      // piso de HP NO CHEFE (mais seguro; a carga cobre o burst)
     pocaoMargem: 1.1,         // margem só na previsão da CARGA (física/mágica)
@@ -153,12 +150,29 @@
     // para ver TODAS as ofertas com vendedor em tempo real; a compra sai pelo MERCADO do
     // jogo (clique em [data-comprar]) para o 'estado' da conta ficar sincronizado
     // (jogo.js:2954-2960 -> operarServidor -> POST /api/mercado/comprar, jogo.js:2825).
-    autoVigiarMercado: true,   // interruptor proprio (arvore: vigiarMercado, pai manutencao)
+    // LEGADO, IGNORADO (dono 2026-10-20): "mesmo ativa ou desativada, a vigia funciona".
+    // A watch nao tem liga/desliga proprio; a lista de itens/jogadores E o interruptor.
+    autoVigiarMercado: true,
     mercadoWatch: {
-      itens: [],        // watch por id-base ("3031"), id completo ("3071+2~S") ou NOME ("Gume do Infinito")
+      itens: [],        // itens escolhidos pelos ÍCONES na GUI (id-base, ex.: "3031")
       vendedores: [],   // watch por NOME de jogador (sem distinguir maiusculas, ex.: 'srdog')
-      precoMax: null,   // tecto de preco por oferta (em OURO); null = so a reserva de ouro
-      tetoCompra: 500000,   // gasto maximo por passagem do poller (em OURO)
+      // COMO os jogadores entram: 'so' = SO compra destes jogadores (e, se houver itens
+      // escolhidos, so esses itens deles); 'qualquer' = a lista de jogadores SOMA-se aos
+      // itens (compra os itens de qualquer vendedor). O dono apanhou a compra de outro
+      // jogador com `srdog` na lista: o default passa a ser ESTRITO.
+      filtroVendedores: 'so',
+      precoMax: null,   // tecto ABSOLUTO de preco por oferta (em OURO); null = sem tecto
+      // TECTO RELATIVO (pedido do dono 2026-10-20): "usar tambem percentagem do ouro
+      // atual, que escala quando ele escala". 90 = pode gastar ate 90% do ouro de AGORA.
+      // E lido em `podeComprarOfertaWatch` em cada compra, logo acompanha o ouro.
+      percentualOuro: 90,
+      tetoCompra: null, // tecto absoluto por passagem; null = so a percentagem/reserva
+      // PRIORIDADE da oferta quando ha varias: 'tier' (qualidade), 'refino' ou 'preco'.
+      prioridade: 'tier',
+      // FILTROS de qualidade/refino (0/'' = qualquer). A ordem das qualidades vem do
+      // motor (`QUAL`, motor.js:187 ORDEM_QUAL = C,B,A,S,SS) — nunca um numero inventado.
+      tierMin: null,
+      refinoMin: 0,
       cadenciaMs: 2000,     // cadencia do poller em tempo real
     },
     // ===== WATCH-LIST DO MERCADO (fim) ========================================================
@@ -202,6 +216,10 @@
     // defaults dos que passaram a ter toggle; os que já tinham cfg mantêm o valor.
     autoIrBase: true,         // subir à Fonte quando há algo a fazer lá (irBase)
     autoVender: true,         // vender ao Lojista / despachar (vender)
+    // Quantos itens de Lojista justificam uma VIAGEM à Fonte. Estar já na base vende
+    // sempre (é a regra do dono); o que isto trava é o recall de 1 min por 3 itens.
+    // MEDIDO 2026-10-20: `n.vender` sem limiar levava o boneco à Fonte a cada drop.
+    venderMinItens: 6,
     autoRepor: true,          // repor poções na Fonte (repor)
     autoCofre: true,          // ler/guardar no cofre da Tesoureira (cofre)
     autoAnunciar: true,       // anunciar no mercado (anunciar)
@@ -212,13 +230,18 @@
     // existir na conta, nem precisando do usuario. ja vender itens pro lojista, botar no mercado
     // e etc, deve ser recurso padrao do script ... faca por padrao essas coisas ativadas".
     // -> AUDITORIA das flags: vender no Lojista e anunciar no mercado JA sao incondicionais
-    //    (nao ha flag; saem do planBag). autoEquip/autoAtrib/autoMontar/buildPorFase/
-    //    skillsPorFase/rotacaoSkills ja nasciam LIGADAS. A UNICA accao que nascia DESLIGADA era
-    //    o refino -> passa a true. As que continuam false sao deliberadas e nao sao accoes:
-    //    `enabled` (interruptor-mestre, modo observacao ate o dono ligar), `testeForcar` (so para
-    //    testes) e `trocaItens` (caminho
-    //    ANTIGO, substituido pelo buildPorFase — ligar os dois punha-os a lutar entre si).
-    autoRefino: true,         // refina no Ornn itens LENDÁRIOS A+ até +3 (PADRAO LIGADO)
+    //    (nao ha flag; saem do planBag). autoEquip/autoAtrib/buildPorFase/skillsPorFase/
+    //    rotacaoSkills ja nasciam LIGADAS. As que continuam false sao deliberadas e nao sao
+    //    accoes: `enabled` (interruptor-mestre, modo observacao ate o dono ligar), `testeForcar`
+    //    (so para testes) e `trocaItens` (caminho ANTIGO, substituido pelo buildPorFase).
+    //
+    // ORDEM POSTERIOR DO DONO (2026-10-20, verbatim): "ta clicando na forja do ornn por algum
+    // motivo sendo q eu mandei tu nao habilitar isso. (desabilitado por padrao)". O comentario
+    // de 2026-10-14 que ligava o refino por omissao deixou de valer: o Ornn (refino E montagem)
+    // e uma APOSTA e nasce DESLIGADO. Sem o default de `autoMontar`, `podeFazer` via `undefined`
+    // !== false e a montagem ficava ligada implicitamente — era esse o clique na forja.
+    autoRefino: false,        // Ornn: refinar lendarios A+ ate +3 — DESLIGADO por ordem do dono
+    autoMontar: false,        // Ornn: montar pecas — DESLIGADO por ordem do dono
     // REGRA DO DONO (inviolável): "Equipar SEMPRE o melhor item disponível em cada slot".
     // Logo o default é LIGADO; `false` explícito desliga.
     autoEquip: true,
@@ -858,7 +881,7 @@
     // migra ciclo antigo (sem fases) vindo do storage
     if (farm.current && !farm.current.mobFase) { farm.current.fase = 'mobs'; farm.current.mobFase = novaFase(farm.current.startedAt || Date.now()); }
     // ciclo começa quando estamos numa região
-    if (!farm.current && !naBase) farm.current = novoCiclo(loc.text, Date.now());
+    if (!farm.current && !naBase()) farm.current = novoCiclo(loc.text, Date.now());
     // viajou/trocou de região: fecha o ciclo anterior e recomeça com a região certa
     if (farm.current && farm.current.region !== loc.text) {
       const old = farm.current;
@@ -874,7 +897,7 @@
       const teveDados = (old.gold || 0) > 0 || (old.xp || 0) > 0 || (old.mobFase && old.mobFase.kills > 0) || !!old.boss;
       if (teveDados) { farm.cycles.unshift(old); farm.cycles = farm.cycles.slice(0, 30); }
       else logEvent('ciclo-vazio', { region: old.region, fim: old.fim, durMs: old.durMs });
-      farm.current = naBase ? null : novoCiclo(loc.text, Date.now());
+      farm.current = naBase() ? null : novoCiclo(loc.text, Date.now());
       publishFarm();
     }
     // C (TK-01-07): a CAÇA OFFLINE nao e abate — registada e o bloco do abate fica no `else`
@@ -899,17 +922,22 @@
       _ultimoKillMs = _agoraKill;
       killTimes.push(_agoraKill); if (killTimes.length > 200) killTimes.shift();
       if (window.__lolidleRlog) window.__lolidleRlog({ t: 'kill', nome: nomeLoot, gold: g ? parseNum(g[1]) : null, xp: x ? parseNum(x[1]) : null });
-      if (!farm.current && !naBase) farm.current = novoCiclo(loc.text, Date.now());
+      if (!farm.current && !naBase()) farm.current = novoCiclo(loc.text, Date.now());
       if (farm.current) {
         const fase = farm.current.fase === 'boss' ? farm.current.bossFase : farm.current.mobFase;
-        if (g) { const v = parseNum(g[1]); farm.current.gold += v; fase.gold += v; fase.kills += 1; lootTimes.push(Date.now()); if (lootTimes.length > 30) lootTimes.shift(); killTimes.push(Date.now()); if (killTimes.length > 200) killTimes.shift(); }
+        // O timestamp do abate ja foi empilhado acima (linha do `_agoraKill`), uma vez por
+        // linha de loot. Havia aqui um SEGUNDO `killTimes.push` dentro do ramo do ouro: um
+        // abate com ouro contava DOIS abates (e os dois com o mesmo ms, estragando o gap
+        // mediano). O teste C expunha isso quando a suite corre inteira; sem ouro (so XP) um
+        // abate contava 1 - a taxa de abates mentia conforme o loot.
+        if (g) { const v = parseNum(g[1]); farm.current.gold += v; fase.gold += v; fase.kills += 1; lootTimes.push(Date.now()); if (lootTimes.length > 30) lootTimes.shift(); }
         if (x) { const v = parseNum(x[1]); farm.current.xp += v; fase.xp += v; }
       }
     }
     }
     const apChefe = entry.body.match(/Um chefe apareceu:\s*(.+?)[!.]?$/i);
     if (apChefe) {
-      if (!farm.current && !naBase) farm.current = novoCiclo(loc.text, Date.now());
+      if (!farm.current && !naBase()) farm.current = novoCiclo(loc.text, Date.now());
       if (farm.current) {
         const c = farm.current;
         if (!c.boss) { c.boss = apChefe[1].trim(); c.bossStart = Date.now(); }
@@ -1952,6 +1980,41 @@ const CFG_VER = 2;
     if (!(k > 0)) return cd;
     return cd / (1 + v.valor / (60 / k));
   }
+  /** QUANTAS ADAGAS a Katarina pega por segundo com o arsenal actual — o que limita a
+   *  reducao do Shunpo. Fonte: motor.js:777 `P.pegaCada` (0,35 s entre pegas), `P.shunpo`
+   *  (cada adaga corta pela metade o que falta do E, motor.js:2283) e `adaga`/`adagas` de
+   *  cada skill (Q/W/A = 1, T = 3, motor.js:779-803). Sem nenhum campo lido devolve 0
+   *  (nao se inventa reducao). */
+  function taxaDagasDe(arsenal, cdr) {
+    const P = KAT.P || {};
+    if (!(Number(P.shunpo) > 0)) return 0;
+    let s = 0;
+    for (const h of (arsenal || [])) {
+      const k = KAT[h.t]; if (!k || k.passiva) continue;
+      const n = Math.max(0, Number(k.adagas) || (k.adaga ? 1 : 0));
+      if (!n) continue;
+      const cdb = k.rec ? k.rec(h.rank || 1) : null;
+      if (!(cdb > 0)) continue;
+      const c = cdVoraz(cdb * (1 - cdr), h.t) || cdb;
+      s += n / c;
+    }
+    const pc = Number(P.pegaCada);
+    return pc > 0 ? Math.min(s, 1 / pc) : s;
+  }
+  /** Recarga do E (Shunpo) com as adagas que ela pega: cada pega multiplica o que falta por
+   *  `1 - P.shunpo` (motor.js:2283). A conta respeita a OFERTA de adagas (`taxa`): sao precisas
+   *  `log(C/limiar)/log(1/(1-shunpo))` pegas, e cada uma leva `1/taxa` segundos. Devolve
+   *  `min(C, espera + limiar)` — nunca MAIOR que a recarga base (a reducao so ajuda). */
+  function cdComAdagas(cd, t, taxa) {
+    if (t !== 'E' || !(cd > 0) || !(taxa > 0)) return cd;
+    const P = KAT.P || {};
+    const sh = Number(P.shunpo) || 0, pc = Number(P.pegaCada) || 0;
+    if (!(sh > 0 && sh < 1)) return cd;
+    const limiar = Math.max(0.35, pc);
+    if (cd <= limiar) return cd;
+    const n = Math.ceil(Math.log(cd / limiar) / Math.log(1 / (1 - sh)));
+    return Math.min(cd, (n / taxa) + limiar);
+  }
   /** RECARGA EFECTIVA SEGUNDO O MOTOR (corte DIRECTO por abate, motor.js:1811).
    *  `d.recargas[t] = Math.max(0, d.recargas[t] - (i.chefe ? v : voracidade))` — cada abate
    *  tira `v` da recarga, e a recarga continua a contar por baixo. Se 3 abates caem
@@ -2265,6 +2328,8 @@ const CFG_VER = 2;
     const ap = p.poder || 0, ad = p.dano || 0;
     const ef = efeitosEquipados();
     const cdr = ef.cdr, lich = ef.lich;                        // −% recarga (tooltip, já c/ refino) e +%AP por skill (Lich)
+    // Adagas que ela pega por segundo: limitam a reducao do E (motor.js:2283/777).
+    const taxaDagas = taxaDagasDe(sk.arsenal, cdr);
     const adBase = (META.champAtual && META.champAtual.adBase) || (META.champ && META.champ.adBase) || 58;   // base de AD do campeão (motor)
     const g = _giro;
     const giro = Math.round(g.base + g.nivel * p.nivel + g.ap * ap + g.ad * Math.max(0, ad - adBase));   // Voracidade (passiva, motor)
@@ -2308,7 +2373,7 @@ const CFG_VER = 2;
       const cdBase = k.rec ? k.rec(rr || 1) : null;
       // VORACIDADE POR ABATE (motor.js:1789): cada abate tira 1,5 s (5 s em chefe) de Q/W/E.
       // Sem isto o DPS da Katarina saia ate x1,63 abaixo do real a 25 abates/min (C3).
-      const cd = cdBase != null ? cdVoraz(cdBase * (1 - cdr), h.t) : null;
+      const cd = cdBase != null ? cdComAdagas(cdVoraz(cdBase * (1 - cdr), h.t), h.t, taxaDagas) : null;
       const dps = cd ? total / cd : 0, dpsDireto = cd ? (direto * mult * golpes) / cd : 0, dpsAdaga = cd && temAdaga ? (giro * mult * nDagas * golpes) / cd : 0, dpsLich = cd ? procLich / cd : 0;
       out.push({ t: h.t, nome: h.name, rank: h.rank, rankUsado: rr, max: h.maxRank, naBarra: h.onBar, util: !direto && !temAdaga, adaga: temAdaga, auto: !!k.auto, dot: !!k.dot, alvo: k.alvo || null, golpes, alvos, dano: Math.round(dano), direto: Math.round(direto), giro: temAdaga ? giro : 0, total: Math.round(total), cdBase: cdBase != null ? +cdBase.toFixed(1) : null, cd: cd != null ? +cd.toFixed(1) : null, dps: Math.round(dps), dpsDireto: Math.round(dpsDireto), dpsAdaga: Math.round(dpsAdaga), dpsLich: Math.round(dpsLich), lichProc: Math.round(procLich) });
       if (temAdaga && cd) { giroDps += (giro * nDagas) / cd; adagas.push(h.t + (nDagas > 1 ? '×' + nDagas : '')); }
@@ -2334,12 +2399,13 @@ const CFG_VER = 2;
   function ctxDano() {
     const p = player();
     const ef = efeitosEquipados();
+    const sk = readSkills();
     const ap = p.poder || 0, ad = p.dano || 0;
     const adBase = (META.champAtual && META.champAtual.adBase) || (META.champ && META.champ.adBase) || 58;
     const g = _giro;
     const giro = Math.round(g.base + g.nivel * p.nivel + g.ap * ap + g.ad * Math.max(0, ad - adBase));   // Voracidade (passiva, motor)
     // `km` = abates/min medidos ao vivo: a Voracidade precisa da cadencia (motor.js:1789).
-    return { p, ap, ad, cdr: ef.cdr, lich: ef.lich, giro, km: killsMinAoVivo(), magia: !!(META.champAtual && META.champAtual.magia) };
+    return { p, ap, ad, cdr: ef.cdr, lich: ef.lich, giro, km: killsMinAoVivo(), taxaDagas: taxaDagasDe((sk.arsenal || []), ef.cdr), magia: !!(META.champAtual && META.champAtual.magia) };
   }
   /** DPS de `t` NUM RANK `r` — MESMA fórmula de `dpsPorHabilidade` (base + ratio×escala +
    *  adaga×giro + proc do Lich, tudo sobre a recarga), parametrizada pelo rank.
@@ -2359,8 +2425,8 @@ const CFG_VER = 2;
     const total = (direto * mult + (temAdaga ? ctx.giro * mult * nDagas : 0)) * golpes + procLich;
     const cdBase = k.rec ? k.rec(r) : null;
     if (cdBase == null) return 0;
-    // VORACIDADE POR ABATE (motor.js:1789) — mesma conta do `dpsPorHabilidade`.
-    const cd = cdVoraz(cdBase * (1 - ctx.cdr), t, ctx.km);
+    // VORACIDADE POR ABATE (motor.js:1789) + adagas no E (motor.js:2283) — mesma conta do `dpsPorHabilidade`.
+    const cd = cdComAdagas(cdVoraz(cdBase * (1 - ctx.cdr), t, ctx.km), t, ctx.taxaDagas);
     return cd > 0 ? total / cd : 0;
   }
   /** Números de BUFF lidos do TEXTO da habilidade (`data-dica`, que o jogo escreve a partir de
@@ -3256,23 +3322,96 @@ const CFG_VER = 2;
     const j = n >= 40 ? Math.max(1, Math.round(n * (0.80 + Math.random() * 0.40))) : Math.max(0, n);
     setTimeout(r, j);
   });
-  /** Espera "humana": base + jitter aleatório (evita timings perfeitos de bot). */
-  const humano = (ms = 300) => esperar(Math.max(70, Math.round(ms * (0.55 + Math.random() * 0.95))));
+  /** Espera "humana": base + jitter aleatório (evita timings perfeitos de bot).
+   *  Com DOIS argumentos (`humano(250, 650)`) o valor é uniforme no intervalo — antes o 2.º
+   *  era ignorado (JS descarta argumentos a mais) e a pausa saía 137–375 ms em vez de 250–650,
+   *  o que tornava a rotina da base rápida e "robotizada" exactamente onde se pedia humanização. */
+  const humano = (ms = 300, msMax = null) => {
+    const lo = Math.max(70, Number(ms) || 0);
+    if (msMax != null) {
+      const hi = Math.max(lo, Number(msMax) || lo);
+      return esperar(Math.round(lo + Math.random() * (hi - lo)));
+    }
+    return esperar(Math.max(70, Math.round(lo * (0.55 + Math.random() * 0.95))));
+  };
   /** Cadência com variação: um intervalo de 30 min cravado é uma assinatura. ±18%. */
   const cadencia = (ms) => Math.max(1000, Math.round(Number(ms || 0) * (0.82 + Math.random() * 0.36)));
   /** Preço de anúncio: ~90% do menor, com ±2 pontos de variação (não é um carimbo). */
   const fatorAnuncio = () => 0.88 + Math.random() * 0.04;
 
-  function clickNPC(nome) { const b = q1(`#npcs button[data-npc="${nome}"]`); if (b) { b.click(); return true; } return false; }
+  /** Pede ao JOGO para falar com o NPC pelo NOME.
+   *  O jogo tem um listener único em `#npcs` (`jogo.js:5546`) que faz
+   *  `falarCom(b.dataset.npc)`; `falarCom` (`jogo.js:5429-5444`) usa `cena.irAte(npc, ...)`,
+   *  ou seja, o PATHFINDING do jogo — sem coordenadas de ecrã nem câmara.
+   *  A Fonte esconde `#npcs` (`jogo.js:7025`) e a Tesoureira não tem botão estático (só
+   *  existe em `cena.npcs`). Por isso, quando o botão não existe, cria-se um botão
+   *  temporário `[data-npc]`, clica-se e remove-se: o listener do jogo corre igual e o
+   *  boneco anda ATÉ AO NPC. Isto substitui a caminhada por cliques no canvas, que com a
+   *  câmara parada/aba em segundo plano (`cena.cam` só é escrito no `desenhar()`,
+   *  `cena.js:4263`) mandava o boneco para tiles errados — o "anda 3 telas para cima". */
+  /** O `#npcs` aceita um botao temporario? No jogo sim (div normal). Num fixture sem
+   *  `appendChild` nao - e ai o cofre volta a caminhada por canvas (comportamento antigo). */
+  function npcsDomUtilizavel() {
+    const c = q1('#npcs');
+    return !!(c && typeof c.appendChild === 'function' && typeof document !== 'undefined' && document.createElement);
+  }
+  function clickNPC(nome) {
+    const sel = `#npcs button[data-npc="${nome}"]`;
+    const b = q1(sel);
+    if (b) { b.click(); return true; }
+    const cont = q1('#npcs');
+    if (!cont || typeof document === 'undefined' || !document.createElement) return false;
+    // Fixture/teste pode ter um `#npcs` sem `appendChild` (stub minimo). Nesse caso NAO se
+    // rebenta: devolve false e o chamador segue para o canvas (C3 da suite cofre). No jogo
+    // real `#npcs` e um elemento normal e o botao temporario funciona.
+    if (typeof cont.appendChild !== 'function' || typeof document.createElement !== 'function') return false;
+    const tmp = document.createElement('button');
+    tmp.type = 'button';
+    tmp.setAttribute('data-npc', nome);
+    tmp.style.display = 'none';
+    cont.appendChild(tmp);
+    try { tmp.click(); } finally { try { if (typeof tmp.remove === 'function') tmp.remove(); } catch { /* ignore */ } }
+    return true;
+  }
   async function waitFor(sel, ms = 3000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { const el = q1(sel); if (el) return el; await esperar(120); } return null; }
+  /** O jogo ESCONDE `#janela-npc` ao fechar a conversa mas DEIXA os botoes no DOM
+   *  (`jogo.js:5534`). Sem esta guarda, um `waitFor('#janela-npc ...')` encontra o botao
+   *  FANTASMA da conversa anterior e o clique nao faz nada - foi o bug medido ao vivo em
+   *  2026-10-20: o boneco voltava a Fonte, "entregava" num botao escondido e a tarefa ficava
+   *  pronta para sempre. `#janela-npc` ausente = fixture de teste sem a janela montada. */
+  const npcPainelAberto = () => { const j = q1('#janela-npc'); return !j || j.hidden !== true; };
+  const seletorNpc = (sel) => /^#(?:janela-npc|npc-troca)\b/.test(String(sel || ''));
+  /** `waitFor` para elementos DENTRO da conversa do NPC: so conta com a janela ABERTA. */
+  async function waitForNpc(sel, ms = 3000) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      const el = q1(sel);
+      if (el && npcPainelAberto()) return el;
+      await esperar(120);
+    }
+    return null;
+  }
+  /** Espera pela conversa ABERTA (nao por um botao fantasma). */
+  async function waitForNpcConversa(ms = 3000) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      if (npcPainelAberto() && q1('#janela-npc')) return true;
+      await esperar(120);
+    }
+    return false;
+  }
   function fecharJanelas() { qa1('[data-fechar]').forEach((b) => b.click()); }
   /** Abre a conversa de um NPC. Na Fonte `#npcs` está OCULTO (`jogo.js:7025`), por isso o botão
    *  estático existe mas o clique não abre nada. Só se aceita o caminho estático quando a opção
    *  esperada APARECE; senão clica-se no NPC pela posição real (canvas). Devolve true só com a
    *  conversa comprovadamente aberta. */
   async function abrirNpc(nome, seletorOpcao, tentativas = 2) {
-    if (clickNPC(nome) && (!seletorOpcao || await waitFor(seletorOpcao, 1800))) return true;
-    if (await clicarNpcNaTela(nome, tentativas) && (!seletorOpcao || await waitFor(seletorOpcao, 2200))) return true;
+    // `falarCom` ANDA até ao NPC (pathfinding do jogo): a espera tem de cobrir o caminho.
+    // Com 1800 ms a Tesoureira (7 tiles + contorno do chafariz) ainda não tinha chegado e o
+    // código caía nos cliques de canvas — que com `cena.cam` parada mandavam o boneco para
+    // longe. 5 s é o tecto do próprio `irAte` (passos de 0,2 s/tile, `cena.js:557`).
+    if (clickNPC(nome) && (!seletorOpcao || await waitForNpc(seletorOpcao, 5000))) return true;
+    if (await clicarNpcNaTela(nome, tentativas) && (!seletorOpcao || await waitForNpc(seletorOpcao, 2200))) return true;
     return false;
   }
 
@@ -3495,12 +3634,12 @@ const CFG_VER = 2;
     // nele não abre nada. Só se aceita o clique estático se o diálogo com "vender" aparecer;
     // senão cai no clique pelo CANVAS (posição real do NPC).
     let falou = false;
-    if (clickNPC('Lojista')) falou = !!(await waitFor('#janela-npc [data-palavra="vender"]', 1500));
+    if (clickNPC('Lojista')) falou = !!(await waitForNpc('#janela-npc [data-palavra="vender"]', 1500));
     if (!falou) falou = await clicarNpcNaTela('Lojista', 2);
     if (!falou) return { ok: false, motivo: 'sem lojista' };
-    if (!(await waitFor('#janela-npc [data-palavra="vender"]'))) return { ok: false, motivo: 'sem vender' };
+    if (!(await waitForNpc('#janela-npc [data-palavra="vender"]'))) return { ok: false, motivo: 'sem vender' };
     q1('#janela-npc [data-palavra="vender"]').click();
-    const abrir = await waitFor('#janela-npc [data-abrir-venda]');
+    const abrir = await waitForNpc('#janela-npc [data-abrir-venda]');
     if (!abrir) return { ok: false, motivo: 'sem abrir-venda' };
     abrir.click();
     if (!(await waitFor('#janela-venda .cofre-slot[data-separar]'))) return { ok: false, motivo: 'sem janela-venda' };
@@ -3631,12 +3770,12 @@ const CFG_VER = 2;
     const sobrou = () => Object.keys(min).filter((k) => (readPotions()[k] || 0) < min[k]);
     if (!falta.length) return { ok: true, nada: true, min, compraveis, faltou: sobrou() };
     let falou = false;
-    if (clickNPC('Lojista')) falou = !!(await waitFor('#janela-npc [data-palavra="comprar"]', 1500));
+    if (clickNPC('Lojista')) falou = !!(await waitForNpc('#janela-npc [data-palavra="comprar"]', 1500));
     if (!falou) falou = await clicarNpcNaTela('Lojista', 2);
     if (!falou) return { ok: false, motivo: 'sem lojista' };
-    if (!(await waitFor('#janela-npc [data-palavra="comprar"]'))) return { ok: false, motivo: 'sem comprar' };
+    if (!(await waitForNpc('#janela-npc [data-palavra="comprar"]'))) return { ok: false, motivo: 'sem comprar' };
     q1('#janela-npc [data-palavra="comprar"]').click();
-    if (!(await waitFor('#janela-npc [data-comprar]'))) return { ok: false, motivo: 'sem botoes' };
+    if (!(await waitForNpc('#janela-npc [data-comprar]'))) return { ok: false, motivo: 'sem botoes' };
     await humano(280);
     const feitos = {};
     const semBotao = [];
@@ -3757,7 +3896,7 @@ const CFG_VER = 2;
   // `lerCofre` passou a PRIMÁRIA (pedido do dono: "andar pra fonte ... tem q fazer automatico"): é
   // ela que PAGA a ida à Fonte de X em X minutos para ler o cofre. A cadência (`cfg.cofreCadenciaMin`)
   // limita-o, logo não é o need-eterno que causava o ciclo de recall.
-  const NECESSIDADES_PRIMARIAS = ['presente', 'cura', 'vender', 'repor', 'tarefa', 'hab', 'atrib', 'equip', 'buscar', 'cofre', 'anunciar', 'lerCofre'];
+  const NECESSIDADES_PRIMARIAS = ['presente', 'cura', 'vender', 'repor', 'tarefa', 'hab', 'atrib', 'equip', 'buscar', 'cofre', 'anunciar', 'lerCofre', 'comprarWatch'];
   /** NECESSIDADES da base (só o que FALTA) — evita rodar tudo à toa a cada visita. */
   // =======================================================================================
   // HIERARQUIA DE INTERRUPTORES (pedido do dono, 2026-10-14, verbatim):
@@ -3804,9 +3943,11 @@ const CFG_VER = 2;
     // A TROCA DA BARRA E RECURSO BASE, NAO FARMAR (correccao do Lead, 2026-10-14).
     skillsPorFase:{ pai: 'manutencao', cfg: 'skillsPorFase' },
     rotacao:      { pai: 'manutencao', cfg: 'rotacaoSkills' },
-    // WATCH-LIST DO MERCADO (pedido do dono, 2026-10-18): vigiar itens e jogadores em tempo
-    // real e auto-comprar. Pende da MANUTENCAO, com o seu proprio liga/desliga.
-    vigiarMercado: { pai: 'manutencao', cfg: 'autoVigiarMercado' },
+    // WATCH-LIST DO MERCADO. NÃO tem liga/desliga próprio: o dono foi explícito
+    // (2026-10-20): "vigia ativa = compra ... mesmo ativa ou desativada, a vigia funciona".
+    // A lista (itens/jogadores) É o interruptor: vazia = não vigia nada; com algo = vigia
+    // e compra. Só herda a MANUTENÇÃO para o auto-play global poder parar tudo.
+    vigiarMercado: { pai: 'manutencao', cfg: 'autoVigiarMercado', ignorarCfg: true },
   };
   /** Este interruptor pode agir AGORA? Sobe a cadeia de pais e avalia a excepcao.
    *  Devolve { pode, porque } — o `porque` e para a GUI poder dizer PORQUE esta desligado. */
@@ -3814,7 +3955,7 @@ const CFG_VER = 2;
     let n = String(nome || ''), guarda = 0;
     while (n && INTERRUPTORES[n] && guarda++ < 16) {
       const s = INTERRUPTORES[n];
-      try { if (s.cfg && cfg[s.cfg] === false) return { pode: false, porque: n + ': desligado pelo dono' }; } catch { /* ignore */ }
+      try { if (!s.ignorarCfg && s.cfg && cfg[s.cfg] === false) return { pode: false, porque: n + ': desligado pelo dono' }; } catch { /* ignore */ }
       try { if (s.excecao && s.excecao()) return { pode: false, porque: n + ': excepcao activa' }; } catch { /* ignore */ }
       n = s.pai;
     }
@@ -3874,7 +4015,10 @@ const CFG_VER = 2;
     // CUSTO da ida à base (em ouro-equivalente) — é contra ele que as decisões de IR são
     // medidas. Ver `custoIdaBase`. Declarado AQUI porque `n.vender`/`n._custoIda` o usam.
     const custo = custoIdaBase();
-    try { const pl = player() || {}; n.cura = (pl.vida || 0) < (pl.vidaMax || pl.max || 0); } catch { n.cura = false; }
+    // `player().vida` é o MÁXIMO (`hp.max`, ver automation.js:1795) e `vidaMax`/`max` não
+    // existem nesse objecto: a comparação antiga era `max < 0` = sempre false, logo a cura
+    // NUNCA era pedida. O actual é `vidaCur` (`hp.cur`).
+    try { const pl = player() || {}; n.cura = pl.vidaCur != null && (pl.vidaCur || 0) < (pl.vida || 0); } catch { n.cura = false; }
     // P0 AO VIVO (ciclo de recall): usava `minimoPocoes()`, que inclui a POÇÃO SUPREMA — e a
     // loja só a vende no nível 30 (motor.js:264). Com `vidaS: 0` e mínimo 8, isto ficava
     // `true` PARA SEMPRE: o boneco recordava, não conseguia comprar, saía, e voltava 20 s
@@ -3914,7 +4058,13 @@ const CFG_VER = 2;
       // A ida ao Lojista é motivada por ESPAÇO (a mochila a transbordar) e pelo que é LIXO — o
       // `planBag` já decidiu isso (`prioridade`), não se inventa critério novo.
       const prioridade = atosVenda.length > 0;
-      n.vender = podeFazer('vender').pode && prioridade && mochilaQuaseCheia;
+      // P0 MEDIDO AO VIVO (2026-10-20): a mochila estava 23/32 (longe de cheia) com 15 itens
+      // marcados pelo `planBag` (epicos + espolios) e `n.vender` dava FALSE por causa do
+      // `&& mochilaQuaseCheia`. O comentario acima ja dizia "ESPACO **OU** PRIORIDADE" - o
+      // codigo exigia os dois. O `planBag` e a regra do dono ("basico/epico/duplicado vai ao
+      // Lojista; tier S+ nao"): se ele marcou, vende-se. A mochila cheia continua a ser o
+      // gatilho de ESPACO e o motivo registado distingue os dois casos.
+      n.vender = podeFazer('vender').pode && prioridade;
       // `valor` fica como INFORMAÇÃO; `receita` é o que conta como OURO (0 fora do começo do jogo) —
       // é esta marcação explícita que impede alguém de voltar a somar isto como ganho.
       // `valor` = INFORMAÇÃO (o dono vê o que desperdiçou); `receita` = 0 SEMPRE — o ouro do Lojista
@@ -4018,6 +4168,12 @@ const CFG_VER = 2;
     // a pré-checagem do servidor VIU uma peça da build à venda.
     n.comprar = podeFazer('comprar').pode && (Date.now() - _ultimaCompra) > cadencia(600000)
       && mercadoTemDaBuild() === true;
+    // WATCH DO MERCADO: uma oferta desejada que JÁ ESTÁ COMPRÁVEL (o lock de 3 min do
+    // lendário A/S/SS já venceu) é uma necessidade PRIMÁRIA. O dono mandou: "quando está
+    // lutando contra chefe e um item desejado aparece na loja e dá pra comprar, volta pra
+    // base imediatamente, com chefe ou não." O poller roda a cada 2 s e atualiza
+    // `_watchAchados`; aqui só se pergunta se há alguma pronta e paga.
+    try { n.comprarWatch = podeFazer('vigiarMercado').pode && !!ofertaWatchPronta(); } catch { n.comprarWatch = false; }
     // ---- REGRA DE OURO: OPORTUNIDADES não pagam uma viagem sozinhas ----
     // Se NENHUMA necessidade primária está aberta, as oportunidades (mercado/comprar/refino/
     // montar) são DESLIGADAS nesta passagem: ele fica a farmar em vez de andar para trás e para
@@ -4043,6 +4199,13 @@ const CFG_VER = 2;
    *  `acaoBase` e `supervisarBase` leem daqui, logo nunca podem discordar sobre o que
    *  "a base está completa" quer dizer. */
   const PASSOS_BASE = [
+    // PRIMEIRO: uma oferta da watch que já pode ser comprada. O dono mandou voltar à base
+    // imediatamente (chefe ou não), e ao chegar é este passo que compra antes de vender/repor.
+    ['comprarWatch', 'compra watch', async () => {
+      const o = ofertaWatchPronta();
+      if (!o) return { ok: true, motivo: 'sem oferta pronta' };
+      return comprarOfertaWatch(o, { interno: true });
+    }],
     ['presente', 'presentes', () => pegarPresentes()],
     ['cura', 'cura', () => curarBase()],
     ['vender', 'venda', () => venderBase()],
@@ -4055,10 +4218,12 @@ const CFG_VER = 2;
         // e `entregarTarefa({dialogoAberto:true})` entrega através dele. Fora da base o clique não
         // faz nada — a necessidade `n.tarefa` envia o personagem à Fonte (o `supervisarBase` já faz
         // isso).
-        const banner = clicarTarefaPronta();
+        const banner = await clicarTarefaProntaEAbrir();
         // TK-01: se o banner ABRIU o diálogo do Capitão, entrega ATRAVÉS dele — sem fechar/reabrir
-        // (o `fecharJanelas()` do caminho normal FECHARIA o diálogo que o banner abriu).
-        const r = { entregou: await entregarTarefa({ dialogoAberto: banner && banner.ok === true }), banner };
+        // (o `fecharJanelas()` do caminho normal FECHARIA o diálogo que o banner abriu). O
+        // `clicarTarefaProntaEAbrir` só devolve `aberto:true` com a janela do NPC VISÍVEL: o
+        // clique no banner inicia a CAMINHADA até ao Capitão, não abre logo o diálogo.
+        const r = { entregou: await entregarTarefa({ dialogoAberto: banner && banner.aberto === true }), banner };
         if (!(tarefaEstado() || {}).tem) r.nova = await aceitarTarefa();
         return r;
       }
@@ -4158,7 +4323,9 @@ const CFG_VER = 2;
       // fechou volta a ser pedível quando aparecer outra vez. Sem isto, qualquer coisa que a
       // loja não vende (ex.: Poção Suprema abaixo do nível 30) vira ping-pong eterno.
       const aindaAbertas = new Set(res.restou);
-      for (const k of res.restou) marcarIndisponivel(k, 'a base não conseguiu fechar esta necessidade' + (res.falhas.length ? ' (passos: ' + res.falhas.join(',') + ')' : ''));
+      // `comprarWatch` NUNCA fica 45 min indisponível: a oferta pode ter sido vendida
+      // nesse instante e o poller (2 s) já traz outra. Marcar aqui mataria a vigia toda.
+      for (const k of res.restou) if (k !== 'comprarWatch') marcarIndisponivel(k, 'a base não conseguiu fechar esta necessidade' + (res.falhas.length ? ' (passos: ' + res.falhas.join(',') + ')' : ''));
       for (const k of inicio) if (!aindaAbertas.has(k)) limparIndisponivel(k);
       if (!res.ok) res.motivo = 'base incompleta: ' + (res.restou.length ? res.restou.join(',') : 'passos falhados (' + res.falhas.join(',') + ')');
       logEvent('base', res);
@@ -4321,10 +4488,10 @@ const CFG_VER = 2;
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     fecharJanelas(); await humano(250);
     if (!(await abrirNpc('Capitão da Legião', '#janela-npc [data-palavra="tarefa"]'))) return { ok: false, motivo: 'sem capitao' };
-    const btn = await waitFor('#janela-npc [data-palavra="tarefa"]', 4000);
+    const btn = await waitForNpc('#janela-npc [data-palavra="tarefa"]', 4000);
     if (!btn) return { ok: false, motivo: 'sem opcao tarefa' };
     btn.click(); await humano(350);
-    if (!(await waitFor('#npc-troca [data-tarefa]', 4000))) return { ok: false, motivo: 'sem tarefas' };
+    if (!(await waitForNpc('#npc-troca [data-tarefa]', 4000))) return { ok: false, motivo: 'sem tarefas' };
     // ---- VALOR POR SEGUNDO COM O MEU RITMO, NAQUELA REGIÃO (pedido do dono) ----------------
     // O `min` que a oferta mostra é o do RITMO DA ZONA do jogo (motor.js `minutosTarefa` ->
     // `abatesEquivalentes` / `ritmoZona` = ABATES_MIN_ZONA × RITMO_REAL). O que decide não é
@@ -4417,6 +4584,18 @@ const CFG_VER = 2;
     return { ok: true, clicou: true, texto: st.texto };
   }
 
+  /** Clica no banner E espera que o Capitão abra a conversa. O clique no banner chama
+   *  `falarCom` (`jogo.js:6407`), que faz o boneco ANDAR até ao NPC (`jogo.js:5429`); a
+   *  `#janela-npc` só fica visível quando ele chega (`jogo.js:5519`). Entregar logo a seguir
+   *  era o bug: `entregarTarefa({dialogoAberto:true})` apanhava o botão FANTASMA de uma
+   *  conversa antiga (escondido, mas presente no DOM) e o clique não fazia nada. */
+  async function clicarTarefaProntaEAbrir() {
+    const banner = clicarTarefaPronta();
+    if (!banner.ok) return banner;
+    const aberto = await waitForNpcConversa(6000);
+    return { ...banner, aberto, motivo: aberto ? undefined : 'dialogo do capitao nao abriu' };
+  }
+
   /** MODELO de atributos POR CAMPEÃO — derivado da dica do MOTOR (`DICA_ATRIBUTOS`,
    *  motor.js:474-482) cruzada com a CLASSE e o PERFIL do campeão (motor.js:484 `MODELOS`):
    *   - TANQUE  -> 'tanque'      { vitalidade:2, resistencia:2, forca:1 }  (motor.js:485)
@@ -4478,18 +4657,34 @@ const CFG_VER = 2;
     const st = tarefaEstado();
     if (!st.tem) return { ok: true, entregou: false, motivo: 'sem tarefa' };
     if (!st.pronta) return { ok: false, motivo: 'tarefa incompleta', texto: st.texto };
-    const dialogoAberto = !!(opts && opts.dialogoAberto);
-    if (!dialogoAberto) {
+    // O banner pode ter sido clicado mas o boneco ainda está a ANDAR até ao Capitão. Nesse
+    // caso a janela do NPC ainda está escondida e os botões no DOM são FANTASMAS da conversa
+    // anterior. Só se aceita `dialogoAberto` com a janela VISÍVEL e o Capitão aberto.
+    const dialogoCapitão = !!(opts && opts.dialogoAberto)
+      && npcPainelAberto()
+      && (npcConversaAtual() === 'Capitão da Legião' || !!q1('#janela-npc [data-palavra="entregar"]'));
+    // Quem diz `dialogoAberto:true` afirma que a janela esta ABERTA. Se nao estiver, e um
+    // FANTASMA: nao se tenta `abrirNpc` com a mesma pressa (o boneco pode ainda estar a
+    // caminhar); devolve falha e o chamador decide reabrir.
+    if (opts && opts.dialogoAberto && !dialogoCapitão) return { ok: false, motivo: 'dialogo nao abriu', tinha: st.texto };
+    if (!dialogoCapitão) {
       fecharJanelas(); await humano(250);
       if (!(await abrirNpc('Capitão da Legião', '#janela-npc [data-palavra="entregar"]'))) return { ok: false, motivo: 'sem capitao' };
     }
-    const btn = await waitFor('#janela-npc [data-palavra="entregar"]', 4000);
+    const btn = await waitForNpc('#janela-npc [data-palavra="entregar"]', 4000);
     if (!btn) return { ok: false, motivo: 'sem opcao entregar' };
     btn.click(); await humano(400);
-    const sim = document.querySelector('#janela-npc [data-palavra="sim"]');
-    if (sim) { sim.click(); await humano(300); }
-    logEvent('tarefa', { entregou: true, texto: st.texto, dialogoAberto: dialogoAberto === true });
-    return { ok: true, entregou: true, tinha: st.texto, dialogoAberto: dialogoAberto === true };
+    // A entrega NÃO pede confirmação — o "sim" do Capitão é só para CANCELAR a tarefa
+    // (jogo.js:5410-5411). Nunca clicar em "sim" aqui (era um risco de cancelar progresso).
+    // O sucesso é provado pelo estado do jogo, não pelo facto de se ter clicado.
+    let entregou = false;
+    for (let i = 0; i < 12; i++) {
+      if (!(tarefaEstado() || {}).tem) { entregou = true; break; }
+      await esperar(150);
+    }
+    if (!entregou) return { ok: false, motivo: 'entrega nao confirmada', tinha: st.texto, dialogoAberto: dialogoCapitão };
+    logEvent('tarefa', { entregou: true, texto: st.texto, dialogoAberto: dialogoCapitão });
+    return { ok: true, entregou: true, tinha: st.texto, dialogoAberto: dialogoCapitão };
   }
 
   /** Recebe as diárias prontas e aceita as disponíveis no Capitão (na Fonte).
@@ -4498,7 +4693,7 @@ const CFG_VER = 2;
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     fecharJanelas(); await humano(250);
     if (!(await abrirNpc('Capitão da Legião', '#janela-npc [data-palavra="diaria"]'))) return { ok: false, motivo: 'sem capitao' };
-    const btn = await waitFor('#janela-npc [data-palavra="diaria"]', 4000);
+    const btn = await waitForNpc('#janela-npc [data-palavra="diaria"]', 4000);
     if (!btn) return { ok: false, motivo: 'sem opcao diaria' };
     btn.click(); await humano(450);
     const btns = [...document.querySelectorAll('[data-aceitar-diaria]')].filter((b) => !b.disabled);
@@ -4714,21 +4909,28 @@ const CFG_VER = 2;
     // METADE do caminho (medido: clique em (15,8) em vez de (23,13)).
     const pxTile = r.height / VIS_A_JOGO;
     if (!(pxTile > 0)) return false;
-    const ecra = (tx, ty, cam) => ({
-      x: r.left + (tx + 0.5 - cam.x / TAM_TILE_JOGO) * pxTile,
-      y: r.top + (ty + 0.5 - cam.y / TAM_TILE_JOGO) * pxTile,
+    // NA FONTE A CAMARA SEGUE O CAMPEAO e o centro do canvas É o tile dele
+    // (`cena.js:4051/4060-4067`; `jogo.js:1428-1431` usa `cam` só para converter o rato).
+    // MEDIDO 2026-10-20: `cena.cam` chega a `{x:0,y:0}` (aba em segundo plano / antes do
+    // primeiro render) enquanto `pos` é `{25,20}` e o Lojista `{27,19}`. A fórmula com `cam`
+    // punha o alvo fora do canvas e `venderBase` devolvia "sem lojista" com o NPC a 2 tiles.
+    // A posição relativa ao centro não depende de `cam` nenhum: se o jogo centra o boneco,
+    // `(npc - pos)` é o deslocamento em tiles, hoje e se o mapa crescer.
+    const ecraRel = (tx, ty, pos) => ({
+      x: r.left + r.width / 2 + (tx - pos.x) * pxTile,
+      y: r.top + r.height / 2 + (ty - pos.y) * pxTile,
     });
     const dentro = (p) => p.x > r.left + 1 && p.x < r.left + r.width - 1 && p.y > r.top + 1 && p.y < r.top + r.height - 1;
     for (let t = 0; t < Math.max(2, tentativas); t++) {
-      const pos = posicaoViva(), cam = camViva(), npc = npcVivo([nome]);
-      if (!pos || !cam || !npc) return false;
-      const alvo = ecra(npc.x, npc.y, cam);
+      const pos = posicaoViva(), npc = npcVivo([nome]);
+      if (!pos || !npc) return false;
+      const alvo = ecraRel(npc.x, npc.y, pos);
       if (!dentro(alvo)) {
         // anda em direcao ao NPC, em passos que cabem no ecra (o jogo faz o caminho).
         const dx = Math.sign(npc.x - pos.x), dy = Math.sign(npc.y - pos.y);
         const wx = pos.x + dx * Math.min(4, Math.abs(npc.x - pos.x));
         const wy = pos.y + dy * Math.min(3, Math.abs(npc.y - pos.y));
-        const p = ecra(wx, wy, cam);
+        const p = ecraRel(wx, wy, pos);
         if (!dentro(p)) return false;
         await clicarCanvasHumano(cv, p.x, p.y, { button: 2, exato: true });
         await humano(900);
@@ -4871,24 +5073,32 @@ const CFG_VER = 2;
         }
       }
       if (!via && naBase()) {
-        // Fallback de SUBIDA: quando o NPC existe mas nao abriu (longe/fora do ecra),
-        // dois destinos de 4 tiles chegam a Tesoureira. Antes isto so corria quando o
-        // inject nao publicava posicoes - por isso o cofre ficava por ler.
-        const p = posicaoViva(), n = npcVivo(NPCS_DO_COFRE);
-        // Sem posicoes (stub/inject antigo) o fallback antigo MANDA: sobe 8. Com as duas
-        // posicoes, so se sobe quando o NPC ainda esta longe (>1 tile); adjacente, tentar
-        // abrir de novo e melhor do que afastar o boneco.
-        const longe = !(p && n) || Math.max(Math.abs(n.x - p.x), Math.abs(n.y - p.y)) > 1;
-        if (longe) {
-          for (let t = 0; t < COFRE_TENTATIVAS_SUBIDA; t++) {
-            const sub = await subirNaFonte(COFRE_TILES_ACIMA);
-            if (!sub.ok) { motivoSubida = sub.motivo || 'nao consegui andar no chao'; break; }
-            subiu += sub.tiles || 0;
-            await humano(180);                  // deixa o `cena.andarPara` assentar antes do proximo
+        // NÃO ANDAR ÀS CEGAS. A subida por cliques no canvas depende de `cena.cam`, que só
+        // é escrito dentro de `desenhar()` (`cena.js:4263`). Com a aba em segundo plano (ou
+        // antes do 1.º frame) `cam` fica em 0,0 e o clique em "4 tiles acima" cai num tile
+        // QUALQUER do mapa — foi o boneco a andar 3 telas para cima, para o nada. O caminho
+        // certo é `falarCom` (botão `[data-npc]` temporário, ver `clickNPC`), que usa
+        // `cena.irAte` e não olha para a câmara. Se não abriu, tenta de novo pelo DOM e,
+        // falhando, devolve o motivo em vez de explorar o mapa.
+        if (!npcsDomUtilizavel()) {
+          // Fixture/edge sem `#npcs` utilizavel: caminhada por canvas (o caminho antigo,
+          // que a suite cofre cobre). No jogo real `#npcs` sempre aceita o botao e este
+          // ramo NAO corre - o `falarCom` e o caminho preferido.
+          for (let i = 0; i < COFRE_TENTATIVAS_SUBIDA; i++) {
+            const s = await subirNaFonte(COFRE_TILES_ACIMA);
+            if (!s.ok) { motivoSubida = s.motivo || 'nao consegui subir'; break; }
+            subiu += Number(s.tiles) || 0;
+            await humano(250);
           }
-          if (subiu > 0) via = await esperarNpcDoCofre();
+          if (!motivoSubida && !subiu) motivoSubida = 'sem tamanho medivel para subir';
+          if (!motivoSubida) {
+            via = await esperarNpcDoCofre();
+            if (!via) motivoSubida = 'subi e a Tesoureira nao abriu o dialogo';
+          }
         } else {
+          await humano(700);
           via = await esperarNpcDoCofre();
+          if (!via) motivoSubida = 'falarCom nao abriu a Tesoureira (sem caminhada as cegas)';
         }
       } else if (!via) {
         via = await esperarNpcDoCofre();        // cidade/fora da Fonte: so o DOM, sem andar as cegas
@@ -4900,7 +5110,7 @@ const CFG_VER = 2;
         ? `subi ${subiu} tiles na Fonte e a Tesoureira nao abriu o dialogo`
         : (motivoSubida ? 'nao cheguei a Tesoureira: ' + motivoSubida : 'sem Tesoureira/Burrinho aqui (cofre abre na Fonte ou na cidade)') };
     }
-    const btn = await waitFor('#janela-npc [data-palavra="cofre"]', 5000);
+    const btn = await waitForNpc('#janela-npc [data-palavra="cofre"]', 5000);
     if (!btn) return { ok: false, motivo: 'sem opcao cofre' };
     btn.click();
     const grid = await waitFor('.cofre-slot[data-k]', 3000);
@@ -5815,12 +6025,19 @@ const CFG_VER = 2;
     const m = el && (el.textContent || '').match(/preço m[ií]nimo:\s*([\d.,]+)/i);
     return m ? parseBig(m[1]) : null;
   }
-  /** Clica um botão de diálogo visível cujo texto casa com o regex. Devolve o texto clicado. */
+  /** Clica um botão de diálogo visível cujo texto casa com o regex. Devolve o texto clicado.
+   *  PRIMEIRO o modal do jogo (`.dialogo-fundo`), só depois o resto da página. Sem esta ordem,
+   *  `clicarDialogo(/comprar/)` apanhava o primeiro botão "Comprar" do mercado (que está antes
+   *  do modal no DOM) e nunca confirmava a compra — o modal ficava aberto e a oferta por comprar. */
   function clicarDialogo(re) {
-    const b = [...document.querySelectorAll('button, .botao')].find((x) => {
-      const t = (x.textContent || '').trim(); const r = x.getBoundingClientRect();
-      return r.width > 0 && r.height > 0 && !x.disabled && re.test(t);
-    });
+    const visivel = (x) => {
+      const r = x.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && !x.disabled;
+    };
+    const noModal = [...document.querySelectorAll('.dialogo-fundo button, .dialogo-fundo .botao')]
+      .find((x) => visivel(x) && re.test((x.textContent || '').trim()));
+    const b = noModal || [...document.querySelectorAll('button, .botao')]
+      .find((x) => visivel(x) && re.test((x.textContent || '').trim()));
     if (b) { b.click(); return (b.textContent || '').trim(); }
     return null;
   }
@@ -7387,7 +7604,7 @@ const CFG_VER = 2;
     // os ALVOS e a lista de essenciais viajam em TODOS os retornos: quem chamou tem de ver
     // O QUE ia ser refinado e PORQUÊ, mesmo quando o passo falha (é o log do dono).
     if (!(await abrirNpc('Ornn', '#janela-npc [data-palavra="forjar"]'))) return { ok: false, motivo: 'sem Ornn', ...diag };
-    const bt = await waitFor('#janela-npc [data-palavra="forjar"]', 4000);
+    const bt = await waitForNpc('#janela-npc [data-palavra="forjar"]', 4000);
     if (!bt) return { ok: false, motivo: 'sem opcao forjar', ...diag };
     bt.click(); await humano(650);
     const feitos = [];
@@ -7451,7 +7668,7 @@ const CFG_VER = 2;
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     fecharJanelas(); await humano(300);
     if (!(await abrirNpc('Ornn', '#janela-npc [data-palavra="montar"]'))) return { ok: false, motivo: 'sem Ornn' };
-    const bt = await waitFor('#janela-npc [data-palavra="montar"]', 4000);
+    const bt = await waitForNpc('#janela-npc [data-palavra="montar"]', 4000);
     if (!bt) return { ok: false, motivo: 'sem opcao montar' };
     bt.click(); await humano(700);
     const linhas = [...document.querySelectorAll('#janela-npc .troca-linha.montagem')];
@@ -7484,7 +7701,7 @@ const CFG_VER = 2;
     const antes = readGold();
     fecharJanelas(); await humano(300);
     if (!(await abrirNpc('Ornn', '#janela-npc [data-palavra="montar"]'))) return { ok: false, motivo: 'sem Ornn' };
-    const bt = await waitFor('#janela-npc [data-palavra="montar"]', 4000);
+    const bt = await waitForNpc('#janela-npc [data-palavra="montar"]', 4000);
     if (!bt) return { ok: false, motivo: 'sem opcao montar' };
     bt.click(); await humano(700);
     const rec = document.querySelector('#janela-npc button[data-receita="' + id + '"]');
@@ -7754,41 +7971,53 @@ const CFG_VER = 2;
   // depois de `3089` (Rabadon) e `3100` (Lich). O beam mantém K conjuntos parciais vivos por passo e
   // expande todos, por isso alcança a sinergia que o greedy não alcança.
   //   N = 40 (K=12) — pool não-bota pré-filtrado pelo score individual (scoreDe([id])).
-  //   O 5º slot é avaliado DE TODO O pool (botas E não-botas): o melhor conjunto do Ryze NÃO tem bota
-  //   (`3171,3003,3089,3100,3135` — todos `espaco:'arma'`), logo o 5º slot tem de ser livre para o
-  //   conjunto ideal ser alcançável. Desempate por `id` (lexicográfico), nunca pela ordem do catálogo.
+  //   O beam só expande conjuntos que o MOTOR aceita: no máximo 4 itens fora a bota e no máximo
+  //   1 bota (`motor.js:30 ESPACOS_ITENS=4`, `motor.js:3165 cabeNoEquip`). O antigo "5º slot
+  //   livre" escolhia um 5.º NÃO-bota quando ele pontuava mais — e o jogo manda essa peça para a
+  //   mochila (`arrumarEquipamento`, motor.js:3176-3187). Efeito medido (2026-10-20): a build de
+  //   CHEFE saía com 5 não-botas e SEM bota. Desempate por `id` (lexicográfico), nunca pela ordem
+  //   do catálogo.
   const BEAM_K = 12;   // largura do beam (K=10..12 do ticket)
   const BEAM_N = 40;   // pré-filtro do pool não-bota por score individual (N=32..48 do ticket)
   function montarBuildDePorScore(c, fase, alvoScore, classe, todos) {
-    // CUSTO: `player()/readStats()/dpsPorHabilidade()` s�o INVARIANTES entre candidatos; ler
-    // uma vez por build em vez de 2000x. Isto mant�m o beam grande (K=12/N=40) dentro de
+    // CUSTO: `player()/readStats()/dpsPorHabilidade()` são INVARIANTES entre candidatos; ler
+    // uma vez por build em vez de 2000x. Isto mantém o beam grande (K=12/N=40) dentro de
     // ~1 s em vez de ~8,8 s (medido ao vivo 2026-10-19).
     const ctx = contextoScore();
     const scoreDe = (ids) => scoreSet(ids.map(String), alvoScore, ctx);
     const pool = todos.filter((i) => { const cl = classeItem(i.id); return cl === 'neutro' || cl === classe; });
     const resto = pool.filter((i) => i.espaco !== 'botas');
+    const botas = pool.filter((i) => i.espaco === 'botas');
     if (!pool.length) return [];
     // ORÇAMENTO DO BEAM (TK-06): tecto de avaliações de scoreSet por build. O beam completo
-    // (K=12, N=40) gasta ~2200 estados; o tecto de 6000 dá ~2,7x de folga. Se o pool for
-    // grande demais, corta e devolve o melhor até ali — tempo previsível, nunca bloqueia a
+    // (K=12, N=40, 5 slots) gasta ~2700 estados; o tecto de 6000 dá ~2,2x de folga. Se o pool
+    // for grande demais, corta e devolve o melhor até ali — tempo previsível, nunca bloqueia a
     // thread por segundos (pedido do Lead, 2026-10-19).
     _beamInfo.states = 0; _beamInfo.cortou = false; _beamInfo.t0 = Date.now();
+    _beamInfo.slotsValidos = true;   // marcador discriminante: 4 nao-bota + <=1 bota (motor.js:3165)
     // (1) pré-filtro: os N melhores não-bota por score individual. Se o pool for menor, usa tudo.
+    //     As botas NÃO passam pelo pré-filtro: são poucas e o 5.º slot é delas.
     const ordemInd = (a, b) => scoreDe([String(b.id)]) - scoreDe([String(a.id)]) || (String(a.id) < String(b.id) ? -1 : 1);
     const restoF = resto.slice().sort(ordemInd).slice(0, BEAM_N);
+    const candPool = restoF.concat(botas);
     const cmpSet = (a, b) => (b.score - a.score) || (a.ids.join(',') < b.ids.join(',') ? -1 : a.ids.join(',') > b.ids.join(',') ? 1 : 0);
-    // (2) beam search determinístico sobre os 4 slots não-bota.
-    let beam = [{ ids: [], score: scoreDe([]) }];
+    // (2) beam search determinístico sobre conjuntos VÁLIDOS para o motor (`cabeNoEquip`):
+    //     até 4 não-bota + 1 bota. Um item que não cabe é simplesmente não expandido.
+    const cabe = (b, item) => {
+      if (b.ids.indexOf(String(item.id)) >= 0) return false;
+      return item.espaco === 'botas' ? b.nBotas < 1 : b.nNao < 4;
+    };
+    let beam = [{ ids: [], score: scoreDe([]), nBotas: 0, nNao: 0 }];
     _beamInfo.states++;
-    for (let step = 0; step < 4; step++) {
+    for (let step = 0; step < 5; step++) {
       const cand = [];
       for (const b of beam) {
-        for (const it of restoF) {
+        for (const it of candPool) {
           if (_beamInfo.states >= BEAM_ORCAMENTO) { _beamInfo.cortou = true; break; }
-          const id = String(it.id);
-          if (b.ids.indexOf(id) >= 0) continue;
-          const ids = b.ids.concat([id]);
-          cand.push({ ids, score: scoreDe(ids) });
+          if (!cabe(b, it)) continue;
+          const bota = it.espaco === 'botas';
+          const ids = b.ids.concat([String(it.id)]);
+          cand.push({ ids, score: scoreDe(ids), nBotas: b.nBotas + (bota ? 1 : 0), nNao: b.nNao + (bota ? 0 : 1) });
           _beamInfo.states++;
         }
         if (_beamInfo.cortou) break;
@@ -7798,26 +8027,16 @@ const CFG_VER = 2;
       beam = cand.slice(0, BEAM_K);
     }
     if (!beam.length) return [];
-    // (3) 5º slot: DE TODO o pool (botas e não-botas), a melhor combinação global. Devolve 5 ids.
+    // (3) o melhor conjunto do beam já é válido por construção (≤4 não-bota, ≤1 bota).
     let best = null;
-    for (const b of beam) {
-      for (const it of pool) {
-        if (_beamInfo.states >= BEAM_ORCAMENTO) { _beamInfo.cortou = true; break; }
-        const id = String(it.id);
-        if (b.ids.indexOf(id) >= 0) continue;
-        const ids = b.ids.concat([id]);
-        const score = scoreDe(ids);
-        _beamInfo.states++;
-        if (!best || score > best.score || (score === best.score && ids.join(',') < best.ids.join(','))) best = { ids, score };
-      }
-      if (_beamInfo.cortou) break;
-    }
+    for (const b of beam) if (!best || cmpSet(b, best) < 0) best = b;
     // registo do orçamento para diagnóstico/teste (infoBeam)
     _beamInfo.ms = Date.now() - _beamInfo.t0;
     _beamInfo.execs++;
     _beamInfo.maxStates = Math.max(_beamInfo.maxStates, _beamInfo.states);
-    return best ? best.ids.slice(0, 5) : beam[0].ids.slice(0, 5);
+    return best ? best.ids.slice() : [];
   }
+
   /** FALLBACK DECLARADO (TK-01) — o caminho ANTIGO por PESO_FASE. Só corre quando o score
    *  não está disponível (sem catálogo/DOM). O `objetivoItem` forçado foi REMOVIDO daqui e
    *  do caminho novo: o Rabadon entra se (e só se) o score o escolher. */
@@ -8076,10 +8295,13 @@ const CFG_VER = 2;
     const c = META.champAtual || null;
     if (!c) return [];
     const alvo = montarBuildDe(c, f).map(String);
-    const cofre = cofreConhecido();
-    if (!cofre.length) return [];
-    const bases = new Set(cofre.map((x) => String(x.base)));
-    return alvo.filter((b) => bases.has(String(b)));
+    // MESMO PREDICADO DO PASSO (`buscarPecasDaFase`): a peça só paga a viagem se
+    // `fontesDeItens()` disser que está no COFRE. A versão anterior bastava a base estar
+    // no cofre conhecido, mesmo que a peça já estivesse equipada/na mochila — o `n.buscar`
+    // ficava TRUE para sempre e a rotina repetia "buscar no cofre" 3× por visita.
+    if (!cofreConhecido().length) return [];
+    const fontes = fontesDeItens();
+    return alvo.filter((b) => { const x = fontes.get(String(b)); return !!x && x.fonte === 'cofre'; });
   }
   /** VAI BUSCAR ao cofre o que a build da fase tem lá guardado. */
   async function buscarPecasDaFase(fase) {
@@ -8460,7 +8682,10 @@ const CFG_VER = 2;
       let ouro = readGold();
       const compras = [];
       for (const base of ideal) {
-        if (tenho.has(base)) continue;                                    // já tem
+        if (tenho.has(base)) continue;
+        // O item que o dono pos na VIGIA (com jogadores) e comprado pela VIGIA, do
+        // jogador escolhido. A compra normal nao pode apanha-lo mais barato de outro.
+        if (baseReservadaWatch(base)) { compras.push({ base, comprou: false, motivo: 'reservado para a vigia de jogadores' }); continue; }                                    // já tem
         // filtra a lista (190 grupos) pela BUSCA e clica no GRUPO do item (.mj-card[data-grupo]="base~qual")
         const nome = (infoItem(base) || {}).nome || '';
         const inp = q1('#mercado-busca');
@@ -8560,12 +8785,28 @@ const CFG_VER = 2;
     }
     return false;
   }
+  /** Qualidade e refino de uma oferta, pela MESMA gramática do motor
+   *  (`<base>[+refino][~qualidade]`, motor.js:164-170). `?` (por avaliar) vale B para o
+   *  filtro, como `QUALIDADES['?'] || 1` no motor. */
+  function qualRefOferta(item) {
+    const s = String(item == null ? '' : item);
+    if (/^(gema|mascote):/.test(s)) return { qual: 'B', refino: 0 };
+    try {
+      const p = parseSlotId(s);
+      const q = String((p && p.qual) || '').toUpperCase();
+      return { qual: QUAL.includes(q) ? q : 'B', refino: Math.max(0, Number(p && p.refino) || 0) };
+    } catch { return { qual: 'B', refino: 0 }; }
+  }
   /** CASA as ofertas do servidor com a watch-list. PURA (testavel sem browser/rede). */
   function casarOfertas(ofertas, watch) {
     const w = watch || {};
     const itens = (w.itens || []).filter((x) => String(x == null ? '' : x).trim());
     const vendedores = (w.vendedores || []).map((x) => String(x == null ? '' : x).trim().toLowerCase()).filter(Boolean);
     if (!itens.length && !vendedores.length) return [];
+    // FILTROS escolhidos na GUI: qualidade mínima e refino mínimo. `''`/0 = qualquer.
+    const tierMin = String(w.tierMin == null ? '' : w.tierMin).toUpperCase();
+    const tierIdx = QUAL.includes(tierMin) ? qIdx(tierMin) : -1;
+    const refMin = Math.max(0, Number(w.refinoMin) || 0);
     const out = [];
     for (const o of (ofertas || [])) {
       if (!o || typeof o !== 'object') continue;
@@ -8574,7 +8815,19 @@ const CFG_VER = 2;
       const quem = String(o.vendedor == null ? '' : o.vendedor).trim().toLowerCase();
       const casaItem = itens.length ? itemNaWatch(o.item, itens) : false;
       const casaVendedor = vendedores.length ? vendedores.indexOf(quem) >= 0 : false;
-      if (casaItem || casaVendedor) out.push(Object.assign({}, o, { casaItem: casaItem, casaVendedor: casaVendedor }));
+      // ESTRITO (default): com jogadores na lista, so compra deles. Se tambem ha itens
+      // escolhidos, exige os dois. Assim `srdog` sozinho NUNCA compra de outro jogador.
+      // 'qualquer' mantem a semantica antiga de UNIAO (itens de qualquer vendedor OU os
+      // jogadores listados) - e uma escolha explicita da GUI, nao o default.
+      const estrito = String(w.filtroVendedores || 'so').toLowerCase() !== 'qualquer';
+      const casa = (estrito && vendedores.length)
+        ? (casaVendedor && (!itens.length || casaItem))
+        : (casaItem || casaVendedor);
+      if (!casa) continue;
+      const qr = qualRefOferta(o.item);
+      if (tierIdx >= 0 && qIdx(qr.qual) < tierIdx) continue;
+      if (qr.refino < refMin) continue;
+      out.push(Object.assign({}, o, { casaItem: casaItem, casaVendedor: casaVendedor, qual: qr.qual, refino: qr.refino }));
     }
     return out;
   }
@@ -8599,6 +8852,15 @@ const CFG_VER = 2;
   // recordar: só conta como necessidade quando a pré-checagem (rota do servidor, de qualquer
   // lugar) viu algo da BUILD à venda. Sem leitura (desconhecido) NÃO bloqueia — fail-open.
   let _mercadoServidor = { at: 0, ok: false, ofertas: [] };
+  function baseReservadaWatch(base) {
+    try {
+      const w = cfg.mercadoWatch || {};
+      const vendedores = (w.vendedores || []).filter((x) => String(x == null ? '' : x).trim());
+      const estrito = String(w.filtroVendedores || 'so').toLowerCase() !== 'qualquer';
+      if (!estrito || !vendedores.length) return false;
+      return itemNaWatch(base, w.itens || []);
+    } catch { return false; }
+  }
   function mercadoTemDaBuild() {
     if (!_mercadoServidor.ok) return null;                 // desconhecido -> não bloquear
     try {
@@ -8606,7 +8868,7 @@ const CFG_VER = 2;
       for (const o of _mercadoServidor.ofertas) {
         if (!o || o.minha || (o.para && o.paraMim !== true)) continue;
         const base = baseDoItemMercado(o.item);
-        if (base && ideal.has(String(base))) return true;
+        if (base && ideal.has(String(base)) && !baseReservadaWatch(base)) return true;
       }
       return false;
     } catch { return null; }
@@ -8629,6 +8891,15 @@ const CFG_VER = 2;
     } catch { return 20000; }
   }
   /** Decide se uma oferta da watch pode ser comprada AGORA (tecto + reserva + saldo). PURA. */
+  /** Quanto falta para a oferta SAIR DO LOCK de 3 minutos (motor.js:126 `ESPERA_MERCADO`).
+   *  O servidor manda `o.libera` em ms (jogo.js live: `const espera = (o.libera || 0) - Date.now()`).
+   *  NÃO se usa um timer fixo: o relógio do SERVIDOR é lido em cada oferta e o poller volta a
+   *  olhar a cada cadência. Se `libera` não vier, a oferta está livre (é o caso de todos os
+   *  itens que não são lendários A/S/SS). */
+  function faltaLiberarOferta(oferta) {
+    const t = Number(oferta && oferta.libera);
+    return Number.isFinite(t) && t > 0 ? Math.max(0, t - Date.now()) : 0;
+  }
   function podeComprarOfertaWatch(oferta, ouro, watch) {
     const w = watch || {};
     const of = oferta || {};
@@ -8636,13 +8907,37 @@ const CFG_VER = 2;
     const moeda = of.moeda || 'ouro';
     if (!(preco >= 1)) return { ok: false, motivo: 'sem preco' };
     if (moeda !== 'ouro') return { ok: false, motivo: 'moeda ' + moeda + ' (a auto-compra so gasta ouro)' };
+    if (Number(of.expira) > 0 && Number(of.expira) <= Date.now()) return { ok: false, motivo: 'oferta expirada' };
+    const falta = faltaLiberarOferta(of);
+    if (falta > 0) return { ok: false, motivo: 'travada por ' + Math.ceil(falta / 1000) + 's (lendario A/S/SS recem-anunciado)', liberaEm: Number(of.libera), faltaMs: falta };
     const teto = w.precoMax != null && Number(w.precoMax) > 0 ? Number(w.precoMax) : null;
     if (teto != null && preco > teto) return { ok: false, motivo: 'acima do tecto (' + preco + ' > ' + teto + ')' };
     const tetoPass = Number(w.tetoCompra) > 0 ? Number(w.tetoCompra) : Infinity;
     if (preco > tetoPass) return { ok: false, motivo: 'acima do tecto por passagem (' + preco + ' > ' + tetoPass + ')' };
+    // TECTO RELATIVO: `percentualOuro` é lido AGORA contra o ouro AGORA — se o ouro subir,
+    // o tecto sobe com ele (pedido do dono: "scales when it scales"). 90 = 90% do ouro.
+    const pct = Number(w.percentualOuro);
+    if (pct > 0 && Number.isFinite(pct)) {
+      const maxPct = Math.floor((Number(ouro) || 0) * Math.min(100, pct) / 100);
+      if (preco > maxPct) return { ok: false, motivo: 'acima de ' + Math.min(100, pct) + '% do ouro (' + preco + ' > ' + maxPct + ')' };
+    }
     const disp = Math.max(0, Math.floor((Number(ouro) || 0) - reservaOuroWatch()));
     if (preco > disp) return { ok: false, motivo: 'reserva/saldo (' + preco + ' > ' + disp + ')' };
     return { ok: true };
+  }
+  /** A primeira oferta da watch que JÁ PODE ser comprada AGORA (lock vencido, preço/teto
+   *  ok). É esta que manda o boneco à base IMEDIATAMENTE, esteja em mobs ou no chefe.
+   *  Devolver `null` é a resposta normal (não há nada comprável). */
+  function ofertaWatchPronta() {
+
+    const w = cfg.mercadoWatch || {};
+    if (!((w.itens || []).length || (w.vendedores || []).length)) return null;
+    const ouro = Number(readGold()) || 0;
+    for (const o of (_watchAchados || [])) {
+      if (faltaLiberarOferta(o) > 0) continue;
+      if (podeComprarOfertaWatch(o, ouro, w).ok) return o;
+    }
+    return null;
   }
   /** Encontra a FICHA (.mj-card[data-grupo]) de uma oferta: pelo o.item exato, pela base. */
   function acharCardWatch(m, oferta) {
@@ -8654,30 +8949,100 @@ const CFG_VER = 2;
     if (c) return c;
     return cards.find((x) => String((x.dataset && x.dataset.grupo) || '').split('~')[0] === base) || null;
   }
+  /** Limpa os filtros do mercado (categoria, busca, classe, moeda, qualidade).
+   *  O jogo guarda estes filtros entre aberturas; com um filtro antigo a ficha da oferta
+   *  simplesmente NAO e desenhada e a compra falhava com "oferta nao esta no ecra". */
+  function prepararFiltrosMercado(m) {
+    if (!m) return;
+    try { m.querySelector('[data-cat=""]')?.click(); } catch { /* ignore */ }
+    for (const [sel, val] of [['#mercado-classe', ''], ['#mercado-moeda', ''], ['#mercado-qual', ''], ['#mercado-busca', '']]) {
+      const el = m.querySelector(sel); if (el) el.value = val;
+    }
+    const busca = m.querySelector('#mercado-busca');
+    if (busca) { try { busca.dispatchEvent(new Event('input', { bubbles: true })); } catch { /* stub/teste */ } }
+  }
+  /** Confirma SO o dialogo que o nosso clique abriu. Nunca aceita um dialogo que ja estivesse aberto. */
+  async function confirmarCompraWatch(oferta) {
+    for (let i = 0; i < 24; i++) {
+      const d = q1('.dialogo-fundo');
+      if (d) {
+        const texto = ((d.querySelector('#dialogo-titulo')?.textContent || '') + ' ' +
+          (d.querySelector('.dialogo-texto')?.textContent || '')).toLowerCase();
+        const vendedor = String((oferta && oferta.vendedor) || '').trim().toLowerCase();
+        if (vendedor && texto.indexOf(vendedor) < 0) return { ok: false, motivo: 'dialogo de outra acao (sem o vendedor)' };
+        const okBtn = d.querySelector('.dialogo-ok'); if (!okBtn) return { ok: false, motivo: 'dialogo sem botao ok' };
+        okBtn.click();
+        return { ok: true };
+      }
+      await esperar(150);
+    }
+    return { ok: false, motivo: 'dialogo de compra nao apareceu' };
+  }
   /** Compra UMA oferta da watch pelo MERCADO do jogo (clique): estado sincronizado. */
-  async function comprarOfertaWatch(oferta) {
+  async function comprarOfertaWatch(oferta, opcoes) {
+    const opt = opcoes || {};
     if (!oferta) return { ok: false, motivo: 'sem oferta' };
-    if (cfg.autoVigiarMercado === false) return { ok: false, motivo: 'vigiar desligado' };
+
     if (!podeFazer('vigiarMercado').pode) return { ok: false, motivo: 'bloqueado pela hierarquia' };
     if (!naBase()) return { ok: false, motivo: 'so no Mercador (base)' };
+    // A rotina da base chama este passo com `{interno:true}` — ela própria já está com o
+    // mutex `baseLock` na mão. Sem esta exceção, a compra era SEMPRE recusada quando o
+    // boneco chegava à Fonte e a rotina corria (o bug que deixava a oferta parada).
+    if (!opt.interno && (baseLock || _baseBusy)) return { ok: false, motivo: 'base ocupada (rotina da Fonte a correr)' };
     if (ocupado) return { ok: false, motivo: 'ocupado' };
+    if (q1('.dialogo-fundo')) return { ok: false, motivo: 'dialogo ja aberto (nao aceito as cegas)' };
     const pode = podeComprarOfertaWatch(oferta, readGold(), cfg.mercadoWatch);
     if (!pode.ok) return { ok: false, motivo: pode.motivo };
     ocupado = true;
     try {
-      const mm = mercadoEl(true); if (!mm) return { ok: false, motivo: 'sem mercado' };
-      if (mm.hidden) { press('j'); await humano(600); }
-      mm.querySelector('[data-aba="comprar"]')?.click(); await humano(550);
+      let mm = q1('#janela-mercado');
+      if (!mm) return { ok: false, motivo: 'sem mercado' };
+      if (mm.hidden) { press('j'); await esperar(500); mm = q1('#janela-mercado'); }
+      if (!mm || mm.hidden) return { ok: false, motivo: 'mercado nao abriu' };
+      mm.querySelector('[data-aba="comprar"]')?.click(); await esperar(400);
+      prepararFiltrosMercado(mm); await esperar(350);
       const sel = '#janela-mercado [data-comprar="' + oferta.id + '"]';
-      let b = q1(sel);
-      if (!b) { const card = acharCardWatch(mm, oferta); if (card) { card.click(); await humano(550); b = q1(sel); } }
+      let b = q1(sel), abriuCard = false;
+      for (let i = 0; i < 12 && !b; i++) {
+        if (!abriuCard) { const card = acharCardWatch(mm, oferta); if (card) { card.click(); abriuCard = true; } }
+        await esperar(250);
+        b = q1(sel);
+      }
       if (!b) return { ok: false, motivo: 'oferta nao esta no ecra (item nao encontrado)' };
       if (b.disabled) return { ok: false, motivo: 'botao desativado (saldo/reserva do jogo)' };
-      b.click(); await humano(550);
-      clicarDialogo(/^\s*comprar\s*$|^\s*sim\s*$/i); await humano(700);
-      logEvent('mercado', { acao: 'watch-comprar', id: oferta.id, vendedor: oferta.vendedor, item: oferta.item, preco: oferta.preco, moeda: oferta.moeda });
-      return { ok: true, id: oferta.id, vendedor: oferta.vendedor, preco: oferta.preco, ouroDepois: readGold() };
-    } finally { try { fecharJanelas(); } catch { /* ignore */ } ocupado = false; }
+      const ouroAntes = Number(readGold()) || 0;
+      let bagAntes = 0; try { bagAntes = (scanBag() || {}).used || 0; } catch { /* ignore */ }
+      b.click();
+      const conf = await confirmarCompraWatch(oferta);
+      if (!conf.ok) return { ok: false, motivo: conf.motivo };
+      // Prova da compra: o ouro desce pelo preco, OU a mochila ganha um slot, OU a oferta
+      // desaparece do servidor. O ouro do HUD e arredondado (3.7M), logo sozinho nao serve.
+      let confirmada = false, ouroDepois = ouroAntes;
+      for (let i = 0; i < 40 && !confirmada; i++) {
+        await esperar(250);
+        ouroDepois = Number(readGold()) || 0;
+        if (ouroDepois <= ouroAntes - Math.max(1, Math.floor(Number(oferta.preco) * 0.9))) { confirmada = true; break; }
+        if (i === 3) { try { if (((scanBag() || {}).used || 0) > bagAntes) { confirmada = true; break; } } catch { /* ignore */ } }
+        if (i === 8 || i === 24) {           // ~2 s e ~6 s: confirma pelo servidor (sem depender do HUD)
+          const r = await lerMercadoServidor();
+          if (r.ok && !(r.ofertas || []).some((o) => Number(o && o.id) === Number(oferta.id))) { confirmada = true; break; }
+        }
+      }
+      if (!confirmada) return { ok: false, motivo: 'compra nao confirmada (ouro nao desceu)', ouroAntes, ouroDepois };
+      logEvent('mercado', { acao: 'watch-comprar', id: oferta.id, vendedor: oferta.vendedor, item: oferta.item, preco: oferta.preco, moeda: oferta.moeda, ouroAntes, ouroDepois });
+      // Tira a oferta comprada da lista em memória: sem isto a necessidade `comprarWatch`
+      // continuava verdadeira até ao próximo poll e a rotina da base tentava comprar de novo.
+      _watchAchados = (_watchAchados || []).filter((o) => Number(o && o.id) !== Number(oferta.id));
+      return { ok: true, id: oferta.id, vendedor: oferta.vendedor, preco: oferta.preco, ouroAntes, ouroDepois };
+    } finally {
+      try {
+        const d = q1('.dialogo-fundo');
+        const txt = d ? ((d.querySelector('.dialogo-texto')?.textContent || '') + ' ' + (d.querySelector('#dialogo-titulo')?.textContent || '')).toLowerCase() : '';
+        if (d && (!oferta.vendedor || txt.indexOf(String(oferta.vendedor).toLowerCase()) >= 0)) clicarDialogo(/cancelar/i);
+      } catch { /* ignore */ }
+      try { fecharMercado(); } catch { /* ignore */ }
+      ocupado = false;
+    }
   }
   /** VARREDURA pelo DOM (fallback sem rede): le as ofertas ABERTAS no mercado, com vendedor. */
   function ofertasWatchDoDom() {
@@ -8702,11 +9067,11 @@ const CFG_VER = 2;
     }).filter((o) => o.vendedor || o.base);
   }
   /** PASSO do poller: le o mercado, casa com a watch e (na base) compra a mais barata que caiba. */
-  let _watchAt = 0, _watchTentou = 0, _watchAchados = [], _watchUltimaCompra = null;
+  let _watchAt = 0, _watchTentou = 0, _watchAchados = [], _watchUltimaCompra = null, _watchRecallAt = 0;
   async function vigiarMercadoPasso() {
     _watchTentou = Date.now();
     if (pausado) return { ok: false, motivo: 'pausado' };
-    if (cfg.autoVigiarMercado === false) return { ok: false, motivo: 'desligado' };
+
     const w = cfg.mercadoWatch || {};
     if (!((w.itens || []).length || (w.vendedores || []).length)) return { ok: false, motivo: 'sem watch' };
     const r = await lerMercadoServidor();
@@ -8715,10 +9080,41 @@ const CFG_VER = 2;
     _watchAchados = achados;
     _watchAt = Date.now();
     if (!achados.length) return { ok: true, achados: [], comprou: null, n: r.ofertas.length };
-    logEvent('mercado', { acao: 'watch', n: achados.length, primeiro: { id: achados[0].id, vendedor: achados[0].vendedor, item: achados[0].item, preco: achados[0].preco, moeda: achados[0].moeda } });
-    if (!naBase()) return { ok: true, achados: achados, comprou: null, motivo: 'achou, mas so no Mercador (base)' };
+    // LOCK DE 3 MINUTOS (motor.js:126; jogo.js live: `o.libera`): a oferta aparece JÁ, mas
+    // só pode ser comprada quando `libera <= Date.now()`. Isto é lido em CADA poll, do
+    // relógio do servidor — nada de `setTimeout(180000)` nem de dormir 3 minutos.
+    const agora = Date.now();
+    const travadas = achados.filter((o) => faltaLiberarOferta(o) > 0);
+    const prontas = achados.filter((o) => faltaLiberarOferta(o) <= 0);
+    if (travadas.length) logEvent('mercado', { acao: 'watch-travada', n: travadas.length, liberaEm: Math.min(...travadas.map((o) => Number(o.libera) || 0)), faltaMs: Math.min(...travadas.map(faltaLiberarOferta)) });
+    logEvent('mercado', { acao: 'watch', n: achados.length, prontas: prontas.length, travadas: travadas.length, primeiro: { id: achados[0].id, vendedor: achados[0].vendedor, item: achados[0].item, preco: achados[0].preco, moeda: achados[0].moeda, libera: achados[0].libera || null } });
+    if (!naBase()) {
+      // VOLTAR À BASE IMEDIATAMENTE (dono 2026-10-20): se há uma oferta pronta, o poller
+      // (2 s) já manda o recall — não espera pelo supervisor de 5 s nem pelo fim do chefe.
+      const pronta = prontas.find((o) => podeComprarOfertaWatch(o, readGold(), w).ok);
+      if (pronta && !ocupado && Date.now() - _watchRecallAt > esperaRecallMs() + 2000) {
+        _watchRecallAt = Date.now();
+        logEvent('mercado', { acao: 'watch-voltar', id: pronta.id, vendedor: pronta.vendedor, item: pronta.item, preco: pronta.preco, fase: (farm.current && farm.current.fase) || null });
+        press('b');
+        return { ok: true, achados: achados, comprou: null, motivo: 'a voltar para a base para comprar', oferta: pronta.id };
+      }
+      return { ok: true, achados: achados, comprou: null, motivo: 'achou, mas so no Mercador (base)' };
+    }
+    if (!prontas.length) return { ok: true, achados: achados, comprou: null, motivo: 'ofertas travadas (lock de 3 min)', travadas: travadas.length };
     let comprou = null;
-    const cands = achados.slice().sort((a, b) => Number(a.preco) - Number(b.preco)).slice(0, 5);
+    // ORDEM escolhida na GUI. Default `tier`: primeiro o item que EU quero (casaItem),
+    // depois a MAIOR qualidade, depois o MAIOR refino, e só então o preço. `refino`
+    // inverte qualidade/refino; `preco` é o mais barato primeiro. Isto não inventa
+    // números: a ordem das qualidades é a do motor (`QUAL`/ORDEM_QUAL, motor.js:187).
+    const prio = String(w.prioridade || 'tier');
+    const cands = prontas.slice().sort((a, b) => {
+      if (a.casaItem !== b.casaItem) return a.casaItem ? -1 : 1;
+      if (prio === 'preco') return Number(a.preco) - Number(b.preco);
+      const qa = qIdx(a.qual), qb = qIdx(b.qual);
+      const ra = Number(a.refino) || 0, rb = Number(b.refino) || 0;
+      if (prio === 'refino') return (rb - ra) || (qb - qa) || (Number(a.preco) - Number(b.preco));
+      return (qb - qa) || (rb - ra) || (Number(a.preco) - Number(b.preco));
+    }).slice(0, 5);
     for (const o of cands) { comprou = await comprarOfertaWatch(o); if (comprou.ok) break; }
     _watchUltimaCompra = comprou;
     return { ok: true, achados: achados, comprou: comprou };
@@ -8727,12 +9123,21 @@ const CFG_VER = 2;
   function mercadoWatchEstado() {
     const w = cfg.mercadoWatch || {};
     return {
-      ligado: cfg.autoVigiarMercado !== false,
+      ligado: !!((w.itens || []).length || (w.vendedores || []).length),
       itens: (w.itens || []).slice(), vendedores: (w.vendedores || []).slice(),
+      filtroVendedores: String(w.filtroVendedores || 'so'),
       precoMax: w.precoMax == null ? null : w.precoMax,
       tetoCompra: w.tetoCompra == null ? null : w.tetoCompra,
+      percentualOuro: w.percentualOuro == null ? 90 : w.percentualOuro,
+      prioridade: w.prioridade || 'tier',
+      tierMin: w.tierMin || null,
+      refinoMin: w.refinoMin == null ? 0 : w.refinoMin,
       cadenciaMs: w.cadenciaMs == null ? null : w.cadenciaMs,
-      at: _watchAt, achados: _watchAchados.slice(0, 20), ultimaCompra: _watchUltimaCompra,
+      at: _watchAt,
+      // `faltaMs` é recalculado no momento em que a GUI lê (não é um número congelado):
+      // a contagem do lock de 3 min desce sozinha e a compra acontece no poll seguinte.
+      achados: _watchAchados.slice(0, 20).map((o) => Object.assign({}, o, { faltaMs: faltaLiberarOferta(o), libera: Number(o.libera) || null })),
+      ultimaCompra: _watchUltimaCompra,
     };
   }
   // --------------------------------------------- troca de itens por CONTEXTO
@@ -9032,6 +9437,20 @@ const CFG_VER = 2;
     return { trocas, offBar: off.length };
   }
 
+  // ------------------------------------------- anti-oscilação da BARRA (2026-10-20)
+  // Chave -> timestamp de quando a skill SAUI da barra. `barraIdeal` a trata como NÃO
+  // disponível enquanto o contexto (fase/ranks/campeão) não mudar. Sem isto, a skill que
+  // saía não tinha HUD de recarga (pronta=0) e era re-escolhida no ciclo seguinte, trocando
+  // 3 skills a cada 2 s para sempre. Não é um relógio: é o MESMO contexto que decide a barra.
+  let _barraSaidas = new Map();
+  let _barraContexto = '';
+  function contextoBarra(fase, s) {
+    const ranks = (s && s.arsenal ? s.arsenal : []).map((h) => h.t + ':' + h.rank).sort().join(',');
+    return [fase, ranks, META.champAtual && META.champAtual.id,
+      cfg.skillsPorFase !== false, cfg.barraPorDisponibilidade !== false].join('|');
+  }
+  function esquecerBarra(t) { _barraSaidas.delete(t); }
+  function lembrarSaidaBarra(t) { _barraSaidas.set(t, Date.now()); }
   // ---------------------------------------------------- rotação de skills por fase
   const ULT_CD = 35;   // recarga base >= 35s = ultimate (ex.: Lótus da Morte 75s). 24s ainda é normal.
   function ehUltimate(t) { const k = KAT[t]; return !!(k && k.rec && k.rec(1) >= ULT_CD); }
@@ -9078,8 +9497,14 @@ const CFG_VER = 2;
    *  (motor.js:899 `ORDEM_HAB`). Só entram rank > 0 (motor.js:2837 recusa rank 0) e não
    *  passivas (motor.js:2842 recusa passivas). */
   const ORDEM_HAB_FB = ['Q', 'W', 'E', 'R', 'G', 'A', 'D', 'F', 'T', 'B', 'M', 'N'];
-  function barraIdeal(s, fase, dificil) {
+  function barraIdeal(s, fase, dificil, opcoes) {
+    const opt = opcoes || {};
     s = s || readSkills();
+    const ctx = contextoBarra(fase, s);
+    // PREVIEW (GUI): NAO mexe no anti-churn. Sem isto, abrir a aba Personagem chamava
+    // `barraIdeal` sem fase, limpava `_barraSaidas` e o comportamento da barra mudava so
+    // por causa da aba aberta (o dono viu exactamente isso: "com uma aba ... nao troca").
+    if (!opt.preview && fase != null && ctx !== _barraContexto) { _barraSaidas.clear(); _barraContexto = ctx; }
     const dpsDe = {}, dpsDet = {};
     try { for (const h of dpsPorHabilidade().habs) { dpsDe[h.t] = h.dps || 0; dpsDet[h.t] = h; } } catch { /* ignore */ }
     const peso = (t) => { const i = ORDEM_HAB_FB.indexOf(t); return i < 0 ? 99 : i; };
@@ -9136,11 +9561,30 @@ const CFG_VER = 2;
     // estável de hoje (DPS/rank/ordem do motor), que é o que os testes do banco fixam.
     const porDisp = cfg.barraPorDisponibilidade !== false;
     // RECARGA RESTANTE por skill, lida do HUD (`readSkills().bar[].cd`, em segundos; 0 = pronta).
-    // Uma skill FORA da barra não tem recarga legível no HUD → 0 (disponível): é o que o dono
-    // descreve ("usava tudo disponivel").
-    const cdDe = (t) => { const b = (s.bar || []).find((x) => x.t === t); return b && b.cd > 0 ? b.cd : 0; };
-    // "PRONTA" = recarga restante lida do HUD abaixo de 0,5 s (o mesmo limiar que o `trocarSkills`
-    // usa). Skill fora da barra não tem recarga legível → cdDe = 0 → pronta.
+    // Uma skill FORA da barra não tem recarga legível no HUD -> 0 (disponível): é a regra do
+    // dono ("usava tudo disponivel"). O que NÃO se pode fazer é re-adicionar uma skill que
+    // ACABOU de sair: sem isso, a que saía ficava «pronta» (sem HUD) e voltava logo, num ciclo
+    // de trocas a cada 2 s (medido ao vivo 2026-10-20). `_barraSaidas` bloqueia essas skills
+    // até a fase, o campeão ou os ranks mudarem; quando há vaga REAL, a regra normal volta.
+    // A trava só existe com a barra CHEIA (é aí que a troca pode oscilar). Com uma VAGA
+    // (troca falhada, skill vendida/resetada), a prioridade é encher: bloquear aqui deixaria
+    // o dono a ver 3 slots para sempre - o defeito que ele reportou.
+    const barraCheia = (s.bar || []).length >= BARRA_SLOTS;
+    // QUARENTENA CURTA, não eterna. A versão anterior bloqueava a skill que saiu até a
+    // fase/campeão mudar: a Q da Katarina saía uma vez e NUNCA voltava, e a barra ficava
+    // presa. O dono quer trocar "toda hora" - então a skill pode voltar depois de
+    // `BARRA_QUARENTENA_MS` (6 s), tempo suficiente para o próximo poll (2 s) não a
+    // re-escolher imediatamente (sem oscilação a 2 s) e curto para ela voltar a jogar.
+    const BARRA_QUARENTENA_MS = Math.max(2000, Number(cfg.barraQuarentenaMs) || 6000);
+    const saidaRecente = (t) => barraCheia && _barraSaidas.has(t)
+      && (Date.now() - Number(_barraSaidas.get(t) || 0) < BARRA_QUARENTENA_MS);
+    const cdDe = (t) => {
+      const b = (s.bar || []).find((x) => x.t === t);
+      if (!b && saidaRecente(t)) return Infinity;      // acabou de sair: não volta no ciclo seguinte
+      return b && b.cd > 0 ? b.cd : 0;
+    };
+    // "PRONTA" = recarga restante lida do HUD abaixo de 0,5 s (o mesmo limiar que o
+    // `trocarSkills` usa). Skill fora da barra sem histórico de saída -> cdDe = 0 -> pronta.
     const pronto = (t) => cdDe(t) <= 0.5;
     const idxAtual = (t) => { const i = (s.bar || []).map((b) => b.t).indexOf(t); return i < 0 ? 99 : i; };
     // ---- REGRA DO DONO (2026-10-19): a ULTIMATE só entra na barra quando a fase o justifica ----
@@ -9264,24 +9708,69 @@ const CFG_VER = 2;
       for (const h of pend) { q1(`#hab-ativas .hab[data-t="${h.t}"]`)?.click(); passos.push({ acao: 'cancelar-troca', t: h.t }); await humano(150); }
       const antes = lerBarra();
       if (mesmaBarra(antes.tipos, alvo)) return { ok: true, barra: antes.tipos, vagas: antes.vagas, passos, tentativas: tent + 1 };
-      // (1) TIRAR tudo o que está na barra e NÃO é alvo (liberta o ESTADO).
-      for (const b of antes.tipos) {
-        if (alvo.includes(b)) continue;
-        q1(`#barra .hab[data-t="${b}"]`)?.click();
-        passos.push({ acao: 'tirar', t: b });
-        await humano(170);
+      // (1) TROCA ATÓMICA (a forma que o JOGO tem para barra cheia). O código anterior
+      //     TIRAVA a skill da barra e só depois punha a nova; entre os dois cliques a barra
+      //     ficava com uma vaga e — pior — se a rotação automática corresse no meio, voltava
+      //     a pôr a antiga. Medido ao vivo em 2026-10-20: `aplicarBarra(['R','A','T','W'])`
+      //     devolvia `ok:false` com 3 passos "tirar Q" e a barra IGUAL (Q nunca saía).
+      //     O jogo suporta troca atómica: clicar a skill nova em `#hab-ativas` com a barra
+      //     cheia entra em modo `trocando` (`jogo.js:6358-6362`) e o clique seguinte num
+      //     slot da barra chama `trocarNaBarra` (`motor.js:3116`) — entra e sai no MESMO
+      //     passo, sem vaga e sem janela para outra rotina reverter.
+      const faltam = alvo.filter((t) => !antes.tipos.includes(t));
+      const sobram = antes.tipos.filter((t) => !alvo.includes(t));
+      let fi = 0, si = 0;
+      // 1.a) pares (entra, sai): troca atómica.
+      while (fi < faltam.length && si < sobram.length) {
+        const entra = faltam[fi], sai = sobram[si];
+        const el = q1(`#hab-ativas .hab[data-t="${entra}"]`);
+        if (!el) { passos.push({ acao: 'sem-carta', t: entra }); fi++; continue; }
+        el.click();
+        await humano(130);
+        const slot = q1(`#barra .hab[data-t="${sai}"]`);
+        if (!slot) {
+          passos.push({ acao: 'sem-slot', entra, sai, barra: lerBarra().tipos });
+          // cancela o modo `trocando` (clicar a escolhida outra vez) e tenta na próxima passagem
+          for (const h of (readSkills().arsenal || []).filter((x) => x.escolhida)) { q1(`#hab-ativas .hab[data-t="${h.t}"]`)?.click(); await humano(90); }
+          break;
+        }
+        slot.click();
+        await humano(180);
+        const dep = lerBarra();
+        if (dep.tipos.includes(entra) && !dep.tipos.includes(sai)) {
+          esquecerBarra(entra); lembrarSaidaBarra(sai);
+          passos.push({ acao: 'trocar', entra, sai });
+          fi++; si++;
+        } else {
+          // O jogo recusou a troca (rank/passiva/estado) ou a barra mudou no meio. Regista a
+          // verdade e liberta o slot explicitamente; a próxima passagem completa.
+          passos.push({ acao: 'troca-falhou', entra, sai, barra: dep.tipos });
+          for (const h of (readSkills().arsenal || []).filter((x) => x.escolhida)) { q1(`#hab-ativas .hab[data-t="${h.t}"]`)?.click(); await humano(90); }
+          if (dep.tipos.includes(sai)) { q1(`#barra .hab[data-t="${sai}"]`)?.click(); lembrarSaidaBarra(sai); await humano(160); }
+          si++;
+        }
       }
-      // (2) PÔR o que falta, pela ordem de prioridade do alvo (nunca deixa espaço vazio se
-      //     houver skill desbloqueada fora da barra — o alvo já vem ordenado e cheio).
-      for (const t of alvo) {
-        const agora = lerBarra();
-        if (agora.tipos.includes(t)) continue;
-        if (agora.vagas <= 0) break;                       // sem espaço no DOM: a próxima passagem resolve
+      // 1.b) vagas reais: põe as restantes (nunca deixa a barra a meio).
+      for (; fi < faltam.length; fi++) {
+        const t = faltam[fi];
         const el = q1(`#hab-ativas .hab[data-t="${t}"]`);
         if (!el) { passos.push({ acao: 'sem-carta', t }); continue; }
+        if (lerBarra().vagas <= 0) break;                  // sem vaga: próxima passagem
         el.click();
+        esquecerBarra(t);
         passos.push({ acao: 'por', t });
         await humano(170);
+      }
+      // 1.c) alvo menor que a barra: tira o resto.
+      if (fi >= faltam.length) {
+        for (; si < sobram.length; si++) {
+          const t = sobram[si];
+          if (!lerBarra().tipos.includes(t)) continue;
+          q1(`#barra .hab[data-t="${t}"]`)?.click();
+          lembrarSaidaBarra(t);
+          passos.push({ acao: 'tirar', t });
+          await humano(170);
+        }
       }
     }
     const fim = lerBarra();
@@ -9821,7 +10310,7 @@ const CFG_VER = 2;
   function supervisarBase() {
     if (!podeFazer('manutencao').pode || pausado) return;   // base = manutencao (vender/cofre/repor)
     // Avalia a NECESSIDADE (vale na base E no campo): mochila cheia, tarefa pronta, lixo, sem tarefa
-    let motivo = null, info = {}, querTarefa = false, falta = [], necess = null;
+    let motivo = null, motivoViagem = null, info = {}, querTarefa = false, falta = [], necess = null;
     try {
       const bag = scanBag();
       const st = tarefaEstado();
@@ -9834,12 +10323,29 @@ const CFG_VER = 2;
       try { necess = necessidadesBase(); falta = faltandoNaBase(necess); } catch { falta = []; }
       info = { used: bag && bag.used, cap: bag && bag.cap, falta, venda: necess && necess._venda, custoIda: necess && necess._custoIda, pocoes: necess && necess._pocoes };
       motivo = falta.length ? ('base: ' + falta.join(',')) : null;
+      // MOTIVO DE VIAGEM ≠ MOTIVO DE BASE (pedido do dono, 2026-10-20): estar NA base com
+      // 3 itens para vender é bom (vende-se e sai); mas SAIR do campo e pagar a viagem por
+      // 3 itens de ~1680 ouro NÃO paga o custo. A venda só paga a viagem quando a mochila
+      // está quase cheia OU quando há pelo menos `venderMinItens` para descartar. Sem este
+      // portão, o supervisor viajava a cada 20 s por lixo — o ciclo que o dono viu.
+      const venda = necess && necess._venda;
+      const itensVenda = Number(venda && venda.itens) || 0;
+      const minVenda = Math.max(1, Number(cfg.venderMinItens) || 6);
+      const vendaPagaViagem = !!venda && (!!venda.mochilaQuaseCheia || itensVenda >= minVenda);
+      const faltaViagem = falta.filter((f) => f !== 'vender' || vendaPagaViagem);
+      motivoViagem = faltaViagem.length ? ('base: ' + faltaViagem.join(',')) : null;
+      info.vendaPagaViagem = vendaPagaViagem; info.venderMinItens = minVenda;
+      if (venda && !vendaPagaViagem && falta.indexOf('vender') >= 0) info.vendaAdiada = { itens: itensVenda, min: minVenda, motivo: 'nao paga a viagem (vende-se se ja estiver na base)' };
     } catch { /* ignore */ }
+    // URGENTE: oferta da watch pronta para comprar. Bypassa o throttle de 20 s, o modo
+    // farm-forçado e a excepção de poções: o dono mandou voltar mesmo com chefe.
+    const urgenteWatch = falta.indexOf('comprarWatch') >= 0;
 
     if (naBase()) {
       // MODO FARM FORÇADO: sai da base e farma, mesmo com necessidade pendente (ver
-      // `_farmForcadoAte`). É a saída de emergência do ciclo de recall — e LOGA o motivo.
-      if (Date.now() < _farmForcadoAte) {
+      // `_farmForcadoAte`). É a saída de emergência do ciclo de recall - e LOGA o motivo.
+      // EXCEPÇÃO: compra da watch pronta não espera 10 min; compra-se agora.
+      if (Date.now() < _farmForcadoAte && !urgenteWatch) {
         if (ocupado || _baseBusy || baseLock) return;
         if (Date.now() - _ultimaBase < 20000) return;
         _ultimaBase = Date.now();
@@ -9848,7 +10354,7 @@ const CFG_VER = 2;
         return;
       }
       // NA BASE com algo pendente → roda a rotina AGORA (antes só esperava o AFK de 3 min)
-      if (motivo && !_baseBusy && Date.now() - _ultimaBase > 20000) {
+      if (motivo && !_baseBusy && (urgenteWatch || Date.now() - _ultimaBase > 20000)) {
         _ultimaBase = Date.now(); if (querTarefa) _ultimaTarefa = Date.now();
         _baseBusy = true;
         // MOTIVO COM VALOR (pedido do Lead): o dono tem de ver PORQUE é que ele foi à base,
@@ -9924,13 +10430,24 @@ const CFG_VER = 2;
       logEvent('afk-farmar', { regiao: reg, paradoMin: Math.round((Date.now() - ativaEm) / 60000) });
       marcarAtiva();
       viajarPara(reg);
+    } else if (!teste && motivo && urgenteWatch) {
+      // WATCH PRONTA: voltar JÁ, esteja em mobs, no chefe ou em modo farm-forçado.
+      // GUARDA DE RECALL PARTILHADA com o poller: sem isto, o poller (2 s) e este
+      // supervisor (5 s) chamavam `press('b')` repetidamente e reiniciavam o recall,
+      // impedindo-o de terminar.
+      if (Date.now() - _watchRecallAt <= esperaRecallMs() + 2000) return;
+      _watchRecallAt = Date.now();
+      _ultimaVenda = Date.now();
+      logEvent('base', { ir: 'WATCH PRONTA - voltar para comprar', ...info });
+      press('b');
+      setTimeout(() => { try { if (naBase()) acaoBase(); } catch { /* ignore */ } }, esperaRecallMs());
     } else if (!teste && motivo && Date.now() < _farmForcadoAte) {
       // MODO FARM FORÇADO no campo: NÃO recorda (era este o `press('b')` que fechava o ciclo
       // "viaja, mata 1 mob, volta"). Fica a farmar e marca-se activo.
       marcarAtiva();
     } else if (!teste && motivo && Date.now() - _ultimaVenda > 20000) {
       _ultimaVenda = Date.now(); if (querTarefa) _ultimaTarefa = Date.now();
-      // MOTIVO COM VALOR: `venda:{itens,valor}` + `custoIda:{ouro,seg}` — o dono vê a conta.
+      // MOTIVO COM VALOR: `venda:{itens,valor}` + `custoIda:{ouro,seg}` - o dono vê a conta.
       logEvent('base', { ir: motivo, ...info });
       press('b');
       setTimeout(() => { try { if (naBase()) acaoBase(); } catch { /* ignore */ } }, esperaRecallMs());
@@ -10268,7 +10785,12 @@ const CFG_VER = 2;
     return cfg;
   }
 
-  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
+  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
+    // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
+    // regra "com VAGA, enche" sem depender de cliques reais no DOM.
+    barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },
+    barraSaidasAtivas: () => [..._barraSaidas.keys()],
+    skillsPorFase: () => cfg.skillsPorFase !== false,
     podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, cacheBuildEstado: () => (_buildCache ? { chave: _buildCache.chave, execs: _buildExecs, ms: _buildCache.ms, ids: _buildCache.ids.slice() } : null), infoBeam: () => Object.assign({}, _beamInfo), invalidarCacheBuild: () => { _buildCache = null; _buildCacheMap.clear(); }, planoTodos, perfilDe, pesoMana, manaInfoDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
@@ -10301,10 +10823,15 @@ const CFG_VER = 2;
     auditoriaPassivas,
     PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
     getMeta: () => META, getFarm: () => farm, getConfig: () => cfg,
+    // Banco (REGRA N.o 6): o `handleLog` e o caminho REAL da frase do jogo -> ciclo/fase.
+    // Expor permite provar que o ciclo NASCE e que o chefe muda a fase para 'boss' (a
+    // ultimate depende disso) sem depender de um MutationObserver que o stub nao dispara.
+    handleLog,
     buildHumana, historico48h,
     // ---- WATCH-LIST DO MERCADO (2026-10-18): deteccao em tempo real + auto-compra ----
-    casarOfertas, itemNaWatch, baseDoItemMercado, lerMercadoServidor, reservaOuroWatch,
+    casarOfertas, itemNaWatch, baseDoItemMercado, baseReservadaWatch, lerMercadoServidor, reservaOuroWatch,
     podeComprarOfertaWatch, acharCardWatch, comprarOfertaWatch, ofertasWatchDoDom,
+    prepararFiltrosMercado, clicarDialogo, confirmarCompraWatch,
     vigiarMercadoPasso, mercadoWatchEstado,
     // PRE-CHECAGEM do mercado (2026-10-19): ler de qualquer sitio, sem recordar só para olhar.
     mercadoTemDaBuild, atualizarMercadoServidor };
@@ -10342,7 +10869,7 @@ const CFG_VER = 2;
   // com o interruptor vigiarMercado ligado (podeFazer, dentro de comprarOfertaWatch).
   every(() => {
     try {
-      if (cfg.autoVigiarMercado === false) return;
+
       const w = cfg.mercadoWatch || {};
       if (!((w.itens || []).length || (w.vendedores || []).length)) return;
       const ms = Math.max(1500, Number(w.cadenciaMs) || 5000);

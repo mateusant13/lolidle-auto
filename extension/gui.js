@@ -232,6 +232,39 @@
     const it = (meta.itens || []).find((x) => String(x.id) === String(base));
     return it ? (it.nome || String(base)) : String(base);
   };
+  /** Ordem de apresentação das listas de itens (pedido do dono, 2026-10-20): primeiro os
+   *  LENDÁRIOS, depois épicos e básicos; dentro de cada raridade, maior TIER (qualidade) e
+   *  maior REFINO primeiro. Raridade vem do catálogo do motor (`getMeta`), não de uma cópia. */
+  const RAR_ORDEM_GUI = { lendario: 0, epico: 1, basico: 2 };
+  const raridadeDoItem = (x) => {
+    if (x && x.raridade) return String(x.raridade).toLowerCase();
+    const base = BASE_ID((x && (x.base || x.id)) || x || '');
+    const nome = String((x && (x.nome || x.item)) || '').trim().toLowerCase();
+    const mapa = cache('gui-raridade-itens', 30000, () => {
+      const m = { porBase: new Map(), porNome: new Map() };
+      for (const it of metaItens()) {
+        if (!it || it.id == null) continue;
+        const r = String(it.raridade || (it.lendario ? 'lendario' : 'basico')).toLowerCase();
+        m.porBase.set(String(it.id), r);
+        if (it.nome) m.porNome.set(String(it.nome).trim().toLowerCase(), r);
+      }
+      return m;
+    });
+    return (base && mapa.porBase.get(String(base))) || (nome && mapa.porNome.get(nome)) || 'basico';
+  };
+  const ordemItemGui = (a, b) => {
+    const ra = RAR_ORDEM_GUI[raridadeDoItem(a)];
+    const rb = RAR_ORDEM_GUI[raridadeDoItem(b)];
+    const da = ra == null ? 9 : ra, db = rb == null ? 9 : rb;
+    if (da !== db) return da - db;
+    const qa = qOrd(a && a.qual), qb = qOrd(b && b.qual);
+    if (qa !== qb) return qb - qa;
+    const fa = Number((a && a.refino) || 0), fb = Number((b && b.refino) || 0);
+    if (fa !== fb) return fb - fa;
+    return String((a && (a.nome || a.item || a.base)) || '').localeCompare(String((b && (b.nome || b.item || b.base)) || ''));
+  };
+  /** Cópia ordenada (não mexe no array do motor): lendários → maior tier → maior refino. */
+  const ordenarItens = (arr) => (Array.isArray(arr) ? arr.slice().sort(ordemItemGui) : []);
   const locais = () => (ler('getMeta', {}) || {}).locais || [];
   const nomeRegiao = (id) => { const l = locais().find((x) => x.id === id); return l ? limparNivel(l.nome) : String(id || '—'); };
   const idRegiaoDe = (txt) => ler('localId', null, txt) || null;
@@ -355,12 +388,19 @@
 
   // ============================================================ 3. CSS
   const CSS = [
-    '#lolidle-ap{--bg:#100e0c;--pnl:#191614;--pnl2:#141110;--lin:#332c24;--lin2:#231e19;--txt:#e9e0cf;--dim:#9d9280;--ouro:#ffd070;--verde:#4ce06a;--ambar:#ffb020;--verm:#ff6a4a;--azul:#7cc4ff;',
+    // CONTRASTE (pedido do dono, 2026-10-20: "ta uma merda de ler texto da gui. faz
+    // contraste melhor"): o `--dim` antigo (#9d9280) ficava ~4.4:1 sobre o painel e era
+    // usado em texto de 9.5 px - ilegivel no ecra dele. Agora o cinza sobe para #c9bfa9
+    // (~9:1) e as linhas tambem clareiam para os cartoes nao se fundirem.
+    '#lolidle-ap{--bg:#100e0c;--pnl:#191614;--pnl2:#141110;--lin:#4a4238;--lin2:#332c24;--txt:#f4ecdd;--dim:#c9bfa9;--ouro:#ffd070;--verde:#4ce06a;--ambar:#ffb020;--verm:#ff6a4a;--azul:#7cc4ff;',
     // LARGURA/ALTURA (queixa do dono, 2026-10-19: "o painel ta mais curto do que devia, ta
     // truncado"): era 1020x820 e o Painel tem 18 cartões — cabia 1 coluna e scroll de 2600 px.
     // Agora ocupa quase o ecrã e o Painel usa DUAS colunas (ver `#ap-t-painel.on` abaixo).
-    'position:fixed;top:10px;right:10px;z-index:2147483647;width:min(1320px,94vw);height:calc(100vh - 20px);max-height:calc(100vh - 20px);display:none;flex-direction:column;overflow:hidden;',
-    'background:var(--bg);color:var(--txt);border:1px solid var(--lin);border-radius:12px;box-shadow:0 16px 60px #000c;font:12px/1.45 system-ui,"Segoe UI",Roboto,sans-serif;opacity:0;visibility:hidden;transform:translateY(-6px);transition:.12s}',
+    // ALTURA AUTOMATICA: o painel era `height:100vh - 20px` e ficava um bloco gigante mesmo
+    // com pouco conteudo (queixa do dono: "por que o gui ta gigante com espaco inutil?").
+    // Agora cresce com o conteudo ate ao limite do ecra; o `main` continua a rolar quando enche.
+    'position:fixed;top:10px;right:10px;z-index:2147483647;width:min(1180px,94vw);height:auto;max-height:calc(100vh - 20px);display:none;flex-direction:column;overflow:hidden;',
+    'background:var(--bg);color:var(--txt);border:1px solid var(--lin);border-radius:12px;box-shadow:0 16px 60px #000c;font:12.5px/1.5 system-ui,"Segoe UI",Roboto,sans-serif;opacity:0;visibility:hidden;transform:translateY(-6px);transition:.12s}',
     '#lolidle-ap.on{opacity:1;visibility:visible;display:flex;transform:none}',
     '#lolidle-ap *{box-sizing:border-box;min-width:0}',
     '#lolidle-ap .sp{flex:1}',
@@ -380,7 +420,7 @@
     '#lolidle-ap .ic.ativo{background:#3a2f1e;border-color:#7a5f2a;color:var(--ouro)}',
     '#lolidle-ap .mini{display:flex;flex-direction:column;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:3px 8px;min-width:70px}',
     '#lolidle-ap .mini b{font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '#lolidle-ap .mini small{color:var(--dim);font-size:9.5px}',
+    '#lolidle-ap .mini small{color:var(--dim);font-size:10.5px}',
     '#lolidle-ap .mini.wide{min-width:150px;max-width:270px}',
     '#lolidle-ap .ligar{display:flex;align-items:center;gap:7px;background:#1a1512;border:1px solid var(--lin);border-radius:8px;padding:4px 9px;cursor:pointer}',
     '#lolidle-ap .ligar b{font-size:11px}',
@@ -394,32 +434,45 @@
     '#lolidle-ap .tab{background:#1c1916;color:#c8bda8;border:1px solid var(--lin);border-bottom:0;border-radius:7px 7px 0 0;padding:6px 11px;font-size:11.5px;font-weight:700;cursor:pointer}',
     '#lolidle-ap .tab:hover{color:var(--txt)}',
     '#lolidle-ap .tab.ativa{background:#2b2117;color:var(--ouro);border-color:#7a5f2a}',
-    '#lolidle-ap main{flex:1;overflow:auto;padding:8px;display:flex;flex-direction:column;gap:7px}',
+    // `justify-content` tem de ser REPOSTO: o `main` do jogo tem uma regra global
+    // `main{justify-content:center}` que nos vazava para dentro do painel. Com um pane alto
+    // (~3800px) isso centrava-o na área visível e punha o topo em y negativo — o cartão
+    // AUTO-PLAY e a árvore de switches ficavam ACIMA da origem do scroll, inalcançáveis.
+    // Foi a causa medida do "painel truncado" (pane.offsetTop = -1424 com scrollTop = 0).
+    '#lolidle-ap main{flex:1;overflow:auto;padding:8px;display:flex;flex-direction:column;gap:7px;justify-content:flex-start;align-items:stretch}',
     '#lolidle-ap .pane{display:none;flex-direction:column;gap:7px}',
     '#lolidle-ap .pane.on{display:flex}',
     '#lolidle-ap .intro{color:var(--dim);font-size:11px;background:#151211;border:1px solid var(--lin2);border-left:3px solid #33505f;border-radius:0 7px 7px 0;padding:5px 9px}',
     // ---- ÁRVORE DE INTERRUPTORES (aba Auto-play): pais e filhos INDENTADOS ----
-    '#lolidle-ap .arv{display:flex;flex-direction:column;gap:4px}',
-    '#lolidle-ap .arv-filhos{display:flex;flex-direction:column;gap:4px;margin:1px 0 0 8px;padding-left:9px;border-left:2px solid #2a241d}',
+    // A ARVORE VIVE DENTRO DO CARTAO MESTRE (pedido do dono: os switches tem de estar no
+    // auto-play, nao num cartao separado). Duas colunas quando cabe: a lista tem 17 nos e
+    // em coluna unica fazia um painel altissimo com espaco vazio ao lado.
+    '#lolidle-ap .mestre-arvore{margin-top:9px;padding-top:8px;border-top:1px solid var(--lin)}',
+    '#lolidle-ap .mestre-sub{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:0 0 6px}',
+    '#lolidle-ap .mestre-sub b{font-size:12px;color:var(--ouro)}',
+    '#lolidle-ap .mestre-sub span{font-size:10.5px;color:var(--dim)}',
+    '#lolidle-ap .arv{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:5px 12px;align-items:start}',
+    '#lolidle-ap .arv-filhos{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:5px 10px;margin:3px 0 0 7px;padding-left:9px;border-left:2px solid #4a4238}',
+    '#lolidle-ap .arv-item{display:flex;flex-direction:column;gap:2px;min-width:0}',
     '#lolidle-ap .arv-no{display:flex;align-items:center;gap:7px;flex-wrap:wrap;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:4px 8px}',
-    '#lolidle-ap .arv-no>b{font-size:11.5px}',
-    '#lolidle-ap .arv-no .arv-dot{width:9px;height:9px;border-radius:50%;background:#5a5145;flex:none}',
-    '#lolidle-ap .arv-no .arv-est{font-size:10px;color:var(--dim)}',
+    '#lolidle-ap .arv-no>b{font-size:12px}',
+    '#lolidle-ap .arv-no .arv-dot{width:9px;height:9px;border-radius:50%;background:#6a6154;flex:none}',
+    '#lolidle-ap .arv-no .arv-est{font-size:10.5px;color:var(--dim)}',
     '#lolidle-ap .arv-no.on{border-color:#2b5c33}',
     '#lolidle-ap .arv-no.on .arv-dot{background:var(--verde);box-shadow:0 0 6px #4ce06a99}',
     '#lolidle-ap .arv-no.on .arv-est{color:var(--verde)}',
-    '#lolidle-ap .arv-no.bloq{opacity:.55;border-style:dashed}',
-    '#lolidle-ap .arv-no.bloq .arv-est{color:#8a7f6c}',
+    '#lolidle-ap .arv-no.bloq{opacity:.7;border-style:dashed}',
+    '#lolidle-ap .arv-no.bloq .arv-est{color:#bdb29d}',
     '#lolidle-ap .arv-no.skip{border-color:#7a5f2a;background:#1d1710}',
     '#lolidle-ap .arv-no.skip .arv-dot{background:var(--ambar);box-shadow:0 0 6px #ffb02099}',
-    '#lolidle-ap .arv-no .arv-motivo{font-size:10px;color:var(--ambar)}',
+    '#lolidle-ap .arv-no .arv-motivo{font-size:10.5px;color:var(--ambar)}',
     '#lolidle-ap .arv-no .arv-motivo b{color:var(--txt)}',
-    '#lolidle-ap .arv-no .arv-cfg{font-size:9px;color:#6a6256;background:#0d0b0a;border:1px solid var(--lin2);border-radius:4px;padding:0 4px;white-space:nowrap}',
+    '#lolidle-ap .arv-no .arv-cfg{font-size:10px;color:#c0b5a0;background:#0d0b0a;border:1px solid var(--lin2);border-radius:4px;padding:0 4px;white-space:nowrap}',
     '#lolidle-ap .arv-no .arv-exc{border-color:#7a5f2a;color:var(--ambar);background:#241c0d}',
     '#lolidle-ap .arv-no.mestre{border-color:#7a5f2a;background:#1d1710}',
     '#lolidle-ap .arv-no.mestre>b{font-size:12.5px;color:var(--ouro)}',
     // linha do que cada switch COBRE: verde = ligado, vermelho = desligado
-    '#lolidle-ap .arv-cobre{margin:0 0 2px;font-size:10px;padding:2px 8px;border-left:2px solid #2a241d}',
+    '#lolidle-ap .arv-cobre{margin:0 0 2px;font-size:10.5px;line-height:1.4;padding:2px 8px;border-left:2px solid #4a4238}',
     '#lolidle-ap .arv-cobre.on{color:#8fe6a4}',
     '#lolidle-ap .arv-cobre.off{color:#ff9a8a}',
     // ---- switch da árvore (pequeno, sem a moldura do .tg) ----
@@ -448,16 +501,16 @@
     // ---- ACOES MANUAIS: bloco despromovido (diagnostico) ----
     // O clique manual continua a existir (nada foi apagado do motor), mas sempre no fim do
     // cartao, tracejado e rotulado como manutencao manual.
-    '#lolidle-ap .diag-t{margin:7px 0 4px;padding-top:6px;border-top:1px dashed var(--lin2);font-size:10px;color:#8a7f6c;text-transform:uppercase;letter-spacing:.4px}',
+    '#lolidle-ap .diag-t{margin:7px 0 4px;padding-top:6px;border-top:1px dashed var(--lin2);font-size:10.5px;color:#bdb29d;text-transform:uppercase;letter-spacing:.4px}',
     '#lolidle-ap .diag-t + .acoes .acao{background:#121010;border-style:dashed}',
     '#lolidle-ap .diag-t + .acoes .btn{font-size:10.5px;padding:4px 8px;font-weight:600}',
-    '#lolidle-ap .tagd{display:inline-block;font-size:8.5px;color:#8a7f6c;border:1px solid var(--lin2);border-radius:4px;padding:0 3px;margin-left:5px}',
+    '#lolidle-ap .tagd{display:inline-block;font-size:9.5px;color:#bdb29d;border:1px solid var(--lin2);border-radius:4px;padding:0 3px;margin-left:5px}',
     // ---- DUAS MODALIDADES DE FARM (aba Ganhos) ----
     '#lolidle-ap .modos{display:grid;grid-template-columns:1fr 1fr;gap:7px}',
     '#lolidle-ap .modo{display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:7px 9px;color:var(--txt);cursor:pointer;font:inherit}',
     '#lolidle-ap .modo:hover{border-color:#4a4030}',
     '#lolidle-ap .modo b{font-size:11.5px}',
-    '#lolidle-ap .modo small{color:var(--dim);font-size:9.5px;line-height:1.35}',
+    '#lolidle-ap .modo small{color:var(--dim);font-size:10.5px;line-height:1.4}',
     '#lolidle-ap .modo.ativa{border-color:#7a5f2a;background:#241c0d;box-shadow:inset 0 0 0 1px #7a5f2a}',
     '#lolidle-ap .modo.ativa b{color:var(--ouro)}',
     '#lolidle-ap .bf-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}',
@@ -473,7 +526,7 @@
     '#lolidle-ap .bf-item{position:relative;width:82px;height:54px;border:2px solid #332c24;border-radius:6px;background:#191614;display:block;overflow:hidden}',
     '#lolidle-ap .bf-item img{width:100%;height:100%;object-fit:cover;display:block}',
     '#lolidle-ap .bf-item .q{position:absolute;top:0;right:1px;font-size:9px;color:var(--ouro);text-shadow:0 0 3px #000}',
-    '#lolidle-ap .bf-item small{position:absolute;left:0;right:0;bottom:0;font-size:8.5px;text-align:center;background:#000c;color:#c8bda8;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#lolidle-ap .bf-item small{position:absolute;left:0;right:0;bottom:0;font-size:9.5px;text-align:center;background:#000c;color:#e4dac6;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '#lolidle-ap .bf-item small .bf-nome{font-weight:700;color:#e8dcc4}',
     '#lolidle-ap .bf-item.equipado{border-color:#4ce06a}',
     '#lolidle-ap .bf-item.cofre{border-color:#7cc4ff}',
@@ -482,15 +535,15 @@
     '#lolidle-ap .bf-item.falta small{color:#ffb0a0}',
     '#lolidle-ap .card{background:var(--pnl);border:1px solid var(--lin2);border-radius:8px;padding:8px 10px}',
     '#lolidle-ap .card>h3{margin:0 0 6px;font-size:12px;font-weight:800;color:var(--ouro);display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}',
-    '#lolidle-ap .card>h3 .obs{color:var(--dim);font-weight:400;font-size:10px;margin-left:auto}',
+    '#lolidle-ap .card>h3 .obs{color:var(--dim);font-weight:400;font-size:11px;margin-left:auto}',
     '#lolidle-ap .card .corpo{display:flex;flex-direction:column;gap:5px}',
     '#lolidle-ap .grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}',
     '#lolidle-ap .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}',
     '#lolidle-ap .kvs{display:flex;flex-wrap:wrap;gap:5px}',
     '#lolidle-ap .kv2{display:flex;flex-direction:column;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:3px 8px;min-width:88px;flex:1}',
-    '#lolidle-ap .kv2 span{color:var(--dim);font-size:9.5px}',
+    '#lolidle-ap .kv2 span{color:var(--dim);font-size:10.5px}',
     '#lolidle-ap .kv2 b{font-size:13px;font-variant-numeric:tabular-nums}',
-    '#lolidle-ap .kv2 small{color:var(--dim);font-size:9px}',
+    '#lolidle-ap .kv2 small{color:var(--dim);font-size:10px}',
     '#lolidle-ap .ctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 0;border-bottom:1px solid #1e1a16}',
     '#lolidle-ap .ctl:last-child{border-bottom:0}',
     '#lolidle-ap .ctl-l{display:flex;flex-direction:column;flex:1;min-width:200px}',
@@ -498,8 +551,13 @@
     '#lolidle-ap .ctl-l small{color:var(--dim);font-size:10px}',
     '#lolidle-ap .ctl-c{display:flex;align-items:center;gap:6px;flex-wrap:wrap}',
     '#lolidle-ap .acoes{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:7px}',
+    /* REGRA DO DONO (2026-10-20): acao de JOGO manual so existe na aba Manual. O JS move-as
+       para #ap-manual-dinamicas; esta regra cobre o instante entre o render e a recolha. */
+    '#lolidle-ap .pane:not(#ap-t-manual) .acao:has(.tagd){display:none}',
+    '#lolidle-ap #ap-manual-dinamicas .mgrupo{margin-top:6px}',
+    '#lolidle-ap #ap-manual-dinamicas .acoes{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:7px}',
     '#lolidle-ap .acao{display:flex;flex-direction:column;gap:3px;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:6px 7px}',
-    '#lolidle-ap .acao small{color:var(--dim);font-size:9.5px;line-height:1.35}',
+    '#lolidle-ap .acao small{color:var(--dim);font-size:10.5px;line-height:1.4}',
     '#lolidle-ap .btn{background:#2f6b38;color:#eafff0;border:0;border-radius:6px;padding:6px 9px;font-weight:700;cursor:pointer;font-size:11.5px;font-family:inherit}',
     '#lolidle-ap .btn:hover{filter:brightness(1.15)}',
     '#lolidle-ap .btn.sec{background:#22303a;color:#cfe8ff;border:1px solid #33505f}',
@@ -514,25 +572,25 @@
     '#lolidle-ap .tg input{display:none}',
     '#lolidle-ap .tg-t{display:flex;flex-direction:column}',
     '#lolidle-ap .tg-t b{font-size:11.5px}',
-    '#lolidle-ap .tg-t small{color:var(--dim);font-size:9.5px}',
+    '#lolidle-ap .tg-t small{color:var(--dim);font-size:10.5px}',
     '#lolidle-ap .scroll{max-height:250px;overflow:auto;border:1px solid var(--lin2);border-radius:7px}',
-    '#lolidle-ap table.tbl{width:100%;border-collapse:collapse;font-size:10.5px;font-variant-numeric:tabular-nums}',
+    '#lolidle-ap table.tbl{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}',
     '#lolidle-ap table.tbl th{color:var(--dim);font-weight:600;text-align:right;padding:3px 5px;border-bottom:1px solid var(--lin);position:sticky;top:0;background:var(--pnl);white-space:nowrap}',
     '#lolidle-ap table.tbl th:first-child,#lolidle-ap table.tbl td:first-child{text-align:left}',
     '#lolidle-ap table.tbl td:first-child{white-space:normal;min-width:90px}',
-    '#lolidle-ap table.tbl td{padding:3px 5px;text-align:right;border-bottom:1px solid #1c1815;color:#c8bda8;white-space:nowrap}',
+    '#lolidle-ap table.tbl td{padding:3px 5px;text-align:right;border-bottom:1px solid #2a241d;color:#e2d8c4;white-space:nowrap}',
     '#lolidle-ap table.tbl td:first-child{color:var(--txt)}',
     '#lolidle-ap table.tbl tr.melhor td{background:#1d2417}',
     '#lolidle-ap table.tbl td img{width:16px;height:16px;image-rendering:pixelated;vertical-align:-3px;margin-right:4px}',
-    '#lolidle-ap .vazio{color:var(--dim);font-size:10.5px;margin:2px 0}',
-    '#lolidle-ap .aviso{margin:3px 0;font-size:10.5px;padding:5px 8px;border-radius:6px;border:1px solid var(--lin2);background:var(--pnl2)}',
+    '#lolidle-ap .vazio{color:var(--dim);font-size:11.5px;margin:2px 0}',
+    '#lolidle-ap .aviso{margin:3px 0;font-size:11.5px;padding:5px 8px;border-radius:6px;border:1px solid var(--lin2);background:var(--pnl2)}',
     '#lolidle-ap .aviso.ok{color:#bdf0c8;border-color:#2b5c33;background:#152218}',
     '#lolidle-ap .aviso.warn{color:#ffdca8;border-color:#6d5520;background:#241c0d}',
     '#lolidle-ap .aviso.err{color:#ffc6ba;border-color:#6d2a20;background:#251310}',
     '#lolidle-ap .lista{display:flex;flex-direction:column;gap:2px}',
-    '#lolidle-ap .ln{display:flex;align-items:center;gap:7px;font-size:10.5px;padding:3px 6px;border-bottom:1px solid #1c1815;flex-wrap:wrap}',
+    '#lolidle-ap .ln{display:flex;align-items:center;gap:7px;font-size:11.5px;padding:3px 6px;border-bottom:1px solid #2a241d;flex-wrap:wrap}',
     '#lolidle-ap .ln:last-child{border-bottom:0}',
-    '#lolidle-ap .ln time{color:#6a6256;flex:none;font-variant-numeric:tabular-nums}',
+    '#lolidle-ap .ln time{color:#b0a591;flex:none;font-variant-numeric:tabular-nums}',
     '#lolidle-ap .ln b{color:var(--txt)}',
     '#lolidle-ap .ln .d{color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis}',
     '#lolidle-ap .ln.proteg{border-left:3px solid var(--ouro)}',
@@ -546,7 +604,7 @@
     '#lolidle-ap .iframe.lendario{border-color:#b07a20}#lolidle-ap .iframe.epico{border-color:#7a4fbf}',
     '#lolidle-ap .iframe.falta{border-style:dashed;opacity:.75;filter:grayscale(.6)}',
     '#lolidle-ap .chips{display:flex;flex-wrap:wrap;gap:4px}',
-    '#lolidle-ap .chip{display:inline-flex;align-items:center;gap:5px;background:var(--pnl2);border:1px solid var(--lin);border-radius:6px;padding:2px 6px;font-size:10.5px}',
+    '#lolidle-ap .chip{display:inline-flex;align-items:center;gap:5px;background:var(--pnl2);border:1px solid var(--lin);border-radius:6px;padding:2px 6px;font-size:11.5px}',
     '#lolidle-ap .chip img{width:18px;height:18px;image-rendering:pixelated}',
     '#lolidle-ap .chip.lendario{border-color:#b07a20}#lolidle-ap .chip.epico{border-color:#7a4fbf}',
     '#lolidle-ap .chip small{color:var(--dim)}',
@@ -559,7 +617,7 @@
     '#lolidle-ap .pot{flex:1;min-width:120px;display:flex;align-items:center;gap:6px;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:4px 7px}',
     '#lolidle-ap .pot img{width:24px;height:24px;image-rendering:pixelated}',
     '#lolidle-ap .pot .q{font-weight:800;font-size:14px;font-variant-numeric:tabular-nums;color:var(--verde)}',
-    '#lolidle-ap .pot small{color:var(--dim);font-size:9.5px;display:block}',
+    '#lolidle-ap .pot small{color:var(--dim);font-size:10.5px;display:block}',
     '#lolidle-ap .pot.baixo{border-color:#7a3a10;background:#1c1108}#lolidle-ap .pot.baixo .q{color:#ff9a5a}',
     '#lolidle-ap .tag{display:inline-block;background:#1d2733;border:1px solid #33505f;color:#cfe8ff;border-radius:5px;padding:1px 6px;font-size:10px;margin:1px 2px 1px 0}',
     '#lolidle-ap footer{display:flex;align-items:center;gap:9px;padding:6px 10px;background:#151211;border-top:1px solid var(--lin)}',
@@ -568,7 +626,7 @@
     '#lolidle-ap .spin{display:inline-block;width:9px;height:9px;border:2px solid #7cc4ff;border-top-color:transparent;border-radius:50%;animation:lolidle-spin .7s linear infinite;vertical-align:-1px;margin-right:5px}',
     '@keyframes lolidle-spin{to{transform:rotate(360deg)}}',
     '#lolidle-ap .muted{color:var(--dim)}',
-    '#lolidle-ap .hint{color:var(--dim);font-size:9.5px}',
+    '#lolidle-ap .hint{color:var(--dim);font-size:11px;line-height:1.45}',
     '#lolidle-ap .pend{color:var(--verm)}',
     /* botão flutuante para abrir o painel */
     '#lolidle-ap-launch{position:fixed;right:8px;bottom:8px;z-index:2147483646;background:#1b1815;color:#ffd070;border:1px solid #3a3126;border-radius:8px;padding:5px 9px;font:700 11px/1.2 system-ui,sans-serif;cursor:pointer;opacity:.45;transition:.15s}',
@@ -709,13 +767,15 @@
       + '    <span class="sp"></span>'
       + '  </div>'
       + '</header>'
-      // 8 ABAS → 4, agrupadas por ASSUNTO: Painel = estado + switches (controle); Itens = mochila +
-      // build por fase + cofre + mercado/Ornn; Personagem = habilidades + atributos;
-      // Ganhos = farm/ganhos + histórico. Os ids dos elementos NÃO mudaram (os handlers
-      // continuam a encontrar tudo); só mudou a `<section class="pane">` onde cada um vive.
+      // ABAS agrupadas por ASSUNTO: Painel = estado + switches (controle); Itens = mochila +
+      // build por fase + cofre; MERCADO = ofertas, compra da build, Ornn e vigia de itens/
+      // jogadores; Personagem = habilidades + atributos; Ganhos = farm/ganhos + histórico.
+      // Os ids dos elementos NÃO mudaram (os handlers continuam a encontrar tudo); só mudou a
+      // `<section class="pane">` onde cada um vive.
       + '<nav id="ap-tabs">'
       + '  <button class="tab ativa" data-tab="painel">Painel</button>'
       + '  <button class="tab" data-tab="itens">Itens</button>'
+      + '  <button class="tab" data-tab="mercado">Mercado</button>'
       + '  <button class="tab" data-tab="personagem">Personagem</button>'
       + '  <button class="tab" data-tab="ganhos">Ganhos</button>'
       + '  <button class="tab" data-tab="historico">Histórico</button>'
@@ -737,8 +797,9 @@
       // que aparecia preso em todas as abas). Aqui fica só o estado, para não perder a leitura.
       + '    <div id="ap-painel-build"></div>'
       + '    <div id="ap-now-parado"></div>'
-      // ÁRVORE DE INTERRUPTORES: logo abaixo do cartão AUTO-PLAY (o mestre é a raiz da árvore).
-      + '    <div id="ap-auto-arvore"></div>'
+      // A ÁRVORE DE INTERRUPTORES NÃO TEM MAIS CARTÃO PRÓPRIO: ela é desenhada DENTRO do
+      // cartão AUTO-PLAY (`renderPainelEstado` cria o `#ap-auto-arvore`). Um cartão separado
+      // abaixo do mestre era a queixa do dono ("tudo tem que estar dentro do auto play").
       + '    <div id="ap-auto-champ"></div>'
       + '    <div class="grid2"><div id="ap-auto-obj"></div><div id="ap-auto-regiao"></div></div>'
       + '    <div id="ap-auto-extras"></div>'
@@ -750,7 +811,7 @@
       + '    <div id="ap-auto-diag"></div>'
       + '  </section>'
       + '  <section class="pane" id="ap-t-itens">'
-      + '    <p class="intro">Tudo o que é ITEM: a build por fase (mobs ↔ chefe), a build de agora contra a ideal, o que está blindado, a mochila, o cofre e o mercado/Ornn.</p>'
+      + '    <p class="intro">Tudo o que é ITEM: a build por fase (mobs ↔ chefe), a build de agora contra a ideal, o que está blindado, a mochila e o cofre. O mercado e o Ornn têm aba própria.</p>'
       // O BLOCO GRANDE DA BUILD POR FASE (com minimizar) passa a viver aqui, e não antes das abas.
       + '    <div id="ap-build-fase"></div>'
       + '    <div id="ap-it-build"></div>'
@@ -759,11 +820,16 @@
       + '    <div id="ap-it-plano"></div>'
       + '    <div id="ap-it-dps"></div>'
       + '    <div id="ap-it-cofre"></div>'
+      + '  </section>'
+      // MERCADO — aba própria (pedido do dono). Os ids `ap-mk-*` mudaram de sítio mas NÃO
+      // mudaram de nome: os handlers/ACOES continuam a encontrá-los sem alteração.
+      + '  <section class="pane" id="ap-t-mercado">'
+      + '    <p class="intro">MERCADO: a vigia de itens/jogadores (compra sozinha), as suas ofertas e o reajuste de preço, a compra da build ideal e a bancada do Ornn (refino/montagem). Tudo o que mexe com ouro e itens fora da mochila.</p>'
+      + '    <div id="ap-mk-watch"></div>'
       + '    <div id="ap-mk-ofertas"></div>'
       + '    <div id="ap-mk-plano"></div>'
       + '    <div id="ap-mk-ornn"></div>'
       + '    <div id="ap-mk-compra"></div>'
-      + '    <div id="ap-mk-watch"></div>'
       + '  </section>'
       + '  <section class="pane" id="ap-t-personagem">'
       + '    <p class="intro">O seu campeão: as HABILIDADES (barra, pontos e ordem de subida) e os ATRIBUTOS (pontos livres e modelo de distribuição).</p>'
@@ -810,6 +876,7 @@
       + '  <section class="pane" id="ap-t-manual">'
       + '    <p class="intro">MANUTENÇÃO MANUAL: forçar um passo, medir ou calibrar. Nada aqui é necessário para o auto-play — o motor faz tudo sozinho quando o switch está ligado. Serve para forçar ou testar.</p>'
       + '    <div id="ap-manual-info"></div>'
+      + '    <div id="ap-manual-dinamicas"></div>'
       + '    <div id="ap-auto-acoes"></div>'
       + '  </section>'
       + '</main>'
@@ -902,9 +969,10 @@
     (document.body || document.documentElement).appendChild(b);
   }
 
-  /** Nomes das 8 abas ANTIGAS -> as 4 de agora. Um chamador antigo (script de manutenção, teste)
-   *  não pode ficar com o painel em branco: o alias leva à aba certa. */
-  const TAB_ALIAS = { agora: 'painel', auto: 'painel', mercado: 'itens', skills: 'personagem', atrib: 'personagem', farm: 'ganhos', hist: 'historico', historico: 'historico', pocao: 'pocao', poções: 'pocao', pocoes: 'pocao', manual: 'manual' };
+  /** Nomes das abas ANTIGAS -> as de agora. Um chamador antigo (script de manutenção, teste)
+   *  não pode ficar com o painel em branco: o alias leva à aba certa. `mercado` deixou de ser
+   *  alias de `itens`: passou a ser aba própria (pedido do dono). */
+  const TAB_ALIAS = { agora: 'painel', auto: 'painel', skills: 'personagem', atrib: 'personagem', farm: 'ganhos', hist: 'historico', historico: 'historico', pocao: 'pocao', poções: 'pocao', pocoes: 'pocao', manual: 'manual' };
   function setTab(nome) {
     tabAtiva = TAB_ALIAS[nome] || nome;
     // BUG MEDIDO (2026-10-19): o alias era aplicado ao `tabAtiva` mas a classe usava o nome
@@ -1057,6 +1125,9 @@
       + '<small class="mestre-txt">' + esc(info.txt) + '</small>'
       + '</div>'
       + '<p class="hint">' + esc(a.fase) + '</p>'
+      // A ARVORE VIVE DENTRO DO CARTAO MESTRE (ordem do dono: os switches tem de estar no
+      // auto-play). `renderArvore()` preenche este container.
+      + '<div id="ap-auto-arvore" class="mestre-arvore"></div>'
       + '<div class="sec-acoes">'
       + acaoSec
       + acao('ap-painel-kill', '⛔ Parar tudo', 'Para tudo e grava a decisão no navegador: nem recarregando a página (F5) o motor volta sozinho.', 'danger')
@@ -1184,7 +1255,7 @@
       + (emUso ? '<span class="tag">em uso agora</span>' : (p.equipadaAgora ? '<span class="tag ok">equipada</span>' : ''))
       + '</h4>'
       + '<p class="bf-dica">' + dica + '</p>'
-      + '<div class="bf-itens">' + (p.itens || []).map(bfItem).join('') + '</div>'
+      + '<div class="bf-itens">' + ordenarItens(p.itens || []).map(bfItem).join('') + '</div>'
       + (faltam.length
         ? '<p class="hint">Falta: ' + faltam.map((i) => '<b>' + esc(i.nome) + '</b>').join(', ') + ' — farmar ou comprar no mercado.</p>'
         : '<p class="hint">Você tem as ' + (p.itens || []).length + ' peças desta build.</p>')
@@ -1561,7 +1632,10 @@
       : '<span class="arv-erro" title="este switch não tem chave no motor desta página — recarregue (F5) para a versão nova">motor antigo: recarregue</span>';
     const meus = ramos[nome] || [];
     // SWITCH À ESQUERDA: o interruptor vem antes do nome, não no fim da linha.
-    return '<div class="arv-no ' + cls + (nome === 'autoplay' ? ' mestre' : '') + '" data-no="' + esc(nome) + '">'
+    // `.arv-item` agrupa o nó + a linha do que ele cobre + os filhos. Sem este invólucro o
+    // `grid` da árvore colocava a descrição numa coluna e o nó noutra.
+    return '<div class="arv-item" data-item="' + esc(nome) + '">'
+      + '<div class="arv-no ' + cls + (nome === 'autoplay' ? ' mestre' : '') + '" data-no="' + esc(nome) + '">'
       + '<i class="arv-dot"></i>'
       + ctrl
       + '<b>' + esc(ARV_NOME[nome] || nome) + '</b>'
@@ -1570,22 +1644,28 @@
       + (s.temExcecao ? '<span class="tag arv-exc" title="o motor pula este switch em certas condições">⚠ ' + esc(arvExc(nome, s)) + '</span>' : '')
       + '</div>'
       + linha
-      + (meus.length ? '<div class="arv-filhos">' + meus.map((f) => arvNo(f, ramos, nivel + 1)).join('') + '</div>' : '');
+      + (meus.length ? '<div class="arv-filhos">' + meus.map((f) => arvNo(f, ramos, nivel + 1)).join('') + '</div>' : '')
+      + '</div>';
   }
   /** Desenha a lista de switches. ESTADO VAZIO HONESTO: sem motor (ou sem a função) diz-se isso,
    *  em vez de desenhar uma lista vazia que pareceria "não há switches". */
   function renderArvore() {
+    // O mestre recria o container quando o texto do estado muda; a cache da árvore não sabe
+    // disso e deixaria o espaço vazio. Container vazio = escrever de novo, sem confiar na cache.
+    const alvoArv = $('ap-auto-arvore');
+    if (alvoArv && !alvoArv.childNodes.length) _ultimoHtml.delete('ap-auto-arvore');
     const r = chamar('arvoreInterruptores');
     if (!r.ok || !Array.isArray(r.v) || !r.v.length) {
       const semMotor = !MOTOR();
-      setHtml('ap-auto-arvore', card('Switches — o que o motor faz sozinho', 'lista declarada pelo motor',
-        '<p class="vazio">' + (semMotor
+      setHtml('ap-auto-arvore',
+        '<div class="mestre-sub"><b>O que o mestre liga e desliga</b><span>lista declarada pelo motor</span></div>'
+        + '<p class="vazio">' + (semMotor
           ? 'O motor do auto-play ainda não carregou nesta página — não há switches para mostrar.'
           : r.erro === 'sem-funcao'
             ? 'Esta versão do motor ainda não expõe a lista de switches (falta <b>arvoreInterruptores</b>).'
             : 'O motor respondeu, mas não declarou nenhum switch.') + '</p>'
         + '<p class="hint">Este bloco não inventa nada: mostra exatamente os switches que o motor declara'
-        + (semMotor ? ' — recarregue a página com <b>F5</b>.' : '.') + '</p>'));
+        + (semMotor ? ' — recarregue a página com <b>F5</b>.' : '.') + '</p>');
       return;
     }
     const lista = r.v.filter((x) => x && x.nome);
@@ -1625,16 +1705,25 @@
         + esc(semChave.map((x) => ARV_NOME[x.nome] || x.nome).join(', '))
         + '). O motor desta página é ANTIGO: recarregue (F5) para os interruptores reais aparecerem.</p>'
       : '';
-    setHtml('ap-auto-arvore', card('Switches — o que o motor faz sozinho', 'lista e hierarquia declaradas pelo motor',
-      alertaMotor
+    // O nó `autoplay` NÃO se desenha outra vez: o interruptor mestre já está dois dedos acima,
+    // no cartão. Aqui desenham-se os FILHOS dele (manutenção + build por fase), o que dá a
+    // hierarquia real sem dois controlos para a mesma coisa.
+    const bases = [];
+    for (const x of (ramos.autoplay || [])) bases.push(x);
+    for (const x of raizes) if (x.nome !== 'autoplay') bases.push(x);
+    if (!bases.length) bases.push(...raizes);
+    setHtml('ap-auto-arvore',
+      '<div class="mestre-sub"><b>O que o mestre liga e desliga</b><span>'
+      + String(lista.length) + ' funções declaradas pelo motor — o mestre é o switch grande acima</span></div>'
+      + alertaMotor
       + alerta
       + '<p class="hint">' + String(lista.length) + ' switches · <b>' + String(agindo) + ' ligados e agindo</b> · '
       + String(desligados) + ' desligados por você · ' + String(inerte.length) + ' ligados mas <b>inertes</b> (o pai está desligado) · '
       + String(skip.length) + ' skippados por exceção.</p>'
-      + '<p class="hint"><b>Tudo (auto-play)</b> é o único mestre: desligá-lo desliga tudo. <b>Manutenção</b> é o ramo de recurso base (vender, equipar, mercado, pontos, cofre), filho do auto-play; os switches dentro dele servem para desligar só uma capacidade sem parar o farm.</p>'
-      + '<div class="arv">' + raizes.map((x) => arvNo(x, ramos, 0)).join('') + '</div>'
+      + '<p class="hint"><b>Manutenção</b> é o ramo de recurso base (vender, equipar, mercado, pontos, cofre), filho do auto-play; os switches dentro dele servem para desligar só uma capacidade sem parar o farm.</p>'
+      + '<div class="arv">' + bases.map((x) => arvNo(x, ramos, 0)).join('') + '</div>'
       + '<p class="hint">Ligar uma capacidade <b>não</b> liga o switch mestre, e o mestre desligado <b>não</b> desliga os filhos: eles ficam <b>inertes</b> (ligados, sem agir). '
-      + 'A linha verde diz o que o switch cobre; a vermelha, o que deixa de acontecer com ele desligado.</p>'));
+      + 'A linha verde diz o que o switch cobre; a vermelha, o que deixa de acontecer com ele desligado.</p>');
   }
 
 
@@ -1971,7 +2060,7 @@
   function renderCofre() {
     const live = cofreAberto();
     const grav = cofreGravado();
-    const itens = cofreSabido().slice().sort(porQualidade);
+    const itens = ordenarItens(cofreSabido());
     const abertoAgora = live.length > 0;
     const at = abertoAgora ? 0 : (Number(grav.at) || 0);
     const pode = podeCofre();
@@ -2071,9 +2160,9 @@
     const tecnica = '<details><summary>Ver a lista técnica (DPS por item e a build ideal crua)</summary>'
       + '<div class="kvs">' + kv('campeão', esc(ident.nome || '—')) + kv('classe', esc(String(ident.classe || '').toUpperCase() || '—')) + kv('perfil', esc(ident.perfil || '—')) + '</div>'
       + '<p class="hint">Equipado agora (' + eq.length + '):</p>'
-      + '<div class="frames">' + eq.map((e) => itemFrame(String(e.base), e.qual || '', e.refino || '', e.raridade || '', nomeItem(e.base))).join('') + '</div>'
+      + '<div class="frames">' + ordenarItens(eq).map((e) => itemFrame(String(e.base), e.qual || '', e.refino || '', e.raridade || '', nomeItem(e.base))).join('') + '</div>'
       + '<p class="hint">Build ideal (' + ideal.length + '):</p>'
-      + '<div class="frames">' + ideal.map((b) => itemFrame(String(b), '', '', '', nomeItem(b))).join('') + '</div>'
+      + '<div class="frames">' + ordenarItens(ideal).map((b) => itemFrame(String(b), '', '', '', nomeItem(b))).join('') + '</div>'
       + '</details>';
     if (!bh || typeof bh !== 'object') {
       setHtml('ap-it-build', card('Sua build explicada', 'como o motor monta os itens para o seu campeão',
@@ -2081,7 +2170,7 @@
         + tecnica));
       return;
     }
-    const itens = Array.isArray(bh.build) ? bh.build : [];
+    const itens = ordenarItens(Array.isArray(bh.build) ? bh.build : []);
     const sets = (Array.isArray(bh.skills) ? bh.skills : []).slice();
     // Se o 1.º conjunto precisa de uma habilidade bloqueada, põe a melhor VIÁVEL à frente.
     if (sets.length && sets[0] && sets[0].viavel !== true) {
@@ -2131,7 +2220,7 @@
     const prot = protegidos();
     const eqBases = eq.map((e) => String(e.base));
     const faltam = ideal.filter((b) => eqBases.indexOf(String(b)) < 0);
-    const linhaItens = (ids, extra) => '<div class="frames">' + ids.map((b) => {
+    const linhaItens = (ids, extra) => '<div class="frames">' + ordenarItens(ids.map((b) => ({ base: b }))).map(({ base: b }) => {
       const e = eq.find((x) => String(x.base) === String(b));
       const pr = prot.has(String(b));
       return itemFrame(b, e ? e.qual : '', e ? e.refino : '', e ? e.raridade : (extra ? 'falta' : ''),
@@ -2140,7 +2229,7 @@
     renderBuildHumana();
     const ident = identidade() || {};
     setHtml('ap-it-proteg', card('Blindados — nunca são vendidos', 'o mesmo critério que o motor aplica',
-      '<div class="chips" data-blindados="motor">' + Array.from(prot.entries()).map(([b, motivo]) =>
+      '<div class="chips" data-blindados="motor">' + Array.from(prot.entries()).sort((x, y) => ordemItemGui({ base: x[0] }, { base: y[0] })).map(([b, motivo]) =>
         '<span class="chip ' + (String(b) === RABADON ? 'lendario' : '') + '" title="' + esc(motivo) + '">' + (ITEM_IMG(b) ? '<img src="' + ITEM_IMG(b) + '" alt="">' : '') + esc(nomeItem(b)) + ' <small>🔒</small></span>').join('') + '</div>'
       + '<p class="hint">A lista sai do <b>motor</b>: multiplicadores de classe (o Gume do Infinito <b>3031</b> e o Rabadon <b>3089</b> ficam protegidos em qualquer campeão, duplicados incluídos), itens de tratamento especial do seu campeão, lendários da build, peças reservadas das builds de mobs e de chefe e o que está equipado em qualidade S ou SS. Um item que ainda está a ser avaliado (qualidade "?") também não é tocado.</p>'));
 
@@ -2158,7 +2247,7 @@
       const b = bagLida;
       setHtml('ap-it-mochila', card('Mochila', bagAuto ? 'lida diretamente do jogo' : 'lida há ' + fmtDur(Date.now() - bagLidaEm),
         '<div class="kvs">' + kv('ocupação', fmt(b.used) + ' / ' + fmt(b.cap)) + kv('espólio', String(b.espacosEspolio)) + kv('ouro', fmt(ler('readGold', null))) + '</div>'
-        + '<div class="chips">' + ((b.items || []).map((i) => i.kind === 'espolio'
+        + '<div class="chips">' + (((b.items || []).slice().sort((x, y) => ((x.kind === 'espolio' ? 1 : 0) - (y.kind === 'espolio' ? 1 : 0)) || ordemItemGui(x, y))).map((i) => i.kind === 'espolio'
           ? '<span class="chip" title="espólio ×' + esc(i.qty) + '">📦 ×' + fmt(i.qty) + '</span>'
           : '<span class="chip ' + esc(i.raridade || '') + '" title="' + esc(nomeItem(i.base) + ' · qualidade ' + i.qual + (i.refino ? ' · refino +' + i.refino : '')) + '">'
             + itemImgTag(i.base, i.refino, nomeItem(i.base)) + esc(nomeItem(i.base)) + ' <small>' + esc(i.qual || '') + (i.refino ? '+' + i.refino : '') + '</small></span>').join('') || '<span class="vazio">mochila vazia</span>')
@@ -2181,7 +2270,7 @@
             const lista = grupos[act] || [];
             if (!lista.length) return '';
             const info = ACAO_ITEM[act] || { txt: act, cls: '' };
-            return '<p class="hint"><b>' + esc(info.txt) + '</b> (' + lista.length + ')</p><div class="lista">' + lista.map((x) =>
+            return '<p class="hint"><b>' + esc(info.txt) + '</b> (' + lista.length + ')</p><div class="lista">' + lista.slice().sort((x, y) => ordemItemGui(x.it, y.it)).map((x) =>
               '<div class="ln ' + info.cls + '">' + itemImgTag(x.it.base, x.it.refino, nomeItem(x.it.base) + ' ' + (x.it.qual || '') + (x.it.refino ? ' +' + x.it.refino : '')) + '<b>' + esc(nomeItem(x.it.base)) + '</b> ' + esc(x.it.qual || '') + (x.it.refino ? '+' + x.it.refino : '')
               + '<span class="d">' + esc(x.why || '') + '</span></div>').join('') + '</div>';
           }).join('')
@@ -2263,12 +2352,15 @@
         + '<p class="hint">* = está na barra de combate · 🗡 = deixa adaga (dispara a Voracidade)</p>'
         : '<p class="aviso err">O motor não conseguiu calcular o dano das habilidades.</p>'));
 
-    const idealBarra = ler('barraIdeal', null);
+    // A fase vem do farm para a GUI mostrar o MESMO ideal do runtime; `preview` impede
+    // que este render mexa no anti-churn da barra (bug da aba aberta, 2026-10-20).
+    const faseGui = (((farm() || {}).current || {}).fase === 'boss') ? 'chefe' : 'mobs';
+    const idealBarra = ler('barraIdeal', null, null, faseGui, null, { preview: true });
     if (idealBarra && idealBarra.length) {
       const naBarra = (sk.bar || []).map((h) => h.t);
       const igual = idealBarra.length === naBarra.length && idealBarra.every((t) => naBarra.indexOf(t) >= 0);
       const nomeDe = (t) => { const h = (sk.arsenal || []).find((x) => x.t === t); return (h && (h.name || h.t)) || t; };
-      setHtml('ap-sk-ideal', card('Barra ideal (segundo o motor)', 'as 4 habilidades que dão mais dano',
+      setHtml('ap-sk-ideal', card('Barra ideal (recomendada)', 'as 4 habilidades que mais rendem agora',
         '<div class="chips">' + idealBarra.map((t) => '<span class="tag">' + esc(nomeDe(t)) + (ler('ehUltimate', false, t) ? ' 👑' : '') + '</span>').join('') + '</div>'
         + '<p class="aviso ' + (igual ? 'ok' : 'warn') + '">' + (igual ? 'A sua barra já está igual à ideal.' : 'A sua barra está diferente da ideal — o switch "Repor a rotação na barra" corrige isto sozinho.') + '</p>'));
     } else setHtml('ap-sk-ideal', '');
@@ -2577,7 +2669,7 @@
   }
   /** Chips dos itens escolhidos (com o × para tirar). Vive no cartão do auto farm pra item. */
   function renderChips() {
-    setHtml('ap-fm-chips', Array.from(selItens).map((id) => '<span class="chip"><img src="' + ITEM_IMG(id) + '" alt="">' + esc(nomeItem(id))
+    setHtml('ap-fm-chips', ordenarItens(Array.from(selItens)).map((id) => '<span class="chip"><img src="' + ITEM_IMG(id) + '" alt="">' + esc(nomeItem(id))
       + ' <b data-rem="' + esc(id) + '" style="cursor:pointer;color:#ff9a6a">×</b></span>').join('')
       || '<p class="vazio">nenhum item escolhido</p>');
     const n = $('ap-sel-n'); if (n) n.textContent = String(selItens.size);
@@ -2657,7 +2749,7 @@
       + kv('mercado cheio?', sat == null ? '—' : (cheio ? 'sim' : 'não') + (lend == null ? '' : ' <small>' + fmt(lend) + '/10 lendários</small>'))
       + '</div>'
       + (ofertas.length
-        ? tabela(['item', 'raridade', 'qualidade', 'preço'], ofertas.map((o) => '<tr><td>' + esc(o.nome || o.base || '?') + '</td><td>' + esc(o.raridade || '—')
+        ? tabela(['item', 'raridade', 'qualidade', 'preço'], ordenarItens(ofertas).map((o) => '<tr><td>' + esc(o.nome || o.base || '?') + '</td><td>' + esc(o.raridade || '—')
           + '</td><td>' + esc(o.qual || '—') + '</td><td>' + fmt(o.preco) + '</td></tr>'))
         : '<p class="vazio">Ainda não há leitura das suas ofertas.</p>'
           + '<p class="hint">O motor lê-as quando passa pelo mercado e grava a lista — a partir daí aparece aqui, sem precisar clicar em nada. O botão abaixo força uma leitura nova.</p>')
@@ -2696,56 +2788,97 @@
 
     // ---- WATCH DO MERCADO (pedido do dono, 2026-10-18): itens e nomes de jogador -----------
     const w = ler('mercadoWatchEstado', null) || {};
-    const wVend = (w.vendedores || []).join(', ');
-    const wPreco = w.precoMax == null ? 0 : Number(w.precoMax);
-    const wTeto = w.tetoCompra == null ? 500000 : Number(w.tetoCompra);
-    const wCad = Math.max(2, Math.round((Number(w.cadenciaMs) || 2000) / 1000));
+    // A CONFIG é a fonte dos campos editáveis (o estado pode estar um render atrasado).
+    // O estado serve para `achados`, `at` e `ultimaCompra`.
+    const cfgWatch = (cfg() && cfg().mercadoWatch) || {};
+    const wVend = (cfgWatch.vendedores || w.vendedores || []).join(', ');
+    const wPreco = cfgWatch.precoMax == null ? 0 : Number(cfgWatch.precoMax);
+    const wTeto = cfgWatch.tetoCompra == null ? 0 : Number(cfgWatch.tetoCompra);
+    const wCad = Math.max(2, Math.round((Number(cfgWatch.cadenciaMs != null ? cfgWatch.cadenciaMs : w.cadenciaMs) || 2000) / 1000));
+    const wPct = cfgWatch.percentualOuro == null ? 90 : Math.max(0, Math.min(100, Number(cfgWatch.percentualOuro) || 0));
+    const wRefMin = Math.max(0, Math.min(5, Number(cfgWatch.refinoMin) || 0));
+    const wTierMin = String(cfgWatch.tierMin || '').toUpperCase();
+    const wPrio = String(cfgWatch.prioridade || 'tier');
     const wAch = (w.achados || []);
+    const faltaDe = (o) => {
+      const t = Number(o && o.libera);
+      return Number.isFinite(t) && t > 0 ? Math.max(0, t - Date.now()) : 0;
+    };
     const wOut = !w.at ? '<p class="vazio">Ainda não vigiou. O motor vigia sozinho a cada ' + wCad + ' s; o botão abaixo força agora.</p>'
       : wAch.length
-        ? tabela(['vendedor', 'item', 'preço'], wAch.map((o) => '<tr><td>' + esc(o.vendedor || '?') + '</td><td>' + esc(o.item || '?')
-          + '</td><td>' + fmt(o.preco) + (o.moeda && o.moeda !== 'ouro' ? ' ' + esc(o.moeda) : '') + '</td></tr>'))
+        ? tabela(['vendedor', 'item', 'preço', 'estado'], ordenarItens(wAch).map((o) => {
+          const falta = faltaDe(o);
+          return '<tr><td>' + esc(o.vendedor || '?') + '</td><td>' + esc(o.item || '?')
+            + '</td><td>' + fmt(o.preco) + (o.moeda && o.moeda !== 'ouro' ? ' ' + esc(o.moeda) : '')
+            + '</td><td>' + (falta > 0 ? '⏳ ' + fmtDur(falta) : 'pronto') + '</td></tr>';
+        }))
         : '<p class="vazio">A última vigia (há ' + fmtDur(Date.now() - w.at) + ') não achou nada que casasse.</p>';
     const wUlt = w.ultimaCompra;
     // Chips dos itens escolhidos (ids em title; a GUI não mostra a lista crua no meio da tela).
-    const wItens = Array.isArray((cfg().mercadoWatch || {}).itens) ? (cfg().mercadoWatch.itens || []) : [];
+    const wItens = Array.isArray(cfgWatch.itens) ? cfgWatch.itens : [];
     const chipsItens = wItens.length
-      ? '<div class="chips" id="ap-watch-chips">' + wItens.map((b) => '<span class="chip" title="' + esc(b) + '">' + itemImgTag(b) + esc(nomeItem(b))
+      ? '<div class="chips" id="ap-watch-chips">' + ordenarItens(wItens).map((b) => '<span class="chip" title="' + esc(b) + '">' + itemImgTag(b) + esc(nomeItem(b))
         + ' <b data-wrem="' + esc(b) + '" style="cursor:pointer;color:#ff9a6a">×</b></span>').join('') + '</div>'
-      : '<p class="vazio" id="ap-watch-chips">Nenhum item escolhido — use "Adicionar itens".</p>';
+      : '<p class="vazio" id="ap-watch-chips">Nenhum item escolhido — marque nos ícones abaixo (ou vigie só um jogador).</p>';
+    const vendedoresWatch = cfgWatch.vendedores || w.vendedores || [];
+    const chipsVendedores = vendedoresWatch.length
+      ? '<div class="chips" id="ap-watch-vendedores-chips">' + vendedoresWatch.map((v) => '<span class="chip">' + esc(v)
+        + ' <b data-wvend="' + esc(v) + '" style="cursor:pointer;color:#ff9a6a" title="remover">×</b></span>').join('') + '</div>'
+      : '<p class="vazio" id="ap-watch-vendedores-chips">Nenhum jogador escolhido — escreva o nome abaixo e clique em Adicionar.</p>';
     setHtml('ap-mk-watch', card('Watch do mercado — itens e jogadores', 'deteta em tempo real e compra sozinho',
       '<p class="hint">Vigia o mercado dos jogadores pelo SERVIDOR (todas as ofertas, com vendedor) e, quando algo casa, compra pelo próprio mercado do jogo. <b>Só gasta ouro</b> (nunca Gemas/diamantes) e nunca abaixo da reserva de poções. Para comprar sozinho tem de estar no <b>Mercador</b> (base) — a deteção corre em qualquer sítio.</p>'
-      + tg('ap-watch-ligado', 'Ligar a vigia', 'A deteção corre sempre que há itens ou jogadores na lista; desligar isto para tudo.', !!w.ligado)
-      + '<p class="hint">Itens que você quer:</p>'
+      + '<p class="hint">A vigia não tem liga/desliga: se há itens ou jogadores na lista, ela está ativa e compra sozinha. Lista vazia = não vigia nada.</p>'
+      + '<p class="hint">Itens que você quer (escolha nos ícones abaixo):</p>'
       + chipsItens
-      + '<div class="acoes">' + acao('ap-watch-add', '＋ Adicionar itens', 'Abre a lista de itens do jogo para marcar os que você quer vigiar.', 'sec') + '</div>'
-      + '<div class="watch-picker" id="ap-watch-picker" hidden>'
-      +   '<input id="ap-watch-busca" type="search" placeholder="procurar item…" autocomplete="off">'
-      +   '<div class="scroll" id="ap-watch-grade" style="max-height:200px"></div>'
-      +   '<div class="acoes"><button id="ap-watch-ok" class="btn sec">Salvar escolha</button></div>'
+      // A GRADE DE ÍCONES FICA SEMPRE À VISTA (pedido do dono 2026-10-20: "make a item
+      // watch ... choose items from their icons"). Antes estava escondida atrás de
+      // "Adicionar itens" e o painel parecia uma watch vazia. A busca filtra por nome; o
+      // clique no ícone marca/desmarca. O id só existe por baixo (é o que o servidor devolve).
+      + '<div class="watch-picker" id="ap-watch-picker">'
+      +   '<p class="hint">Clique nos ícones para escolher os itens que quer comprar. A lista vazia não vigia item nenhum (pode vigiar só um jogador, ex.: srdog).</p>'
+      +   '<input id="ap-watch-busca" type="search" placeholder="procurar item por nome…" autocomplete="off">'
+      +   '<div class="scroll" id="ap-watch-grade" style="max-height:240px"></div>'
+      +   '<div class="acoes"><button id="ap-watch-ok" class="btn sec">Salvar itens escolhidos</button></div>'
       + '</div>'
-      // CONFIG EM LISTAS (pedido do dono, 2026-10-19): nada de números/lista crus. Os
-      // vendedores vêm das ofertas que o motor já leu; os limites são valores redondos.
-      + (function () {
-        const conhecidos = Array.from(new Set([].concat((ofertas || []).map((o) => o.vendedor), (w.vendedores || [])).map((s) => String(s || '').trim()).filter(Boolean))).sort();
-        const optsV = conhecidos.length
-          ? conhecidos.map((v) => '<option value="' + esc(v) + '"' + ((w.vendedores || []).indexOf(v) >= 0 ? ' selected' : '') + '>' + esc(v) + '</option>').join('')
-          : '<option disabled>nenhum jogador conhecido ainda</option>';
-        const preco = [0, 100000, 500000, 1000000, 5000000, 10000000];
-        if (wPreco && preco.indexOf(wPreco) < 0) preco.push(wPreco);
-        const optsP = preco.map((v) => '<option value="' + v + '"' + (v === wPreco ? ' selected' : '') + '>' + (v ? fmt(v) + ' ouro' : 'Sem limite') + '</option>').join('');
-        const teto = [0, 100000, 500000, 1000000, 5000000, 10000000, 50000000];
-        if (wTeto && teto.indexOf(wTeto) < 0) teto.push(wTeto);
-        const optsT = teto.map((v) => '<option value="' + v + '"' + (v === wTeto ? ' selected' : '') + '>' + (v ? fmt(v) + ' ouro' : 'Sem limite') + '</option>').join('');
+      // CONFIG DIRETA (pedido do dono, 2026-10-20): o teste é com o jogador `srdog` e
+      // teto de 30.000. Os campos de dinheiro são `<input type=number>` livres — o select
+      // antigo só oferecia 100k/500k e não deixava escrever 30.000. O jogador entra por
+      // texto + botão (Enter também funciona) e sai pelo × do chip.
+      + '<p class="hint">Jogadores que você acompanha:</p>'
+      + chipsVendedores
+      + '<label class="campo">Adicionar jogador<input id="ap-watch-vendedor-add" type="text" autocomplete="off" spellcheck="false" placeholder="ex.: srdog"></label>'
+      // PEDIDO DO DONO 2026-10-20: ele pos `srdog` e a extensao comprou de OUTROS jogadores.
+      // O default passa a ser ESTRITO; esta opcao deixa escolher conscientemente a uniao.
+      + '<label class="campo">Comprar de<select id="ap-watch-filtro">'
+      +   '<option value="so"' + (String(cfgWatch.filtroVendedores || 'so') === 'so' ? ' selected' : '') + '>Só destes jogadores</option>'
+      +   '<option value="qualquer"' + (String(cfgWatch.filtroVendedores || 'so') === 'qualquer' ? ' selected' : '') + '>Qualquer jogador (itens da lista)</option>'
+      + '</select></label>'
+      + '<p class="hint"><b>Só destes jogadores</b>: se a lista tem nomes, nenhuma oferta de outro jogador é comprada. Se também escolheu itens, só compra esses itens deles.</p>'
+      + '<div class="acoes">' + acao('ap-watch-vendedor-ok', '＋ Adicionar jogador', 'Adiciona o nome escrito à lista de jogadores vigiados.', 'sec') + '</div>'
+      + '<label class="campo">Preço máximo por oferta (ouro)<input id="ap-watch-preco" type="number" min="0" step="1000" value="' + (wPreco || 0) + '" placeholder="0 = sem limite"></label>'
+      + '<label class="campo">Limite de gasto por compra (ouro)<input id="ap-watch-teto" type="number" min="0" step="1000" value="' + (wTeto || 0) + '" placeholder="0 = sem limite"></label>'
+      + '<p class="hint">0 = sem limite. Para o teste do <b>srdog</b>: 30000 nos dois campos. A deteção é no servidor; a compra só acontece quando você está no <b>Mercador</b> (Fonte).</p>'
+      + '<div class="acoes">' + acao('ap-watch-30k', '30.000 nos dois', 'Preenche preço máximo e limite de gasto com 30.000 ouro.', 'sec') + '</div>'
+      // PERCENTAGEM DO OURO ATUAL: escala com o ouro. 90 = pode gastar até 90% de AGORA.
+      + '<label class="campo">Gastar até (% do ouro atual)<input id="ap-watch-pct" type="number" min="0" max="100" step="5" value="' + wPct + '"></label>'
+      // PRIORIDADE e FILTROS: escolhidos pelo dono, aplicados em `casarOfertas`/ordenação.
+      + '<label class="campo">Priorizar<select id="ap-watch-prioridade">'
+      +   '<option value="tier"' + (wPrio === 'tier' ? ' selected' : '') + '>Qualidade/tier (melhor primeiro)</option>'
+      +   '<option value="refino"' + (wPrio === 'refino' ? ' selected' : '') + '>Refino (mais alto primeiro)</option>'
+      +   '<option value="preco"' + (wPrio === 'preco' ? ' selected' : '') + '>Preço (mais barato primeiro)</option>'
+      + '</select></label>'
+      + '<label class="campo">Qualidade mínima<select id="ap-watch-tier">'
+      +   '<option value=""' + (!wTierMin ? ' selected' : '') + '>Qualquer</option>'
+      +   ['C','B','A','S','SS'].map((q) => '<option value="' + q + '"' + (wTierMin === q ? ' selected' : '') + '>' + q + '</option>').join('')
+      + '</select></label>'
+      + '<label class="campo">Refino mínimo<select id="ap-watch-refino">'
+      +   [0,1,2,3,4,5].map((r) => '<option value="' + r + '"' + (wRefMin === r ? ' selected' : '') + '>' + (r ? '+' + r : 'Qualquer') + '</option>').join('')
+      + '</select></label>'
+      + '<label class="campo">Procurar<select id="ap-watch-cad">' + (function () {
         const cads = [2, 3, 5, 10, 30, 60];
         if (cads.indexOf(wCad) < 0) cads.push(wCad);
-        const optsC = cads.sort((a, b) => a - b).map((v) => '<option value="' + v + '"' + (v === wCad ? ' selected' : '') + '>a cada ' + v + ' s</option>').join('');
-        return '<label class="campo">Jogadores que você acompanha<select id="ap-watch-vendedores" multiple size="4">' + optsV + '</select></label>'
-          + '<label class="campo">Adicionar jogador (Enter)<input id="ap-watch-vendedor-add" type="text" autocomplete="off" spellcheck="false" placeholder="nome do jogador"></label>'
-          + '<label class="campo">Preço máximo por oferta<select id="ap-watch-preco">' + optsP + '</select></label>'
-          + '<label class="campo">Limite de gasto por compra<select id="ap-watch-teto">' + optsT + '</select></label>'
-          + '<label class="campo">Procurar<select id="ap-watch-cad">' + optsC + '</select></label>';
-      })()
+        return cads.sort((a, b) => a - b).map((v) => '<option value="' + v + '"' + (v === wCad ? ' selected' : '') + '>a cada ' + v + ' s</option>').join('');
+      })() + '</select></label>'
       + '<div id="ap-watch-out">' + wOut
         + (wUlt ? '<p class="hint">Última compra: ' + (wUlt.ok ? 'COMPROU ' + esc(wUlt.vendedor || '') + ' por ' + fmt(wUlt.preco) + ' ouro' : 'falhou — ' + esc(wUlt.motivo || '?')) + '.</p>' : '')
       + '</div>'
@@ -2766,7 +2899,7 @@
       watchItens = new Set(Array.isArray(cfgItens) ? cfgItens.map(String) : []);
     }
     const busca = (($('ap-watch-busca') || {}).value || '').toLowerCase();
-    const itens = metaItens().filter((i) => i && i.id && (!busca || String(i.nome || '').toLowerCase().indexOf(busca) >= 0));
+    const itens = ordenarItens(metaItens().filter((i) => i && i.id && (!busca || String(i.nome || '').toLowerCase().indexOf(busca) >= 0)));
     g.innerHTML = itens.length ? itens.map((i) => {
       const on = watchItens.has(String(i.base || i.id));
       return '<button class="wrow' + (on ? ' sel' : '') + '" data-witem="' + esc(i.base || i.id) + '">'
@@ -2945,7 +3078,8 @@
     setHtml('ap-manual-info', card('Atalhos para as ações manuais', 'o que fica em cada aba',
       '<p class="hint">Estas ações <b>não</b> são necessárias para o auto-play. Use só para forçar, medir ou corrigir.</p>'
       + '<div class="acoes">'
-      + '<button class="btn sec" id="ap-goto-itens">🧰 Itens, cofre e mercado</button>'
+      + '<button class="btn sec" id="ap-goto-itens">🧰 Itens e cofre</button>'
+      + '<button class="btn sec" id="ap-goto-mercado">💰 Mercado e Ornn</button>'
       + '<button class="btn sec" id="ap-goto-personagem">🧠 Habilidades e atributos</button>'
       + '</div>'
       + '<p class="hint">A lista completa de forçar/medir está logo abaixo.</p>'));
@@ -3012,6 +3146,41 @@
   }
 
   // ---------------------------------------------------------------- DISPATCH DE REDESENHO
+  /** REGRA DO DONO (2026-10-20): as acções de JOGO manuais (as que têm o selo `manual`, criadas
+   *  por `acaoD`) existem SÓ na aba Manual. Cada aba desenha-as no seu cartão; aqui são movidas
+   *  para `#ap-manual-dinamicas`, agrupadas pelo título do cartão de origem. Os handlers são
+   *  delegados por id, logo mover o nó não quebra o clique. A ação nova substitui a cópia velha
+   *  do mesmo id (evita duplicados quando a aba de origem volta a desenhar). */
+  function recolherAcoesManuais() {
+    const alvo = $('ap-manual-dinamicas'); if (!alvo) return;
+    const panes = Array.from(document.querySelectorAll('#lolidle-ap .pane')).filter((p) => p.id !== 'ap-t-manual');
+    for (const p of panes) {
+      for (const a of Array.from(p.querySelectorAll('.acao'))) {
+        if (!a.querySelector('.tagd')) continue;                 // só as manuais de JOGO
+        const btn = a.querySelector('button');
+        const id = btn && btn.id;
+        if (id) {
+          const velho = Array.from(alvo.querySelectorAll('button')).find((b) => b.id === id);
+          if (velho) {
+            const ga = velho.closest('.acao'); if (ga) ga.remove();
+          }
+        }
+        const cardEl = a.closest('.card');
+        const h3 = cardEl && cardEl.querySelector('h3');
+        const titulo = h3 ? String((h3.childNodes[0] && h3.childNodes[0].textContent) || h3.textContent || '').trim() : (p.id || 'Ações');
+        let grupo = Array.from(alvo.children).find((g) => g.dataset.titulo === titulo);
+        if (!grupo) {
+          grupo = document.createElement('div');
+          grupo.className = 'mgrupo'; grupo.dataset.titulo = titulo;
+          grupo.innerHTML = '<p class="diag-t">' + esc(titulo) + '</p><div class="acoes"></div>';
+          alvo.appendChild(grupo);
+        }
+        const grade = grupo.querySelector('.acoes');
+        if (grade) grade.appendChild(a); else grupo.appendChild(a);
+      }
+    }
+    Array.from(alvo.children).forEach((g) => { if (!g.querySelector('.acao')) g.remove(); });
+  }
   function renderTudo() {
     // O render NÃO depende de o painel estar aberto: ele corre no arranque e nos segundos
     // seguintes (ver o arranque). Um portão de cadência aqui deixaria os blocos no placeholder
@@ -3019,12 +3188,14 @@
     // a não fazer nada com o painel fechado).
     renderCabecalho();
     if (tabAtiva === 'painel') renderPainel();
-    else if (tabAtiva === 'itens') { renderBuildFase(); renderItens(); renderMercado(); }
+    else if (tabAtiva === 'itens') { renderBuildFase(); renderItens(); }
+    else if (tabAtiva === 'mercado') renderMercado();
     else if (tabAtiva === 'personagem') { renderSkills(); renderAtrib(); }
     else if (tabAtiva === 'ganhos') { renderFarm(); renderFarmModo(); renderFarmItens(); renderHist(); }
     else if (tabAtiva === 'historico') renderHistorico();
     else if (tabAtiva === 'pocao') renderPocao();
     else if (tabAtiva === 'manual') renderManual();
+    recolherAcoesManuais();
   }
   /** A aba 1 é um PAINEL DE CONTROLE: junta o "agora" (o que está acontecendo) com os switches.
    *  São dois desenhadores que escrevem em ids diferentes — juntam-se aqui em vez de reescrever
@@ -3034,7 +3205,7 @@
   // Cadência por aba: a do Painel acompanha o HUD (o content.js publica a vida a cada 1 s e
   // `estadoAgora()` tem cache de 2 s; o resto do painel lê caches de 10 s/15 s do motor). As abas
   // de relatório são mais lentas porque recalculam listas grandes.
-  const CADENCIA = { painel: 1500, itens: 8000, personagem: 3000, ganhos: 8000, historico: 15000, pocao: 3000, manual: 15000 };
+  const CADENCIA = { painel: 1500, itens: 8000, mercado: 5000, personagem: 3000, ganhos: 8000, historico: 15000, pocao: 3000, manual: 15000 };
   function tick() {
     if (!aberto) return;
     renderCabecalho();                                   // o cabeçalho é sempre o primeiro a saber
@@ -3272,7 +3443,7 @@
       const num2 = (s) => parseInt(String(s || '').replace(/\D/g, ''), 10) || 0;
       setHtml('ap-mk-ornn-out', ornnCache.length
         ? tabela(['item', 'chance', 'tentativas em média', 'custo por tentativa', 'custo esperado', 'peças'],
-          ornnCache.map((x) => '<tr><td>' + esc(x.nome || x.id) + '</td><td>' + esc(x.chance || '—') + '</td><td>' + (x.tentativasMedias || '—')
+          ordenarItens(ornnCache).map((x) => '<tr><td>' + esc(x.nome || x.id) + '</td><td>' + esc(x.chance || '—') + '</td><td>' + (x.tentativasMedias || '—')
             + '</td><td>' + fmt(num2(x.ouro)) + '</td><td>' + fmt(num2(x.ouro) * (x.tentativasMedias || 83)) + '</td><td>'
             + (x.pode ? '✔ você tem todas' : (x.comps || []).filter((c) => !c.tem).length + ' em falta') + '</td></tr>').join(''))
         : '<p class="aviso">O Ornn não tem receitas disponíveis agora.</p>');
@@ -3290,7 +3461,7 @@
       compraCache = { texto: txt };
       setHtml('ap-mk-compra-out', '<p class="aviso ok">' + txt + '</p>'
         + (dec.length ? tabela(['item', 'preço no mercado', 'o que fazer', 'espera'],
-          dec.map((x) => '<tr><td>' + esc(x.item || x.id) + '</td><td>' + (x.ofertaIdeal ? fmt(x.ofertaIdeal.menor) : 'sem oferta')
+          ordenarItens(dec).map((x) => '<tr><td>' + esc(x.item || x.id) + '</td><td>' + (x.ofertaIdeal ? fmt(x.ofertaIdeal.menor) : 'sem oferta')
             + '</td><td>' + esc(x.acao || '—') + '</td><td>' + (x.esperaMin == null ? '—' : x.esperaMin + ' min') + '</td></tr>')) : '')
         + '<p class="hint">O motor compara comprar já, comprar um substituto mais barato, ou continuar farmando. O ouro/min usado é o que você mediu, não um valor inventado.</p>');
       return { ok: true, msg: v.resumo ? String(v.resumo) : (v.motivo || 'calculado (veja a resposta na aba).') };
@@ -3537,6 +3708,7 @@
   const ACOES = {
     'ap-close': () => fechar(),
     'ap-goto-itens': () => setTab('itens'),
+    'ap-goto-mercado': () => setTab('mercado'),
     'ap-goto-personagem': () => setTab('personagem'),
     'ap-pin': (btn) => { fixado = !fixado; btn.classList.toggle('ativo', fixado); fb('info', fixado ? 'Painel FIXO: só fecha com o ✕ ou Esc.' : 'Painel solto: fica aberto até você fechar.'); },
     'ap-help': () => { renderAjuda(); const m = $('lolidle-ap-ajuda'); m.hidden = false; m.classList.add('on'); },
@@ -3797,12 +3969,28 @@
     'ap-cf-ok': () => fecharConfirmar(true),
     'ap-cf-não': () => fecharConfirmar(false),
     // WATCH picker: abrir/fechar e salvar
-    'ap-watch-add': () => { const pk = $('ap-watch-picker'); if (pk) pk.hidden = !pk.hidden; renderWatchGrade(); },
+    'ap-watch-add': () => { const pk = $('ap-watch-picker'); if (pk) { pk.hidden = false; if (pk.scrollIntoView) pk.scrollIntoView({ block: 'nearest' }); } renderWatchGrade(); },
     'ap-watch-ok': () => {
       const l = Array.from(watchItens || new Set());
       definirCfg({ mercadoWatch: novoWatch({ itens: l }) });
       fb('ok', 'Watch de itens: ' + (l.length ? l.map((b) => nomeItem(b)).join(', ') : 'vazia') + '.');
-      const pk = $('ap-watch-picker'); if (pk) pk.hidden = true;
+      ultimoRender = 0; renderMercado();
+    },
+    'ap-watch-30k': () => {
+      definirCfg({ mercadoWatch: novoWatch({ precoMax: 30000, tetoCompra: 30000 }) });
+      const a = $('ap-watch-preco'), b = $('ap-watch-teto');
+      if (a) a.value = '30000'; if (b) b.value = '30000';
+      fb('ok', 'Teto do teste: 30.000 ouro por oferta e por compra.');
+    },
+    'ap-watch-vendedor-ok': () => {
+      const inp = $('ap-watch-vendedor-add');
+      const nome = String((inp && inp.value) || '').trim();
+      if (!nome) { fbAviso('Escreve o nome do jogador (ex.: srdog).'); return; }
+      const atuais = ((cfg().mercadoWatch || {}).vendedores || []).slice();
+      if (atuais.indexOf(nome) < 0) atuais.push(nome);
+      definirCfg({ mercadoWatch: novoWatch({ vendedores: atuais }) });
+      if (inp) inp.value = '';
+      fb('ok', 'Jogador adicionado à watch: ' + nome + '.');
       ultimoRender = 0; renderMercado();
     },
   };
@@ -3883,7 +4071,6 @@
     'ap-min-vidaS': (el) => guardarMin('vidaS', el.value),
     'ap-at-modelo-sel': (el) => { definirCfg({ modeloAtrib: el.value }); fb('ok', 'Modelo de atributos: ' + el.value + '.'); },
     // ---- WATCH DO MERCADO (2026-10-18): itens, jogadores, limites e cadência ----
-    'ap-watch-ligado': (el) => { definirCfg({ autoVigiarMercado: !!el.checked }); fb('ok', 'Vigia do mercado: ' + (el.checked ? 'LIGADA.' : 'desligada — nenhuma oferta da watch é comprada.')); ultimoRender = 0; },
     'ap-watch-itens': (el) => { const l = listaWatch(el.value); definirCfg({ mercadoWatch: novoWatch({ itens: l }) }); fb('ok', 'Watch de itens: ' + (l.length ? l.join(', ') : 'vazia') + '.'); ultimoRender = 0; },
     'ap-watch-vendedores': (el) => {
       // <select multiple>: `el.value` só devolve a primeira opção. A lista completa está em
@@ -3893,8 +4080,29 @@
       fb('ok', 'Watch de jogadores: ' + (l.length ? l.join(', ') : 'vazia') + '.');
       ultimoRender = 0;
     },
+    'ap-watch-filtro': (el) => { const v = String(el.value) === 'qualquer' ? 'qualquer' : 'so'; definirCfg({ mercadoWatch: novoWatch({ filtroVendedores: v }) }); fb('ok', v === 'so' ? 'A vigia só compra dos jogadores da lista.' : 'A vigia compra os itens da lista de qualquer jogador, além dos jogadores listados.'); ultimoRender = 0; },
     'ap-watch-preco': (el) => { const v = Math.max(0, Number(el.value) || 0); definirCfg({ mercadoWatch: novoWatch({ precoMax: v > 0 ? v : null }) }); fb('ok', v > 0 ? 'Preço máximo por oferta: ' + fmt(v) + ' ouro.' : 'Sem limite de preço próprio (fica só a reserva de ouro).'); },
     'ap-watch-teto': (el) => { const v = Math.max(0, Number(el.value) || 0); definirCfg({ mercadoWatch: novoWatch({ tetoCompra: v > 0 ? v : null }) }); fb('ok', 'Limite de gasto por passagem: ' + (v > 0 ? fmt(v) + ' ouro' : 'sem limite') + '.'); },
+    'ap-watch-pct': (el) => {
+      const v = Math.max(0, Math.min(100, Number(el.value) || 0));
+      definirCfg({ mercadoWatch: novoWatch({ percentualOuro: v }) });
+      fb('ok', v > 0 ? 'Tecto de compra: até ' + v + '% do ouro ATUAL (escala com o ouro).' : 'Sem tecto por percentagem do ouro.');
+    },
+    'ap-watch-prioridade': (el) => {
+      const v = ['tier', 'refino', 'preco'].indexOf(String(el.value)) >= 0 ? String(el.value) : 'tier';
+      definirCfg({ mercadoWatch: novoWatch({ prioridade: v }) });
+      fb('ok', 'Prioridade da watch: ' + ({ tier: 'qualidade/tier', refino: 'refino mais alto', preco: 'mais barato' }[v]) + '.');
+    },
+    'ap-watch-tier': (el) => {
+      const v = String(el.value || '').toUpperCase();
+      definirCfg({ mercadoWatch: novoWatch({ tierMin: ['C', 'B', 'A', 'S', 'SS'].indexOf(v) >= 0 ? v : null }) });
+      fb('ok', v ? 'Qualidade mínima: ' + v + '.' : 'Qualidade mínima: qualquer.');
+    },
+    'ap-watch-refino': (el) => {
+      const v = Math.max(0, Math.min(5, Number(el.value) || 0));
+      definirCfg({ mercadoWatch: novoWatch({ refinoMin: v }) });
+      fb('ok', v ? 'Refino mínimo: +' + v + '.' : 'Refino mínimo: qualquer.');
+    },
     'ap-watch-cad': (el) => { const s = Math.max(2, Number(el.value) || 5); definirCfg({ mercadoWatch: novoWatch({ cadenciaMs: s * 1000 }) }); fb('ok', 'Cadência da vigia: ' + s + ' s.'); },
   };
 
@@ -3905,7 +4113,16 @@
       // remover um item escolhido (delegação: o contentor dos chips nasce só quando a aba Ganhos desenha)
       const rem = e.target.closest ? e.target.closest('[data-rem]') : null;
       if (rem && rem.dataset && painel.contains(rem)) { selItens.delete(String(rem.dataset.rem)); mudouEscolha(); return; }
-      // WATCH picker: remover um chip (×) ou marcar/desmarcar um item na grade
+      // WATCH picker: remover um chip (×) de ITEM ou de JOGADOR, ou marcar/desmarcar um item na grade
+      const wvend = e.target.closest ? e.target.closest('[data-wvend]') : null;
+      if (wvend && painel.contains(wvend)) {
+        const nome = String(wvend.dataset.wvend);
+        const atuais = ((cfg().mercadoWatch || {}).vendedores || []).filter((v) => v !== nome);
+        definirCfg({ mercadoWatch: novoWatch({ vendedores: atuais }) });
+        fb('ok', 'Jogador removido da watch: ' + nome + '.');
+        ultimoRender = 0; renderMercado();
+        return;
+      }
       const wrem = e.target.closest ? e.target.closest('[data-wrem]') : null;
       if (wrem && painel.contains(wrem)) {
         const b = String(wrem.dataset.wrem);
@@ -4067,7 +4284,7 @@
         if (ch[AGG_KEY]) aggStore = ch[AGG_KEY].newValue;
         // O MOTOR grava aqui o que leu (cofre/mercado): a GUI passa a mostrá-lo sem ninguém pedir.
         if (ch[COFRE_KEY]) { cofreStore = ch[COFRE_KEY].newValue; cacheLimpar('cofreLive'); if (aberto && tabAtiva === 'itens') renderCofre(); }
-        if (ch[OFERTAS_KEY]) { ofertasStore = ch[OFERTAS_KEY].newValue; if (aberto && tabAtiva === 'itens') renderMercado(); }
+        if (ch[OFERTAS_KEY]) { ofertasStore = ch[OFERTAS_KEY].newValue; if (aberto && tabAtiva === 'mercado') renderMercado(); }
         // ESTADO COMPLETO: o motor grava-o a cada 20 s; a GUI redesenha o retrato quando chega.
         if (ch[ESTADO_KEY]) { estadoStore = ch[ESTADO_KEY].newValue; if (aberto && tabAtiva === 'painel') renderAgora(); }
         if (ch[STORAGE_KEY]) config = ch[STORAGE_KEY].newValue;

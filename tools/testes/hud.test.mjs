@@ -692,6 +692,38 @@ export const suite = {
       t.check('H13: a fracao exposta e a do rank 4 (0,05 + 0,11 = 0,16)', Math.abs(dh.curaGiro.cura - 0.16) < 1e-9);
       t.check('H13: curaGiroS() devolve a cura/s do giro', kataCom(4).curaGiroS() > 0);
 
+      // --- H14: as adagas reduzem a recarga do E (motor.js:2283 `d.recargas.E *= 1 - P.shunpo`) ---
+      // Antes o modelo usava so `cdBase * (1 - cdr)` e o E saia subvalorizado sempre que ela
+      // pegava adagas. O kit abaixo tem P.shunpo/pegaCada e 3 skills de adaga rapidas: a oferta
+      // de adagas chega para cortar o Shunpo. O numero NAO e um alvo fixo: o teste so exige que
+      // a recarga efectiva seja MENOR que a base e nunca maior (reducao so ajuda).
+      const KIT_ADAGA = {
+        P: { curaBase: 0.05, voracidade: 1.5, voracidadeChefe: 5, shunpo: 0.5, pegaCada: 0.35 },
+        Q: { max: 10, recarga: [2], adaga: true },
+        W: { max: 10, recarga: [2], adaga: true },
+        E: { max: 10, base: [40], ratio: [0.3], recarga: [10] },
+        T: { max: 10, recarga: [2], adagas: 3 },
+      };
+      const kataAdaga = () => {
+        const m2 = criarMundo();
+        const a2 = carregarAutomation(m2);
+        alimentarCatalogo(m2);
+        definirCampeao(m2, 'katarina', { magia: true, semMana: true, adagas: true,
+          adBase: 58, adNivel: 3.4, kit: KIT_ADAGA });
+        a2.aplicarKit();          // o KAT do runtime vem daqui (nos testes ficava no KAT_FB)
+        m2.montar('#hab-ativas .hab[data-t]', [
+          m2.el({ label: 'Q', dataset: { t: 'Q' }, textContent: '10 / 10' }),
+          m2.el({ label: 'W', dataset: { t: 'W' }, textContent: '10 / 10' }),
+          m2.el({ label: 'E', dataset: { t: 'E' }, textContent: '10 / 10' }),
+          m2.el({ label: 'T', dataset: { t: 'T' }, textContent: '10 / 10' }),
+          m2.el({ label: 'D', dataset: { t: 'D' }, textContent: '1 / 10' }),
+        ]);
+        return a2;
+      };
+      const dE = kataAdaga().dpsPorHabilidade().habs.find((h) => h.t === 'E');
+      t.check('H14: o E le a reducao das adagas (cd efectivo < cdBase, motor.js:2283)',
+        !!dE && dE.cdBase === 10 && dE.cd > 0 && dE.cd < dE.cdBase);
+
       // --- O DEFEITO: a cura NAO entrava no avaliar (sobrevivencia / pocoes) ---
       // cenario: Katarina nv 29, um mob qualquer. Com e sem a cura do giro.
       const m = criarMundo();

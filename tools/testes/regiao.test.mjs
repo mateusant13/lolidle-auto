@@ -400,6 +400,13 @@ async function provaLog(t) {
   const waves = auto.analisarWaves();
   t.check('C: 3 linhas de loot contam 3 abates e a de caça offline nao conta (n===3, nao 4)',
     waves && waves.n === 3);
+  // O `scanLog()` do arranque tem de ABRIR o ciclo. O bug medido (2026-10-20) era
+  // `if (!farm.current && !naBase)` com `naBase` FUNCAO (sempre truthy -> nunca criava
+  // ciclo). Sem ciclo nao ha `fase`, logo o chefe nunca vira 'boss' e a ultimate nunca entra.
+  const fc = auto.getFarm();
+  t.check('C: o scanLog do arranque CRIA o ciclo da região (fase/chefe dependem dele)',
+    !!fc.current && /Fosso/.test(String(fc.current.region || '')) && fc.current.fase === 'mobs',
+    JSON.stringify(fc.current && { region: fc.current.region, fase: fc.current.fase }));
   t.check('C: as linhas com sufixo k/M entraram nos abates (sem o parser novo, n seria 0)',
     waves && waves.n > 0);
 }

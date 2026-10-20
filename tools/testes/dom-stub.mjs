@@ -158,6 +158,8 @@ export const SELETORES_CONHECIDOS = [
   // medido ao vivo: "Comprar no mercado" tambem e `.dialogo-ok`).
   '.dialogo-fundo .dialogo-ok',
   '.dialogo-fundo .dialogo-cancelar',
+  '.dialogo-fundo button, .dialogo-fundo .botao',
+  '.dialogo-fundo',
 ];
 
 export const PADROES_CONHECIDOS = [
@@ -189,6 +191,12 @@ const ESCOPADOS_CONHECIDOS = [
   // WATCH DO MERCADO (2026-10-18): queries escopadas ao cartao da oferta (jogo.js:2665-2670).
   /^\.mj-oferta$/, /^\.mj-vend b$/, /^\.preco$/,
   /^\.mj-oferta, article, li, div$/,
+  // MODAL DE CONFIRMACAO (dialogo.js) e filtros do mercado (jogo.js:2623-2643):
+  // clicarDialogo() tem de preferir o botao do modal; prepararFiltrosMercado() limpa os
+  // filtros que escondem a ficha da oferta.
+  /^#dialogo-titulo$/, /^\.dialogo-texto$/, /^\.dialogo-ok$/, /^\.dialogo-cancelar$/,
+  /^\[data-cat=""\]$/,
+  /^#mercado-(classe|moeda|qual|busca)$/,
 ];
 
 
