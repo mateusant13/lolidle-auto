@@ -16,6 +16,7 @@
  */
 
 import { criarMundo, carregarAutomation, alimentarCatalogo, definirCampeao, montarMochila } from './dom-stub.mjs';
+import { ITENS_DADOS } from '../../docs/game-src/itens.js';
 
 function montarEquip(m, slots) {
   const filhos = slots.map((s) => m.el({
@@ -88,5 +89,27 @@ export const suite = {
     pe = auto.planoEquipar(auto.scanBag(true));
     t.check('E5: CONTROLO - sem o campo, o Rabadon fraco tambem SAI (o resultado nao depende dele)',
       basesDe(pe.saem).indexOf('3089') >= 0);
+
+    /* E6 - PEÇA REAL: O REFINO/CONCRETO MANDA (defeito medido pelo dono, 2026-10-20).
+     * "me explica por que essa combinacao e melhor que encaixar o meu outro item tier A com
+     * refino mais 3" — a Coroa C estava equipada e o Ímpeto Cósmico A+3 na mochila. O
+     * `valorDeFase` comparava o CATÁLOGO BASE (70 AP / 15% CDR) e ignorava o +3/qualidade A:
+     * o Ímpeto REAL é 109,5 AP / 23,46% CDR / 547 de vida (motor.js:252; QUALIDADES e
+     * BONUS_REFINO). O planeador TEM de vestir a peça real, não a ficha base.
+     * A Katarina é sem mana (motor.js:470-474): os 600 de mana da Coroa não valem nada. */
+    const m2 = criarMundo();
+    const auto2 = carregarAutomation(m2);
+    alimentarCatalogo(m2, ITENS_DADOS);
+    definirCampeao(m2, 'katarina', { magia: true, distancia: false, papel: { dano: 1.3, recebido: 1 }, semMana: true });
+    montarEquip(m2, [
+      sl('3175+4~A', 'lendario'), sl('3089+2~B', 'lendario'), sl('3100~C', 'lendario'),
+      sl('3135+4~A', 'lendario'), sl('664644~C', 'lendario'),
+    ]);
+    montarMochila(m2, [sl('4629+3~A', 'lendario')]);
+    const pe6 = auto2.planoEquipar(auto2.scanBag(true));
+    t.check('E6: o Ímpeto A+3 da mochila ENTRA sobre a Coroa C', basesDe(pe6.entram).indexOf('4629') >= 0);
+    t.check('E6: a Coroa C SAI (peça real A+3 não é bloqueada pela histerese do conjunto)',
+      basesDe(pe6.saem).indexOf('664644') >= 0);
+    t.check('E6: o plano marca que há troca a fazer', pe6.mexe === true);
   },
 };

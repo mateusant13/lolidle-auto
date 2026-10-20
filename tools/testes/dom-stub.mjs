@@ -653,7 +653,7 @@ export function definirCampeao(mundo, id, over) {
     magia: over.magia != null ? !!over.magia : !!base.magia,
     distancia: over.distancia != null ? !!over.distancia : !!base.distancia,
     papel: over.papel || base.papel,
-    semMana: false, adagas: false, hemorragia: !!over.hemorragia,
+    semMana: over.semMana != null ? !!over.semMana : false, adagas: false, hemorragia: !!over.hemorragia,
   };
   mundo.montar(IMG_HAB_SEL, [mundo.el({ tag: 'img', label: 'hud-hab-img', attrs: { src: '/img/habilidades/' + id + '/q.png' } })]);
   const kits = {};

@@ -6368,22 +6368,47 @@ const CFG_VER = 2;
   }
 
   /** VALOR DE DECISÃO do item para o campeão ATUAL = a MATEMÁTICA dos status (pesos do perfil)
-   *  + a PASSIVA lida do motor + a SINERGIA com a build. NUNCA o `poder` do jogo, NUNCA
-   *  qualidade/refino como multiplicador — isso é número do motor, não medida. (REGRA DO DONO:
-   *  "nao poder, nunca".) `poderItem` ficou só como exibição legada no snapshot. */
-  function valorDe(base, ctx) { return valorDeFase(base, ctx, null); }
+   *  + a PASSIVA lida do motor + a SINERGIA com a build. NUNCA o `poder` comercial do jogo como
+   *  medida. A qualidade/refino NÃO é um número inventado: é a escala do MOTOR (motor.js:252) e
+   *  entra quando a peça concreta é conhecida (`peca`); sem peça, fica a ficha BASE do catálogo.
+   *  (REGRA DO DONO: "nao poder, nunca".) `poderItem` ficou só como exibição legada no snapshot. */
+  function valorDe(base, ctx, peca) { return valorDeFase(base, ctx, null, peca); }
   /** A MESMA conta do `valorDe`, mas com os PESOS DA FASE (mob × chefe). `fase` null/ausente =
-   *  exactamente o `valorDe` de sempre (mesma ordem de operações: nenhum teste muda de número). */
-  function valorDeFase(base, ctx, fase) {
+   *  exactamente o `valorDe` de sempre (mesma ordem de operações: nenhum teste muda de número).
+   *
+   *  `peca` (opcional) = a INSTÂNCIA concreta `{ qual, refino }`. Sem ela, a conta continua a usar
+   *  o catálogo BASE — que é o que os chamadores antigos esperam. COM ela, usa `statsDePeca`, a
+   *  MESMA escala do motor (motor.js:252: `(1 + 0,12*ref) * QUALIDADES[qual].mult`).
+   *  DEFEITO MEDIDO (dono, 2026-10-20): o planeador comparava `4629+3~A` pelo `4629` base
+   *  (70 AP / 15% CDR) e mantinha uma Coroa C. A peça real é 109,5 AP / 23,46% CDR / 547 de vida;
+   *  a ficha base escondia o ganho. O `statsDePeca` já traz o CDR do TEXTO escalado — por isso o
+   *  termo de texto correspondente é DESCONTADO da passiva para não contar duas vezes. */
+  function valorDeFase(base, ctx, fase, peca) {
     const it = (META.itens || []).find((x) => String(x.id) === String(base));
     if (!it) return 0;
     const c = META.champAtual || {};
     const perfil = perfilDe(c);
     const w = fase ? pesosItemFase(perfil, fase) : pesosItem(perfil);
-    const stats = (it.ad || 0) * w.ad + (it.ap || 0) * w.ap + (it.va || 0) * w.va + (it.critico || 0) * w.critico + (it.rv || 0) * w.rv
-      + (it.vida || 0) * w.vida + (it.armadura || 0) * w.armadura + (it.rm || 0) * w.rm
-      + (it.cdr || 0) * w.cdr + (it.penMag || 0) * w.penMag + (it.mana || 0) * w.mana + (it.regen || 0) * w.regen;
-    const ofensivo = (it.ad || 0) + (it.ap || 0) + (it.va || 0) + (it.critico || 0) + (it.rv || 0) + (it.cdr || 0) + (it.penMag || 0);
+    // Katarina/Zac (motor.js:470-474): sem mana, mana de item NÃO vale nada. Antes os 600 da
+    // Coroa entravam com peso 0,03 e ajudavam a mantê-la vestida.
+    if (c.semMana) w.mana = 0;
+    const S = peca ? statsDePeca(base, peca.qual, peca.refino) : null;
+    const ad = S ? (S.ad || 0) : (it.ad || 0);
+    const ap = S ? (S.ap || 0) : (it.ap || 0);
+    const va = S ? (S.va || 0) : (it.va || 0);
+    const critico = S ? (S.critico || 0) : (it.critico || 0);
+    const rv = S ? (S.rv || 0) : (it.rv || 0);
+    const vida = S ? (S.vida || 0) : (it.vida || 0);
+    const armadura = S ? (S.armadura || 0) : (it.armadura || 0);
+    const rm = S ? (S.rm || 0) : (it.rm || 0);
+    const cdr = S ? (S.cdr || 0) : (it.cdr || 0);
+    const penMag = S ? (S.penMag || 0) : (it.penMag || 0);
+    const mana = S ? (S.mana || 0) : (it.mana || 0);
+    const regen = S ? (S.regen || 0) : (it.regen || 0);
+    const stats = ad * w.ad + ap * w.ap + va * w.va + critico * w.critico + rv * w.rv
+      + vida * w.vida + armadura * w.armadura + rm * w.rm
+      + cdr * w.cdr + penMag * w.penMag + mana * w.mana + regen * w.regen;
+    const ofensivo = ad + ap + va + critico + rv + cdr + penMag;
     const multDef = (perfil !== 'tanque' && ofensivo === 0) ? 0.3 : 1;
     const cl = classeItem(base);
     const multClasse = cl === 'neutro' ? 1 : (cl === (c.magia ? 'ap' : 'ad') ? 1 : pesoClasseOposta());
@@ -6415,7 +6440,22 @@ const CFG_VER = 2;
     // motor.js:1214). NÃO leva `multEsp` (a classe já é coberta por `multClasse`). O `bonus`
     // de fase também JÁ NÃO multiplica os stats: ele descreve a MECÂNICA do item (a passiva),
     // não a soma de stats. Com `fase` nula o `bonus` é 1 e tudo isto colapsa no antigo.
-    const vPassiva = valorPassiva(base) * (fase ? bonusItemFase(base, fase) : 1);
+    let vPassiva = valorPassiva(base) * (fase ? bonusItemFase(base, fase) : 1);
+    if (S) {
+      const nTxt = (m) => parseFloat(String(m[1]).replace(/\./g, '').replace(',', '.'));
+      const bonus = fase ? bonusItemFase(base, fase) : 1;
+      const ef = String(it.efeito || '');
+      // O `statsDePeca` já leu e ESCALOU o CDR do texto (motor.js:254-255 inclui `cdr`).
+      if (it.cdr == null) {
+        const mm = ef.match(/[\u2212-]([\d,]+)%\s*na recarga/i);
+        if (mm) vPassiva -= nTxt(mm) * 6 * bonus;
+      }
+      // Idem para a pen mágica: o `statsDePeca` já a leu do texto (e NÃO a escala, motor.js:254-255).
+      if (it.penMag == null) {
+        const mm2 = ef.match(/([\d,]+)%\s*de\s*penetra[çc][ãa]o\s*m[áa]gica/i);
+        if (mm2) vPassiva -= nTxt(mm2) * (c.magia ? 7 : 1) * bonus;
+      }
+    }
     const v = ((stats * multDef + sinergiaDe(base, ctx)) * multEsp + vPassiva) * multClasse * multRar;
     return v;
   }
@@ -6457,7 +6497,7 @@ const CFG_VER = 2;
     // por ser "de degrau superior" — o que não é o que o dono pediu. Fora desse caso, manda o
     // `valorDe` (que já tem o termo de raridade lá dentro).
     if (basA !== basB && ehUsavelPeloCampeao(a.base) && ehUsavelPeloCampeao(b.base)) return basA ? 1 : -1;
-    return (valorDe(b.base, ctx) - valorDe(a.base, ctx)) || (String(a.base) < String(b.base) ? -1 : 1);
+    return (valorDe(b.base, ctx, b) - valorDe(a.base, ctx, a)) || (String(a.base) < String(b.base) ? -1 : 1);
   }
   /** O MESMO comparador, com os pesos da FASE (mob × chefe). `fase` null = `cmpEquip` de sempre.
    *  A RESTRIÇÃO DURA de raridade continua a vir PRIMEIRO (é regra do dono, não peso). */
@@ -6466,7 +6506,7 @@ const CFG_VER = 2;
     const rarA = rarIdx(rarDe(a.base)), rarB = rarIdx(rarDe(b.base));
     const basA = rarA === 0, basB = rarB === 0;
     if (basA !== basB && ehUsavelPeloCampeao(a.base) && ehUsavelPeloCampeao(b.base)) return basA ? 1 : -1;
-    return (valorDeFase(b.base, ctx, fase) - valorDeFase(a.base, ctx, fase)) || (String(a.base) < String(b.base) ? -1 : 1);
+    return (valorDeFase(b.base, ctx, fase, b) - valorDeFase(a.base, ctx, fase, a)) || (String(a.base) < String(b.base) ? -1 : 1);
   }
   /** ESCOLHE O CONJUNTO (1 BOTA + até 4) de um POOL — a MESMA regra para o alvo de agora, para o
    *  alvo das 4 fontes e para a build teórica. Regra do motor: motor.js:29 `ESPACOS_ITENS = 4`
@@ -6540,9 +6580,25 @@ const CFG_VER = 2;
     const eqBase = new Set(eqAtual.map((e) => String(e.base)));
     const entram = alvo.filter((i) => !eqBase.has(i.base) && !i.equipado);
     const saem = eqAtual.filter((e) => !alvoBase.has(String(e.base)));
-    const soma = (arr) => arr.reduce((s, i) => s + valorDeFase(i.base, ctxValor, f), 0);
+    const soma = (arr) => arr.reduce((s, i) => s + valorDeFase(i.base, ctxValor, f, i), 0);
     const pAlvo = soma(alvo), pAtual = soma(eqAtual);
     const ganho = pAtual > 0 ? pAlvo / pAtual : Infinity;
+    // GANHO POR PEÇA (defeito medido pelo dono, 2026-10-20). O `ganho` do CONJUNTO divide a
+    // melhoria de UM slot por 5 itens: o Ímpeto A+3 valia +7,7% sobre a Coroa C, mas o conjunto
+    // só subia ~1,5% e a histerese de 5% deixava a peça melhor na mochila. Aqui o rácio é o do
+    // SLOT: valor do que entra / valor do pior que sai na MESMA categoria (bota com bota, resto
+    // com resto). `pAlvo >= pAtual` impede que um ganho local faça o conjunto piorar.
+    const valorPeca = (i) => valorDeFase(i.base, ctxValor, f, i);
+    const ganhoSlot = entram.length && saem.length
+      ? Math.min(...entram.map((i) => {
+          const cat = espacoDoItem(i.base) === 'botas';
+          const sai = saem.filter((e) => (espacoDoItem(e.base) === 'botas') === cat)
+            .map(valorPeca).sort((x, y) => x - y)[0];
+          if (sai == null) return Infinity;
+          const vi = valorPeca(i);
+          return sai > 0 ? vi / sai : Infinity;
+        }))
+      : (entram.length ? Infinity : 1);
     // RESTRIÇÃO DURA DE RARIDADE: o item que entra é de degrau superior ao do equipado que ele
     // desloca? (desloca o PIOR da mesma categoria — bota com bota, resto com resto) */
     const piorQueSai = (cat) => saem.filter((e) => (espacoDoItem(e.base) === 'botas') === cat)
@@ -6571,7 +6627,8 @@ const CFG_VER = 2;
     const trocaEspecial = entram.some((i) => ehEspecialMeu(i.base) && !entraEmDegrade(i));
     const faltaSlot = alvo.length > eqAtual.length;
     const histerese = (cfg.equipHisterese != null ? cfg.equipHisterese : 1.05);
-    const mexe = faltaSlot || trocaRaridade || trocaEspecial || ganho >= histerese;
+    const mexe = faltaSlot || trocaRaridade || trocaEspecial || ganho >= histerese
+      || (ganhoSlot >= histerese && pAlvo >= pAtual);
     // ---- AS QUATRO FONTES (equipado · mochila · mercado · cofre) ----------------------------
     // O "alvo de agora" (`alvo`) só pode vestir o que está EQUIPADO ou na MOCHILA (é o que o
     // `aplicarItens` alcança). `alvoTotal` é o melhor conjunto ALCANÇÁVEL com as quatro fontes
@@ -6580,7 +6637,7 @@ const CFG_VER = 2;
     // função continua exactamente como era.
     let fontes = null, alvoTotal = null, buscar = [], faltamTotal = [];
     try { const q = alvoQuatroFontes(f); fontes = q.fontes; alvoTotal = q.alvoTotal; buscar = q.buscar; faltamTotal = q.faltamTotal; } catch { /* sem DOM */ }
-    return { alvo, atual: eqAtual, entram, saem, pAlvo, pAtual, ganho, trocaRaridade, trocaEspecial, faltaSlot, mexe, ctxValor, histerese, fase: f, fontes, alvoTotal, buscar, faltamTotal };
+    return { alvo, atual: eqAtual, entram, saem, pAlvo, pAtual, ganho, ganhoSlot, trocaRaridade, trocaEspecial, faltaSlot, mexe, ctxValor, histerese, fase: f, fontes, alvoTotal, buscar, faltamTotal };
   }
   /** O que o PLANEADOR precisa para marcar EQUIPAR — e só isso. SEM equipamento lido
    *  (DOM ausente, ex.: o banco de testes) devolve VAZIO: a regra do dono é "um épico
