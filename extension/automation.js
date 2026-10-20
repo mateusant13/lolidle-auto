@@ -4550,16 +4550,72 @@ const CFG_VER = 2;
   const NPCS_DO_COFRE = ['Tesoureira de Piltover', 'Burrinho de Carga'];
   /** Há NPC do cofre em `#npcs` AGORA? (só olha; quem clica é o `clicarNpcDoCofre`) */
   const npcCofreNoDom = () => NPCS_DO_COFRE.some((n) => !!q1(`#npcs button[data-npc="${n}"]`));
-  /** Clica no NPC do cofre que estiver em `#npcs` e devolve o nome dele (ou null). */
-  function clicarNpcDoCofre() { for (const n of NPCS_DO_COFRE) if (clickNPC(n)) return n; return null; }
-  /** Espera o NPC do cofre aparecer em `#npcs` — a lista vem do servidor, chega uns ms depois de andar.
-   *  O tecto e em TENTATIVAS (nao em relogio): 12 x 180 ms ~ 2,2 s no jogo e INSTANTANEO no banco de
-   *  testes (o stub resolve os setTimeout em microtask), para o banco nao esperar 2 s por assercao. */
+  /** Nome do NPC no diálogo ABERTO (`#janela-npc`), ou null. O jogo escreve o nome em
+   *  `#npc-titulo` (`jogo.js:5513`) e só mostra a janela depois de chegar ao NPC. */
+  function npcConversaAtual() {
+    const j = q1('#janela-npc');
+    if (!j || j.hidden) return null;
+    const t = q1('#npc-titulo');
+    return (t && t.textContent ? t.textContent : '').trim() || null;
+  }
+  function fecharConversaNpc() { const b = q1('#janela-npc [data-fechar]'); if (b) b.click(); else { const j = q1('#janela-npc'); if (j) j.hidden = true; } }
+  /** Clica no NPC na TELA. Na Fonte e nas cidades o jogo NÃO usa `#npcs` (`jogo.js:7025`:
+   *  `$('#npcs').hidden = true` — "nas cidades e na Fonte, clica-se no NPC na tela"), e os
+   *  botões estáticos de `#npcs` nem têm a Tesoureira/Burrinho (`jogar.html:181-187`). O clique
+   *  no canvas cai em `comandoNaFonte` -> `cena.clicar` -> `falarCom` (`jogo.js:472-477`), que
+   *  anda até ao NPC e abre `#janela-npc`. Os candidatos são o próprio tile (o sprite do NPC
+   *  ocupa `y` e `y+1`, `cena.js:493`) e os 8 vizinhos — o boneco chega ao lado dela. */
+  async function clicarNpcNaTela(nome, tentativas = 1) {
+    if (!naBase()) return false;
+    if (npcConversaAtual() === nome) return true;
+    if (npcConversaAtual()) { fecharConversaNpc(); await esperar(180); }
+    const cv = q1('#tela');
+    if (!cv) return false;
+    const r = (typeof cv.getBoundingClientRect === 'function') ? cv.getBoundingClientRect() : null;
+    if (!r || !(r.width > 0) || !(r.height > 0)) return false;
+    const pxTile = r.height / VIS_A_JOGO;
+    const x0 = r.left + r.width / 2, y0 = r.top + r.height / 2;
+    // O sprite do NPC ocupa `y` e `y+1` (`cena.js:493`), logo o tile do boneco também pode
+    // estar em cima/baixo/lado. Dois destinos de 4 podem deixar o boneco em `(CX, CY-6)`,
+    // com a Tesoureira em `(CX-1, CY-5)` — o candidato BAIXO-ESQUERDA é o que a apanha.
+    const candidatos = [[0, 0], [-1, 0], [1, 0], [0, -1], [-1, -1], [1, -1], [0, 1], [-1, 1], [1, 1], [-2, 0], [2, 0], [0, -2]];
+    for (let volta = 0; volta < Math.max(1, tentativas); volta++) {
+      for (const [dx, dy] of candidatos) {
+        const x = x0 + dx * pxTile, y = y0 + dy * pxTile;
+        if (x < r.left + 1 || x > r.left + r.width - 1 || y < r.top + 1 || y > r.top + r.height - 1) continue;
+        try { cv.dispatchEvent(eventoRato('mousedown', { button: 2, clientX: x, clientY: y })); }
+        catch { continue; }
+        // O `falarCom` pode ANDAR até ao NPC antes de abrir a janela (jogo.js:5443); 700 ms
+        // chega para o caso adjacente e evita disparar o candidato seguinte a meio do caminho.
+        for (let i = 0; i < 6; i++) {
+          await esperar(120);
+          const atual = npcConversaAtual();
+          if (atual === nome) return true;
+          if (atual) { fecharConversaNpc(); await esperar(120); break; }
+        }
+      }
+    }
+    return false;
+  }
+  /** Clica no NPC do cofre: primeiro os botões estáticos de `#npcs` (Lojista/Soraka/etc. e o
+   *  fixture das cidades), depois o canvas na Fonte — onde a Tesoureira só existe no canvas.
+   *  `opts.tela === false` permite ao chamador fazer a subida antes de tentar o canvas. */
+  async function clicarNpcDoCofre(opts = {}) {
+    for (const n of NPCS_DO_COFRE) if (clickNPC(n)) return n;
+    if (opts.tela !== false) for (const n of NPCS_DO_COFRE) if (await clicarNpcNaTela(n)) return n;
+    return null;
+  }
+  /** Espera o NPC do cofre: tenta o canvas uma vez e depois POLA o diálogo (o `falarCom` anda
+   *  até ao NPC; a janela abre ao chegar). O tecto é em TENTATIVAS (12 x 180 ms ~ 2,2 s no
+   *  jogo e instantâneo no banco, onde o stub resolve os setTimeout em microtask). */
   async function esperarNpcDoCofre(tentativas = 12, passo = 180) {
+    const via = await clicarNpcDoCofre();
+    if (via) return via;
     for (let i = 0; i < tentativas; i++) {
-      const via = clicarNpcDoCofre();
-      if (via) return via;
       await esperar(passo);
+      const atual = npcConversaAtual();
+      if (atual && NPCS_DO_COFRE.includes(atual)) return atual;
+      if (atual) fecharConversaNpc();
     }
     return null;
   }
@@ -4586,19 +4642,26 @@ const CFG_VER = 2;
   async function abrirCofreTesoureira() {
     if (document.querySelector('.cofre-slot[data-k]')) return { ok: true, ja: true };
     fecharJanelas(); await humano(250);
-    let via = clicarNpcDoCofre();
+    // Em Runeterra/cidade o Burrinho pode estar num botão de `#npcs` (fixture) — tenta já.
+    // Na Fonte os botões estáticos NÃO têm a Tesoureira; procurar no canvas ANTES de subir
+    // faria o boneco andar para trás. Primeiro sobe os dois destinos, depois clica na tela.
+    let via = await clicarNpcDoCofre({ tela: false });
     let subiu = 0, motivoSubida = null;
-    for (let t = 0; !via && t < COFRE_TENTATIVAS_SUBIDA; t++) {
-      if (!naBase()) break;      // CIDADE: o Burrinho está onde o boneco está — não se anda às cegas (caso antigo intacto)
-      const sub = await subirNaFonte(COFRE_TILES_ACIMA, { ate: npcCofreNoDom });
-      if (!sub.ok) { motivoSubida = sub.motivo || 'nao consegui andar no chao'; break; }
-      subiu += sub.tiles || 0;
-      via = await esperarNpcDoCofre();       // procura o NPC SÓ DEPOIS de subir (12 x 180 ms ~ 2,2 s)
+    if (!via && naBase()) {
+      for (let t = 0; t < COFRE_TENTATIVAS_SUBIDA; t++) {
+        const sub = await subirNaFonte(COFRE_TILES_ACIMA);
+        if (!sub.ok) { motivoSubida = sub.motivo || 'nao consegui andar no chao'; break; }
+        subiu += sub.tiles || 0;
+        await humano(180);                    // deixa o `cena.andarPara` assentar antes do próximo
+      }
+      if (subiu > 0) via = await esperarNpcDoCofre();
+    } else if (!via) {
+      via = await esperarNpcDoCofre();        // cidade/fora da Fonte: só o DOM, sem andar às cegas
     }
     if (!via) {
       // MOTIVO VERDADEIRO (antes era sempre o genérico, que escondia a causa real na Fonte)
       return { ok: false, subiu, motivo: subiu
-        ? `subi ${subiu} tiles na Fonte e a Tesoureira nao apareceu em #npcs`
+        ? `subi ${subiu} tiles na Fonte e a Tesoureira nao abriu o dialogo`
         : (motivoSubida ? 'nao cheguei a Tesoureira: ' + motivoSubida : 'sem Tesoureira/Burrinho aqui (cofre abre na Fonte ou na cidade)') };
     }
     const btn = await waitFor('#janela-npc [data-palavra="cofre"]', 5000);

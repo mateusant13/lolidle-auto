@@ -48,6 +48,15 @@ function botaoNpc(m, nome, label) {
   m.montar('#npcs button[data-npc="' + nome + '"]', [b]);
   return b;
 }
+/** O jogo real NÃO põe a Tesoureira em `#npcs` (`jogo.js:7025`: `#npcs` fica oculto na Fonte e
+ *  nas cidades; os botões estáticos de `jogar.html:181-187` nem a têm). Ela abre quando se clica
+ *  no canvas em cima dela: `comandoNaFonte` -> `cena.clicar` -> `falarCom` (`jogo.js:472-477`) e
+ *  `abrirConversa` escreve o nome em `#npc-titulo` (`jogo.js:5513`). Este fixture simula isso. */
+function abrirDialogoNpc(m, nome) {
+  m.montar('#janela-npc', [m.el({ tag: 'section', label: 'janela-npc', className: 'janela', hidden: false })]);
+  m.montar('#npc-titulo', [m.el({ tag: 'span', label: 'npc-titulo', textContent: nome })]);
+  montarDialogoCofre(m, nome);
+}
 const soDireito = (evs) => evs.every((e) => e.tipo === 'mousedown' && e.button === 2);
 
 /** Slot de cofre no formato do jogo (jogo.js:5598 `grade`): `data-k`, `data-nome` ("Nome [QUAL]")
@@ -167,22 +176,35 @@ export const suite = {
       t.check('C2: ...e nao clica no canvas', m.eventosDe('tela').length === 0);
     }
 
-    /* ============ C3 - O DEFEITO: na FONTE a Tesoureira so aparece depois de SUBIR ============ */
+    /* ============ C3 - O DEFEITO: na FONTE a Tesoureira NÃO está em #npcs ============ */
     {
       const m = criarMundo();
       const auto = carregarAutomation(m);
       montarLocal(m, 'Fonte');
       const tela = montarTela(m, 480, 352);
-      // o servidor so poe a Tesoureira em #npcs DEPOIS de o boneco andar (é o defeito medido):
+      // PROVA da fonte: `#npcs` pode até ter sido montado — na Fonte ele está OCULTO e não tem
+      // a Tesoureira (`jogo.js:7025`, `jogar.html:181-187`). O NPC só abre por clique no CANVAS,
+      // uma vez adjacente: depois das duas subidas (y=48), o tile à ESQUERDA do boneco é o dela.
+      m.montar('#npcs', [m.el({ tag: 'div', label: 'npcs', hidden: true })]);
       const original = tela.dispatchEvent;
-      tela.dispatchEvent = (ev) => { original(ev); botaoNpc(m, 'Tesoureira de Piltover', 'npc-tesoureira'); return true; };
+      tela.dispatchEvent = (ev) => {
+        original(ev);
+        const subidas = m.eventosDe('tela').filter((e) => e.clientY === 48).length;
+        if (subidas >= 2 && ev.clientX === 208 && ev.clientY === 176) abrirDialogoNpc(m, 'Tesoureira de Piltover');
+        return true;
+      };
       const r = await auto.abrirCofreTesoureira();
+      const evs = m.eventosDe('tela');
       t.check('C3: o cofre ABRIU (antes: motivo generico, nunca abria na Fonte)', r.ok === true);
       t.check('C3: abriu pela Tesoureira de Piltover', r.via === 'Tesoureira de Piltover');
-      t.check('C3: CONTROLO - um clique de destino de 4 tiles e parou (a Tesoureira apareceu)',
-        r.subiu === 4 && m.eventosDe('tela').length === 1);
-      t.check('C3: CONTROLO - o clique no NPC e na palavra "cofre" aconteceram de verdade',
-        m.cliqueDe('npc-tesoureira') === true && m.cliqueDe('palavra-cofre') === true);
+      t.check('C3: CONTROLO - duas subidas de 4 tiles = 8 (CY+3 -> CY-5)',
+        r.subiu === 8 && evs.filter((e) => e.clientY === 48).length === 2);
+      t.check('C3: CONTROLO - clicou no NPC à ESQUERDA do boneco (1 tile) no canvas',
+        evs.some((e) => e.clientX === 208 && e.clientY === 176));
+      t.check('C3: CONTROLO - a palavra "cofre" foi clicada de verdade',
+        m.cliqueDe('palavra-cofre') === true);
+      t.check('C3: nenhum botão de #npcs foi usado para a Tesoureira',
+        m.cliqueDe('npc-tesoureira') !== true);
     }
 
     /* ============ C4 - CIDADE: o Burrinho abre o cofre SEM andar 1 tile (caminho antigo intacto) ============ */
@@ -224,9 +246,11 @@ export const suite = {
       // Dois DESTINOS de 4 tiles (o "duas vezes" do dono) deixam o `cena.andarPara` contornar o
       // chafariz; o antigo 1-clique-por-tile ficava preso e nunca a revelava.
       t.check('C6: o motivo e o VERDADEIRO, nao o generico antigo',
-        r.motivo === 'subi 8 tiles na Fonte e a Tesoureira nao apareceu em #npcs');
+        r.motivo === 'subi 8 tiles na Fonte e a Tesoureira nao abriu o dialogo');
       t.check('C6: CONTROLO - tentou mesmo andar: 2 destinos de 4 tiles = 8 tiles (2 cliques no canvas)',
-        evs.length === 2 && r.subiu === 8 && soDireito(evs));
+        evs.filter((e) => e.clientY === 48).length === 2 && r.subiu === 8 && soDireito(evs));
+      t.check('C6: CONTROLO - depois de subir, procurou a Tesoureira no CANVAS (não em #npcs)',
+        evs.length > 2 && evs.some((e) => e.clientY === 176));
       // GUARDA (2026-10-14): o 1.º parametro de esperarNpcDoCofre sao TENTATIVAS, nao ms. Com um
       // "2000" colado ali (como no tempo em ms) o jogo ficaria 2000 x 180 ms ~ 6 MINUTOS a esperar.
       const procuras = m.estado.queries.filter((q) => q.sel === '#npcs button[data-npc="Tesoureira de Piltover"]').length;

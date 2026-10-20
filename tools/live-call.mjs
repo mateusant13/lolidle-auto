@@ -28,8 +28,13 @@ const CONTAS = {
 const CFG = CONTAS[CONTA];
 if (!CFG) { console.error('conta desconhecida: ' + CONTA); process.exit(2); }
 
+const TARGET = arg('--target');
 const list = await (await fetch(CFG.list)).json();
-const page = list.find((t) => t.type === 'page' && /lolidle/.test(t.url || ''));
+// --target: fixa a aba da SONDA. Sem isto, com uma aba do jogo aberta pelo dono, o
+// `find` apanhava a primeira e a prova mexia na aba errada (privacidade/REGRA 11).
+const page = TARGET
+  ? list.find((t) => t.id === TARGET)
+  : list.find((t) => t.type === 'page' && /lolidle/.test(t.url || ''));
 if (!page) { console.error('sem aba do jogo na conta ' + CONTA); process.exit(1); }
 const cdpUrl = CFG.cdp || (await (await fetch('http://127.0.0.1:' + CFG.port + '/json/version')).json()).webSocketDebuggerUrl;
 

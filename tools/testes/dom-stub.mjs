@@ -69,6 +69,8 @@ export const SELETORES_CONHECIDOS = [
   '#marcadores .marcador[data-local]',
   // NPC / lojista / base
   '#npcs',
+  '#janela-npc',
+  '#npc-titulo',
   '#janela-npc [data-palavra="vender"]',
   '#janela-npc [data-palavra="comprar"]',
   '#janela-npc [data-palavra="sim"]',
