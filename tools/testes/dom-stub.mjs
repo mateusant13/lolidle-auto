@@ -153,6 +153,11 @@ export const SELETORES_CONHECIDOS = [
   '#buff-barao-t',
   '#hud-xpb-txt',
   '#hud-bolsa-n',
+  // DIALOGOS DO JOGO (dialogo.js): `avisar` so tem `.dialogo-ok` (seguro fechar);
+  // `confirmar` tem tambem `.dialogo-cancelar` (NUNCA aceitar automaticamente -
+  // medido ao vivo: "Comprar no mercado" tambem e `.dialogo-ok`).
+  '.dialogo-fundo .dialogo-ok',
+  '.dialogo-fundo .dialogo-cancelar',
 ];
 
 export const PADROES_CONHECIDOS = [

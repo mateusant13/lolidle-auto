@@ -4559,6 +4559,87 @@ const CFG_VER = 2;
     return (t && t.textContent ? t.textContent : '').trim() || null;
   }
   function fecharConversaNpc() { const b = q1('#janela-npc [data-fechar]'); if (b) b.click(); else { const j = q1('#janela-npc'); if (j) j.hidden = true; } }
+  /** Posicao do boneco e camera, lidas do motor por `inject.js` e guardadas em `_estadoVivo`.
+   *  `null` = o inject ainda nao publicou (nao se inventa posicao). */
+  function posicaoViva() {
+    const e = _estadoVivo;
+    return e && e.pos && Number.isFinite(e.pos.x) && Number.isFinite(e.pos.y) ? e.pos : null;
+  }
+  function camViva() {
+    const e = _estadoVivo;
+    return e && e.cam && Number.isFinite(e.cam.x) && Number.isFinite(e.cam.y) ? e.cam : null;
+  }
+  /** NPC do mapa (mundo.js) pelo nome - posicao REAL, nao um tile suposto. */
+  function npcVivo(nomes) {
+    const e = _estadoVivo;
+    if (!e || !Array.isArray(e.npcs)) return null;
+    return e.npcs.find((n) => nomes.includes(n.nome) && Number.isFinite(n.x) && Number.isFinite(n.y)) || null;
+  }
+  /** Fecha um aviso (`avisar`: so tem `.dialogo-ok`) sem NUNCA aceitar uma confirmacao
+   *  (`confirmar`: tem `.dialogo-cancelar`). Isto e o que impede o auto-play de comprar
+   *  um item de 100k ao clicar "Comprar" que tambem e `.dialogo-ok` (medido ao vivo). */
+  function fecharAvisoSeguro() {
+    const ok = q1('.dialogo-fundo .dialogo-ok');
+    if (!ok) return false;
+    if (q1('.dialogo-fundo .dialogo-cancelar')) return false;
+    ok.click();
+    return true;
+  }
+  /** Cancela uma confirmacao pendente (compra/venda/etc.) - NUNCA clica no OK. */
+  function cancelarConfirmacaoPendente() {
+    const b = q1('.dialogo-fundo .dialogo-cancelar');
+    if (!b) return false;
+    b.click();
+    return true;
+  }
+  /** Clique no NPC pelo TILE REAL (posicao e camera do motor), em vez da grelha de 12
+   *  candidatos em volta do centro. A grelha acertava no Mercador e abria a compra de um
+   *  Eco de Luden (medido ao vivo); com a posicao real, so o tile do NPC alvo e clicado.
+   *  Se o NPC estiver fora do ecra, anda por waypoints ate ele entrar. */
+  async function clicarNpcPorPosicao(nome, tentativas = 4) {
+    const cv = q1('#tela');
+    if (!cv) return false;
+    const r = (typeof cv.getBoundingClientRect === 'function') ? cv.getBoundingClientRect() : null;
+    if (!r || !(r.width > 0) || !(r.height > 0) || !(cv.width > 0)) return false;
+    // 1 tile CSS = rect.height/VIS_A (o canvas mantem os tiles quadrados). A camera do
+    // motor (`cam`) esta em unidades de MUNDO, por isso divide-se por T para obter tiles.
+    // NAO multiplicar por ESCALA_JOGO: essa era a conversao errada que punha o clique a
+    // METADE do caminho (medido: clique em (15,8) em vez de (23,13)).
+    const pxTile = r.height / VIS_A_JOGO;
+    if (!(pxTile > 0)) return false;
+    const ecra = (tx, ty, cam) => ({
+      x: r.left + (tx + 0.5 - cam.x / TAM_TILE_JOGO) * pxTile,
+      y: r.top + (ty + 0.5 - cam.y / TAM_TILE_JOGO) * pxTile,
+    });
+    const dentro = (p) => p.x > r.left + 1 && p.x < r.left + r.width - 1 && p.y > r.top + 1 && p.y < r.top + r.height - 1;
+    for (let t = 0; t < Math.max(2, tentativas); t++) {
+      const pos = posicaoViva(), cam = camViva(), npc = npcVivo([nome]);
+      if (!pos || !cam || !npc) return false;
+      const alvo = ecra(npc.x, npc.y, cam);
+      if (!dentro(alvo)) {
+        // anda em direcao ao NPC, em passos que cabem no ecra (o jogo faz o caminho).
+        const dx = Math.sign(npc.x - pos.x), dy = Math.sign(npc.y - pos.y);
+        const wx = pos.x + dx * Math.min(4, Math.abs(npc.x - pos.x));
+        const wy = pos.y + dy * Math.min(3, Math.abs(npc.y - pos.y));
+        const p = ecra(wx, wy, cam);
+        if (!dentro(p)) return false;
+        cv.dispatchEvent(eventoRato('mousedown', { button: 2, clientX: p.x, clientY: p.y }));
+        await esperar(900);
+        continue;
+      }
+      cv.dispatchEvent(eventoRato('mousedown', { button: 2, clientX: alvo.x, clientY: alvo.y }));
+      // `falarCom` pode ANDAR ate ao NPC antes de abrir a janela (jogo.js:5443).
+      for (let i = 0; i < 30; i++) {
+        await esperar(150);
+        const atual = npcConversaAtual();
+        if (atual === nome) return true;
+        if (atual) { fecharConversaNpc(); await esperar(150); break; }
+        if (cancelarConfirmacaoPendente()) { await esperar(150); break; }   // nunca aceitar
+        if (fecharAvisoSeguro()) { await esperar(150); }
+      }
+    }
+    return false;
+  }
   /** Clica no NPC na TELA. Na Fonte e nas cidades o jogo NÃO usa `#npcs` (`jogo.js:7025`:
    *  `$('#npcs').hidden = true` — "nas cidades e na Fonte, clica-se no NPC na tela"), e os
    *  botões estáticos de `#npcs` nem têm a Tesoureira/Burrinho (`jogar.html:181-187`). O clique
@@ -4573,6 +4654,13 @@ const CFG_VER = 2;
     if (!cv) return false;
     const r = (typeof cv.getBoundingClientRect === 'function') ? cv.getBoundingClientRect() : null;
     if (!r || !(r.width > 0) || !(r.height > 0)) return false;
+    // Com posicoes reais do motor, NAO se usa a grelha de candidatos: ela pode acertar
+    // noutro NPC (medido: Mercador -> "Comprar no mercado" de um Eco de Luden). Se o
+    // estado existe mas o NPC nao esta na lista (ex.: cidade), devolve false e o
+    // chamador decide - nunca se adivinha.
+    if (_estadoVivo && Array.isArray(_estadoVivo.npcs) && _estadoVivo.npcs.length) {
+      return clicarNpcPorPosicao(nome, Math.max(2, tentativas));
+    }
     const pxTile = r.height / VIS_A_JOGO;
     const x0 = r.left + r.width / 2, y0 = r.top + r.height / 2;
     // O sprite do NPC ocupa `y` e `y+1` (`cena.js:493`), logo o tile do boneco também pode
@@ -4640,26 +4728,45 @@ const CFG_VER = 2;
   const COFRE_TILES_ACIMA = 4;
   const COFRE_TENTATIVAS_SUBIDA = 2;  // duas subidas de 4 = 8 tiles ate a Tesoureira (CY-5, boneco em CY+3)
   async function abrirCofreTesoureira() {
-    if (document.querySelector('.cofre-slot[data-k]')) return { ok: true, ja: true };
+    // `ja aberto` exige a JANELA VISIVEL quando ela existe: o jogo esconde `#janela-npc`
+    // ao fechar mas deixa os slots no DOM. Medido ao vivo: depois de fechar, isto devolvia
+    // `ja:true` sem o cofre aberto e o autoplay seguia sem ler nada. Sem `#janela-npc`
+    // (grelha solta / fixture) o slot continua a ser a prova de cofre aberto.
+    const janCofre = q1('#janela-npc');
+    if ((!janCofre || janCofre.hidden === false) && document.querySelector('.cofre-slot[data-k]')) return { ok: true, ja: true };
     fecharJanelas(); await humano(250);
-    // Em Runeterra/cidade o Burrinho pode estar num botão de `#npcs` (fixture) — tenta já.
-    // Na Fonte os botões estáticos NÃO têm a Tesoureira; procurar no canvas ANTES de subir
-    // faria o boneco andar para trás. Primeiro sobe os dois destinos, depois clica na tela.
+    // Avisos ("Entendi") podem fechar; confirmacoes (compra/venda) NUNCA se aceitam.
+    fecharAvisoSeguro();
+    cancelarConfirmacaoPendente();
+    await humano(150);
+    // Em Runeterra/cidade o Burrinho pode estar num botao de `#npcs` (fixture) - tenta ja.
     let via = await clicarNpcDoCofre({ tela: false });
     let subiu = 0, motivoSubida = null;
-    if (!via && naBase()) {
-      for (let t = 0; t < COFRE_TENTATIVAS_SUBIDA; t++) {
-        const sub = await subirNaFonte(COFRE_TILES_ACIMA);
-        if (!sub.ok) { motivoSubida = sub.motivo || 'nao consegui andar no chao'; break; }
-        subiu += sub.tiles || 0;
-        await humano(180);                    // deixa o `cena.andarPara` assentar antes do próximo
+    if (!via) {
+      // POSICAO REAL: o servidor restaura o boneco onde ele ficou (medido: (29,11)),
+      // nao no ponto de chegada (24,22). A subida cega de 8 tiles andava para o lado
+      // errado. Com `npcs`+`pos`+`cam` do motor, clica-se no tile da Tesoureira e o
+      // `falarCom` do jogo faz o caminho.
+      const npc = npcVivo(NPCS_DO_COFRE);
+      if (npc) {
+        const abriu = await clicarNpcNaTela(npc.nome, 3);
+        if (abriu) via = npc.nome;
+        else motivoSubida = 'clique no NPC ' + npc.nome + ' nao abriu o dialogo';
+      } else if (naBase()) {
+        // Fallback antigo (so quando o inject nao publicou posicoes): sobe 8 tiles.
+        for (let t = 0; t < COFRE_TENTATIVAS_SUBIDA; t++) {
+          const sub = await subirNaFonte(COFRE_TILES_ACIMA);
+          if (!sub.ok) { motivoSubida = sub.motivo || 'nao consegui andar no chao'; break; }
+          subiu += sub.tiles || 0;
+          await humano(180);                    // deixa o `cena.andarPara` assentar antes do proximo
+        }
+        if (subiu > 0) via = await esperarNpcDoCofre();
+      } else {
+        via = await esperarNpcDoCofre();        // cidade/fora da Fonte: so o DOM, sem andar as cegas
       }
-      if (subiu > 0) via = await esperarNpcDoCofre();
-    } else if (!via) {
-      via = await esperarNpcDoCofre();        // cidade/fora da Fonte: só o DOM, sem andar às cegas
     }
     if (!via) {
-      // MOTIVO VERDADEIRO (antes era sempre o genérico, que escondia a causa real na Fonte)
+      // MOTIVO VERDADEIRO (antes era sempre o generico, que escondia a causa real na Fonte)
       return { ok: false, subiu, motivo: subiu
         ? `subi ${subiu} tiles na Fonte e a Tesoureira nao abriu o dialogo`
         : (motivoSubida ? 'nao cheguei a Tesoureira: ' + motivoSubida : 'sem Tesoureira/Burrinho aqui (cofre abre na Fonte ou na cidade)') };
@@ -9250,8 +9357,12 @@ const CFG_VER = 2;
     // minutos. O `fecharJanelas()` não o apanha (o botão é `.botao.dialogo-ok`, não `[data-fechar]`).
     // Aqui fecha-se sozinho, no caminho quente, antes de qualquer outra coisa.
     try {
-      const ok = document.querySelector('.botao.dialogo-ok');
-      if (ok && ok.getBoundingClientRect().width > 0) {
+      // SO avisos (sem `.dialogo-cancelar`). Um "Comprar no mercado" tambem e
+      // `.dialogo-ok` e foi apanhado ao vivo: aceitar uma confirmacao aqui compra/
+      // vende itens sozinho. Com cancelar presente, NAO se toca (o cofre cancela
+      // explicitamente e o dono decide o resto).
+      const ok = document.querySelector('.dialogo-fundo .dialogo-ok');
+      if (ok && ok.getBoundingClientRect().width > 0 && !document.querySelector('.dialogo-fundo .dialogo-cancelar')) {
         logEvent('dialogo', { auto: true, txt: (ok.textContent || '').trim().slice(0, 40) });
         ok.click();
       }

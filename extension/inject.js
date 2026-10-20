@@ -673,6 +673,14 @@
         return {
           v: 1, at: Date.now(), t: n1(combate.tempo),
           local: (cena && cena.local && cena.local.id) || null, arena: !!(cena && cena.arena),
+          // POSIÇÃO REAL (mundo MAIN) para a extensão não andar às cegas na Fonte: o
+          // `darius` é o boneco do jogador e `npcs` são os NPCs do mapa (mundo.js). Sem
+          // isto, `abrirCofreTesoureira` subia 8 tiles a partir de uma posição SUPOSTA
+          // (24,22) e falhava sempre que o servidor restaurava outra posição (medido:
+          // boneco em (29,11), Tesoureira em (23,13) - 6 tiles ao lado).
+          pos: cena && cena.darius ? { x: n1(cena.darius.x), y: n1(cena.darius.y) } : null,
+          cam: cena && cena.cam ? { x: n1(cena.cam.x), y: n1(cena.cam.y) } : null,
+          npcs: (cena && Array.isArray(cena.npcs) ? cena.npcs : []).map((n) => ({ nome: n.nome, x: n1(n.x), y: n1(n.y) })),
           vida: Number.isFinite(vida) ? +Number(vida).toFixed(4) : null,
           mana: Number.isFinite(mana) ? +Number(mana).toFixed(4) : null,
           respawn: n1(combate.respawn),

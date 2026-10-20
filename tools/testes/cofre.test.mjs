@@ -29,6 +29,9 @@ import { criarMundo, carregarAutomation, alimentarCatalogo, CATALOGO, definirCam
  *  px de CSS e bitmap 11*32*2 = 704 (cena.js:325 `canvas.height = VIS_A*T*ESCALA`). */
 function montarTela(m, w, h, bitmap) {
   const tela = m.el({ tag: 'canvas', label: 'tela', rect: { width: w, height: h } });
+  // O motor real tem os DOIS lados (cena.js:325): bitmap = VIS_*T*ESCALA. O clicarNpcPorPosicao
+  // exige `cv.width > 0`; sem isto o caminho por posicao nunca corria no banco.
+  tela.width = w * 2;
   tela.height = bitmap == null ? 704 : bitmap;
   m.montar('#tela', [tela]);
   return tela;
@@ -493,6 +496,80 @@ export const suite = {
       t.check('C14b: clicou no +0 (o lixo)', clicks.indexOf('troca-cofre:1005~C+0') >= 0);
       t.check('C14b: NUNCA clicou no +2 (a melhor copia protegida)', clicks.indexOf('troca-cofre:1005~C+2') < 0);
       t.check('C14b: o +2 ficou no cofre', (auto.lerCofreSlots() || []).some((s) => String(s.base) === '1005' && (s.refino || 0) === 2));
+    }
+
+    /* ============ C16 - POSICAO REAL DO MOTOR: clica no TILE da Tesoureira ============== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      montarLocal(m, 'Fonte');
+      const tela = montarTela(m, 480, 352);            // 1 tile = 32 px de CSS
+      // Estado vivo como o inject.js publica: boneco em (10,10), camera centrada
+      // (7 tiles a esquerda, 5 acima) e a Tesoureira em (13,11).
+      m.dispatchMessage({ __lolidleAuto: 'estado', pos: { x: 10, y: 10 }, cam: { x: 96, y: 160 },
+        npcs: [{ nome: 'Tesoureira de Piltover', x: 13, y: 11 }] });
+      const original = tela.dispatchEvent;
+      tela.dispatchEvent = (ev) => {
+        original(ev);
+        // (13,5 - 3,5) * 32 = 336 ; (11,5 - 5) * 32 = 208
+        if (ev.type === 'mousedown' && ev.button === 2 && ev.clientX === 336 && ev.clientY === 208) abrirDialogoNpc(m, 'Tesoureira de Piltover');
+        return true;
+      };
+      const r = await auto.abrirCofreTesoureira();
+      const evs = m.eventosDe('tela');
+      t.check('C16: com posicao real o cofre abre pela Tesoureira', r.ok === true && r.via === 'Tesoureira de Piltover');
+      t.check('C16: NAO faz a subida cega de 8 tiles (subiu === 0)', r.subiu === 0);
+      t.check('C16: clicou no tile REAL (336,208), nao a metade do caminho', evs.some((e) => e.clientX === 336 && e.clientY === 208));
+      t.check('C16: nenhum clique na subida antiga (y = 48)', evs.every((e) => e.clientY !== 48));
+    }
+
+    /* ============ C17 - CONFIRMACAO (compra/venda) NUNCA e aceite pelo cofre ============ */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      montarLocal(m, 'Fonte');
+      const tela = montarTela(m, 480, 352);
+      const ok = m.el({ tag: 'button', label: 'dialogo-ok', className: 'dialogo-ok' });
+      const cancel = m.el({ tag: 'button', label: 'dialogo-cancelar', className: 'dialogo-cancelar' });
+      ok.click = () => { m.estado.clicks.push('ok-perigoso'); return true; };
+      cancel.click = () => { m.estado.clicks.push('cancelou'); return true; };
+      m.montar('.dialogo-fundo .dialogo-ok', [ok]);
+      m.montar('.dialogo-fundo .dialogo-cancelar', [cancel]);
+      m.dispatchMessage({ __lolidleAuto: 'estado', pos: { x: 10, y: 10 }, cam: { x: 96, y: 160 },
+        npcs: [{ nome: 'Tesoureira de Piltover', x: 13, y: 11 }] });
+      const original = tela.dispatchEvent;
+      tela.dispatchEvent = (ev) => {
+        original(ev);
+        if (ev.type === 'mousedown' && ev.button === 2 && ev.clientX === 336 && ev.clientY === 208) abrirDialogoNpc(m, 'Tesoureira de Piltover');
+        return true;
+      };
+      const r = await auto.abrirCofreTesoureira();
+      t.check('C17: o cofre ainda abre depois de cancelar a confirmacao', r.ok === true);
+      t.check('C17: clicou CANCELAR na confirmacao pendente', m.cliqueDe('cancelou') === true);
+      t.check('C17: NUNCA clicou no OK da confirmacao (nao compra/vende sozinho)', m.cliqueDe('ok-perigoso') === false);
+    }
+
+    /* ============ C18 - JANELA ESCONDIDA NAO CONTA COMO COFRE ABERTO ================ */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      montarLocal(m, 'Fonte');
+      const tela = montarTela(m, 480, 352);
+      // O jogo esconde #janela-npc ao fechar mas deixa os slots no DOM (medido ao vivo).
+      m.montar('#janela-npc', [m.el({ tag: 'section', label: 'janela-npc', className: 'janela', hidden: true })]);
+      const slot = m.el({ tag: 'div', label: 'slot-fantasma', className: 'cofre-slot', dataset: { k: '0' } });
+      m.montar('.cofre-slot[data-k]', [slot]);
+      m.dispatchMessage({ __lolidleAuto: 'estado', pos: { x: 10, y: 10 }, cam: { x: 96, y: 160 },
+        npcs: [{ nome: 'Tesoureira de Piltover', x: 13, y: 11 }] });
+      const original = tela.dispatchEvent;
+      tela.dispatchEvent = (ev) => {
+        original(ev);
+        if (ev.type === 'mousedown' && ev.button === 2 && ev.clientX === 336 && ev.clientY === 208) abrirDialogoNpc(m, 'Tesoureira de Piltover');
+        return true;
+      };
+      const r = await auto.abrirCofreTesoureira();
+      t.check('C18: janela escondida NAO e \"ja aberto\"', r.ok === true && r.ja !== true);
+      t.check('C18: abriu pela Tesoureira com posicao real', r.via === 'Tesoureira de Piltover');
     }
 
     /* ============ C15 - SAQUE NAO CONFIRMADO: mochila cheia / servidor recusou ========== */
