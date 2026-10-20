@@ -3523,6 +3523,11 @@ const CFG_VER = 2;
    *  esperamos ja apareceu em `#npcs`). Devolve { ok, tiles, motivo }; `tiles` = cliques DISPARADOS. */
   async function andarParaCima(nTiles = 1, opts = {}) {
     const pedidos = Math.max(1, Math.round(Number(nTiles) || 1));
+    // ABA EM SEGUNDO PLANO: o jogo para de desenhar (`document.hidden`), a camara fica no
+    // valor antigo e o clique cai num tile que nao e o que se ve. MEDIDO 2026-10-20: cam
+    // (0,0), boneco na Fonte em (6,4) e a subida a insistir. Recusar e melhor que andar a
+    // sorte; o chamador volta a tentar quando a aba estiver visivel.
+    if (typeof document !== 'undefined' && document.hidden) return { ok: false, tiles: 0, motivo: 'aba em segundo plano: o jogo nao desenha, o clique cairia no tile errado' };
     const cv = q1('#tela');
     if (!cv) return { ok: false, tiles: 0, motivo: 'sem canvas #tela' };
     const esperadoAltura = VIS_A_JOGO * TAM_TILE_JOGO * ESCALA_JOGO;   // cena.js:325 (canvas.height = VIS_A*T*ESCALA)
@@ -3592,6 +3597,7 @@ const CFG_VER = 2;
   let _ladoSubida = 1;
   async function andarParaCimaDeUmaVez(nTiles = 1, opts = {}) {
     const pedidos = Math.max(1, Math.round(Number(nTiles) || 1));
+    if (typeof document !== 'undefined' && document.hidden) return { ok: false, tiles: 0, motivo: 'aba em segundo plano: o jogo nao desenha, o clique cairia no tile errado' };
     const cv = q1('#tela');
     if (!cv) return { ok: false, tiles: 0, motivo: 'sem canvas #tela' };
     const esperadoAltura = VIS_A_JOGO * TAM_TILE_JOGO * ESCALA_JOGO;
@@ -4958,7 +4964,45 @@ const CFG_VER = 2;
    *  `null` = o inject ainda nao publicou (nao se inventa posicao). */
   function posicaoViva() {
     const e = _estadoVivo;
-    return e && e.pos && Number.isFinite(e.pos.x) && Number.isFinite(e.pos.y) ? e.pos : null;
+    const p = e && e.pos;
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+    // (0,0) NAO e uma posicao real: o inject publica o objecto antes de o jogo o encher, e
+    // um waypoint calculado a partir de (0,0) manda o boneco para o canto do mapa. MEDIDO ao
+    // vivo em 2026-10-20: pos (6,4) na Fonte, com a praca em ~(24,21) e a Tesoureira em
+    // (23,13). A posicao e lida do jogo; (0,0) e a ausencia dela.
+    if (p.x === 0 && p.y === 0) return null;
+    return p;
+  }
+  /** Centro da praca da Fonte, calculado dos NPCs VIVOS (o inject manda as posicoes reais de
+   *  `mundo.js:19-21`). Nao ha nenhum numero de mapa escrito a mao aqui: se a praca mudar de
+   *  sitio, os NPCs mudam com ela e o centro acompanha. */
+  function centroDaFonte() {
+    const e = _estadoVivo;
+    const ns = (e && Array.isArray(e.npcs)) ? e.npcs.filter((n) => Number.isFinite(n.x) && Number.isFinite(n.y)) : [];
+    if (ns.length < 3) return null;
+    return { x: ns.reduce((s, n) => s + n.x, 0) / ns.length, y: ns.reduce((s, n) => s + n.y, 0) / ns.length };
+  }
+  /** Traz o boneco de volta a praca quando ele ficou longe (medido: (6,4) com a praca em
+   *  ~(24,21)). Usa o botao do NPC: o jogo faz `falarCom` e ANDA sozinho, sem camara e sem
+   *  cliques no canvas. Devolve true se o dialogo abriu (logo, ele andou). */
+  async function voltarAoCentroDaFonte() {
+    if (typeof document !== 'undefined' && document.hidden) return false;   // o jogo nao anda
+    const c = centroDaFonte(), p = posicaoViva();
+    if (!c || !p) return false;
+    const d = Math.hypot(p.x - c.x, p.y - c.y);
+    if (d <= 10) return false;                        // ainda na praca: nada a fazer
+    for (const n of ['Lojista', 'Soraka', 'Ornn']) {
+      if (!clickNPC(n)) continue;
+      let abriu = false;
+      for (let i = 0; i < 40; i++) {
+        await esperar(150);
+        if (npcConversaAtual()) { abriu = true; break; }
+      }
+      fecharConversaNpc();
+      await humano(200);
+      return abriu;
+    }
+    return false;
   }
   function camViva() {
     const e = _estadoVivo;
@@ -4992,6 +5036,7 @@ const CFG_VER = 2;
    *  Eco de Luden (medido ao vivo); com a posicao real, so o tile do NPC alvo e clicado.
    *  Se o NPC estiver fora do ecra, anda por waypoints ate ele entrar. */
   async function clicarNpcPorPosicao(nome, tentativas = 4) {
+    if (typeof document !== 'undefined' && document.hidden) return false;   // camara parada: o clique mente
     const cv = q1('#tela');
     if (!cv) return false;
     const r = (typeof cv.getBoundingClientRect === 'function') ? cv.getBoundingClientRect() : null;
@@ -5069,6 +5114,9 @@ const CFG_VER = 2;
     // estar em cima/baixo/lado. Dois destinos de 4 podem deixar o boneco em `(CX, CY-6)`,
     // com a Tesoureira em `(CX-1, CY-5)` — o candidato BAIXO-ESQUERDA é o que a apanha.
     const candidatos = [[0, 0], [-1, 0], [1, 0], [0, -1], [-1, -1], [1, -1], [0, 1], [-1, 1], [1, 1], [-2, 0], [2, 0], [0, -2]];
+    // A grelha abaixo so existe quando NAO ha posicoes do motor. Com a aba em segundo plano
+    // o centro do canvas deixou de ser o boneco: nao se adivinha.
+    if (typeof document !== 'undefined' && document.hidden) return false;
     for (let volta = 0; volta < Math.max(1, tentativas); volta++) {
       for (const [dx, dy] of candidatos) {
         const x = x0 + dx * pxTile, y = y0 + dy * pxTile;
@@ -5141,6 +5189,11 @@ const CFG_VER = 2;
     fecharAvisoSeguro();
     cancelarConfirmacaoPendente();
     await humano(150);
+    // POSICAO PERDIDA (bug medido ao vivo em 2026-10-20): o boneco ficou em (6,4) com a praca
+    // em ~(24,21) e a Tesoureira em (23,13). A subida e os waypoints partiam de um ponto que
+    // nao era a praca e o cofre nunca abria. O botao do NPC faz `falarCom` e o jogo anda
+    // sozinho, sem camara e sem cliques no canvas.
+    if (naBase()) { try { await voltarAoCentroDaFonte(); } catch { /* ignore */ } }
     // Em Runeterra/cidade o Burrinho pode estar num botao de `#npcs` (fixture) - tenta ja.
     let via = await clicarNpcDoCofre({ tela: false });
     let subiu = 0, motivoSubida = null;
@@ -10853,7 +10906,16 @@ const CFG_VER = 2;
   }
 
   function loadConfig() {
-    const ler = (s) => { if (!s) return; cfg = { ...DEFAULT, ...((migrarCfg(s) || {}).cfg || {}), enabled: !!(s.enabled ?? s.automation?.enabled) }; };
+    const ler = (s) => {
+      if (!s) return;
+      cfg = { ...DEFAULT, ...((migrarCfg(s) || {}).cfg || {}), enabled: !!(s.enabled ?? s.automation?.enabled) };
+      // PRIMEIRA VEZ com esta versao: o retrato do que o dono escolheu E o estado de agora.
+      // Sem isto, o primeiro "desligar o mestre" nao teria para onde voltar (ficava sem
+      // escolhas guardadas e os switches ficavam como estavam a sorte).
+      if (!cfg._escolhas || typeof cfg._escolhas !== 'object') {
+        try { cfg._escolhas = guardarEscolhasSwitches(); } catch { /* INTERRUPTORES ainda nao pronto */ }
+      }
+    };
     try {
       chrome.storage.local.get(STORAGE_KEY, (r) => { const s0 = r?.[STORAGE_KEY]; ler(s0); try { const cur = s0 || {}; chrome.storage.local.set({ [STORAGE_KEY]: { ...cur, cfgVer: CFG_VER, automation: { ...(cur.automation || {}), ...cfg } } }); } catch { /* ignore */ } });   // C3: o cfgVer grava-se no ARRANQUE
       chrome.storage.onChanged.addListener((ch, area) => {
@@ -10911,7 +10973,7 @@ const CFG_VER = 2;
     return cfg;
   }
 
-  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
+  window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },

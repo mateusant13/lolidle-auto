@@ -629,5 +629,29 @@ export const suite = {
       const n2 = auto.necessidadesBase();
       t.check('C15: DEPOIS, n.venderLixoCofre continua true (cadencia NAO avancou)', n2.venderLixoCofre === true);
     }
+
+    /* C16 - NAO ANDAR AS CEGAS (bug medido ao vivo em 2026-10-20): com a aba em segundo plano
+     * (`document.hidden`) o jogo deixa de desenhar, a camara fica no valor antigo e o clique no
+     * canvas cai num tile que nao e o que se ve. MEDIDO: cam (0,0), boneco na Fonte em (6,4) e
+     * a subida a insistir. E um `pos` (0,0) NAO e uma posicao: o waypoint a partir dele levou o
+     * boneco para o canto do mapa. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      m.documento.hidden = true;
+      const r = await auto.subirNaFonte(4);
+      t.check('C16: aba em segundo plano -> subirNaFonte RECUSA (nada de andar as cegas)',
+        r && r.ok === false && /segundo plano/i.test(r.motivo || ''));
+      m.documento.hidden = false;
+      m.dispatchMessage({ __lolidleAuto: 'estado', v: 1, at: Date.now(), local: 'fonte',
+        pos: { x: 0, y: 0 }, cam: { x: 0, y: 0 }, npcs: [] });
+      const c = auto.centroDaFonte();
+      t.check('C16: sem NPCs vivos nao se inventa o centro da Fonte', c === null);
+      const v = await auto.voltarAoCentroDaFonte();
+      t.check('C16: com posicao desconhecida, voltarAoCentroDaFonte nao clica em nada', v === false);
+    }
   },
 };

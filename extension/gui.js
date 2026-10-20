@@ -863,13 +863,12 @@ switches: 'interruptores',
       + '    <div id="ap-hi-eventos"></div>'
       + '    <div id="ap-hi-problemas"></div>'
       + '  </section>'
-      // POÇÃO — a auto-poção tem a sua própria aba. A decisão inteligente é SEMPRE ligada
-      // (não há interruptor); em Runeterra (PvP) usa o limiar de vida.
+      // POÇÃO: a auto-poção tem a sua própria aba. A decisão inteligente TEM interruptor
+      // (`pocaoSmart`); fora do PvE do mapa, o motor usa o limiar de vida.
       + '  <section class="pane" id="ap-t-pocao">'
-      + '    <p class="intro">AUTO-POÇÃO: quando usar cada poção, quantas você tem e o que a decisão inteligente está a fazer. A inteligência é <b>sempre ligada</b>, em PvE cobre o golpe real; em Runeterra (PvP) usa o limiar de vida.</p>'
+      + '    <p class="intro">AUTO-POÇÃO: quando usar cada poção, quantas você tem e o que a decisão inteligente está a fazer. No PvE do mapa ela olha o golpe real; fora do mapa (PvP, Runeterra, Arena, dungeons) usa o limiar de vida.</p>'
       + '    <div id="ap-pc-resumo"></div>'
       + '    <div id="ap-now-pocoes"></div>'
-      + '    <div id="ap-auto-pocoes"></div>'
       + '  </section>'
       // MANUAL — tudo o que é clique humano, fora do caminho automático.
       + '  <section class="pane" id="ap-t-manual">'
@@ -1869,7 +1868,7 @@ switches: 'interruptores',
         + 'Trocar de campeão não exige mudar nenhum switch. Isto <b>não</b> liga o auto-play, quem liga é o switch mestre.</p>'));
     }
     // valores dinâmicos
-    const obj = $('ap-obj'); if (obj && obj.value !== (c.objetivo || 'xp')) obj.value = c.objetivo || 'xp';
+    const obj = $('ap-obj'); if (obj && obj.value !== (c.objetivo || 'ouro+xp')) obj.value = c.objetivo || 'ouro+xp';
     const automatica = !c.regionDefault;
     const modo = $('ap-reg-modo');
     if (modo) { const v = automatica ? 'auto' : 'fixa'; if (modo.value !== v) modo.value = v; }
@@ -2431,6 +2430,7 @@ switches: 'interruptores',
     setHtml('ap-fm-objetivo', card('O que você quer ganhar', 'o objetivo muda a região que o motor escolhe',
       linha('Objetivo do farm', 'a região ideal passa a ser escolhida por isto',
         '<select id="ap-obj">'
+        + '<option value="ouro+xp"' + (objAtual === 'ouro+xp' ? ' selected' : '') + '>Ouro e experiência (o melhor dos dois)</option>'
         + '<option value="xp"' + (objAtual === 'xp' ? ' selected' : '') + '>Experiência (subir de nível)</option>'
         + '<option value="ouro"' + (objAtual === 'ouro' ? ' selected' : '') + '>Ouro (comprar itens)</option>'
         + '<option value="runas"' + (objAtual === 'runas' ? ' selected' : '') + '>Runas</option>'
@@ -4014,7 +4014,7 @@ switches: 'interruptores',
       }
       ultimoRender = 0;
     },
-    'ap-obj': (el) => { definirCfg({ objetivo: el.value }); fb('ok', 'Objetivo: ' + ({ xp: 'experiência', ouro: 'ouro', runas: 'runas' }[el.value] || el.value) + '. A região ideal passa a ser escolhida por isto.'); ultimoRender = 0; },
+    'ap-obj': (el) => { definirCfg({ objetivo: el.value }); fb('ok', 'Objetivo: ' + ({ 'ouro+xp': 'ouro e experiência', xp: 'experiência', ouro: 'ouro', runas: 'runas' }[el.value] || el.value) + '. A região ideal passa a ser escolhida por isto.'); ultimoRender = 0; },
     'ap-reg-modo': (el) => {
       if (el.value === 'auto') { definirCfg({ regionDefault: null }); fb('ok', 'Região AUTOMÁTICA: o motor escolhe sempre a melhor para o seu nível (a região fixa foi limpa).'); }
       else { const sel = $('ap-reg-id'); const id = sel ? sel.value : null; definirCfg({ regionDefault: id }); fb('ok', 'Região FIXA: ' + nomeRegiao(id) + '. O motor fica aqui até você voltar para "Automática".'); }
