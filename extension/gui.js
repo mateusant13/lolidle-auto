@@ -1473,7 +1473,7 @@
     equip: 'troca sempre que aparecer uma peça melhor para o slot',
     atrib: 'gasta sozinho os pontos de atributo livres',
     hab: 'sobe as habilidades quando há pontos',
-    anunciar: 'põe à venda os lendários abaixo de tier A a 90% do preço mais baixo',
+    anunciar: 'põe à venda os lendários abaixo de tier A a ~90% do preço mais baixo',
     buildPorFase: 'em mobs veste a build de limpeza; no chefe a de alvo único',
     skillsPorFase: 'em mobs prefere as habilidades de área; no chefe as de alvo único',
     rotacao: 'põe na barra as 4 habilidades prontas que dão mais dano',
@@ -1500,7 +1500,7 @@
     equip: { on: 'Equipa sempre a melhor peça de cada slot.', off: 'O que está vestido fica como está, mesmo com peça melhor na mochila.' },
     atrib: { on: 'Gasta os pontos de atributo pelo modelo escolhido.', off: 'Os pontos de atributo ficam parados.' },
     hab: { on: 'Sobe as habilidades quando há pontos.', off: 'Os pontos de habilidade ficam parados.' },
-    anunciar: { on: 'Anuncia no mercado os lendários abaixo de A, a 90% do menor preço.', off: 'Nada é anunciado: os lendários ficam ocupando espaço na mochila.' },
+    anunciar: { on: 'Anuncia no mercado os lendários abaixo de A, a ~90% do menor preço.', off: 'Nada é anunciado: os lendários ficam ocupando espaço na mochila.' },
     buildPorFase: { on: 'Troca a build entre mobs e chefe conforme a luta.', off: 'Uma build só: as peças da outra fase não são reservadas.' },
     skillsPorFase: { on: 'Prefere habilidades de área em mobs e de alvo único no chefe.', off: 'A barra não muda com o contexto da luta.' },
     rotacao: { on: 'Mantém na barra as melhores habilidades, com a ultimate.', off: 'A barra fica como está — pode ficar sem a ultimate.' },
@@ -1654,7 +1654,7 @@
       ['vender', 'Vender o lixo ao lojista', 'Vende só o que o plano da mochila diz que é lixo; os protegidos nunca são tocados.'],
       ['repor', 'Repor poções', 'Compra poções no Lojista até o mínimo que você escolheu.'],
       ['cofre', 'Cofre (guardar e retirar)', 'Guarda no cofre os épicos tier S/SS e vai buscar o que está lá.'],
-      ['anunciar', 'Anunciar lendários no mercado', 'Põe à venda os lendários abaixo de tier A, a 90% do preço mais baixo.'],
+      ['anunciar', 'Anunciar lendários no mercado', 'Põe à venda os lendários abaixo de tier A, a ~90% do preço mais baixo.'],
       ['hab', 'Subir habilidades', 'Sobe as habilidades quando há pontos livres.'],
       ['equip', 'Trocar por peça melhor', 'Troca sempre que aparecer uma peça melhor para o slot.'],
       ['atrib', 'Distribuir pontos de atributo', 'Gasta sozinho os pontos de atributo livres pelo modelo escolhido na aba Personagem.'],
@@ -1742,7 +1742,7 @@
           + acaoD('ap-repor', '🧪 Repor poções', 'Compra poções no Lojista até o mínimo que você escolheu (mais caras primeiro).')
           + acaoD('ap-vender', '💰 Vender o que não presta', 'Vende ao Lojista só o que o plano da mochila diz que é lixo. Os protegidos nunca são tocados.')
           + acaoD('ap-cofre-guardar', '📦 Guardar no cofre', 'Guarda no cofre os épicos tier S/SS que não devem ficar na mochila.')
-          + acaoD('ap-anunciar', '🏪 Anunciar lendários no mercado', 'Põe à venda os lendários abaixo de tier A, a 90% do preço mais baixo. Nunca anuncia Rabadon nem tier A+.')
+          + acaoD('ap-anunciar', '🏪 Anunciar lendários no mercado', 'Põe à venda os lendários abaixo de tier A, a ~90% do preço mais baixo. Nunca anuncia Rabadon nem tier A+.')
           + acaoD('ap-comprar', '🛒 Comprar item ideal no mercado', 'Compra o item da sua build ideal que falta, pelo menor preço, sem zerar o ouro.')
           + acaoD('ap-refinar', '⚒ Refinar lendários A+', 'Gasta ouro a refinar os seus lendários A+ no Ornn até +3.')
           + acaoD('ap-montar', '🔨 Montar no Ornn', 'Tenta montar o item mais barato que a sua build precisa. É uma APOSTA (≈1,2% por tentativa).')
@@ -1996,6 +1996,8 @@
       + acaoD('ap-cofre-melhor', '⬆ Retirar o melhor item',
         melhor ? 'Tira <b>' + esc(nomeCofre(melhor)) + '</b> ' + esc(tagCofre(melhor)) + ' — maior qualidade e, depois, maior refino. Abre o cofre sozinho se for preciso.'
           : 'Ainda não há leitura do cofre: use "Forçar leitura do cofre agora" (manutenção manual) para o motor saber o que lá está.', !pode || !melhor)
+      + acaoD('ap-cofre-lixo', '🧹 Vender o lixo do cofre',
+        'Percorre o cofre, retira só o que a regra do motor marca como lixo (épico/básico abaixo de S, sem ser peça da build, componente, reservado ou especial) e vende ao Lojista. É a mesma rotina que o auto-play corre a cada 10 min; aqui é sob demanda.', !pode)
       + '</div>'
       + (itens.length
         ? linha('Retirar um item específico', 'a lista é o que o motor sabe que está guardado no cofre',
@@ -2662,7 +2664,7 @@
       + diag('Mercado: leitura e ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-mk-ler', '📖 Forçar leitura das minhas ofertas', 'Abre o mercado, lê a aba "Minhas ofertas", grava e fecha. Não muda nada.')
-      + acaoD('ap-mk-anunciar', '🏪 Anunciar lendários abaixo de A', 'Põe à venda os lendários abaixo de tier A a 90% do preço mais baixo. Nunca Rabadon nem tier A+.')
+      + acaoD('ap-mk-anunciar', '🏪 Anunciar lendários abaixo de A', 'Põe à venda os lendários abaixo de tier A a ~90% do preço mais baixo. Nunca Rabadon nem tier A+.')
       + '</div>'));
     const q = $('ap-mk-quando');
     if (q) q.textContent = ofAt ? 'lidas há ' + fmtDur(Date.now() - ofAt) + ' · às ' + hora(ofAt) : (ofertas.length ? 'lidas nesta sessão' : 'sem leitura');
@@ -2672,7 +2674,7 @@
       + diag('Reajuste de preços: ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-mkt-plan', '🔍 Calcular reajuste', 'Compara cada oferta sua com o menor preço do mercado para o mesmo item e qualidade.')
-      + acaoD('ap-mkt-go', '💱 Aplicar reajuste', 'Cancela e reanuncia cada oferta no preço calculado (90% do menor).')
+      + acaoD('ap-mkt-go', '💱 Aplicar reajuste', 'Cancela e reanuncia cada oferta no preço calculado (~90% do menor).')
       + '</div>'));
 
     setHtml('ap-mk-ornn', card('Bancada do Ornn', 'montar itens com peças é uma APOSTA',
@@ -2979,7 +2981,7 @@
       ['Blindado / protegido', 'Item que o motor NUNCA vende: Rabadon, os lendários da sua build ideal e o que está equipado em S/SS.'],
       ['Espólio', 'Material que cai dos monstros e que se vende ou se usa em receitas.'],
       ['Cofre', 'Arca da Tesoureira (Fonte) ou do Burrinho (cidade) para guardar itens sem gastar espaço na mochila. Só abre nesses sítios — mas o painel mostra sempre a última leitura que o motor gravou, mesmo que estejas farmando longe.'],
-      ['Mercado', 'Venda a outros jogadores. O motor anuncia a 90% do preço mais baixo.'],
+      ['Mercado', 'Venda a outros jogadores. O motor anuncia a ~90% do preço mais baixo.'],
       ['Ornn', 'NPC que monta itens a partir de peças. É uma aposta: ~1,2% por tentativa.'],
       ['Poção Suprema / Forte / Normal', 'As três poções de vida: curam 2200, 900 e 300.'],
       ['DPS', 'Dano por segundo.'],
@@ -3602,6 +3604,17 @@
     'ap-cofre-ler': (b) => lerCofre(b),
     'ap-cofre-melhor': (b) => retirarCofre(b, null),
     'ap-cofre-tirar': (b) => retirarCofre(b, (($('ap-cofre-alvo') || {}).value || '').trim() || null),
+    'ap-cofre-lixo': (b) => executar(b, 'Vender lixo do cofre', async () => {
+      const r = await chamarA('venderLixoDoCofre');
+      if (!r.ok) return { ok: false, motivo: erroLegivel(r.erro, 'venderLixoDoCofre') };
+      const v = r.v || {};
+      if (v.ok === false) return { ok: false, motivo: motivoCofre(v.motivo) };
+      const n = (v.vendidos || []).length;
+      if (!n) return { ok: true, msg: 'o cofre não tem lixo pela regra atual (épico/básico abaixo de S, fora da build/componentes/reservados/especiais).' };
+      const venda = v.venda || {};
+      const pagos = (venda.epicosVendidos || []).length;
+      return { ok: true, msg: n + ' item(ns) retirado(s) do cofre' + (pagos ? ' · ' + pagos + ' vendido(s) ao Lojista' : ' · ficaram na mochila (o plano não os vendeu)') + '.' };
+    }, { confirma: { titulo: 'Vender o lixo do cofre', linhas: ['Abre o cofre na Fonte/cidade, retira só o lixo que o motor identifica e passa pelo Lojista.', 'Peças da build, componentes, reservados, especiais, lendários e S/SS nunca são tocados.'], ok: 'Vender o lixo', perigo: true } }),
     'ap-anunciar': (b) => executar(b, 'Anunciar lendários', async () => {
       const r = await chamarA('anunciarLendarios');
       if (!r.ok) return { ok: false, motivo: erroLegivel(r.erro, 'anunciarLendarios') };
@@ -3610,7 +3623,7 @@
       const an = v.anunciados || [];
       const pulados = an.filter((x) => x.pulado).length;
       return { ok: true, msg: an.length + ' anúncio(s)' + (v.cancelados ? ' · ' + v.cancelados + ' cancelado(s) para abrir vaga' : '') + (pulados ? ' · ' + pulados + ' sem referência de preço' : '') + '.' };
-    }, { confirma: { titulo: 'Anunciar lendários abaixo de A', linhas: ['Anuncia a 90% do preço mais baixo do mercado.', 'Rabadon e os lendários tier A ou melhor NUNCA são anunciados.'], ok: 'Anunciar', perigo: true } }),
+    }, { confirma: { titulo: 'Anunciar lendários abaixo de A', linhas: ['Anuncia a ~90% do preço mais baixo do mercado.', 'Rabadon e os lendários tier A ou melhor NUNCA são anunciados.'], ok: 'Anunciar', perigo: true } }),
     'ap-comprar': (b) => executar(b, 'Comprar no mercado', async () => {
       const r = await chamarA('comprarNoMercado');
       if (!r.ok) return { ok: false, motivo: erroLegivel(r.erro, 'comprarNoMercado') };

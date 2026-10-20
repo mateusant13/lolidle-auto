@@ -3073,7 +3073,7 @@ const CFG_VER = 2;
     // "golpe que mata" são determinísticos: voltar era o ciclo morte→fuga→morte que o dono proibiu.
     if (idReg && !fatalVivo && !perde && !_viagemAgendada) {
       _viagemAgendada = true;
-      setTimeout(() => { _viagemAgendada = false; viajarPara(idReg); }, 8000);
+      setTimeout(() => { _viagemAgendada = false; viajarPara(idReg); }, 6500 + Math.random() * 3500);
     }
   }
 
@@ -3107,7 +3107,7 @@ const CFG_VER = 2;
     setTimeout(() => {
       const b = document.querySelector(`#marcadores .marcador[data-local="${id}"]`);
       if (b) b.click();
-      setTimeout(() => { const ir = document.querySelector(`#mapa-info [data-ir="${id}"]`); if (ir) ir.click(); }, 400);
+      setTimeout(() => { const ir = document.querySelector(`#mapa-info [data-ir="${id}"]`); if (ir) ir.click(); }, 320 + Math.random() * 220);
     }, 700);
     return { ok: true, destino: id };
   }
@@ -3245,13 +3245,33 @@ const CFG_VER = 2;
   // ------------------------------------------------------------- rotina de base
   const q1 = (s) => document.querySelector(s);
   const qa1 = (s) => [...document.querySelectorAll(s)];
-  const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+  // VARIAÇÃO GLOBAL (pedido do dono 2026-10-19): nenhuma pausa de acção é um relógio cravado.
+  // ±20% em qualquer espera >= 40 ms; abaixo disso o valor fica exacto (é polling/ordem, não
+  // "pausa humana"). Isto NÃO toca em números do motor: só no tempo entre acções.
+  const esperar = (ms) => new Promise((r) => {
+    const n = Number(ms) || 0;
+    const j = n >= 40 ? Math.max(1, Math.round(n * (0.80 + Math.random() * 0.40))) : Math.max(0, n);
+    setTimeout(r, j);
+  });
   /** Espera "humana": base + jitter aleatório (evita timings perfeitos de bot). */
   const humano = (ms = 300) => esperar(Math.max(70, Math.round(ms * (0.55 + Math.random() * 0.95))));
+  /** Cadência com variação: um intervalo de 30 min cravado é uma assinatura. ±18%. */
+  const cadencia = (ms) => Math.max(1000, Math.round(Number(ms || 0) * (0.82 + Math.random() * 0.36)));
+  /** Preço de anúncio: ~90% do menor, com ±2 pontos de variação (não é um carimbo). */
+  const fatorAnuncio = () => 0.88 + Math.random() * 0.04;
 
   function clickNPC(nome) { const b = q1(`#npcs button[data-npc="${nome}"]`); if (b) { b.click(); return true; } return false; }
   async function waitFor(sel, ms = 3000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { const el = q1(sel); if (el) return el; await esperar(120); } return null; }
   function fecharJanelas() { qa1('[data-fechar]').forEach((b) => b.click()); }
+  /** Abre a conversa de um NPC. Na Fonte `#npcs` está OCULTO (`jogo.js:7025`), por isso o botão
+   *  estático existe mas o clique não abre nada. Só se aceita o caminho estático quando a opção
+   *  esperada APARECE; senão clica-se no NPC pela posição real (canvas). Devolve true só com a
+   *  conversa comprovadamente aberta. */
+  async function abrirNpc(nome, seletorOpcao, tentativas = 2) {
+    if (clickNPC(nome) && (!seletorOpcao || await waitFor(seletorOpcao, 1800))) return true;
+    if (await clicarNpcNaTela(nome, tentativas) && (!seletorOpcao || await waitFor(seletorOpcao, 2200))) return true;
+    return false;
+  }
 
   // --------------------------------------------- ANDAR NO CHAO (clicar no canvas)
   /*  MEDICAO (docs/game-src) — tudo o que esta aqui foi LIDO no fonte do jogo, nada foi adivinhado:
@@ -3291,11 +3311,35 @@ const CFG_VER = 2;
    *  no banco de testes (vm sem MouseEvent) cai para `Event` + as mesmas propriedades — o objecto
    *  que os listeners do jogo leem (`e.button`, `e.clientX`, `e.clientY`) fica igual. */
   function eventoRato(tipo, o) {
-    const init = { bubbles: true, cancelable: true, button: o.button, buttons: o.button === 2 ? 2 : 1, clientX: o.clientX, clientY: o.clientY };
+    // `buttons` é o estado dos botões DURANTE o evento: num `mousedown` do direito é 2, num
+    // `mouseup`/`mousemove` é 0. Antes todo o evento que não fosse do direito levava 1, o que
+    // fazia um `mouseup` parecer que o botão continuava premido.
+    const buttons = o.buttons != null ? o.buttons : (tipo === 'mousedown' ? (o.button === 2 ? 2 : 1) : 0);
+    const init = { bubbles: true, cancelable: true, button: o.button, buttons, clientX: o.clientX, clientY: o.clientY };
     if (typeof MouseEvent === 'function') return new MouseEvent(tipo, init);
     const ev = new Event(tipo, init);
     for (const k of Object.keys(init)) { try { ev[k] = init[k]; } catch { /* ignore */ } }
     return ev;
+  }
+
+  /** Clique no canvas com a SEQUÊNCIA de um rato real: move, prime, solta. O jogo só lê
+   *  `mousedown` (`jogo.js:1449` exige `button===2`), por isso os eventos extra não mudam a
+   *  jogada; mudam a assinatura de quem observa. `isTrusted` continua `false` — o DOM não
+   *  deixa uma extensão forjar eventos confiáveis. Isto é humanização, não invisibilidade. */
+  async function clicarCanvasHumano(cv, x, y, opts = {}) {
+    const button = opts.button === 1 ? 1 : 2;
+    // Jitter sub-pixel: o alvo continua no mesmo tile, mas nunca é o mesmo float duas vezes.
+    // `exato` existe para os caminhos que PROVAM a conversão tile->ecrã (testes/cofre): aí o
+    // clique tem de cair no pixel calculado, não num pixel vizinho.
+    const px = (opts.exato || opts.jitterX === false) ? x : x + (Math.random() * 2 - 1) * 0.9;
+    const py = (opts.exato || opts.jitterY === false) ? y : y + (Math.random() * 2 - 1) * 0.9;
+    try { cv.dispatchEvent(eventoRato('mousemove', { button: 0, clientX: px, clientY: py })); } catch { /* ignore */ }
+    await esperar(25 + Math.random() * 55);
+    try { cv.dispatchEvent(eventoRato('mousedown', { button, clientX: px, clientY: py })); }
+    catch (e) { return { ok: false, erro: e }; }
+    await esperar(35 + Math.random() * 75);
+    try { cv.dispatchEvent(eventoRato('mouseup', { button, clientX: px, clientY: py })); } catch { /* ignore */ }
+    return { ok: true };
   }
 
   /** Clica no chao do canvas `#tela` N tiles ACIMA do boneco (1 clique por tile — o clique move 1 tile).
@@ -3341,8 +3385,8 @@ const CFG_VER = 2;
         y = r.top + r.height / 2 - pxTile + (Math.random() * 2 - 1) * pxTile * HUM_DY_VAR;
         pausa = HUM_PAUSA_MIN + Math.random() * (HUM_PAUSA_MAX - HUM_PAUSA_MIN);
       }
-      try { cv.dispatchEvent(eventoRato('mousedown', { button: 2, clientX: x, clientY: y })); }
-      catch (e) { return { ok: false, tiles: tiles, motivo: 'nao consegui clicar no chao: ' + e }; }
+      const clicou = await clicarCanvasHumano(cv, x, y, { button: 2, exato: !opts.humanoTile });
+      if (!clicou.ok) return { ok: false, tiles: tiles, motivo: 'nao consegui clicar no chao: ' + clicou.erro };
       tiles++;
       await humano(pausa);
       if (typeof opts.ate === 'function' && opts.ate()) break;
@@ -3385,14 +3429,21 @@ const CFG_VER = 2;
     _ladoSubida = -_ladoSubida;
     // O alvo pode ficar acima da borda do canvas; o jogo converte para tile na mesma.
     const y = Math.max(r.top + 1, r.top + r.height / 2 - pedidos * pxTile);
-    try { cv.dispatchEvent(eventoRato('mousedown', { button: 2, clientX: x, clientY: y })); }
-    catch (e) { return { ok: false, tiles: 0, motivo: 'nao consegui clicar no chao: ' + e }; }
+    const clicou = await clicarCanvasHumano(cv, x, y, { button: 2, jitterY: false });
+    if (!clicou.ok) return { ok: false, tiles: 0, motivo: 'nao consegui clicar no chao: ' + clicou.erro };
     await humano(Math.max(700, pedidos * 200));
     return { ok: true, tiles: pedidos };
   }
 
-  /** Cura na base via Soraka. */
-  async function curarBase() { if (clickNPC('Soraka')) await humano(320); return true; }
+  /** Cura na base via Soraka. Antes devolvia `true` mesmo quando o NPC não abria (o botão
+   *  estático de `#npcs` está oculto na Fonte) — falso verde. Agora devolve o que provou. */
+  async function curarBase() {
+    const ok = await abrirNpc('Soraka', '#janela-npc [data-palavra="curar"]');
+    if (!ok) return false;
+    q1('#janela-npc [data-palavra="curar"]')?.click();
+    await humano(350);
+    return true;
+  }
 
   /** Vende ao Lojista: espólios (lote) + épicos < A. NUNCA lendário A+/Rabadon. */
   /** COMPONENTES DA BUILD IDEAL (recursivo, via o campo `de` do catálogo).
@@ -3425,11 +3476,25 @@ const CFG_VER = 2;
     return out;
   }
 
-  async function venderBase() {
+  async function venderBase(opts = {}) {
+    // `apenas`: lista de ids EXACTOS que vieram do cofre como lixo. Nesse modo o Lojista só
+    // toca nesses ids e não vende o espólio; a proteção de COMPONENTE é dispensada porque
+    // `lixoDoCofreLista` já provou que existe outra cópia melhor (a que fica no cofre).
+    const apenas = Array.isArray(opts.apenas) ? new Set(opts.apenas.map(String)) : null;
+    const forcar = (id) => !!apenas && apenas.has(String(id));
     const regras = { epicosVendidos: [], protegidos: [] };
     fecharJanelas();
     await humano(280);
-    if (!clickNPC('Lojista')) return { ok: false, motivo: 'sem lojista' };
+    // Na Fonte e nas cidades o jogo ESCONDE `#npcs` e os NPCs abrem-se pelo CANVAS
+    // (`jogo.js:7025`). O `clickNPC` sozinho devolvia "sem vender" na Fonte (medido ao vivo
+    // 2026-10-19, no debloat do cofre) porque o botao estatico do Lojista nao existe/esta oculto.
+    // O botão estático PODE existir mas estar invisível (`#npcs` oculto na Fonte): um `.click()`
+    // nele não abre nada. Só se aceita o clique estático se o diálogo com "vender" aparecer;
+    // senão cai no clique pelo CANVAS (posição real do NPC).
+    let falou = false;
+    if (clickNPC('Lojista')) falou = !!(await waitFor('#janela-npc [data-palavra="vender"]', 1500));
+    if (!falou) falou = await clicarNpcNaTela('Lojista', 2);
+    if (!falou) return { ok: false, motivo: 'sem lojista' };
     if (!(await waitFor('#janela-npc [data-palavra="vender"]'))) return { ok: false, motivo: 'sem vender' };
     q1('#janela-npc [data-palavra="vender"]').click();
     const abrir = await waitFor('#janela-npc [data-abrir-venda]');
@@ -3440,8 +3505,7 @@ const CFG_VER = 2;
     // conta duplicados na mochila (no Lojista eles JUNTAM no mesmo slot → 1 clique = 1 unidade)
     const dups = {};
     try { for (const s of (scanBag().items || [])) if (s.kind === 'item') dups[s.id] = (dups[s.id] || 0) + 1; } catch { /* ignore */ }
-    q1('#janela-venda [data-separar-tipo="espolio"]')?.click();
-    await humano(480);
+    if (!apenas) { q1('#janela-venda [data-separar-tipo="espolio"]')?.click(); await humano(480); }
     const lendaBuild = lendariosDaClasse();
     // REGRA DO DONO (equipar): um item que o equipador vai VESTIR a seguir não pode ser
     // vendido — seria o ping-pong mochila↔Lojista (o actor equipa, o planeador vende).
@@ -3461,9 +3525,19 @@ const CFG_VER = 2;
       for (const s2 of (b2.items || [])) if (s2.kind === 'item') porBaseBag[s2.base] = (porBaseBag[s2.base] || 0) + 1;
       transbordo = Math.max(0, (b2.used || 0) - (b2.cap || 0));
     } catch { /* ignore */ }
+    // A janela de venda RE-RENDERIZA a cada clique (o slot muda de nó). Guardar a lista uma vez
+    // e clicar nos nós antigos só vende o PRIMEIRO — medido ao vivo 2026-10-19: 4 marcados,
+    // 1 saiu da mochila. Por isso cada clique re-querya o slot pelo `data-separar` exacto.
+    const clicarVenda = (id) => {
+      const el = qa1('#janela-venda .cofre-slot[data-separar]').find((x) => String(x.dataset.separar) === String(id));
+      if (!el) return false;
+      el.click();
+      return true;
+    };
     for (const s of qa1('#janela-venda .cofre-slot[data-separar]')) {
       const id = s.dataset.separar || ''; const dica = s.dataset.dica || '';
       if (id.startsWith('esp:')) continue;                       // espólio já foi em lote
+      if (apenas && !forcar(id)) continue;                       // modo cofre: só os ids retirados
       const puro = id.replace(/[+~].*$/, '');                    // '3089+2~A' → '3089'
       if (ehPrioridadeExtrema(puro)) continue;                   // PRIORIDADE EXTREMA (3031/3089, automation.js:47): nunca vai ao Lojista — nem duplicado (antes só o Rabadon era poupado aqui)
       // TRATAMENTO ESPECIAL POR CAMPEÃO (ver ITENS_ESPECIAIS): o motor lê estes itens pelo
@@ -3504,10 +3578,10 @@ const CFG_VER = 2;
       // Usa a RARIDADE DO CATÁLOGO (não a dica do slot): é a fonte fiável. Um item de
       // raridade 'epico' que sirva de componente à build ideal nunca vai para o Lojista.
       const catIt = (META.itens || []).find((x) => String(x.id) === String(puro));
-      if (catIt && catIt.raridade === 'epico' && componentesDaBuild().has(String(puro))) { regras.protegidos.push({ id, motivo: 'componente da build ideal (epico do catalogo)' }); continue; }
+      if (!forcar(id) && catIt && catIt.raridade === 'epico' && componentesDaBuild().has(String(puro))) { regras.protegidos.push({ id, motivo: 'componente da build ideal (epico do catalogo)' }); continue; }
       // BÁSICO COMPONENTE: guarda até ao tecto da receita, vende só o excedente (MESMA regra do
       // `planBag` — sem esta reconciliação voltava o ping-pong mochila<->Lojista).
-      if (catIt && catIt.raridade === 'basico' && componentesDaBuild().has(String(puro))) {
+      if (!forcar(id) && catIt && catIt.raridade === 'basico' && componentesDaBuild().has(String(puro))) {
         const tenho = porBaseBag[puro] || 0;
         const jaVendi = vendidosPorBase[puro] || 0;
         // TRANSBORDO: com a mochila acima da capacidade o tecto desce pelo tamanho do transbordo
@@ -3517,7 +3591,7 @@ const CFG_VER = 2;
         if (podeVender <= 0) { regras.protegidos.push({ id, motivo: 'básico componente da build (' + tenho + '/' + (necBas[puro] || 0) + ')' }); continue; }
         const vezesC = Math.min(dups[id] || 1, podeVender);
         vendidosPorBase[puro] = jaVendi + vezesC;
-        for (let k = 0; k < vezesC; k++) { s.click(); regras.epicosVendidos.push(id); await humano(120); }
+        for (let k = 0; k < vezesC; k++) { if (!clicarVenda(id)) break; regras.epicosVendidos.push(id); await humano(120); }
         continue;
       }
       // REGRA DO DONO (2026-10-14, verbatim): "lendarios sao desejados pelos jogadores, entao nunca
@@ -3527,7 +3601,7 @@ const CFG_VER = 2;
       if (lend) { regras.protegidos.push({ id, motivo: 'lendário NUNCA vai ao Lojista (regra do dono: vai ao mercado)' }); continue; }
       const n = dups[id] || 1;
       const vezes = n;                                             // sub-A vai pro Lojista inteiro (o dedupe-1 é do CAMINHO DO ANÚNCIO, planBag)
-      for (let k = 0; k < vezes; k++) { s.click(); regras.epicosVendidos.push(id); await humano(120); }
+      for (let k = 0; k < vezes; k++) { if (!clicarVenda(id)) break; regras.epicosVendidos.push(id); await humano(120); }
     }
     await humano(380);
     q1('#janela-venda [data-vender-cesta]')?.click();
@@ -3553,7 +3627,10 @@ const CFG_VER = 2;
     const falta = compraveis.filter((k) => (p[k] || 0) < alvo[k]);
     const sobrou = () => Object.keys(min).filter((k) => (readPotions()[k] || 0) < min[k]);
     if (!falta.length) return { ok: true, nada: true, min, compraveis, faltou: sobrou() };
-    if (!clickNPC('Lojista')) return { ok: false };
+    let falou = false;
+    if (clickNPC('Lojista')) falou = !!(await waitFor('#janela-npc [data-palavra="comprar"]', 1500));
+    if (!falou) falou = await clicarNpcNaTela('Lojista', 2);
+    if (!falou) return { ok: false, motivo: 'sem lojista' };
     if (!(await waitFor('#janela-npc [data-palavra="comprar"]'))) return { ok: false, motivo: 'sem comprar' };
     q1('#janela-npc [data-palavra="comprar"]').click();
     if (!(await waitFor('#janela-npc [data-comprar]'))) return { ok: false, motivo: 'sem botoes' };
@@ -3862,7 +3939,7 @@ const CFG_VER = 2;
     // throttle — sem isto ele ia buscar uma tarefa a cada 20 s quando não havia tarefa nenhuma.
     try {
       const st = tarefaEstado() || {};
-      n.tarefa = !!st.pronta || (!st.tem && (Date.now() - _ultimaTarefa) > 300000);
+      n.tarefa = !!st.pronta || (!st.tem && (Date.now() - _ultimaTarefa) > cadencia(300000));
       n._tarefa = { tem: !!st.tem, pronta: !!st.pronta, esperaMs: Date.now() - _ultimaTarefa };
     } catch { n.tarefa = false; }
     // PONTOS DE SKILL: a necessidade é "há pontos por gastar" (antes bastava `readSkills().pontos`,
@@ -3876,7 +3953,7 @@ const CFG_VER = 2;
     // `planoEquipar` que o planeador e o actor usam: só pede o passo quando há mesmo troca a fazer.
     try { n.equip = podeFazer('equip').pode && planoEquipar(bag).mexe; } catch { n.equip = false; }
     // REFINO: oportunidade com throttle (como `montar`/`comprar`) — senão nunca fica satisfeita.
-    try { n.refino = podeFazer('refino').pode && (Date.now() - _ultimoRefino) > 1800000 && precisaRefino(); } catch { n.refino = false; }
+    try { n.refino = podeFazer('refino').pode && (Date.now() - _ultimoRefino) > cadencia(1800000) && precisaRefino(); } catch { n.refino = false; }
     // ---- BUILD POR FASE: IR BUSCAR AO COFRE O QUE A BUILD DE AGORA TEM LÁ (PEDIDO DO DONO) ----
     // É necessidade PRIMÁRIA: uma peça da build parada no cofre vale uma viagem (não é
     // "oportunidade" como comprar/refinar). Só fica verdadeira quando a extensão JÁ SABE que a
@@ -3902,7 +3979,9 @@ const CFG_VER = 2;
     // gravado no storage em `salvarCofre`), não o número de peças: um cofre vazio também é uma
     // leitura válida e fica 10 min em silêncio.
     try {
-      const cad = numOr(cfg.cofreCadenciaMin, 10) * 60000;
+      // Jitter de ±15%: uma cadência cravada em 10:00.000 é uma assinatura de robô. O limite
+      // inferior continua a ser a cadência configurada -15%, nunca menos.
+      const cad = numOr(cfg.cofreCadenciaMin, 10) * 60000 * (0.85 + Math.random() * 0.30);
       const lidoEm = Math.max(_cofreAt || 0, _ultimoLerCofre || 0);
       n.lerCofre = podeFazer('cofre').pode && (!lidoEm || (Date.now() - lidoEm) > cad);
     } catch { n.lerCofre = false; }
@@ -3911,12 +3990,13 @@ const CFG_VER = 2;
     // É a MESMA chave de interruptor do cofre (`autoCofre`) — não se inventa um segundo mestre.
     // É uma acção de MANUTENÇÃO (como `vender`/`cofre`/`lerCofre`): paga a ida à Fonte sozinha.
     try {
+      const cadLixo = numOr(cfg.cofreCadenciaMin, 10) * 60000 * (0.85 + Math.random() * 0.30);
       n.venderLixoCofre = podeFazer('cofre').pode && lixoDoCofreLista().length > 0
-        && (!_ultimaVendaCofre || (Date.now() - _ultimaVendaCofre) > numOr(cfg.cofreCadenciaMin, 10) * 60000);
+        && (!_ultimaVendaCofre || (Date.now() - _ultimaVendaCofre) > cadLixo);
     } catch { n.venderLixoCofre = false; }
     n.mercado = n.anunciar;      // só vai ao mercado se houver lendário <A p/ anunciar
     // MONTAGEM AUTÓNOMA: no máximo 1x/30 min e só com ouro que sobre à reserva.
-    n.montar = podeFazer('montar').pode && (Date.now() - _ultimaMontagem) > 1800000 && readGold() > 60000;
+    n.montar = podeFazer('montar').pode && (Date.now() - _ultimaMontagem) > cadencia(1800000) && readGold() > 60000;
     // O comentário antigo dizia "checa barato e sai cedo" — MEDIDO: 13,5 s por
     // passagem (4 bases da build ideal, cada uma abre grupo e lê ofertas). A
     // rotina da base inteira chegava a 60–90 s por causa disto. Os preços do
@@ -3926,7 +4006,7 @@ const CFG_VER = 2;
     // `!== false` tratava `null` (mercado AINDA NÃO LIDO) como "pode abrir": era isso que abria o
     // mercado sozinho e ficava parado à frente. Agora o único caso que abre é `=== true`, ou seja,
     // a pré-checagem do servidor VIU uma peça da build à venda.
-    n.comprar = podeFazer('comprar').pode && (Date.now() - _ultimaCompra) > 600000
+    n.comprar = podeFazer('comprar').pode && (Date.now() - _ultimaCompra) > cadencia(600000)
       && mercadoTemDaBuild() === true;
     // ---- REGRA DE OURO: OPORTUNIDADES não pagam uma viagem sozinhas ----
     // Se NENHUMA necessidade primária está aberta, as oportunidades (mercado/comprar/refino/
@@ -4148,7 +4228,7 @@ const CFG_VER = 2;
   async function anunciarItem(i, preco) {
     const m = mercadoEl(true); if (!m) return { ok: false, motivo: 'sem mercado' };
     m.querySelector('[data-aba="vender"]')?.click();
-    await esperar(200);
+    await humano(200);
     const b = [...m.querySelectorAll('[data-escolher]')][i];
     if (!b) return { ok: false, motivo: 'sem item no índice ' + i };
     const src = b.querySelector('img')?.getAttribute('src') || '';
@@ -4159,7 +4239,7 @@ const CFG_VER = 2;
     if (baseCandidato && ehPrioridadeExtrema(baseCandidato)) { const e = prioExtremaDe(baseCandidato); return { ok: false, motivo: `PRIORIDADE EXTREMA (${e.motivo}) — nao anuncia [${e.fonte}]` }; }
     if (!baseCandidato) return { ok: false, motivo: 'slot sem id legivel — nao anuncia sem identificar o item' };
     b.click();
-    await esperar(200);
+    await humano(200);
     const inp = m.querySelector('#vender-preco');
     if (inp && preco) { inp.value = preco; inp.dispatchEvent(new Event('input', { bubbles: true })); }
     const an = m.querySelector('[data-anunciar]');
@@ -4225,7 +4305,7 @@ const CFG_VER = 2;
   async function aceitarTarefa() {
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     fecharJanelas(); await humano(250);
-    if (!clickNPC('Capitão da Legião')) return { ok: false, motivo: 'sem capitao' };
+    if (!(await abrirNpc('Capitão da Legião', '#janela-npc [data-palavra="tarefa"]'))) return { ok: false, motivo: 'sem capitao' };
     const btn = await waitFor('#janela-npc [data-palavra="tarefa"]', 4000);
     if (!btn) return { ok: false, motivo: 'sem opcao tarefa' };
     btn.click(); await humano(350);
@@ -4386,7 +4466,7 @@ const CFG_VER = 2;
     const dialogoAberto = !!(opts && opts.dialogoAberto);
     if (!dialogoAberto) {
       fecharJanelas(); await humano(250);
-      if (!clickNPC('Capitão da Legião')) return { ok: false, motivo: 'sem capitao' };
+      if (!(await abrirNpc('Capitão da Legião', '#janela-npc [data-palavra="entregar"]'))) return { ok: false, motivo: 'sem capitao' };
     }
     const btn = await waitFor('#janela-npc [data-palavra="entregar"]', 4000);
     if (!btn) return { ok: false, motivo: 'sem opcao entregar' };
@@ -4402,7 +4482,7 @@ const CFG_VER = 2;
   async function aceitarDiarias() {
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     fecharJanelas(); await humano(250);
-    if (!clickNPC('Capitão da Legião')) return { ok: false, motivo: 'sem capitao' };
+    if (!(await abrirNpc('Capitão da Legião', '#janela-npc [data-palavra="diaria"]'))) return { ok: false, motivo: 'sem capitao' };
     const btn = await waitFor('#janela-npc [data-palavra="diaria"]', 4000);
     if (!btn) return { ok: false, motivo: 'sem opcao diaria' };
     btn.click(); await humano(450);
@@ -4466,7 +4546,10 @@ const CFG_VER = 2;
       if (qIdx(s.qual) >= qIdx('S')) continue;                      // S/SS intocáveis
       if (ehEspecialMeu(base) || especiais.has(base)) continue;     // tratamento especial
       if (ehReservado(base) || reserv.has(base)) continue;          // reservado p/ a troca por fase
-      if (ideal.has(base) || comps.has(base)) continue;             // peça da build (ou componente)
+      if (ideal.has(base)) continue;                                // peça FINAL da build: nunca
+      // Componente: UMA cópia fica sempre (a build pode precisar dela); a SEGUNDA cópia é lixo,
+      // tal como qualquer duplicado. Sem isto o cofre enchia de duplicados "protegidos" e o
+      // `venderLixoDoCofre` devolvia sempre [] com 24 slots ocupados (medido ao vivo 2026-10-19).
       cand.push(s);
     }
     // duplicados: manter a melhor cópia; o resto (do cofre) é lixo
@@ -4476,6 +4559,9 @@ const CFG_VER = 2;
     for (const base of Object.keys(porBase)) {
       const doCofre = porBase[base];
       const todas = _copiasDoBase(base, slots);
+      // Componente com UMA só cópia não é lixo (a build pode precisar dela). Com 2+, a pior
+      // cópia do cofre é lixo como qualquer duplicado.
+      if (comps.has(base) && todas.length <= 1) continue;
       if (todas.length <= 1) { lixo.push(...doCofre); continue; }   // cópia única: é lixo
       const melhor = todas.slice().sort(_melhorCopia)[0];
       for (const s of doCofre) if (s !== melhor.ref) lixo.push(s);  // não é a melhor cópia -> lixo
@@ -4533,17 +4619,23 @@ const CFG_VER = 2;
     if (!lixo.length) return { ok: true, vendidos: [] };
     const abriu = await abrirCofreTesoureira();
     if (!abriu || !abriu.ok) return { ok: false, motivo: (abriu && abriu.motivo) || 'sem cofre aqui', vendidos: [] };
-    const vendidos = [];
-    for (const alvo of lixo.slice(0, 8)) {
+    const vendidos = [], idsCofre = [];
+    // Lote variável (5-8): o tecto continua 8, mas o tamanho não é sempre o mesmo.
+    const loteMax = 5 + Math.floor(Math.random() * 4);
+    for (const alvo of lixo.slice(0, loteMax)) {
       const r = await sacarSlotDoCofre(alvo);
-      if (r && r.ok) vendidos.push(String(alvo.base));
-      else break;   // saque falhou: mochila cheia / servidor recusou / slot já não existe. Pára.
-      await esperar(120);
+      if (r && r.ok) {
+        vendidos.push(String(alvo.base));
+        // ID EXACTO (base+refino~qual): o Lojista tem de vender ESTA cópia, não a melhor que
+        // ficou no cofre. Sem o id exacto o `venderBase` voltava a proteger o componente.
+        if (r.qual) idsCofre.push(String(r.base) + (r.refino ? '+' + r.refino : '') + '~' + String(r.qual).toUpperCase());
+      } else break;   // saque falhou: mochila cheia / servidor recusou / slot já não existe. Pára.
+      await humano(120);
     }
     fecharJanelas();
-    const venda = await venderBase();
+    const venda = idsCofre.length ? await venderBase({ apenas: idsCofre }) : { ok: false, motivo: 'sem ids do cofre' };
     if (vendidos.length) { _ultimaVendaCofre = Date.now(); logEvent('cofre', { acao: 'vender-lixo', vendidos }); }
-    return { ok: true, vendidos, venda };
+    return { ok: true, vendidos, idsCofre, venda };
   }
 
   /** Os NPCs que abrem o cofre: a Tesoureira (Fonte) e o Burrinho de Carga (cidade) — motor.js `podeCofre`. */
@@ -4623,11 +4715,11 @@ const CFG_VER = 2;
         const wy = pos.y + dy * Math.min(3, Math.abs(npc.y - pos.y));
         const p = ecra(wx, wy, cam);
         if (!dentro(p)) return false;
-        cv.dispatchEvent(eventoRato('mousedown', { button: 2, clientX: p.x, clientY: p.y }));
-        await esperar(900);
+        await clicarCanvasHumano(cv, p.x, p.y, { button: 2, exato: true });
+        await humano(900);
         continue;
       }
-      cv.dispatchEvent(eventoRato('mousedown', { button: 2, clientX: alvo.x, clientY: alvo.y }));
+      await clicarCanvasHumano(cv, alvo.x, alvo.y, { button: 2, exato: true });
       // `falarCom` pode ANDAR ate ao NPC antes de abrir a janela (jogo.js:5443).
       for (let i = 0; i < 30; i++) {
         await esperar(150);
@@ -4671,7 +4763,7 @@ const CFG_VER = 2;
       for (const [dx, dy] of candidatos) {
         const x = x0 + dx * pxTile, y = y0 + dy * pxTile;
         if (x < r.left + 1 || x > r.left + r.width - 1 || y < r.top + 1 || y > r.top + r.height - 1) continue;
-        try { cv.dispatchEvent(eventoRato('mousedown', { button: 2, clientX: x, clientY: y })); }
+        try { const c = await clicarCanvasHumano(cv, x, y, { button: 2, exato: true }); if (!c.ok) continue; }
         catch { continue; }
         // O `falarCom` pode ANDAR até ao NPC antes de abrir a janela (jogo.js:5443); 700 ms
         // chega para o caso adjacente e evita disparar o candidato seguinte a meio do caminho.
@@ -5670,7 +5762,7 @@ const CFG_VER = 2;
       }
       const mk = mercado.find((x) => x.qual === o.qual && String(x.base) === String(o.base));
       if (!mk || mk.preco == null || o.preco == null) { if (!mk) acoes.push({ id: o.id, nome: o.nome, qual: o.qual, acao: 'manter (sem comparativo no mercado)' }); continue; }
-      const alvo = Math.max(1, Math.round(mk.preco * 0.9));
+      const alvo = Math.max(1, Math.round(mk.preco * fatorAnuncio()));
       // SÓ SOBE — NUNCA abaixa o preço de uma oferta viva (o dono quer CARO; o mínimo do jogo é lixo)
       if (o.preco < alvo * 0.95) acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, de: o.preco, para: alvo, acao: 'reanunciar (subir p/ 90% do menor)' });
       else acoes.push({ id: o.id, nome: o.nome, qual: o.qual, acao: 'ok' });
@@ -5702,7 +5794,7 @@ const CFG_VER = 2;
     // PRIORIDADE EXTREMA (3031/3089, automation.js:47): nunca anunciado, NEM DUPLICADO (regra do dono).
     if (ehPrioridadeExtrema(base)) { const e = prioExtremaDe(base); return { ok: false, motivo: `PRIORIDADE EXTREMA (${e.motivo}) — nao anuncia [${e.fonte}]` }; }
     const m = mercadoEl(true); if (!m) return { ok: false, motivo: 'sem mercado' };
-    if (m.hidden) { press('j'); await esperar(500); }
+    if (m.hidden) { press('j'); await humano(500); }
     m.querySelector('[data-aba="vender"]')?.click();
     await humano(380);
     const b = [...m.querySelectorAll('[data-escolher]')].find((s) => {
@@ -5721,13 +5813,13 @@ const CFG_VER = 2;
     if (inp) { inp.value = String(precoFinal); inp.dispatchEvent(new Event('input', { bubbles: true })); }
     const an = m.querySelector('[data-anunciar]');
     if (!an) return { ok: false, motivo: 'sem botao anunciar' };
-    an.click(); await esperar(450);
+    an.click(); await humano(450);
     if (clicarDialogo(/usar o pre\u00e7o m[ií]nimo/i)) {          // era abaixo do mínimo → preenche e repete
-      await esperar(350);
-      m.querySelector('[data-anunciar]')?.click(); await esperar(450);
+      await humano(350);
+      m.querySelector('[data-anunciar]')?.click(); await humano(450);
     }
     clicarDialogo(/^(anunciar|entendi|ok|sim)$/i);                 // confirma eventual "bem abaixo do normal"
-    await esperar(300);
+    await humano(300);
     logEvent('mercado', { acao: 'anunciar', base, preco: precoFinal, min });
     return { ok: true, base, preco: precoFinal, min };
   }
@@ -5738,24 +5830,24 @@ const CFG_VER = 2;
     if (!plano || !plano.ok) return { ok: false, motivo: 'sem plano' };
     ocupado = true;
     const exec = [];
-    const mm = mercadoEl(true); if (mm && mm.hidden) { press('j'); await esperar(600); }
+    const mm = mercadoEl(true); if (mm && mm.hidden) { press('j'); await humano(600); }
     const alvos = (plano.acoes || []).filter((a) => a.acao.startsWith('reanunciar') && a.base);
     // 1) CANCELA tudo primeiro (aba Minhas), re-selecionando a aba a cada cancelamento
     for (const a of alvos) {
-      mm?.querySelector('[data-aba="minhas"]')?.click(); await esperar(320);
-      await cancelarOferta(a.id); await esperar(550);
+      mm?.querySelector('[data-aba="minhas"]')?.click(); await humano(320);
+      await cancelarOferta(a.id); await humano(550);
     }
     // 2) RE-ANUNCIA no alvo (aba Vender)
     for (const a of alvos) {
       const r = await anunciarItemPorBase(a.base, a.para);
       exec.push({ nome: a.nome, qual: a.qual, de: a.de, para: a.para, feito: !!r.ok, motivo: r.motivo || null });
-      await esperar(420);
+      await humano(420);
     }
     // protegidos: só cancela
     for (const a of (plano.acoes || [])) {
       if (a.acao !== 'cancelar (protegido: lendário A+/Rabadon)') continue;
-      mm?.querySelector('[data-aba="minhas"]')?.click(); await esperar(320);
-      await cancelarOferta(a.id); await esperar(400);
+      mm?.querySelector('[data-aba="minhas"]')?.click(); await humano(320);
+      await cancelarOferta(a.id); await humano(400);
       exec.push({ nome: a.nome, qual: a.qual, acao: 'cancelado (protegido)', feito: true });
     }
     const ok = exec.filter((e) => e.feito).length;
@@ -6841,7 +6933,7 @@ const CFG_VER = 2;
     fecharJanelas(); await humano(300);
     // os ALVOS e a lista de essenciais viajam em TODOS os retornos: quem chamou tem de ver
     // O QUE ia ser refinado e PORQUÊ, mesmo quando o passo falha (é o log do dono).
-    if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn', ...diag };
+    if (!(await abrirNpc('Ornn', '#janela-npc [data-palavra="forjar"]'))) return { ok: false, motivo: 'sem Ornn', ...diag };
     const bt = await waitFor('#janela-npc [data-palavra="forjar"]', 4000);
     if (!bt) return { ok: false, motivo: 'sem opcao forjar', ...diag };
     bt.click(); await humano(650);
@@ -6905,7 +6997,7 @@ const CFG_VER = 2;
   async function receitasOrnn(filtro) {
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     fecharJanelas(); await humano(300);
-    if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn' };
+    if (!(await abrirNpc('Ornn', '#janela-npc [data-palavra="montar"]'))) return { ok: false, motivo: 'sem Ornn' };
     const bt = await waitFor('#janela-npc [data-palavra="montar"]', 4000);
     if (!bt) return { ok: false, motivo: 'sem opcao montar' };
     bt.click(); await humano(700);
@@ -6938,7 +7030,7 @@ const CFG_VER = 2;
     const n = Math.max(1, Math.min(1000, Number(vezes) || 1));
     const antes = readGold();
     fecharJanelas(); await humano(300);
-    if (!clickNPC('Ornn')) return { ok: false, motivo: 'sem Ornn' };
+    if (!(await abrirNpc('Ornn', '#janela-npc [data-palavra="montar"]'))) return { ok: false, motivo: 'sem Ornn' };
     const bt = await waitFor('#janela-npc [data-palavra="montar"]', 4000);
     if (!bt) return { ok: false, motivo: 'sem opcao montar' };
     bt.click(); await humano(700);
@@ -7036,7 +7128,7 @@ const CFG_VER = 2;
       // preço passa a ser `cfg.precoSemComparavel` (1.500.000, configurável) em vez de PULAR o
       // anúncio. O mínimo do jogo (`minimoMercado`, lido dentro do `anunciarItemPorBase`)
       // continua a ser respeitado como PISO — é isso que impede vender pelo mínimo.
-      const preco = menor ? Math.max(1, Math.round(menor * 0.9)) : Math.max(1, Math.round(numOr(cfg.precoSemComparavel, 1500000)));
+      const preco = menor ? Math.max(1, Math.round(menor * fatorAnuncio())) : Math.max(1, Math.round(numOr(cfg.precoSemComparavel, 1500000)));
       // sem preço de referência: regista o preço mínimo no log (não duplica em anunciados)
       const r = await anunciarItemPorBase(it.base, preco);
       if (r.ok) anunciados.push({ base: it.base, qual: it.qual, preco }); else break;
@@ -7846,6 +7938,10 @@ const CFG_VER = 2;
    *  a build andar para trás. Desligada, é a `buildIdeal()` de sempre. */
   async function comprarNoMercado() {
     if (!naBase()) return { ok: false, motivo: 'so no Mercador (base)' };
+    // PAUSA A SÉRIO (medido 2026-10-19: um Eco de Luden de 100.000 foi comprado ~2,5 s
+    // DEPOIS de `pausar()`). O `pausado` só travava o loop; a compra já ia a meio e
+    // continuava. A pausa passa a ser consultada ANTES de clicar em comprar.
+    if (pausado) return { ok: false, motivo: 'pausado' };
     ocupado = true;
     try {
       const mm = mercadoEl(true); if (mm && mm.hidden) { press('j'); await esperar(600); }
@@ -7897,7 +7993,9 @@ const CFG_VER = 2;
         if (!v.ok) { compras.push({ base, preco: melhor.preco, comprou: false, motivo: 'farmar vale mais (' + (v.motivo || '') + ' ' + (v.tempoMin || '?') + 'min)' }); continue; }
         const b = q1(`#janela-mercado [data-comprar="${melhor.id}"]`);
         if (!b) continue;
+        if (pausado) { compras.push({ base, preco: melhor.preco, comprou: false, motivo: 'pausado' }); break; }
         b.click(); await esperar(550);
+        if (pausado) { compras.push({ base, preco: melhor.preco, comprou: false, motivo: 'pausado antes de confirmar' }); break; }
         clicarDialogo(/^\s*comprar\s*$|^\s*sim\s*$/i); await esperar(650);
         ouro = readGold();
         compras.push({ base, nome: (infoItem(base) || {}).nome, preco: melhor.preco, comprou: true, ouroDepois: ouro });
@@ -8107,6 +8205,7 @@ const CFG_VER = 2;
   let _watchAt = 0, _watchTentou = 0, _watchAchados = [], _watchUltimaCompra = null;
   async function vigiarMercadoPasso() {
     _watchTentou = Date.now();
+    if (pausado) return { ok: false, motivo: 'pausado' };
     if (cfg.autoVigiarMercado === false) return { ok: false, motivo: 'desligado' };
     const w = cfg.mercadoWatch || {};
     if (!((w.itens || []).length || (w.vendedores || []).length)) return { ok: false, motivo: 'sem watch' };
@@ -8376,7 +8475,7 @@ const CFG_VER = 2;
       logEvent('giro', { esperaFonte: true, tentativas: _giroVoltas + 1, onde: (readLocation().text || '?') });
       _giroVoltas++;
       press('b');
-      return setTimeout(proximoGiro, 9000);
+      return setTimeout(proximoGiro, cadencia(9000));
     }
     _giroVoltas = 0;
     const id = giro.lista[giro.i];
@@ -8384,7 +8483,7 @@ const CFG_VER = 2;
     viajarPara(id);
     const dur = giro.duracaoMs;
     giro.i++; salvarGiro();
-    setTimeout(proximoGiro, dur);
+    setTimeout(proximoGiro, cadencia(dur));
   }
   /** Gira por cada região, logando um ciclo em cada. Progresso persistido (retoma de onde parou). */
   function iniciarGiro(ids, duracaoMs) {
@@ -8427,7 +8526,7 @@ const CFG_VER = 2;
       trocas.push({ sai: b.t, entra: nova.t, novaDps: nova.dps });
       if (!dry) {
         q1(`#hab-ativas .hab[data-t="${nova.t}"]`)?.click();
-        setTimeout(() => q1(`#barra .hab[data-t="${b.t}"]`)?.click(), 160);
+        setTimeout(() => q1(`#barra .hab[data-t="${b.t}"]`)?.click(), 120 + Math.random() * 110);
       }
     }
     return { trocas, offBar: off.length };
@@ -9227,7 +9326,7 @@ const CFG_VER = 2;
       const bag = scanBag();
       const st = tarefaEstado();
       const semTarefa = !st.tem;
-      querTarefa = semTarefa && Date.now() - _ultimaTarefa > 300000;
+      querTarefa = semTarefa && Date.now() - _ultimaTarefa > cadencia(300000);
       // FONTE ÚNICA DA VERDADE: `necessidadesBase()` — a MESMA que o `acaoBase` usa (PASSOS_BASE).
       // Antes havia aqui um critério PARALELO (mochila cheia / lixo>=1 / tarefa) e era essa
       // duplicação que fazia o supervisor mandar vender 1 item enquanto o planeador achava que
@@ -9623,7 +9722,7 @@ const CFG_VER = 2;
     // tomada UMA vez (`_pvDecidido`).
     every(5000, () => { try { primeiraVezPasso(); } catch { /* ignore */ } });
     // ... e uma tentativa imediata (o HUD pode já estar pronto quando a extensão injecta).
-    setTimeout(() => { try { primeiraVezPasso(); } catch { /* ignore */ } }, 1000);
+    setTimeout(() => { try { primeiraVezPasso(); } catch { /* ignore */ } }, 700 + Math.random() * 700);
   }
   /** Estado da funcionalidade — para a GUI e para o diagnóstico (não muda nada). */
   function primeiraVezEstado() {
@@ -9761,7 +9860,7 @@ const CFG_VER = 2;
   // ESTADO COMPLETO periodicamente (pedido do dono: inventário, cofre, habilidades, mobs/bosses
   // sempre atualizados). 20 s: barato e suficiente para a GUI e para as decisões.
   every(() => { try { estadoCompleto(); } catch { /* ignore */ } }, 20000);
-  setTimeout(() => { try { estadoCompleto(); } catch { /* ignore */ } }, 2500);
+  setTimeout(() => { try { estadoCompleto(); } catch { /* ignore */ } }, 2000 + Math.random() * 1200);
   // observa o #log da aba Servidor (loot/chefe)
   const logEl = document.querySelector('#log');
   if (logEl) { window.__lolidleAutoObs = new MutationObserver(scanLog); window.__lolidleAutoObs.observe(logEl, { childList: true }); }   // sem subtree (o #log muda muito)

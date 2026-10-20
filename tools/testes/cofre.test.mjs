@@ -61,6 +61,9 @@ function abrirDialogoNpc(m, nome) {
   montarDialogoCofre(m, nome);
 }
 const soDireito = (evs) => evs.every((e) => e.tipo === 'mousedown' && e.button === 2);
+/** O clique do jogo é o `mousedown`; a humanização acrescenta `mousemove`/`mouseup` à volta.
+ *  As contagens têm de olhar para os cliques, não para todos os eventos. */
+const cliques = (evs) => evs.filter((e) => e.tipo === 'mousedown');
 
 /** Slot de cofre no formato do jogo (jogo.js:5598 `grade`): `data-k`, `data-nome` ("Nome [QUAL]")
  *  e o ícone com o src do jogo (jogo.js:167 `imgItem`). O `find:{img}` é OBRIGATÓRIO: o stub só
@@ -157,15 +160,16 @@ export const suite = {
       const auto = carregarAutomation(m);
       montarTela(m, 480, 352);                       // 352/11 = 32 px de CSS por tile
       const r = await auto.andarParaCima(2);
-      const evs = m.eventosDe('tela');
+      const evs = cliques(m.eventosDe('tela'));
       t.check('C1: andarParaCima(2) corre e conta 2 tiles', r.ok === true && r.tiles === 2);
-      t.check('C1: disparou 2 eventos no canvas #tela', evs.length === 2);
+      t.check('C1: disparou 2 cliques no canvas #tela', evs.length === 2);
       t.check('C1: CONTROLO - os dois sao mousedown do BOTAO DIREITO (jogo.js:1449 exige button===2)', soDireito(evs));
       t.check('C1: x = centro do canvas (a camera centra o campeao: cena.js:4060)', evs.length === 2 && evs[0].clientX === 240);
       t.check('C1: y = centro - 1 tile (176 - 352/11 = 144)', evs.length === 2 && evs[0].clientY === 144);
       t.check('C1: o 2.º clique e no MESMO ponto (a camera recentra-se depois de andar 1 tile)',
         evs.length === 2 && evs[1].clientY === 144 && evs[1].clientX === 240);
       t.check('C1: nao cliquei no centro do canvas (isso seria andar 0 tiles)', evs.length === 2 && evs.every((e) => e.clientY < 176));
+      t.check('C1: o clique traz a sequencia humana mousemove+mousedown+mouseup', m.eventosDe('tela').length === 6 && m.eventosDe('tela').filter((e) => e.tipo === 'mouseup').length === 2);
     }
 
     /* ============ C2 - subirNaFonte recusa fora da Fonte (nao se anda as cegas no campo) ============ */
@@ -192,12 +196,12 @@ export const suite = {
       const original = tela.dispatchEvent;
       tela.dispatchEvent = (ev) => {
         original(ev);
-        const subidas = m.eventosDe('tela').filter((e) => e.clientY === 48).length;
-        if (subidas >= 2 && ev.clientX === 208 && ev.clientY === 176) abrirDialogoNpc(m, 'Tesoureira de Piltover');
+        const subidas = cliques(m.eventosDe('tela')).filter((e) => e.clientY === 48).length;
+        if (subidas >= 2 && ev.type === 'mousedown' && ev.clientX === 208 && ev.clientY === 176) abrirDialogoNpc(m, 'Tesoureira de Piltover');
         return true;
       };
       const r = await auto.abrirCofreTesoureira();
-      const evs = m.eventosDe('tela');
+      const evs = cliques(m.eventosDe('tela'));
       t.check('C3: o cofre ABRIU (antes: motivo generico, nunca abria na Fonte)', r.ok === true);
       t.check('C3: abriu pela Tesoureira de Piltover', r.via === 'Tesoureira de Piltover');
       t.check('C3: CONTROLO - duas subidas de 4 tiles = 8 (CY+3 -> CY-5)',
@@ -242,7 +246,7 @@ export const suite = {
       montarLocal(m, 'Fonte');
       montarTela(m, 480, 352);
       const r = await auto.abrirCofreTesoureira();
-      const evs = m.eventosDe('tela');
+      const evs = cliques(m.eventosDe('tela'));
       t.check('C6: o cofre nao abriu (nao ha NPC nenhum no DOM)', r.ok === false);
       // ACTUALIZADO (2026-10-19, Regra N.o 6): nao sao 6+6 cliques de 1 tile. O boneco chega a
       // Fonte em `mundo.js:201` `cy + 3`; a Tesoureira esta em `mundo.js:20` `CY - 5`: 8 tiles.
@@ -291,9 +295,12 @@ export const suite = {
       montarTela(m, 480, 352);                    // 352/11 = 32 px por tile; centro (240,176)
       const r1 = await auto.subirNaFonte(4);
       const r2 = await auto.subirNaFonte(4);
-      const evs = m.eventosDe('tela');
+      const todos = m.eventosDe('tela');
+      const evs = cliques(todos);
       const centro = 240;
       t.check('C9: dois destinos de 4 tiles = o "duas vezes" do dono', r1.ok && r2.ok && r1.tiles === 4 && r2.tiles === 4 && evs.length === 2);
+      t.check('C9: cada clique humano traz mousemove e mouseup (3 eventos por destino)',
+        todos.length === 6 && todos.filter((e) => e.tipo === 'mousemove').length === 2 && todos.filter((e) => e.tipo === 'mouseup').length === 2);
       t.check('C9: 1.o clique NAO e o centro (a caminhada nao e uma linha exacta)', evs[0].clientX !== centro);
       t.check('C9: os dois cliques alternam de lado', evs[0].clientX !== evs[1].clientX && (evs[0].clientX - centro) * (evs[1].clientX - centro) < 0);
       t.check('C9: y = centro - 4 tiles (48), dentro do canvas', evs.every((e) => e.clientY === 48));
@@ -338,6 +345,25 @@ export const suite = {
       // prova de que a regra da build esta a ser aplicada (1005 nao entra na build do adtest)
       t.check('C10: CONTROLO - 1005 nao esta na build do adtest', !(auto.buildIdeal() || []).map(String).includes('1005'));
       t.check('C10: CONTROLO - 4002 (epico fora da build) nao esta na build', !(auto.buildIdeal() || []).map(String).includes('4002'));
+    }
+
+    /* ============ C10b - COMPONENTE DUPLICADO: uma copia fica, a pior e lixo ============ */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarMochila(m, []);
+      m.montar('#equip > button.slot[data-id]', [m.el({ tag: 'button', label: 'equip:2001', className: 'slot lendario', attrs: { 'data-id': '2001~S', 'data-dica': 'Lendario AD 1 (lendario)' } })]);
+      const L = (k, nome, base, refino, rar) => slotCofre(m, { k, nome, base, refino, rar });
+      montarGradeCofre(m, [
+        L(1, 'Espada Longa [B]', '1001', 0, 'basico'),     // melhor copia do componente
+        L(2, 'Espada Longa [C]', '1001', 0, 'basico'),     // duplicado do componente -> lixo
+      ]);
+      const lixo = auto.lixoDoCofreLista();
+      t.check('C10b: componente duplicado -> so a pior copia e lixo',
+        lixo.length === 1 && String(lixo[0].base) === '1001' && lixo[0].qual === 'C');
+      t.check('C10b: a melhor copia do componente fica', !lixo.some((s) => s.qual === 'B'));
     }
 
     /* ============ C11 - VENDER O LIXO DO COFRE: caminho ponta a ponta (TK-03) ============ */
