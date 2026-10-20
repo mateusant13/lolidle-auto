@@ -6896,7 +6896,12 @@ const CFG_VER = 2;
   //   (2) ORÇAMENTO: o beam tem um tecto de estados avaliados (BEAM_ORCAMENTO). Se o pool
   //       for grande demais, o beam corta e devolve o melhor até ali — tempo previsível,
   //       nunca bloqueia a thread por segundos.
-  let _buildCache = null;   // { chave, ids, ms }
+  let _buildCache = null;   // ultimo { chave, ids, ms } (compatibilidade/GUI)
+  // UMA entrada nao chega: o jogo pede build de 'mobs' e 'chefe' na MESMA passagem
+  // (basesReservadas, plano de todos, GUI). Com uma so entrada as duas chaves
+  // alternavam e o beam recalculava a cada chamada - o bloqueio de ~2,5 s voltava.
+  const _buildCacheMap = new Map();   // chave -> { chave, ids, ms }
+  const BUILD_CACHE_MAX = 8;
   let _buildExecs = 0;      // contador cumulativo de recalculos (sobrevive a invalidacao)
   let _beamInfo = { states: 0, execs: 0, ms: 0, maxStates: 0, cortou: false, t0: 0 };
   const BEAM_ORCAMENTO = 6000;   // tecto de avaliações de scoreSet por build
@@ -6961,7 +6966,11 @@ const CFG_VER = 2;
     // -> componentesDaBuild -> buildIdeal) chamava isto a cada tick — agora não recalcula
     // enquanto nada mudou.
     const chave = fingerprintBuild(c, fase);
-    if (_buildCache && _buildCache.chave === chave) return _buildCache.ids.slice();
+    if (_buildCacheMap.has(chave)) {
+      const hit = _buildCacheMap.get(chave);
+      _buildCache = hit;
+      return hit.ids.slice();
+    }
     const t0 = Date.now();
     const alvoScore = (fase === 'chefe' || fase == null) ? alvoDeReferencia('chefe') : null;
     const classe = c.magia ? 'ap' : 'ad';
@@ -6973,7 +6982,14 @@ const CFG_VER = 2;
       _champScore = null;
     }
     _buildExecs++;
-    _buildCache = { chave, ids, ms: Date.now() - t0 };
+    const entry = { chave, ids, ms: Date.now() - t0 };
+    _buildCacheMap.set(chave, entry);
+    if (_buildCacheMap.size > BUILD_CACHE_MAX) {
+      // Politica simples: a chave mais antiga sai. O jogo usa no maximo duas fases
+      // por passagem; 8 cobre folgadamente e impede crescimento sem tecto.
+      _buildCacheMap.delete(_buildCacheMap.keys().next().value);
+    }
+    _buildCache = entry;
     return ids.slice();
   }
   /** A escolha por SCORE MEDIDO: greedy sobre o catálogo — o item que mais sobe o score do
@@ -9435,7 +9451,7 @@ const CFG_VER = 2;
   }
 
   window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
-    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, cacheBuildEstado: () => (_buildCache ? { chave: _buildCache.chave, execs: _buildExecs, ms: _buildCache.ms, ids: _buildCache.ids.slice() } : null), infoBeam: () => Object.assign({}, _beamInfo), invalidarCacheBuild: () => { _buildCache = null; }, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
+    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, cacheBuildEstado: () => (_buildCache ? { chave: _buildCache.chave, execs: _buildExecs, ms: _buildCache.ms, ids: _buildCache.ids.slice() } : null), infoBeam: () => Object.assign({}, _beamInfo), invalidarCacheBuild: () => { _buildCache = null; _buildCacheMap.clear(); }, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
     // modeladas com eles: vida com k/M e escudo, recarga exacta, efeitos activos, recarga de item,

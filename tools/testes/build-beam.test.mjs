@@ -178,6 +178,17 @@ export const suite = {
     const execs1 = auto.cacheBuildEstado().execs;
     const ids1 = (auto.buildIdealPara(c) || []).map(String);
     const execs2 = auto.cacheBuildEstado().execs;
+    // B5c: o jogo pede 'mobs' e 'chefe' na mesma passagem. Uma cache de UMA entrada
+    // alternava as chaves e recalculava o beam a cada chamada; a Map tem de segurar as duas.
+    auto.invalidarCacheBuild();
+    auto.buildIdealParaFase(c, 'mobs');
+    const eM1 = auto.cacheBuildEstado().execs;
+    auto.buildIdealParaFase(c, 'chefe');
+    const eC = auto.cacheBuildEstado().execs;
+    auto.buildIdealParaFase(c, 'mobs');
+    const eM2 = auto.cacheBuildEstado().execs;
+    t.check('B5c: alternar mobs/chefe usa cache (mobs ' + eM1 + ', chefe ' + eC + ', mobs ' + eM2 + ')',
+      eC === eM1 + 1 && eM2 === eC);
     t.check('B5a: duas chamadas seguidas recalculam uma vez so (' + execs1 + ' depois ' + execs2 + ')', execs2 === execs1);
     t.check('B5b: o resultado do cache hit e idêntico', JSON.stringify(ids1) === JSON.stringify(ideal));
 
