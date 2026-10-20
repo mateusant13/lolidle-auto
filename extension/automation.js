@@ -7006,7 +7006,11 @@ const CFG_VER = 2;
   const BEAM_K = 12;   // largura do beam (K=10..12 do ticket)
   const BEAM_N = 40;   // pré-filtro do pool não-bota por score individual (N=32..48 do ticket)
   function montarBuildDePorScore(c, fase, alvoScore, classe, todos) {
-    const scoreDe = (ids) => scoreSet(ids.map(String), alvoScore);
+    // CUSTO: `player()/readStats()/dpsPorHabilidade()` s�o INVARIANTES entre candidatos; ler
+    // uma vez por build em vez de 2000x. Isto mant�m o beam grande (K=12/N=40) dentro de
+    // ~1 s em vez de ~8,8 s (medido ao vivo 2026-10-19).
+    const ctx = contextoScore();
+    const scoreDe = (ids) => scoreSet(ids.map(String), alvoScore, ctx);
     const pool = todos.filter((i) => { const cl = classeItem(i.id); return cl === 'neutro' || cl === classe; });
     const resto = pool.filter((i) => i.espaco !== 'botas');
     if (!pool.length) return [];
@@ -7999,8 +8003,26 @@ const CFG_VER = 2;
    *  campeão que não está em campo). null = o campeão actual (META.champAtual), que é o
    *  comportamento de sempre para TODOS os outros chamadores. */
   let _champScore = null;
-  /** Score de dano de um conjunto — AGORA com as passivas (Lich/Chama/Liandry), igual ao estimarSet. */
-  function scoreSet(ids, alvo) {
+  /** Contexto INVARIANTE de um conjunto para a busca: player/equipamento/skills nao mudam
+   *  entre candidatos do MESMO beam. Antes o `scoreSet` chamava `player()`, `readStats()` e
+   *  `dpsPorHabilidade()` (que percorre o kit inteiro) em CADA estado - 2000 estados x DOM =
+   *  ~8,8 s de main thread no jogo real. O contexto e' lido UMA vez por build. */
+  function contextoScore() {
+    const pj = player() || {};
+    let fracHabs = 0;   // sem dados de habilidades o CDR N�O pontua
+    try {
+      const lista = (dpsPorHabilidade().habs || []);
+      const dh = lista.filter((h) => !h.auto && !h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
+      const da = lista.filter((h) => h.auto || h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
+      if (dh + da > 0) fracHabs = dh / (dh + da);
+    } catch { /* sem arsenal */ }
+    const stC = readStats();
+    const fracAutoV = (typeof fracAuto === 'function') ? fracAuto() : (1 - fracHabs);
+    return { pj, fracHabs, stC, fracAuto: fracAutoV };
+  }
+  /** Score de dano de um conjunto - AGORA com as passivas (Lich/Chama/Liandry), igual ao estimarSet. */
+  function scoreSet(ids, alvo, ctx) {
+    const C = ctx || contextoScore();
     const champ = _champScore || META.champAtual || null;
     const S = statsSet(ids);
     const apSet = apDoSet(ids, S).ap;
@@ -8014,7 +8036,7 @@ const CFG_VER = 2;
     // vem do campeao: AP usa o AP dos itens; AD usa o dano do campeao (ja com
     // itens) + o AD dos itens. O Lich so entra para magos.
     const magia = !!(champ && champ.magia);
-    const pj = player() || {};
+    const pj = C.pj;
     const adTotalSet = (pj.dano || 0) + (S.ad || 0) + (S.bonusVidaToAd ? S.bonusVidaToAd * (S.vida || 0) : 0);
     const base = magia ? apSet : adTotalSet;
     // ---- CDR SÓ NAS HABILIDADES (correcção do Lead, 2026-10-14) --------------------------------
@@ -8026,18 +8048,13 @@ const CFG_VER = 2;
     // recarga efectiva) — não há duas contabilidades de CDR a divergir.
     // ANTES: `d = base * mit / (1 - S.cdr)` -> 15% de CDR valia +17,6% em TODO o dano, autos incluídos.
     let fracHabs = 0;   // sem dados de habilidades o CDR NÃO pontua (controlo: sem skills, sem ganho)
-    try {
-      const lista = (dpsPorHabilidade().habs || []);
-      const dh = lista.filter((h) => !h.auto && !h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
-      const da = lista.filter((h) => h.auto || h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
-      if (dh + da > 0) fracHabs = dh / (dh + da);
-    } catch { /* sem arsenal */ }
+    fracHabs = C.fracHabs;
     const fatorCdr = fracHabs / (1 - S.cdr) + (1 - fracHabs);   // só a parcela das habilidades acelera
       // H12a (motor.js:1199/1226): o CRÍTICO do painel entra SÓ na parcela dos AUTOS — a skill pura não critica.
-      const _stC = readStats();
+      const _stC = C.stC;
       const _cChance = Number.isFinite(_stC.critChance) ? _stC.critChance : 0;
       const _cMult = (Number.isFinite(_stC.critMult) ? _stC.critMult : 1.75) + (S.critDano || 0);
-      const _fracAuto = (typeof fracAuto === 'function') ? fracAuto() : (1 - fracHabs);   // H12a: a MESMA fracção que o teste le
+      const _fracAuto = C.fracAuto;   // H12a: a MESMA fracção que o teste le
       const fCrit = 1 + _fracAuto * (_cChance * (_cMult - 1));
       let d = (base * mit) * fatorCdr * fCrit * (1 + (magia && S.lich ? S.lich * 0.2 : (!magia && S.sheen ? S.sheen * 0.2 : 0))); // Lich: +75%AP/skill ≈ +15% no dano total
     if (S.execute) d *= 1 + S.execute.pct * (alvo?.chefe ? 0.33 : 0.17);
@@ -8066,7 +8083,7 @@ const CFG_VER = 2;
     // PESO DECLARADO (c): 1 cura/s conta como 1 de dano/s neste score de decisão — é o que faz a
     // build mudar para o roubo de vida quando as poções ficam caras (critério do dono).
     if (S.rv > 0) {
-      const pj = player() || {};
+      const pj = C.pj;
       const dpsAuto = (pj.dano || 0) * (pj.va || 0);   // dano por auto × auto-ataques/s
       d += dpsAuto * S.rv;
     }
