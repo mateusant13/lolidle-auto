@@ -197,6 +197,13 @@ export const suite = {
     alimentarCatalogo(m, catNovo);
     auto.buildIdealPara(c);
     const e3 = auto.cacheBuildEstado().execs;
+    // B6c: subir de nivel muda p.nivel/baseAdCampeao; a cache nao pode servir a build
+    // do nivel antigo. (Entrada real: o jogador sobe de nivel durante o farm.)
+    m.montar('#hud-nivel', [m.el({ label: 'hud-nivel', textContent: '33' })]);
+    m.montar('#st-nivel', [m.el({ label: 'st-nivel', textContent: '33' })]);
+    auto.buildIdealPara(c);
+    const e4 = auto.cacheBuildEstado().execs;
+    t.check('B6c: mudar o nivel forca recalculo (' + e3 + ' -> ' + e4 + ')', e4 === e3 + 1);
     t.check('B6b: mudar o catalogo força recálculo (' + e2 + ' -> ' + e3 + ')', e3 === e2 + 1);
 
     /* =====================================================================

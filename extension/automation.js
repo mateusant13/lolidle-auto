@@ -6905,13 +6905,31 @@ const CFG_VER = 2;
     let h = 2166136261 >>> 0;
     const mix = (s) => { s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } h >>>= 0; };
     for (const i of itens) mix((i.id || '') + '.' + (i.espaco || '') + '.' + (i.raridade || '') + '.' + (i.efeito || 0) + '.' + ((i.de || []).join('>')));
+    // A CURVA e o alvo entram no score (burn/execute/dano de chefe, motor.js). Se o jogo
+    // buffar a curva ou o alvo mudar de armadura/hp, a cache TEM de cair.
+    try { mix('curva:' + JSON.stringify(META.curva || null)); } catch { /* sem curva */ }
     let loc = ''; try { loc = localId(readLocation().text) || ''; } catch { /* sem local */ }
+    let alvo = ''; try {
+      if (fase === 'chefe' || fase == null) {
+        const a = alvoDeReferencia('chefe');
+        if (a) alvo = [a.armadura || 0, a.hp || 0, a.nivel || 0, !!a.chefe].join(':');
+      }
+    } catch { /* sem alvo */ }
     let kit = ''; try { kit = JSON.stringify([META.kit || null, META.kits || null]); } catch { /* sem kit */ }
-    let ars = ''; try { ars = [...document.querySelectorAll('#hab-ativas .hab[data-t]')].map((x) => x.dataset.t).join(','); } catch { /* sem arsenal */ }
+    // Arsenal com TIPO e RANK: o dpsPorHabilidade le h.rank (e a passiva/ultimate mudam
+    // de escala quando o rank sobe). Só o data-t deixava a cache presa ao rank antigo.
+    let ars = ''; try {
+      const sk = readSkills();
+      ars = (sk.arsenal || []).map((x) => x.t + ':' + (x.rank || 0)).join(',');
+      if (!ars) ars = [...document.querySelectorAll('#hab-ativas .hab[data-t]')].map((x) => x.dataset.t + ':' + (x.dataset.rank || 0)).join(',');
+    } catch { /* sem arsenal */ }
     let eq = ''; try { eq = (readEquip() || []).map((e) => e.base + ':' + (e.qual || '') + ':' + (e.refino || 0)).join(','); } catch { /* sem equipamento */ }
-    return [c.id, !!c.magia, fase || 'unica', loc, ars, eq, kit, h >>> 0].join('|');
+    // NÍVEL: baseAdCampeao e o escalamento das skills dependem dele (p.nivel). Sem isto a
+    // cache ficava com a build do nível antigo depois de subir de nível.
+    let nivel = 0; try { nivel = player().nivel || 0; } catch { /* sem nível */ }
+    let cfgKey = ''; try { cfgKey = [cfg.buildPorFase !== false, cfg.trocaItens === true, cfg.skillsPorFase !== false].join(','); } catch { /* sem cfg */ }
+    return [c.id, c.adBase || 0, c.adNivel || 0, !!c.magia, fase || 'unica', loc, alvo, ars, eq, kit, nivel, cfgKey, h >>> 0].join('|');
   }
-  function buildIdeal(fase) { garantirCampeao(); return montarBuildDe(META.champAtual, normalizaFase(fase)); }
   function buildIdeal(fase) { garantirCampeao(); return montarBuildDe(META.champAtual, normalizaFase(fase)); }
   /** BUILD IDEAL para QUALQUER campeão (perfil próprio) — usado no plano de todos.
    *  `fase` ausente/null = build ÚNICA de sempre (é o que o banco de regressão fixa). */
