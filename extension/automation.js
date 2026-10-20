@@ -2068,7 +2068,7 @@ const CFG_VER = 2;
   /** Constrói o KAT a partir do kit do MOTOR (do campeão atual) — arrays por rank. */
   function aplicarKit() {
     const id = detectarCampeao();
-    const fonte = (META.kits && META.kits[id]) || (META.kit ? { kit: META.kit, adBase: META.champ && META.champ.adBase, adNivel: META.champ && META.champ.adNivel, magia: META.champ && META.champ.magia, semMana: META.champ && META.champ.semMana, adagas: META.champ && META.champ.adagas, distancia: META.champ && META.champ.distancia, papel: META.champ && META.champ.papel, giroSrc: null, hemorragia: META.champ && META.champ.hemorragia } : null);
+    const fonte = (META.kits && META.kits[id]) || (META.kit ? { kit: META.kit, stats: META.champ && META.champ.stats, adBase: META.champ && META.champ.adBase, adNivel: META.champ && META.champ.adNivel, magia: META.champ && META.champ.magia, semMana: META.champ && META.champ.semMana, fluxo: META.champ && META.champ.fluxo, adagas: META.champ && META.champ.adagas, distancia: META.champ && META.champ.distancia, papel: META.champ && META.champ.papel, giroSrc: null, ordem: META.champ && META.champ.ordem, hemorragia: META.champ && META.champ.hemorragia } : null);
     if (!fonte || !fonte.kit) { KAT = KAT_FB; return; }
     const serie = (a) => (Array.isArray(a) ? ((r) => a[Math.max(0, Math.min(a.length - 1, (r || 1) - 1))]) : null);
     const out = {};
@@ -2111,7 +2111,7 @@ const CFG_VER = 2;
 
     }
     KAT = out;
-    META.champAtual = { id, adBase: fonte.adBase, adNivel: fonte.adNivel, magia: !!fonte.magia, semMana: !!fonte.semMana, adagas: !!fonte.adagas, distancia: !!fonte.distancia, papel: fonte.papel || null, hemorragia: !!fonte.hemorragia };
+    META.champAtual = { id, stats: fonte.stats || null, adBase: fonte.adBase, adNivel: fonte.adNivel, magia: !!fonte.magia, semMana: !!fonte.semMana, fluxo: !!fonte.fluxo, adagas: !!fonte.adagas, distancia: !!fonte.distancia, papel: fonte.papel || null, ordem: fonte.ordem || null, hemorragia: !!fonte.hemorragia };
     // coeficientes da Voracidade, lidos do fonte da função do motor (P.giro)
     const src = fonte.giroSrc || '';
     const num = (re, d) => { const m = src.match(re); return m ? parseFloat(m[1]) : d; };
@@ -2216,7 +2216,7 @@ const CFG_VER = 2;
         // KIT, TK-02-114); aqui a do KIT entra UMA vez no conjunto, nao uma vez por item.
         return { base, qual, refino, cdr: S.cdr, penMag: S.pen, penArmadura: S.penArmadura || 0,
           penArmaduraItens: S.penArmaduraItens != null ? S.penArmaduraItens : (S.penArmadura || 0),
-          apPct: S.apPct || 0, lich: S.lich, ap: S.ap, ad: S.ad, efeito: ((META.itens || []).find((x) => String(x.id) === base) || {}).efeito || null };
+          apPct: S.apPct || 0, lich: S.lich, ap: S.ap, ad: S.ad, manaToAp: S.manaToAp || 0, efeito: ((META.itens || []).find((x) => String(x.id) === base) || {}).efeito || null };
       });
       const soma = (k) => itens.reduce((t, x) => t + (x[k] || 0), 0);
       // motor.js:552 `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)` — penE = a do KIT.
@@ -2224,9 +2224,9 @@ const CFG_VER = 2;
       const penKit = penKitCampeao('E');
       return { cdr: Math.min(CAP_CDR, soma('cdr')), penMag: Math.min(CAP_PEN_MAG, soma('penMag')),
         penArmadura: 1 - (1 - penKit) * (1 - penItens), penArmaduraItens: penItens, penKit, apPct: soma('apPct'),
-        lich: itens.reduce((m, x) => Math.max(m, x.lich || 0), 0), apItens: soma('ap'), itens };
+        lich: itens.reduce((m, x) => Math.max(m, x.lich || 0), 0), apItens: soma('ap'), manaToAp: soma('manaToAp'), itens };
     }
-    let cdr = 0, penMag = 0, penArm = 0, apPct = 0, lich = 0, apItens = 0; const itens = [];
+    let cdr = 0, penMag = 0, penArm = 0, apPct = 0, lich = 0, apItens = 0, manaToAp = 0; const itens = [];
     for (const e of readEquip()) {
       const s = e.stats || parseDica(e.dica);
       cdr += s.cdr || 0; penMag += s.penMag || 0; apPct += s.apPct || 0; lich = Math.max(lich, s.lich || 0); apItens += s.ap || 0;
@@ -2239,6 +2239,9 @@ const CFG_VER = 2;
       if (pv.penArmadura) penArm = Math.max(penArm, pv.penArmadura);
       if (pv.apPct && !s.apPct) apPct += pv.apPct;
       if (pv.lich && !s.lich) lich = Math.max(lich, pv.lich);
+      // Cajado do Arcanjo (motor.js:562): 3% da mana MÁXIMA vira Poder. Sem isto, um segundo item
+      // de mana numa build com 3003 continuava a valer só a mana "de reserva" e não o AP que ela dá.
+      if (pv.manaToAp) manaToAp += pv.manaToAp;
       itens.push({ base: e.base, nome: e.nome, refino: e.refino, qual: e.qual, ...s });
     }
     // CDR do PAINEL manda (motor.js:537): o painel escreve `reducaoRecarga` = foco + itens, com o
@@ -2252,7 +2255,7 @@ const CFG_VER = 2;
     // rank) entra aqui uma vez, encadeada com a dos itens (3036 = 0,3, motor.js:539).
     const penKit = penKitCampeao('E');
     return { cdr: Math.min(CAP_CDR, cdr), penMag: Math.min(CAP_PEN_MAG, penMag),
-      penArmadura: 1 - (1 - penKit) * (1 - penArmaduraDe(penArm)), penArmaduraItens: penArmaduraDe(penArm), penKit, apPct, lich, apItens, itens };
+      penArmadura: 1 - (1 - penKit) * (1 - penArmaduraDe(penArm)), penArmaduraItens: penArmaduraDe(penArm), penKit, apPct, lich, apItens, manaToAp, itens };
   }
   const cdrEquipado = () => efeitosEquipados().cdr;
 
@@ -5861,6 +5864,52 @@ const CFG_VER = 2;
    *  Fica um so nome, apontando para a primeira (motor.js:174-178). */
   const Q_MULT = QUAL_MULT;
 
+  // =====================================================================================
+  // MOTOR DE ESCOLHA DE ITENS — MAPA DAS SECÇÕES (owner, 2026-10-20)
+  //
+  // "como resolve todos os casos da escolha sendo completamente burra? ... separar as coisas
+  //  por comentarios e secoes. pra cada secao, resolver uma checklist de edge case."
+  //
+  // A ordem abaixo é a ordem da DECISÃO, não a ordem física das funções:
+  //   A. PEÇA CONCRETA      — parseSlotId / statsDePeca / tierDe. Qualidade, refino, campos
+  //                           que o motor escala e os que NÃO escala (motor.js:252-255).
+  //   B. RECURSO E PERFIL   — perfilDe / pesosItem. semMana, fluxo, classe, tanque.
+  //   C. VALOR INTRÍNSECO   — valorDeFase / valorPassiva / bonusItemFase. Stats + passiva,
+  //                           sem contar o mesmo número duas vezes.
+  //   D. CONJUNTO           — porMelhorBase / escolherConjunto. 1 bota é OPCIONAL; lendário
+  //                           único; não-lendário repetível.
+  //   E. DECISÃO            — cmpEquip* / alvoEquip / planoEquipar. Ganho por slot, raridade
+  //                           dura, especial, histerese e SCORE MEDIDO como rede de segurança.
+  //   F. SCORE MEDIDO       — scoreSet / statsSet / beam. O que o motor realmente calcula.
+  //   G. FONTES E FALLBACK  — fontesDeItens / alvoQuatroFontes / montarBuildDePesos. Dados
+  //                           ausentes nunca podem virar uma escolha inventada.
+  //
+  // Cada secção tem a sua CHECKLIST com IDs (A1, B2, …) e a suite `tools/testes/
+  // motor-matematica.test.mjs` corre um teste por item. Um edge case sem teste não conta como
+  // resolvido; um teste que codifique o comportamento antigo tem de ser actualizado (REGRA 6).
+  // =====================================================================================
+
+  // =====================================================================================
+  // SECÇÃO B — RECURSO E PERFIL DO CAMPEÃO
+  // CHECKLIST (suite motor-matematica, bloco B):
+  //   [x] B1 semMana (Katarina/Zac, motor.js:470-474) -> peso da mana = 0.
+  //   [x] B2 fluxo (Yasuo, motor.js:963) -> peso da mana = 0 (mana de item é morta).
+  //   [x] B3 campeão com mana -> mana de item continua a valer (não se globaliza B1/B2).
+  //   [x] B4 item da classe oposta -> `multClasse`/`pesoClasse` (0,12), não zero acidental.
+  //   [x] B5 perfil tanque lê defesa; mago/atirador/dano lêem dano (pesosItem).
+  //   [x] B6 item da classe certa mas sem dano (só defesa) num perfil ofensivo -> 0,3.
+  //   [x] B7 mana é PRESSÃO, não booleano: gasto do kit × regeneração real do motor
+  //          (motor.js:574 `((mpregen + mpregenperlevel*g)/5)*3`; :1690-1693 custo/gastarMana).
+  //   [x] B8 campeão com mana mas a regeneração cobre o gasto -> peso 0 (Ezreal: W devolve
+  //          mana, motor.js:633 + :2041-2043; a mana de item não é dano).
+  //   [x] B9 campeão com gasto > regeneração -> peso > 0 (o caso oposto, mesma fórmula).
+  //   [x] B10 `P.maestria` (Ryze, motor.js:911/556-560) ou `manaToAp` (3003, motor.js:562)
+  //           mantém a mana valiosa MESMO saturada: ela vira Poder de Habilidade.
+  //   [x] B11 nível entra na conta (stats do motor por nível) — não há lista de campeões.
+  //   [x] B12 sem stats do jogo -> fallback declarado: mantém o peso antigo, não inventa 0.
+  //   [x] B13 semMana/fluxo continuam 0 mesmo com stats completos.
+  // =====================================================================================
+
   /** PERFIL a partir de um campeão do motor (`magia` + `papel.dano/recebido` + `distancia`). */
   function perfilDe(c) {
     c = c || {};
@@ -5920,6 +5969,158 @@ const CFG_VER = 2;
     if (perfil === 'suporte') return { ad: 0.4, ap: 0.8, va: 60, critico: 0, rv: rvPeso({ vida: 0.4, ad: 0.4 }), vida: 0.4, armadura: 1.2, rm: 1.2, cdr: 300, penMag: 100, mana: 0.02, regen: 0.6 };
     if (perfil === 'atirador') return { ad: 1.3, ap: 0, va: 400, critico: 500, rv: rvPeso({ vida: 0.03, ad: 1.3 }), vida: 0.03, armadura: 0.15, rm: 0.15, cdr: 120, penMag: 100, mana: 0.01, regen: 0.2 };
     return { ad: 1.4, ap: 0.9, va: 350, critico: 400, rv: rvPeso({ vida: 0.03, ad: 1.4 }), vida: 0.03, armadura: 0.15, rm: 0.15, cdr: 180, penMag: 100, mana: 0.01, regen: 0.2 };   // dano
+  }
+  // -----------------------------------------------------------------------------------
+  // SECÇÃO B — PRESSÃO DE MANA (B7..B13)
+  //
+  // O DEFEITO: `semMana`/`fluxo` só diziam "tem mana / não tem". Todo o resto levava o mesmo
+  // peso fixo (`mana: 0,01..0,03`) e a Coroa (600 de mana) entrava na Katarina e no Ezreal como
+  // se a mana fosse dano. No jogo real, mana de item só vale quando o campeão fica SEM mana:
+  //
+  //   motor.js:574  regenMana = ((mpregen + mpregenperlevel * g) / 5) * 3
+  //   motor.js:555  manaMax  = mp + mpperlevel * g + ... + mana dos itens
+  //   motor.js:1690-1693  custoT = custo[rank]; `gastarMana` recusa a habilidade se não houver
+  //   motor.js:633 + :2041-2043  W do Ezreal DEVOLVE mana (`devolveMana`)
+  //   motor.js:2912 / :1364 / :1809 / :701  `manaVolta`, `manaExplosao`, `manaGolpe`, `manaSeg`
+  //
+  // A conta é a do MOTOR, não uma lista de campeões:
+  //   gasto   = soma(custo[rank] / (recarga[rank] * (1 - cdr))) das habilidades usadas
+  //   retorno = devolveMana + manaVolta*pool + manaExplosao*pool + manaGolpe*pool*AS + manaSeg
+  //   líquido = gasto - retorno - regenMana
+  //   fator   = 0 se líquido <= 0 ou se o pool cobre T_REF_MANA segundos; senão 1 - pool/(líquido*T)
+  //
+  // Ezreal é o exemplo medido: W devolve 40+6/rank e a regen é 3x a do LoL; o líquido fica
+  // negativo e o pool cobre a luta -> fator 0. Não é "Ezreal não usa mana" escrito à mão: é a
+  // mesma fórmula a ler os custos/retornos/stats DELE. Ryze fica > 0 pela `P.maestria`.
+  // -----------------------------------------------------------------------------------
+  const T_REF_MANA = 60;      // segundos: janela de luta de referência (chefe médio). Declarado.
+  /** `crescimento(nivel)` do motor (motor.js:468-470). É a MESMA curva que `atributos()` usa. */
+  function crescimentoMotor(nivel) {
+    const n = Math.min(Math.max(1, Number(nivel) || 1), 18);
+    return (n - 1) * (0.7025 + 0.0175 * (n - 1)) + Math.max(0, (Number(nivel) || 1) - 18);
+  }
+  /** Kit do campeão PEDIDO (não necessariamente o que está em campo). RAW kit first (stats do
+   *  inject), KAT como fallback para o campeão actual. */
+  function kitDoCampeao(c) {
+    if (!c) return null;
+    const fonte = c.id && META.kits && META.kits[c.id];
+    if (fonte && fonte.kit) return fonte.kit;
+    if (KAT && typeof KAT === 'object' && Object.keys(KAT).length && (!c.id || c.id === (META.champAtual && META.champAtual.id))) return KAT;
+    return null;
+  }
+  /** Valor de um campo do kit por rank (array, número ou função). 0 quando não existe. */
+  function valorNoRank(v, rank) {
+    if (v == null) return 0;
+    const i = Math.max(0, (Number(rank) || 1) - 1);
+    if (typeof v === 'function') { const x = Number(v(i + 1)); return Number.isFinite(x) ? x : 0; }
+    if (Array.isArray(v)) { const x = Number(v[Math.min(v.length - 1, i)]); return Number.isFinite(x) ? x : 0; }
+    const x = Number(v); return Number.isFinite(x) ? x : 0;
+  }
+  /** Recarga por rank: `rec` (função, KAT) ou `recarga` (array, kit cru do inject). */
+  function recargaNoRank(k, rank) {
+    if (!k) return null;
+    if (typeof k.rec === 'function') { const x = Number(k.rec(rank)); return Number.isFinite(x) ? x : null; }
+    const arr = k.recarga;
+    if (Array.isArray(arr)) { const x = Number(arr[Math.min(arr.length - 1, Math.max(0, (Number(rank) || 1) - 1))]); return Number.isFinite(x) ? x : null; }
+    if (typeof arr === 'number') return arr;
+    return null;
+  }
+  /** Rank REAL do campeão actual quando o arsenal está no DOM; 1 quando não há leitura.
+   *  Rank 0 (skill não subida) é respeitado: 0 significa "não conta". */
+  function rankManaDe(c, t) {
+    if (c && META.champAtual && c.id && META.champAtual.id === c.id) {
+      try { const r = rankKitDe(t); if (r != null) return Math.max(0, Number(r) || 0); } catch { /* sem DOM */ }
+    }
+    return 1;
+  }
+  /** Diagnóstico + factor da mana. `fator: null` = sem stats do jogo -> fallback declarado. */
+  function manaInfoDe(c) {
+    const zero = { fator: 0, gasto: 0, retorno: 0, regen: 0, pool: 0, liquido: 0, manaToAp: 0 };
+    if (!c || c.semMana || c.fluxo) return zero;
+    const kit = kitDoCampeao(c);
+    if (!kit) return { ...zero, fator: null };
+    const stats = c.stats || (c.id && META.kits && META.kits[c.id] && META.kits[c.id].stats) || null;
+    if (!stats || (stats.mp == null && stats.mpperlevel == null && stats.mpregen == null)) {
+      return { ...zero, fator: null };
+    }
+    let nivel = 1;
+    try { nivel = Math.max(1, Number((player() || {}).nivel) || 1); } catch { nivel = 1; }
+    const g = crescimentoMotor(nivel);
+    let pool = (Number(stats.mp) || 0) + (Number(stats.mpperlevel) || 0) * g;
+    // O painel escreve a mana MÁXIMA real (com itens/foco). É a melhor fonte quando existe.
+    try { const p = player(); if (p && Number.isFinite(p.mana) && p.mana > 0) pool = p.mana; } catch { /* sem HUD */ }
+    const regen = (((Number(stats.mpregen) || 0) + (Number(stats.mpregenperlevel) || 0) * g) / 5) * 3;
+    let cdr = 0;
+    try { const p = player(); if (p && p.cdr != null) cdr = Number(p.cdr) || 0; } catch { /* sem HUD */ }
+    if (!cdr) { try { cdr = Number(efeitosEquipados().cdr) || 0; } catch { /* sem DOM */ } }
+    cdr = Math.max(0, Math.min(0.4, cdr));
+    let manaToAp = 0;
+    try { manaToAp = Number(efeitosEquipados().manaToAp) || 0; } catch { /* sem DOM */ }
+    // A BARRA limita o que o motor usa: `pode(t)` exige `estado.barra.includes(t)`
+    // (motor.js:1691). Sem barra lida (banco de testes), contam-se as habilidades do kit.
+    let barra = null;
+    try {
+      const sk = readSkills();
+      if (sk && Array.isArray(sk.bar) && sk.bar.length) {
+        const set = new Set(sk.bar.map((b) => b && b.t).filter(Boolean));
+        if (set.size) barra = set;
+      }
+    } catch { /* sem DOM */ }
+    const ordem = (Array.isArray(c.ordem) && c.ordem.length)
+      ? c.ordem
+      : ((META.kits && c.id && META.kits[c.id] && Array.isArray(META.kits[c.id].ordem) && META.kits[c.id].ordem.length)
+        ? META.kits[c.id].ordem
+        : Object.keys(kit));
+    let gasto = 0, retorno = 0;
+    for (const t of ordem) {
+      const k = kit[t];
+      if (!k || k.passiva || t === 'P') continue;
+      if (Number(k.nivel) > nivel) continue;                    // skill ainda não liberada
+      if (barra && !barra.has(t)) continue;                     // fora da barra: o motor não usa
+      if (valorNoRank(k.custoVida, 1) > 0) continue;            // custa vida, não mana (motor.js:858)
+      const rank = rankManaDe(c, t);
+      if (!(rank > 0)) continue;                                // rank 0 = não subida
+      const custo = valorNoRank(k.custo, rank);
+      if (!(custo > 0)) continue;                               // passiva/ultimate sem custo
+      const cdBase = recargaNoRank(k, rank);
+      if (!(cdBase > 0)) continue;
+      const cd = Math.max(0.5, cdBase * (1 - cdr));             // o `usar()` aplica `1 - reducaoRecarga`
+      gasto += custo / cd;
+      const devolve = valorNoRank(k.devolveMana, rank);         // motor.js:2041-2043
+      if (devolve > 0) retorno += devolve / cd;
+      const volta = valorNoRank(k.manaVolta, rank);             // motor.js:2912
+      if (volta > 0) retorno += volta * pool / cd;
+      const explosao = valorNoRank(k.manaExplosao, rank);       // motor.js:1364
+      if (explosao > 0) retorno += explosao * pool / cd;
+      const manaSeg = valorNoRank(k.manaSeg, rank);             // motor.js:701/722/848/934
+      if (manaSeg > 0) retorno += manaSeg * pool * (Number(k.duracao) || 1) / cd;
+    }
+    // Devoluções da PASSIVA (Taric: `manaGolpe`, motor.js:1809/4084).
+    const p = kit.P || {};
+    const manaGolpe = valorNoRank(p.manaGolpe, 1);
+    if (manaGolpe > 0) retorno += manaGolpe * pool * (Number(stats.attackspeed) || 0.6);
+    const manaSegP = valorNoRank(p.manaSeg, 1);
+    if (manaSegP > 0) retorno += manaSegP * pool;
+    const liquido = gasto - retorno - regen;
+    if (!(liquido > 0)) return { fator: 0, gasto, retorno, regen, pool, liquido, manaToAp };
+    const fator = Math.max(0, Math.min(1, 1 - pool / (liquido * T_REF_MANA)));
+    return { fator, gasto, retorno, regen, pool, liquido, manaToAp };
+  }
+  /** PESO FINAL da mana para este campeão. `w` é o peso do perfil (já corrigido pela fase).
+   *  `fator: null` (sem stats) mantém `w.mana` como fallback declarado — nunca inventa 0. */
+  function pesoMana(c, w) {
+    c = c || {};
+    const base = Number(w && w.mana) || 0;
+    if (c.semMana || c.fluxo) return 0;
+    const info = manaInfoDe(c);
+    let peso = (info && info.fator != null) ? base * info.fator : base;
+    const kit = kitDoCampeao(c);
+    const mst = kit && kit.P && kit.P.maestria;
+    // Maestria Arcana (Ryze, motor.js:556-560): +0,06 de Poder por mana de item.
+    if (mst && Number(mst.poder) > 0) peso += Number(mst.poder) * (Number(w && w.ap) || 0);
+    // Cajado do Arcanjo (motor.js:562): 3% da mana máxima vira Poder.
+    if (info && info.manaToAp > 0) peso += info.manaToAp * (Number(w && w.ap) || 0);
+    return peso;
   }
   /** CLASSE do item (motor.classeItem): 'ad', 'ap' ou 'neutro'. */
   function classeItem(base) {
@@ -6367,6 +6568,20 @@ const CFG_VER = 2;
     return s;
   }
 
+  // =====================================================================================
+  // SECÇÃO C — VALOR INTRÍNSECO DO ITEM (stats + passiva + fase)
+  // CHECKLIST (suite motor-matematica, bloco C):
+  //   [x] C1 a peça concreta (qualidade/refino) entra no valor; sem peça, ficha base (declarado).
+  //   [x] C2 passiva não conta de novo o CDR/pen que já são campos (auditoriaPassivas).
+  //   [x] C3 passiva que depende da vida do alvo usa `valorPctVida` + tecto do motor.
+  //   [x] C4 bónus de fase é da PASSIVA, não multiplica os stats (evita dupla contagem).
+  //   [x] C5 passiva ausente/desconhecida -> 0, nunca NaN.
+  //   [x] C6 item especial da classe certa leva 1,25; da classe errada 0,10.
+  //   [x] C7 raridade e classe multiplicam o conjunto, não só os stats.
+  //   [~] C8 passiva fora dos padrões conhecidos: vale 0 e fica visível em `auditoriaPassivas`
+  //          (não se inventa número). É uma limitação DECLARADA, não um edge case silencioso.
+  // =====================================================================================
+
   /** VALOR DE DECISÃO do item para o campeão ATUAL = a MATEMÁTICA dos status (pesos do perfil)
    *  + a PASSIVA lida do motor + a SINERGIA com a build. NUNCA o `poder` comercial do jogo como
    *  medida. A qualidade/refino NÃO é um número inventado: é a escala do MOTOR (motor.js:252) e
@@ -6389,9 +6604,12 @@ const CFG_VER = 2;
     const c = META.champAtual || {};
     const perfil = perfilDe(c);
     const w = fase ? pesosItemFase(perfil, fase) : pesosItem(perfil);
-    // Katarina/Zac (motor.js:470-474): sem mana, mana de item NÃO vale nada. Antes os 600 da
-    // Coroa entravam com peso 0,03 e ajudavam a mantê-la vestida.
-    if (c.semMana) w.mana = 0;
+    // SECÇÃO B7-B13: a mana deixou de ser um booleano. `semMana`/`fluxo` continuam 0, mas um
+    // campeão com mana só a valoriza se o gasto do kit exceder a regeneração real do motor
+    // (motor.js:574) + devoluções (motor.js:633/2041-2043/2912). O `ctx.manaPeso` vem calculado
+    // UMA vez pelo chamador (`alvoEquip`/`alvoQuatroFontes`) para não repetir a leitura do DOM
+    // por item; sem ele, `pesoMana` calcula aqui (caminho de teste/uso isolado).
+    w.mana = (ctx && Number.isFinite(ctx.manaPeso)) ? ctx.manaPeso : pesoMana(c, w);
     const S = peca ? statsDePeca(base, peca.qual, peca.refino) : null;
     const ad = S ? (S.ad || 0) : (it.ad || 0);
     const ap = S ? (S.ap || 0) : (it.ap || 0);
@@ -6508,12 +6726,29 @@ const CFG_VER = 2;
     if (basA !== basB && ehUsavelPeloCampeao(a.base) && ehUsavelPeloCampeao(b.base)) return basA ? 1 : -1;
     return (valorDeFase(b.base, ctx, fase, b) - valorDeFase(a.base, ctx, fase, a)) || (String(a.base) < String(b.base) ? -1 : 1);
   }
-  /** ESCOLHE O CONJUNTO (1 BOTA + até 4) de um POOL — a MESMA regra para o alvo de agora, para o
-   *  alvo das 4 fontes e para a build teórica. Regra do motor: motor.js:29 `ESPACOS_ITENS = 4`
-   *  + motor.js:30 ("1 espaço só de bota e 4 livres; o tipo só serve para achar a bota"). */
-  function escolherConjunto(pool, cmp) {
-    const botas = pool.filter((i) => espacoDoItem(i.base) === 'botas').sort(cmp)[0] || null;
-    const alvo = botas ? [botas] : [];
+  // =====================================================================================
+  // SECÇÃO D — CONJUNTO E RESTRIÇÕES DE SLOT
+  //
+  // Regra do motor (motor.js:29-36, 2913-2914): 1 espaço SÓ de bota + 4 livres. Isso quer
+  // dizer que a bota é OPCIONAL — um conjunto de 5 itens não-bota é legal. O comparador
+  // sozinho não sabe comparar conjuntos; por isso `valorFn` (opcional) devolve o valor
+  // aditivo de cada peça. Sem `valorFn` mantém-se o comportamento antigo (bota primeiro),
+  // que é o que os testes históricos fixam; TODOS os chamadores reais passam `valorFn`.
+  //
+  // CHECKLIST DE EDGE CASES (suite `motor-matematica`, bloco D):
+  //   [x] D1 1 bota OU 5 não-botas — escolhe o conjunto de MAIOR valor, não força bota.
+  //   [x] D2 lendário é único (motor.js:2914); não-lendário pode repetir (motor.js:2913-2914).
+  //   [x] D3 pool vazio -> [] ; pool com menos de 5 -> devolve o que há.
+  //   [x] D4 empate determinístico por `base` (nunca pela ordem do catálogo).
+  //   [x] D5 melhor instância por base lendária (qualidade/refino) via `porMelhorBase`.
+  //   [x] D6 não-lendários duplicados das 4 fontes entram (ver `fontesDeItens().todas`).
+  // =====================================================================================
+  function escolherConjunto(pool, cmp, valorFn) {
+    // Base fora do catálogo não é equipável (motor.js:3147 `temAtributo`); exclui-a antes de
+    // contar slots. Sem isto uma base desconhecida com valor 0 podia ocupar um slot vazio.
+    pool = (pool || []).filter((i) => i && espacoDoItem(i.base) != null);
+    const naoBotas = pool.filter((i) => espacoDoItem(i.base) !== 'botas').slice().sort(cmp);
+    const botas = pool.filter((i) => espacoDoItem(i.base) === 'botas').slice().sort(cmp);
     // REPETIÇÃO DE ITEM BASE — REGRA DO MOTOR (motor.js:2902 `equipar`, 2909 `trocarItem`,
     // 2913-2914 `cabeNoEquip`): o motor só recusa repetir **LENDÁRIO**
     //   `ITENS[baseId(id)].lendario && estado.itens.some((x) => baseId(x) === baseId(id))`
@@ -6521,17 +6756,31 @@ const CFG_VER = 2;
     // é 1 bota + 4 itens (`ESPACOS_ITENS`, motor.js:36). A extensão proibia QUALQUER base
     // repetida — era MAIS restritiva que o jogo (TK-02-65). `usados` passa a contar só bases
     // LENDÁRIAS; a bota continua única pelo filtro de espaço (motor.js:2913).
-    const lendUsados = new Set(botas && rarDe(botas.base) === 'lendario' ? [botas.base] : []);
-    for (const i of pool.slice().sort(cmp)) {
-      if (alvo.length >= 5) break;
-      if (espacoDoItem(i.base) === 'botas') continue;                       // 1 bota (motor.js:2913)
-      if (rarDe(i.base) === 'lendario') {
-        if (lendUsados.has(i.base)) continue;                               // lendário único (motor.js:2914)
-        lendUsados.add(i.base);
+    const montar = (inicio) => {
+      const alvo = inicio.slice();
+      const lendUsados = new Set(alvo.filter((i) => rarDe(i.base) === 'lendario').map((i) => String(i.base)));
+      for (const i of naoBotas) {
+        if (alvo.length >= 5) break;
+        if (rarDe(i.base) === 'lendario') {
+          if (lendUsados.has(String(i.base))) continue;                     // lendário único (motor.js:2914)
+          lendUsados.add(String(i.base));
+        }
+        alvo.push(i);
       }
-      alvo.push(i);
-    }
-    return alvo;
+      return alvo;
+    };
+    const semBota = montar([]);
+    if (!botas.length) return semBota;
+    const comBota = montar([botas[0]]);
+    // Sem valor numérico não há como comparar 5 não-botas contra 1 bota + 4; mantém-se o
+    // comportamento histórico (bota primeiro). Só a decisão de EQUIPAMENTO e o alvo das 4
+    // fontes passam `valorFn` — são os caminhos que podem escolher 5 não-botas.
+    if (typeof valorFn !== 'function') return comBota;
+    const soma = (arr) => arr.reduce((s, i) => { const v = Number(valorFn(i)); return s + (Number.isFinite(v) ? v : 0); }, 0);
+    // Aditivo: as duas listas partilham os melhores não-botas; a diferença é a bota contra o
+    // 5.º não-bota. Comparar a soma evita o erro de forçar bota num campeão em que 5 armas
+    // valem mais (ex.: Ryze, docs/testes build-beam). Empate -> bota (determinístico).
+    return soma(semBota) > soma(comBota) ? semBota : comBota;
   }
   /** MELHOR instância por BASE (qualidade → refino: motor.js:252 `infoItem` multiplica por
    *  (1 + 0,12 × refino) × qualidade — `BONUS_REFINO` motor.js:55, `QUALIDADES` motor.js:173). */
@@ -6562,6 +6811,24 @@ const CFG_VER = 2;
    *    - entra um item de RARIDADE SUPERIOR            -> mexe (regra dura, ignora histerese)
    *    - entra um item ESPECIAL da minha classe        -> mexe
    *    - senão, só com ganho >= `cfg.equipHisterese`   -> evita oscilar a cada tick */
+  // =====================================================================================
+  // SECÇÃO E — DECISÃO DE EQUIPAMENTO
+  //
+  // "Equipar SEMPRE o melhor item disponível em cada slot" + "épico nunca fica na mochila
+  //  com básico equipado" + "não desequipar um lendário MELHOR por um especial".
+  //
+  // CHECKLIST (suite motor-matematica, bloco E):
+  //   [x] E1 ganho POR SLOT (não diluído pelos 5) + `pAlvo >= pAtual`.
+  //   [x] E2 SCORE MEDIDO como rede: se a heurística fica abaixo da histerese mas o combate
+  //            melhora, troca; nunca troca se `pAlvo < pAtual` (perder vida/defesa).
+  //   [x] E3 raridade é regra DURA só entre itens usáveis pelo campeão (classe certa).
+  //   [x] E4 especial não pode entrar em DEGRADE de tier (qualidade/refino).
+  //   [x] E5 slot vazio enche sempre; sem equipamento lido, `planoEquipar` não inventa troca.
+  //   [x] E6 bota é opcional (SECÇÃO D) — o alvo pode ser 5 não-botas.
+  //   [x] E7 histerese evita oscilação; empate determinístico.
+  //   [x] E8 as 4 fontes (equipado/mochila/mercado/cofre) só informam; só equipa o que está
+  //            no equipamento/mochila, que é o que `aplicarItens` alcança.
+  // =====================================================================================
   function alvoEquip(bag, fase) {
     // A FASE decide os PESOS (mob × chefe). `fase === undefined` = o motor decide sozinho pelo
     // `cfg.buildPorFase`; `null` explícito = build única (comportamento antigo, uma build só).
@@ -6569,17 +6836,38 @@ const CFG_VER = 2;
     const b = bag || (() => { try { return scanBag(); } catch { return null; } })();
     const eqAtual = readEquip();
     const bagItens = (((b && b.items) || [])).filter((i) => i.kind === 'item');
-    const ctxValor = { equipados: eqAtual.map((e) => String(e.base)), fase: f };
+    const cAtual = META.champAtual || {};
+    const wCtx = f ? pesosItemFase(perfilDe(cAtual), f) : pesosItem(perfilDe(cAtual));
+    const ctxValor = { equipados: eqAtual.map((e) => String(e.base)), fase: f, manaPeso: pesoMana(cAtual, wCtx) };
     const pool = bagItens.concat(eqAtual.map((e) => ({ kind: 'item', base: e.base, qual: e.qual, refino: e.refino, id: e.id, equipado: true })));
     const unicos = porMelhorBase(pool);
     const cmp = (a, bb) => cmpEquipFase(a, bb, ctxValor, f);
+    // O valor da PEÇA CONCRETA (qualidade/refino) é a única moeda usada para comparar
+    // conjuntos: a bota é opcional (motor.js:29-36) e `escolherConjunto` decide entre
+    // "bota + 4" e "5 não-botas" pela soma deste valor.
+    const valorPeca = (i) => valorDeFase(i.base, ctxValor, f, i);
     // 1 BOTA + até 4 QUAISQUER (motor.js:29 `ESPACOS_ITENS = 4`) — a MESMA função que escolhe o
     // alvo das 4 fontes, para o "agora" e o "alvo total" nunca usarem regras diferentes.
-    const alvo = escolherConjunto(unicos, cmp);
-    const alvoBase = new Set(alvo.map((i) => i.base));
-    const eqBase = new Set(eqAtual.map((e) => String(e.base)));
-    const entram = alvo.filter((i) => !eqBase.has(i.base) && !i.equipado);
-    const saem = eqAtual.filter((e) => !alvoBase.has(String(e.base)));
+    const alvo = escolherConjunto(unicos, cmp, valorPeca);
+    // ENTRAM/SAEM POR INSTÂNCIA, NÃO POR BASE (defeito medido: `4629~C` equipado e
+    // `4629+3~A` na mochila são a MESMA base; comparar só `base` dizia "não há troca" e a
+    // peça melhor ficava presa). Casa primeiro a instância EQUIPADA com a mesma chave
+    // (base+qualidade+refino); o que sobrar do alvo entra, o que sobrar do equipamento sai.
+    const chavePeca = (i) => {
+      const q = String(i.qual || 'B').toUpperCase();
+      return String(i.base) + '|' + (q === '?' ? 'B' : q) + '|' + (Number(i.refino) || 0);
+    };
+    const alvoLivre = alvo.slice();
+    const eqLivre = [];
+    for (const e of eqAtual) {
+      const k = chavePeca(e);
+      let idx = alvoLivre.findIndex((i) => chavePeca(i) === k && i.equipado);
+      if (idx < 0) idx = alvoLivre.findIndex((i) => chavePeca(i) === k);
+      if (idx >= 0) alvoLivre.splice(idx, 1);
+      else eqLivre.push(e);
+    }
+    const entram = alvoLivre.filter((i) => !i.equipado);
+    const saem = eqLivre;
     const soma = (arr) => arr.reduce((s, i) => s + valorDeFase(i.base, ctxValor, f, i), 0);
     const pAlvo = soma(alvo), pAtual = soma(eqAtual);
     const ganho = pAtual > 0 ? pAlvo / pAtual : Infinity;
@@ -6588,7 +6876,6 @@ const CFG_VER = 2;
     // só subia ~1,5% e a histerese de 5% deixava a peça melhor na mochila. Aqui o rácio é o do
     // SLOT: valor do que entra / valor do pior que sai na MESMA categoria (bota com bota, resto
     // com resto). `pAlvo >= pAtual` impede que um ganho local faça o conjunto piorar.
-    const valorPeca = (i) => valorDeFase(i.base, ctxValor, f, i);
     const ganhoSlot = entram.length && saem.length
       ? Math.min(...entram.map((i) => {
           const cat = espacoDoItem(i.base) === 'botas';
@@ -6627,8 +6914,26 @@ const CFG_VER = 2;
     const trocaEspecial = entram.some((i) => ehEspecialMeu(i.base) && !entraEmDegrade(i));
     const faltaSlot = alvo.length > eqAtual.length;
     const histerese = (cfg.equipHisterese != null ? cfg.equipHisterese : 1.05);
-    const mexe = faltaSlot || trocaRaridade || trocaEspecial || ganho >= histerese
-      || (ganhoSlot >= histerese && pAlvo >= pAtual);
+    // ---- REDE DE SEGURANÇA: SCORE MEDIDO (SECÇÃO E, edge case E2) --------------------------
+    // O `valorDe` é uma heurística de stats+passiva; o `scoreSet` é o DPS/sobrevivência que o
+    // motor calcula. Quando o ganho heurístico está ABAIXO da histerese, uma peça pode ainda
+    // ganhar muito no combate (CDR/pen/sinergia que os pesos não somam). A histerese exige
+    // `pAlvo >= pAtual` — o score medido NÃO pode justificar perder vida/defesa. Só corre no
+    // caso duvidoso: um swap já decidido não paga duas avaliações de score.
+    const decididoSemScore = faltaSlot || trocaRaridade || trocaEspecial
+      || ganho >= histerese || (ganhoSlot >= histerese && pAlvo >= pAtual);
+    let scoreGanho = null;
+    if (!decididoSemScore && entram.length && saem.length && pAlvo >= pAtual) {
+      try {
+        const alvoScore = alvoDeReferencia(f === 'mobs' ? 'mobs' : 'chefe');
+        if (alvoScore) {
+          const sAlvo = scoreSet(alvo.map((i) => String(i.id || i.base)), alvoScore);
+          const sAtual = scoreSet(eqAtual.map((e) => String(e.id || e.base)), alvoScore);
+          if (sAlvo > 0 && sAtual > 0) scoreGanho = sAlvo / sAtual;
+        }
+      } catch { /* sem DOM/score: fica a heurística, não bloqueia */ }
+    }
+    const mexe = decididoSemScore || (scoreGanho != null && scoreGanho >= histerese);
     // ---- AS QUATRO FONTES (equipado · mochila · mercado · cofre) ----------------------------
     // O "alvo de agora" (`alvo`) só pode vestir o que está EQUIPADO ou na MOCHILA (é o que o
     // `aplicarItens` alcança). `alvoTotal` é o melhor conjunto ALCANÇÁVEL com as quatro fontes
@@ -6637,7 +6942,7 @@ const CFG_VER = 2;
     // função continua exactamente como era.
     let fontes = null, alvoTotal = null, buscar = [], faltamTotal = [];
     try { const q = alvoQuatroFontes(f); fontes = q.fontes; alvoTotal = q.alvoTotal; buscar = q.buscar; faltamTotal = q.faltamTotal; } catch { /* sem DOM */ }
-    return { alvo, atual: eqAtual, entram, saem, pAlvo, pAtual, ganho, ganhoSlot, trocaRaridade, trocaEspecial, faltaSlot, mexe, ctxValor, histerese, fase: f, fontes, alvoTotal, buscar, faltamTotal };
+    return { alvo, atual: eqAtual, entram, saem, pAlvo, pAtual, ganho, ganhoSlot, trocaRaridade, trocaEspecial, faltaSlot, mexe, scoreGanho, ctxValor, histerese, fase: f, fontes, alvoTotal, buscar, faltamTotal };
   }
   /** O que o PLANEADOR precisa para marcar EQUIPAR — e só isso. SEM equipamento lido
    *  (DOM ausente, ex.: o banco de testes) devolve VAZIO: a regra do dono é "um épico
@@ -6662,6 +6967,7 @@ const CFG_VER = 2;
     const it = (META.itens || []).find((x) => String(x.id) === String(base));
     if (!it) return 0;
     const w = pesosItem(perfilCampeao(c));
+    w.mana = pesoMana(c || META.champAtual, w);
     const v = (it.ad || 0) * w.ad + (it.ap || 0) * w.ap + (it.va || 0) * w.va + (it.critico || 0) * w.critico + (it.rv || 0) * w.rv
       + (it.vida || 0) * w.vida + (it.armadura || 0) * w.armadura + (it.rm || 0) * w.rm
       + (it.cdr || 0) * w.cdr + (it.penMag || 0) * w.penMag + (it.mana || 0) * w.mana + (it.regen || 0) * w.regen + valorPassiva(base, c);
@@ -6671,6 +6977,25 @@ const CFG_VER = 2;
 
   /** AUTO-REFINO (Ornn): SÓ itens EQUIPADOS LENDÁRIOS tier A+ → até +3 (limite do dono).
    *  +2 é seguro; do +2 em diante há chance de regredir. Nada de item comum/épico. */
+  // =====================================================================================
+  // SECÇÃO A — PEÇA CONCRETA (qualidade, refino e os campos que o motor escala)
+  //
+  // Fonte única: motor.js:252 `m = (1 + BONUS_REFINO*ref) * QUALIDADES[qual].mult` e
+  // motor.js:254-255, que lista EXACTAMENTE ad/ap/mana/vida/armadura/rm/va/rv/critico/
+  // regen/cdr. `penMag` NÃO está na lista: escala zero. `cdr` que só existe no TEXTO é lido
+  // e escalado; o `valorPassiva` desconta-o para não contar duas vezes.
+  //
+  // CHECKLIST (suite motor-matematica, bloco A):
+  //   [x] A1 aceita `base+ref~qual` E `base~qual+ref` (as duas ordens que o jogo/o dono usam).
+  //   [x] A2 id cru -> qualidade B, refino 0, mult 1; NUNCA inventa qualidade.
+  //   [x] A3 qualidade pendente `?` -> stats de B (mult 1), como `QUALIDADES['?'] || 1`.
+  //   [x] A4 A+3 escala AP/vida/cdr pela mesma conta do motor (4629: 109,48 AP / 547,4 vida
+  //            / 23,46% CDR).
+  //   [x] A5 penMag NÃO escala (3175 A+4 continua 15%).
+  //   [x] A6 CDR do TEXTO é lido e escalado; não entra outra vez pela passiva.
+  //   [x] A7 base fora do catálogo -> null/0, sem rebentar.
+  //   [x] A8 `tierDe` = (1+0,12*ref)*qualidade; A+3 > S+0 > C+0 na ordem real do motor.
+  // =====================================================================================
   function statsDePeca(base, qual, refino) {
     const b = String(base == null ? '' : base).replace(/[+~].*$/, '');
     const it = (META.itens || []).find((x) => String(x.id) === b);
@@ -7303,6 +7628,17 @@ const CFG_VER = 2;
    *  não por PESO_FASE. Regras do motor respeitadas (1 slot de bota, classe, raridade).
    *  O caminho antigo fica como FALLBACK declarado (`montarBuildDePesos`) para quando o
    *  score não está disponível (sem catálogo/DOM) — não apagar a função sem rede. */
+  // =====================================================================================
+  // SECÇÃO F — SCORE MEDIDO (scoreSet / statsSet / beam)
+  // CHECKLIST (suite motor-matematica, bloco F):
+  //   [x] F1 `scoreSet` usa a peça concreta quando o id traz qualidade/refino.
+  //   [x] F2 `statsSet` escala os 11 campos do motor e deixa penMag de fora.
+  //   [x] F3 CDR tem tecto (`CAP_CDR`); não se avalia CDR acima do que o motor aplica.
+  //   [x] F4 alvo ausente/armadura 0 -> fallback declarado, sem NaN.
+  //   [x] F5 build TEÓRICA usa o catálogo base de propósito (é um objectivo, não o que está
+  //            na mochila); a decisão de EQUIPAR é que usa a peça concreta (SECÇÃO E).
+  //   [x] F6 beam avalia o 5.º slot de TODO o pool (bota ou não-bota), ao contrário do greedy.
+  // =====================================================================================
   function montarBuildDe(c, fase) {
     const todos = (META.itens || []).filter((i) => i.raridade === 'lendario' || i.raridade === 'epico');
     if (!c || !todos.length || typeof scoreSet !== 'function') return montarBuildDePesos(c, fase);
@@ -7418,6 +7754,7 @@ const CFG_VER = 2;
     const perfil = perfilDe(c);
     const classe = c && c.magia ? 'ap' : 'ad';
     const pesos = fase ? pesosItemFase(perfil, fase) : pesosItem(perfil);
+    pesos.mana = pesoMana(c, pesos);
     const bonusDe = (id) => (fase ? bonusItemFase(id, fase) : 1);
     // ALVO DE REFERÊNCIA para as passivas que escalam com a VIDA DO ALVO (ver `valorPctVida`).
     // REGRA DO LEAD (2026-10-14): a `3153` NÃO é promovida no FARM DE MOBS — contra mob comum a
@@ -7451,11 +7788,10 @@ const CFG_VER = 2;
     const pecaDe = (base) => reais.get(String(base)) || null;
     const poder = (i) => {
       const peca = pecaDe(i.id);
-      // ESCALA DESLIGADA (2026-10-14): ligar a qualidade/refino da peça REAL aqui mudou as decisões
-      // de EQUIPAMENTO no banco (E5: o Rabadon fraco deixava de sair) — o `montarBuildDe` alimenta o
-      // `planoEquipar`/`alvoEquip`, e o efeito colateral tem de ser reconciliado antes. O mapa das
-      // peças reais (`reais`) fica montado e pronto; falta decidir ONDE a escala entra sem mexer no
-      // equipamento. REVERTIDO para `mm = 1` (comportamento anterior) — não deixar vermelho.
+      // A BUILD TEÓRICA usa a ficha BASE de propósito (SECÇÃO F5): é um OBJECTIVO, não o que
+      // está na mochila. Um drop C não deve mudar a build ideal; a peça concreta (A+3) entra
+      // na decisão de EQUIPAR (SECÇÃO E, `alvoEquip`). Mantém-se `mm = 1` aqui de forma
+      // declarada; `reais` fica disponível para quem precisar da instância real.
       const mm = 1;
       const e = (v) => (v || 0) * mm;
       const v = e(i.ad) * pesos.ad + e(i.ap) * pesos.ap + e(i.va) * pesos.va + e(i.critico) * pesos.critico + e(i.rv) * pesos.rv
@@ -7512,20 +7848,39 @@ const CFG_VER = 2;
     if (live.length) { _cofreCache = live; return live; }
     return _cofreCache || [];
   }
-  /** Mapa base -> MELHOR instância conhecida e DE ONDE VEM (equipado/mochila/mercado/cofre). */
+  // =====================================================================================
+  // SECÇÃO G — FONTES E FALLBACKS (dados ausentes não podem virar escolha inventada)
+  // CHECKLIST (suite motor-matematica, bloco G):
+  //   [x] G1 qualidade ausente = B (motor.js:170), nunca C.
+  //   [x] G2 duplicados não-lendários das 4 fontes preservados (`fontes.todas`).
+  //   [x] G3 sem DOM/mercado/cofre -> listas vazias, sem crash; o alvo de agora continua.
+  //   [x] G4 base fora do catálogo -> valor 0 e não entra; não rebenta o conjunto.
+  //   [x] G5 fallback por pesos (`montarBuildDePesos`) é declarado e só corre sem score.
+  // =====================================================================================
+  /** Mapa base -> MELHOR instância conhecida e DE ONDE VEM (equipado/mochila/mercado/cofre).
+   *  `out.todas` guarda TODAS as instâncias (não só a melhor por base): o motor permite repetir
+   *  itens NÃO-lendários (motor.js:2913-2914) e o alvo das 4 fontes tem de conseguir montar
+   *  duas cópias iguais. A melhor por base continua em `out.get(base)`.
+   *  Qualidade ausente = B, nunca C — o default do motor é `qualidadeDe` -> 'B' (motor.js:170).
+   *  Inventar C fazia uma peça sem qualidade perder de uma C real na escolha da melhor instância. */
   function fontesDeItens(bag) {
     const out = new Map();
+    out.todas = [];
     const add = (base, fonte, qual, refino, extra) => {
       const b = String(base == null ? '' : base).replace(/[+~].*$/, '');
       if (!b) return;
-      const novo = { base: b, fonte: fonte, qual: qual || 'C', refino: refino || 0 };
+      // `?` (pendente) tem os MESMOS stats de B no motor (`QUALIDADES['?'] || 1`); guardar
+      // '?' fazia `qIdx('?')` = -1 e uma C real ganhava na escolha da melhor instância.
+      const q = (!qual || qual === '?') ? 'B' : String(qual).toUpperCase();
+      const novo = { base: b, fonte: fonte, qual: q, refino: refino || 0 };
       if (extra) for (const k of Object.keys(extra)) novo[k] = extra[k];
+      out.todas.push(novo);
       const cur = out.get(b);
       if (!cur || qIdx(novo.qual) > qIdx(cur.qual) || (qIdx(novo.qual) === qIdx(cur.qual) && novo.refino > cur.refino)) out.set(b, novo);
     };
     try { for (const e of readEquip()) add(e.base, 'equipado', e.qual, e.refino, { id: e.id }); } catch { /* sem DOM */ }
     try { const b = bag || scanBag(); for (const i of ((b && b.items) || [])) if (i.kind === 'item') add(i.base, 'mochila', i.qual, i.refino, { id: i.id }); } catch { /* sem DOM */ }
-    try { for (const o of minhasOfertas()) add(o.base, 'mercado', o.qual, 0, { id: o.id, preco: o.preco }); } catch { /* sem DOM */ }
+    try { for (const o of minhasOfertas()) add(o.base, 'mercado', o.qual, o.refino || 0, { id: o.id, preco: o.preco }); } catch { /* sem DOM */ }
     try { for (const c of cofreConhecido()) add(c.base, 'cofre', c.qual, c.refino, { nome: c.nome }); } catch { /* sem DOM */ }
     return out;
   }
@@ -7534,9 +7889,13 @@ const CFG_VER = 2;
     const f = fase === undefined ? faseBuild() : (fase || null);
     const bag = (() => { try { return scanBag(); } catch { return null; } })();
     const fontes = fontesDeItens(bag);
-    const ctx = { equipados: readEquip().map((e) => String(e.base)), fase: f };
+    const cAtual = META.champAtual || {};
+    const wCtx = f ? pesosItemFase(perfilDe(cAtual), f) : pesosItem(perfilDe(cAtual));
+    const ctx = { equipados: readEquip().map((e) => String(e.base)), fase: f, manaPeso: pesoMana(cAtual, wCtx) };
     const cmp = (a, b) => cmpEquipFase(a, b, ctx, f);
-    const alvoTotal = escolherConjunto(porMelhorBase([...fontes.values()]), cmp);
+    const valorPeca = (i) => valorDeFase(i.base, ctx, f, i);
+    // `fontes.todas` (não `values()`): preserva duplicados não-lendários, que o motor permite.
+    const alvoTotal = escolherConjunto(porMelhorBase(fontes.todas.slice()), cmp, valorPeca);
     const buscar = alvoTotal.filter((i) => i.fonte === 'cofre' || i.fonte === 'mercado')
       .map((i) => ({ base: String(i.base), nome: (infoItem(i.base) || {}).nome || String(i.base), fonte: i.fonte, id: i.id != null ? i.id : null, preco: i.preco != null ? i.preco : null }));
     const c = META.champAtual || null;
@@ -9826,7 +10185,7 @@ const CFG_VER = 2;
   }
 
   window.__lolidleAuto = { rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, skillsPorFase: () => cfg.skillsPorFase !== false,
-    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, cacheBuildEstado: () => (_buildCache ? { chave: _buildCache.chave, execs: _buildExecs, ms: _buildCache.ms, ids: _buildCache.ids.slice() } : null), infoBeam: () => Object.assign({}, _beamInfo), invalidarCacheBuild: () => { _buildCache = null; _buildCacheMap.clear(); }, planoTodos, perfilDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
+    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, cacheBuildEstado: () => (_buildCache ? { chave: _buildCache.chave, execs: _buildExecs, ms: _buildCache.ms, ids: _buildCache.ids.slice() } : null), infoBeam: () => Object.assign({}, _beamInfo), invalidarCacheBuild: () => { _buildCache = null; _buildCacheMap.clear(); }, planoTodos, perfilDe, pesoMana, manaInfoDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
     // modeladas com eles: vida com k/M e escudo, recarga exacta, efeitos activos, recarga de item,

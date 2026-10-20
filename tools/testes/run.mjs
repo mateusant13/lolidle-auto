@@ -71,6 +71,7 @@ import { suite as suiteMercadoServidor } from './mercado-servidor.test.mjs';
 import { suite as suiteTarefaBanner } from './tarefa-banner.test.mjs';
 // TK-06: BUILD POR BEAM SEARCH + CACHE + ORÇAMENTO (pedido do Lead 2026-10-19).
 import { suite as suiteBuildBeam } from './build-beam.test.mjs';
+import { suite as suiteMotorMatematica } from './motor-matematica.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -100,6 +101,7 @@ const SUITES = [
   suiteMercadoServidor,
   suiteTarefaBanner,
   suiteBuildBeam,
+  suiteMotorMatematica,
 ];
 const checks = [];
 const notas = [];

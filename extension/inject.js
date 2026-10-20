@@ -467,13 +467,13 @@
     if (M.KITS) for (const id of Object.keys(M.KITS)) {
       const K = M.KITS[id];
       if (!K || !K.hab) continue;
-      meta.kits[id] = { kit: serialKit(K.hab), adBase: K.adBase, adNivel: K.adNivel, magia: !!K.magia, semMana: !!K.semMana, adagas: !!K.adagas, distancia: !!K.distancia, papel: K.papel || null, giroSrc: K.hab.P && K.hab.P.giro ? String(K.hab.P.giro) : null, ordem: K.ordem || null, hemorragia: !!K.hemorragia };
+      meta.kits[id] = { kit: serialKit(K.hab), stats: K.stats || null, adBase: K.adBase, adNivel: K.adNivel, magia: !!K.magia, semMana: !!K.semMana, fluxo: !!K.fluxo, adagas: !!K.adagas, distancia: !!K.distancia, papel: K.papel || null, giroSrc: K.hab.P && K.hab.P.giro ? String(K.hab.P.giro) : null, ordem: K.ordem || null, hemorragia: !!K.hemorragia };
     }
     // kit do campeão (Katarina): base/ratio/recarga + stats base
     const K = M.KITS && M.KITS.katarina;
     if (K) {
       meta.kit = serialKit(K.hab);
-      meta.champ = { id: K.id, adBase: K.adBase, adNivel: K.adNivel, magia: !!K.magia, semMana: !!K.semMana, adagas: !!K.adagas, distancia: !!K.distancia, papel: K.papel || null, ordem: K.ordem || null, hemorragia: !!K.hemorragia };
+      meta.champ = { id: K.id, stats: K.stats || null, adBase: K.adBase, adNivel: K.adNivel, magia: !!K.magia, semMana: !!K.semMana, fluxo: !!K.fluxo, adagas: !!K.adagas, distancia: !!K.distancia, papel: K.papel || null, ordem: K.ordem || null, hemorragia: !!K.hemorragia };
       meta.ordemHab = K.ordem || null;   // ordem OFICIAL de subir habilidade deste campeão (motor)
     }
     meta.bonusTwitch = M.bonusTwitchAtual ? M.bonusTwitchAtual() : null;
