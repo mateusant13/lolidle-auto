@@ -775,8 +775,67 @@
       else acts.push({ action: 'GUARDAR', it, why: 'sem regra' });
     }
 
-    // excesso de espaço: prioridade de descarte
+    // =====================================================================================
+    // COFRE A SÉRIO: TIRAR A MOCHILA DO VERMELHO (queixa do dono, 2026-10-21)
+    // "meu inventario ta sempre quase cheio, e o cofre ta metade da capacidade. e nao ta
+    //  sendo usado pelo script."
+    // Antes SÓ o épico S+ ia para o cofre; lendário A+ / épico A+ da classe / peças reservadas
+    // ficavam `PROTEGER` na mochila PARA SEMPRE e enchiam-na. Aqui os EXCEDENTES (2.ª cópia em
+    // diante) vão para o cofre e, se ainda houver transbordo, a própria cópia única de um item
+    // que NÃO é da build da fase também vai — guardado, nunca vendido.
+    // A build da fase ATUAL fica na mochila de propósito: se fosse para o cofre, o `buscar`
+    // puxava-a de volta no tick seguinte (ping-pong Fonte↔cofre).
     const excesso = bag.used - bag.cap;
+    const folga = Math.max(0, Number(cfg.venderFolga != null ? cfg.venderFolga : 2) || 0);
+    const pressao = excesso > 0 || bag.used >= Math.max(1, bag.cap - folga);
+    if (pressao) {
+      const cofreLigado = (() => { try { return podeFazer('cofre').pode; } catch { return false; } })();
+      if (cofreLigado) {
+        // espaço REAL no cofre (capacidade lida na última abertura; sem leitura não se inventa tecto)
+        let livres = Infinity;
+        try {
+          const usados = (cofreConhecido() || []).reduce((s, i) => s + (Number(i.qtd) || 1), 0);
+          if (_cofreCap) livres = Math.max(0, _cofreCap - usados);
+        } catch { /* ignore */ }
+        const fase = (() => { try { return faseAtual(); } catch { return 'mobs'; } })();
+        // o que a build desta fase usa AGORA não sai da mochila (evita stash↔buscar)
+        const stasheavel = (a) => {
+          const it = a.it;
+          if (!it || !QUAL.includes(it.qual) || it.raridade === 'basico') return false;   // '?' e básico (receita) ficam
+          let fs = [];
+          try { fs = fasesDoItem(it.base); } catch { fs = []; }
+          return fs.indexOf(fase) < 0;
+        };
+        const porBase = new Map();
+        for (const a of acts) if (a.action === 'PROTEGER' && stasheavel(a)) {
+          const b = String(a.it.base);
+          if (!porBase.has(b)) porBase.set(b, []);
+          porBase.get(b).push(a);
+        }
+        const melhores = (arr) => arr.slice().sort((x, y) =>
+          (tierDe(y.it) - tierDe(x.it)) || (qIdx(y.it.qual) - qIdx(x.it.qual)) || ((y.it.refino || 0) - (x.it.refino || 0)));
+        const mandar = (a, why) => {
+          if (a.action !== 'PROTEGER' || livres <= 0) return false;
+          a.action = 'GUARDAR_COFRE'; a.why = why; livres--;
+          return true;
+        };
+        // 1) EXCEDENTES: a melhor cópia de cada base fica na mochila; as outras vão para o cofre.
+        for (const arr of porBase.values()) {
+          const ord = melhores(arr);
+          for (let i = 1; i < ord.length; i++) mandar(ord[i], 'excedente de item protegido → cofre (liberta a mochila; não se vende)');
+        }
+        // 2) TRANSBORDO: ainda acima da capacidade? A cópia única de um item que NÃO é da fase
+        //    também vai para o cofre (guardado; o `buscar` traz de volta quando a fase mudar).
+        if (excesso > 0) {
+          for (const arr of porBase.values()) {
+            const ord = melhores(arr);
+            if (ord.length && ord[0].action === 'PROTEGER') mandar(ord[0], 'mochila acima da capacidade → cofre (guardado, nunca vendido)');
+          }
+        }
+      }
+    }
+
+    // excesso de espaço: prioridade de descarte
     if (excesso > 0) {
       const ordem = ['VENDER_LOJISTA', 'GUARDAR', 'ANUNCIAR_MERCADO'];
       let falta = excesso;
@@ -1982,7 +2041,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-21j';
+  const BUILD = '2026-10-21k';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -4582,8 +4641,17 @@ const CFG_VER = 4;
       const bag = scanBag(true); const p = bag ? planBag(bag) : null;
       const cofre = p ? (p.acts || []).filter((a) => a.action === 'GUARDAR_COFRE') : [];
       if (!cofre.length) return { ok: true, itens: 0 };
-      await abrirCofreTesoureira(); for (const a of cofre) await guardarNoCofre(a.it.id); fecharJanelas();
-      return { ok: true, itens: cofre.length };
+      const abriu = await abrirCofreTesoureira();
+      if (!abriu || !abriu.ok) return { ok: false, itens: 0, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
+      let guardados = 0;
+      try {
+        for (const a of cofre) {
+          const r = await guardarNoCofre(a.it.id);
+          if (!r || !r.ok) break;          // cofre cheio/recusou: os seguintes também falhavam
+          guardados++;
+        }
+      } finally { fecharJanelas(); }
+      return { ok: true, itens: guardados, pedidos: cofre.length };
     }],
     ['lerCofre', 'ler cofre', () => { const r = lerCofreBase(); if (r && r.ok) _ultimoLerCofre = Date.now(); return r; }],
     // TK-03: depois de LER o cofre (aí já se sabe o que é lixo) e antes do `mercado`. O passo de
@@ -4845,13 +4913,31 @@ const CFG_VER = 4;
       return { k: s.dataset.k || null, nome: (m ? m[1] : txt).trim(), base, refino: refinoImg || ((m && m[2]) ? +m[2] : 0), qual: (m && m[3]) ? m[3].toUpperCase() : null, qtd: (m && m[4]) ? +m[4] : 1, acao: s.dataset.cofre || null };
     });
   }
+  /** Capacidade do cofre LIDA do DOM (jogo.js:5950 desenha `Cofre <small>usados/cap</small>`).
+   *  `motor.js:3489 COFRE` diz a BASE e as expansões; o número FINAL (40..150) só o jogo o
+   *  calcula a partir das compras — portanto lê-se, não se copia (REGRA Nº 3). */
+  function lerCofreCap() {
+    try {
+      const box = document.querySelector('#npc-troca');
+      const txt = (box && box.textContent) || '';
+      const mc = txt.match(/Cofre\s*(\d+)\s*\/\s*(\d+)/i);
+      const mb = txt.match(/Mochila\s*(\d+)\s*\/\s*(\d+)/i);
+      const out = {};
+      if (mc) { out.usados = +mc[1]; out.cap = +mc[2]; }
+      if (mb) { out.bagUsados = +mb[1]; out.bagCap = +mb[2]; }
+      return (out.cap || out.bagCap) ? out : null;
+    } catch { /* ignore */ }
+    return null;
+  }
   /** Salva o cofre no storage (a extensão fica sabendo o que o dono tem guardado). */
   function salvarCofre() {
     const itens = lerCofreSlots().filter((i) => i.acao === 'retirar' || i.acao === 'sacar');   // só o que está NO cofre
+    const cap = lerCofreCap();
+    if (cap && cap.cap > 0) _cofreCap = cap.cap;
     _cofreCache = itens;                      // memória viva: as 4 fontes passam a saber o que está guardado
     _cofreAt = Date.now();                    // M3: instante da leitura, para a GUI dizer "lido há X"
-    try { chrome.storage.local.set({ [STORAGE_KEY + ':cofre']: { at: Date.now(), itens } }); } catch { /* ignore */ }
-    logEvent('cofre', { itens: itens.length });
+    try { chrome.storage.local.set({ [STORAGE_KEY + ':cofre']: { at: Date.now(), itens, cap: _cofreCap || null } }); } catch { /* ignore */ }
+    logEvent('cofre', { itens: itens.length, cap: _cofreCap || null });
     return itens;
   }
   /** Melhor item do cofre por nome/base: maior QUALIDADE, depois maior REFINO. */
@@ -4862,13 +4948,38 @@ const CFG_VER = 4;
     cand.sort((x, y) => (qDe(y.qual) - qDe(x.qual)) || (y.refino - x.refino));
     return cand[0];
   }
-  /** Deposita no cofre (ABERTO) um item da mochila — épico S/SS não fica na mochila. */
+  /** Total de ITENS no cofre (as grades agrupam iguais com ×N — `lerCofreSlots` devolve qtd). */
+  function cofreTotal() {
+    try {
+      return lerCofreSlots()
+        .filter((i) => i.acao === 'retirar' || i.acao === 'sacar')
+        .reduce((s, i) => s + (Number(i.qtd) || 1), 0);
+    } catch { return 0; }
+  }
+  /** Nº de SLOTS de item na mochila (o `#mochila` é a lista viva; o `#mochila-qtd` pode estar
+   *  congelado com a janela do cofre aberta, por isso a confirmação olha para os dois). */
+  function bagCount() { try { return ((scanBag(true) || {}).items || []).length; } catch { return 0; } }
+  /** Deposita no cofre (ABERTO) um item da mochila — épico S/SS não fica na mochila.
+   *  O clique só conta quando o TOTAL DO COFRE cresce: com o cofre cheio o jogo recusa em
+   *  silêncio e antes disto o passo dizia `itens: N` sem nada ter entrado. Confirmar pelo
+   *  cofre (e não pela `#mochila`) importa: com a janela do cofre aberta a `#mochila` pode
+   *  estar congelada — era isso que fazia o saque do lixo "nunca confirmar". */
   async function guardarNoCofre(alvo) {
     const base = baseDe(alvo);
-    const slot = [...document.querySelectorAll('.cofre-slot[data-k]')].find((s) => s.dataset.cofre === 'guardar' && (String(s.dataset.k || '').includes(base) || (s.querySelector('img')?.getAttribute('src') || '').includes('/' + base + '.png')));
+    const slot = [...document.querySelectorAll('.cofre-slot[data-k]')].find((s) => s.dataset.cofre === 'guardar' && (String(s.dataset.k || '').includes(base) || (s.querySelector('img')?.getAttribute('src') || '').includes('/' + base + '.')));
     if (!slot) return { ok: false, motivo: 'sem slot guardar de ' + base };
+    const antesC = cofreTotal();
+    const antesB = bagCount();
     slot.click(); await humano(380);
-    logEvent('cofre', { guardou: base });
+    let depoisC = antesC, depoisB = antesB;
+    // Confirma pelo COFRE (total sobe) OU pela mochila (nº de slots diminui). Com a janela do
+    // cofre aberta a `#mochila` pode estar congelada; o cofre é a verdade viva. O OR cobre os dois.
+    for (let i = 0; i < 8 && !(depoisC > antesC || depoisB < antesB); i++) {
+      await esperar(100);
+      depoisC = cofreTotal(); depoisB = bagCount();
+    }
+    if (!(depoisC > antesC || depoisB < antesB)) return { ok: false, motivo: 'cofre recusou ' + base + ' (cheio?)' };
+    logEvent('cofre', { guardou: base, total: depoisC });
     return { ok: true, base };
   }
   /** Aceita a tarefa do Capitão da Legião (na Fonte) mais vantajosa e fazível.
@@ -5223,15 +5334,19 @@ const CFG_VER = 4;
     const porBase = {};
     for (const s of cand) (porBase[String(s.base)] = porBase[String(s.base)] || []).push(s);
     const lixo = [];
+    // As grades do jogo AGRUPAM itens iguais e escrevem ×N (`data-nome="... ×3"`). Cada grupo
+    // vale `qtd` ITENS: empurrar o grupo uma só vez deixava 2 de 3 no cofre a cada viagem.
+    const vezes = (s) => Math.max(1, Number(s.qtd) || 1);
+    const empurrar = (s) => { for (let n = vezes(s); n > 0; n--) lixo.push(s); };
     for (const base of Object.keys(porBase)) {
       const doCofre = porBase[base];
       const todas = _copiasDoBase(base, slots);
       // Componente com UMA só cópia não é lixo (a build pode precisar dela). Com 2+, a pior
       // cópia do cofre é lixo como qualquer duplicado.
       if (comps.has(base) && todas.length <= 1) continue;
-      if (todas.length <= 1) { lixo.push(...doCofre); continue; }   // cópia única: é lixo
+      if (todas.length <= 1) { for (const s of doCofre) empurrar(s); continue; }   // cópia única: é lixo
       const melhor = todas.slice().sort(_melhorCopia)[0];
-      for (const s of doCofre) if (s !== melhor.ref) lixo.push(s);  // não é a melhor cópia -> lixo
+      for (const s of doCofre) if (s !== melhor.ref) empurrar(s);  // não é a melhor cópia -> lixo
     }
     return lixo;
   }
@@ -5262,14 +5377,17 @@ const CFG_VER = 4;
       .find((s) => String(s.dataset.k) === String(lido.k)
         && (s.dataset.cofre === 'retirar' || s.dataset.cofre === 'sacar'));
     if (!slot) return { ok: false, motivo: 'sem slot ' + lido.k + ' no cofre' };
-    const antes = ((scanBag(true) || {}).items || []).length;
+    const antesB = bagCount();
     slot.click();
-    let depois = antes;
-    for (let i = 0; i < 6 && depois <= antes; i++) {   // poll curto: o servidor responde e o motor re-renderiza
+    let depoisB = antesB;
+    // O saque só conta quando a MOCHILA cresce (nº de slots). O teste C15 (`semSaque`) prova
+    // que um clique recusado pelo servidor NÃO pode passar por saque. Com a mochila cheia o
+    // passo nem chega aqui (`venderLixoDoCofre` adia), que era a causa real do lixo preso.
+    for (let i = 0; i < 8 && depoisB <= antesB; i++) {
       await esperar(100);
-      depois = ((scanBag(true) || {}).items || []).length;
+      depoisB = bagCount();
     }
-    if (depois <= antes) return { ok: false, motivo: 'saque nao confirmado (mochila nao cresceu)' };
+    if (depoisB <= antesB) return { ok: false, motivo: 'saque nao confirmado (mochila nao cresceu)' };
     logEvent('cofre', { acao: 'sacar-lixo', k: lido.k, base });
     return { ok: true, base, nome: lido.nome, qual: lido.qual, refino: lido.refino || 0 };
   }
@@ -5287,8 +5405,21 @@ const CFG_VER = 4;
     const abriu = await abrirCofreTesoureira();
     if (!abriu || !abriu.ok) return { ok: false, motivo: (abriu && abriu.motivo) || 'sem cofre aqui', vendidos: [] };
     const vendidos = [], idsCofre = [];
-    // Lote variável (5-8): o tecto continua 8, mas o tamanho não é sempre o mesmo.
-    const loteMax = 5 + Math.floor(Math.random() * 4);
+    // A MOCHILA É O GARGALO: sacar exige um espaço livre por item. Se ela está cheia, o
+    // saque falhava logo no 1.º e o lixo do cofre ficava lá para sempre. Adia (cadência de
+    // 10 min) em vez de entrar em laço — o passo `vender`/`cofre` da base já correu antes.
+    const bag0 = scanBag(true) || {};
+    const capDom = lerCofreCap();
+    const bagUsados = (capDom && Number.isFinite(capDom.bagUsados)) ? capDom.bagUsados : (Number(bag0.used) || 0);
+    const bagCap = (capDom && capDom.bagCap > 0) ? capDom.bagCap : (Number(bag0.cap) || 0);
+    const livresBag = Math.max(0, bagCap - bagUsados);
+    if (livresBag <= 0) {
+      fecharJanelas(); _ultimaVendaCofre = Date.now();
+      logEvent('cofre', { acao: 'vender-lixo', adiado: 'mochila cheia', usados: bagUsados, cap: bagCap });
+      return { ok: true, vendidos: [], motivo: 'mochila cheia (nada sacado)' };
+    }
+    // Lote variável (5-8) e NUNCA maior que os espaços livres da mochila.
+    const loteMax = Math.min(5 + Math.floor(Math.random() * 4), livresBag);
     for (const alvo of lixo.slice(0, loteMax)) {
       const r = await sacarSlotDoCofre(alvo);
       if (r && r.ok) {
@@ -8958,7 +9089,12 @@ const CFG_VER = 4;
   // =====================================================================================
   let _cofreCache = [];
   let _cofreAt = null;                      // M3: instante da ultima gravacao do cofre (para a GUI)
-  try { chrome.storage.local.get(STORAGE_KEY + ':cofre', (r) => { _cofreCache = (r && r[STORAGE_KEY + ':cofre'] && r[STORAGE_KEY + ':cofre'].itens) || []; }); } catch { /* ignore */ }
+  let _cofreCap = null;                     // capacidade LIDA do jogo (jogo.js:5950 `c.itens.length/cap`)
+  try { chrome.storage.local.get(STORAGE_KEY + ':cofre', (r) => {
+    const v = r && r[STORAGE_KEY + ':cofre'];
+    _cofreCache = (v && v.itens) || [];
+    if (v && Number(v.cap) > 0) _cofreCap = Number(v.cap);   // expansões compradas persistem
+  }); } catch { /* ignore */ }
   let _ofertasPedidas = false;
   /** Minhas ofertas no mercado (o que está ANUNCIADO e continua a ser meu). */
   function minhasOfertas() {
@@ -10278,7 +10414,7 @@ const CFG_VER = 4;
   /** Gira por cada região, logando um ciclo em cada. Progresso persistido (retoma de onde parou). */
   function iniciarGiro(ids, duracaoMs) {
     if (giro) return { ok: false, motivo: 'ja ativo' };
-    const lista = ids || (META.locais || []).filter((l) => l.faixa && !l.arena).map((l) => l.id);
+    const lista = ids || (META.locais || []).filter(ehRegiaoDeFarm).map((l) => l.id);
     if (!lista.length) return { ok: false, motivo: 'sem regioes' };
     giro = { lista, i: 0, duracaoMs: duracaoMs || 5 * 60000, startedAt: Date.now() };
     salvarGiro();
@@ -11073,6 +11209,17 @@ const CFG_VER = 4;
   /** Região: a escolhida (cfg.regionDefault) ou a melhor p/ o nível (ouro + xp). */
   /** Runeterra é jogado MANUALMENTE — a automação nunca escolhe/visita essas regiões. */
   const ehRuneterra = (l) => /runeterra/i.test(semAcento((l && (l.nome || l.id)) || ''));
+  /** REGIÃO DE CAÇA NO RIFT — a ÚNICA que o farm pode escolher.
+   *
+   *  DEFEITO QUE ISTO FECHA (2026-10-21): o filtro era só `!ehRuneterra(l)`. Com as regiões
+   *  novas do motor (motor.js:539-590), entrava `fj` (arena:true, mundo:'freljord') e as zonas
+   *  do Freljord (`mundo:'freljord'`), que NÃO têm marcador no mapa do Rift (mapa.js:59 filtra
+   *  `!l.base && !l.arena`) e se jogam por portal no 2.º mundo. O boneco não as alcança por
+   *  `viajarPara` — então não podem entrar em ranking nem ser recomendadas.
+   *  `base:true` é a Fonte; `arena:true` são as arenas (fj/aram) — nenhuma é caça.
+   *  As NOVAS regiões do Rift (`anciao`, `base`, `nexus`) passam: têm `faixa`, não são base
+   *  nem arena (motor.js:539-576), e chegam sozinhas no `META.locais` do inject. */
+  const ehRegiaoDeFarm = (l) => !!l && !!l.faixa && !l.base && !l.arena && !l.mundo && !ehRuneterra(l);
 
   /** REGIAO RECOMENDADA (a AUTO, sempre) — ignora a regiao FIXA do dono (`cfg.regionDefault`).
    *  Pedido do dono (2026-10-19, TK-01 §2): a GUI mostra o PREVIEW do modo automatico mesmo
@@ -11083,7 +11230,7 @@ const CFG_VER = 4;
     // FILTRO FAIL-CLOSED (correcção do Lead, 2026-10-14): `!x.e.morte` tratava `undefined` (risco
     // NÃO calculado) como "segura" — era um NO-OP. Agora só passa quem PROVOU ser seguro
     // (`morte === false`). "Não se sabe" não pode mandar o boneco para a morte.
-    const cand0 = (META.locais || []).filter((l) => !ehRuneterra(l)).map((l) => ({ l, e: estimarRegiao(l.id) })).filter((x) => x.e && x.e.morte === false);
+    const cand0 = (META.locais || []).filter(ehRegiaoDeFarm).map((l) => ({ l, e: estimarRegiao(l.id) })).filter((x) => x.e && x.e.morte === false);
     // REGRA DO DONO (7): "não ficar em região abaixo do nível". Aplicada como PREFERÊNCIA: se
     // TODAS estiverem abaixo do nível (ex.: nível 50 e a última faixa acaba no 50), não se
     // inventa uma região — usa-se o conjunto inteiro.
@@ -11141,6 +11288,7 @@ const CFG_VER = 4;
     if (!id) return false;
     const l = (META.locais || []).find((x) => String(x.id) === String(id));
     if (!l) return false;
+    if (!ehRegiaoDeFarm(l)) return false;                                   // (0) fora do Rift (arena/mundo/base)
     const p = player();
     if (abaixoDoNivel(l, p)) return false;                                  // (a) abaixo do nível
     // (b) zona MUITO acima do boneco: usa a MESMA tolerância que o `doNivel0` da `regiaoIdeal`
@@ -11160,7 +11308,7 @@ const CFG_VER = 4;
   /** Ranking de regiões pelo objetivo (ouro+xp/xp/ouro/runas) — usado pela GUI e pelo planner. */
   function rankRegioes(obj) {
     obj = objDe(obj || cfg.objetivo);
-    return (META.locais || []).filter((l) => !ehRuneterra(l)).map((l) => {
+    return (META.locais || []).filter(ehRegiaoDeFarm).map((l) => {
       let e = null; try { e = estimarRegiao(l.id); } catch { /* ignore */ }
       if (!e) return null;
       return { id: l.id, nome: (l.nome || '').replace(/ nível.*/, ''), xpMin: e.xpMin, goldMin: e.goldMin, runasH: e.runasH, morte: e.morte,
@@ -11738,7 +11886,7 @@ const CFG_VER = 4;
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },
     barraSaidasAtivas: () => [..._barraSaidas.keys()],
     skillsPorFase: () => cfg.skillsPorFase !== false,
-    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, motivosDeViagem, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, cacheBuildEstado: () => (_buildCache ? { chave: _buildCache.chave, execs: _buildExecs, ms: _buildCache.ms, ids: _buildCache.ids.slice() } : null), infoBeam: () => Object.assign({}, _beamInfo), invalidarCacheBuild: () => { _buildCache = null; _buildCacheMap.clear(); }, planoTodos, perfilDe, pesoMana, manaInfoDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
+    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, ehRegiaoDeFarm, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, motivosDeViagem, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, cacheBuildEstado: () => (_buildCache ? { chave: _buildCache.chave, execs: _buildExecs, ms: _buildCache.ms, ids: _buildCache.ids.slice() } : null), infoBeam: () => Object.assign({}, _beamInfo), invalidarCacheBuild: () => { _buildCache = null; _buildCacheMap.clear(); }, planoTodos, perfilDe, pesoMana, manaInfoDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
     // modeladas com eles: vida com k/M e escudo, recarga exacta, efeitos activos, recarga de item,

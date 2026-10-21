@@ -93,6 +93,7 @@ export const SELETORES_CONHECIDOS = [
   '[data-fechar]',
   // cofre
   '.cofre-slot[data-k]',
+  '#npc-troca',
   '[data-pegar^="itens:"]',
   // mercado
   '#janela-mercado',

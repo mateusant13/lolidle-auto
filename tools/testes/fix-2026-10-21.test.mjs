@@ -19,7 +19,8 @@
  * CONTRATO: t.check(rotulo, condicao) só passa com condicao === true.
  */
 
-import { criarMundo, carregarAutomation, definirCampeao, alimentarCatalogo, montarMochila } from './dom-stub.mjs';
+import { criarMundo, carregarAutomation, definirCampeao, alimentarCatalogo, alimentarMeta, montarMochila } from './dom-stub.mjs';
+import { readFileSync } from 'node:fs';
 
 export const suite = {
   nome: 'fix-2026-10-21',
@@ -239,6 +240,68 @@ export const suite = {
       const prot = acts3.filter((x) => x.it.id === '1001~C' && x.action === 'PROTEGER').length;
       const vend = acts3.filter((x) => x.it.id === '1001~C' && x.action === 'VENDER_LOJISTA').length;
       t.check('B3: guarda o tecto da receita e vende o excedente', prot > 0 && vend > 0);
+    }
+
+    /* =====================================================================
+     * COFRE A SÉRIO (queixa: "inventario sempre quase cheio, cofre metade e
+     * não é usado"). Com pressão de espaço, os EXCEDENTES protegidos vão para
+     * o cofre; em transbordo, até a cópia única de um item que não é da fase.
+     * ===================================================================== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest', { nivel: 30 });
+      auto.setConfig({ enabled: true });          // `cofre` pende de irBase/manutencao
+      // 9500 = "Lendario Fraco" do catálogo: NUNCA entra em build nenhuma.
+      const slots = [];
+      for (let i = 0; i < 28; i++) slots.push({ id: '1005~C', raridade: 'basico' });
+      slots.push({ id: '9500~A', raridade: 'lendario' }, { id: '9500~A', raridade: 'lendario' });
+      montarMochila(m, slots, 30);
+      const acts = auto.planBag(auto.scanBag(true)).acts;
+      const do9500 = acts.filter((a) => String(a.it.id).startsWith('9500'));
+      t.check('K1: mochila em pressão manda o EXCEDENTE do lendário A+ para o cofre',
+        do9500.filter((a) => a.action === 'GUARDAR_COFRE').length === 1);
+      t.check('K1: a melhor cópia fica na mochila (PROTEGER)', do9500.filter((a) => a.action === 'PROTEGER').length === 1);
+
+      // TRANSBORDO: 30 itens numa mochila de 29. A cópia ÚNICA (que não é da fase) vai ao cofre.
+      const m2 = criarMundo();
+      const auto2 = carregarAutomation(m2);
+      alimentarCatalogo(m2);
+      definirCampeao(m2, 'adtest', { nivel: 30 });
+      auto2.setConfig({ enabled: true });
+      const slots2 = [];
+      for (let i = 0; i < 29; i++) slots2.push({ id: '1005~C', raridade: 'basico' });
+      slots2.push({ id: '9500~A', raridade: 'lendario' });
+      montarMochila(m2, slots2, 29);
+      const a2 = auto2.planBag(auto2.scanBag(true)).acts;
+      t.check('K2: transbordo guarda no cofre (não vende) o item único fora da fase',
+        a2.some((a) => String(a.it.id).startsWith('9500') && a.action === 'GUARDAR_COFRE'));
+    }
+
+    /* =====================================================================
+     * REGIÕES NOVAS + MUNDOS: o ranking só pode ter CAÇA NO RIFT. As zonas do
+     * Freljord (`mundo:'freljord'`), a arena `fj` e a Fonte não têm marcador no
+     * mapa do Rift (mapa.js:59) — entram no META mas ficam fora das contas.
+     * ===================================================================== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarMeta(m, { locais: [
+        { id: 'rota-inf', nome: 'Rota Inferior', faixa: [1, 10], nm: [1, 6], tier: 0, monstros: [['X', 1]] },
+        { id: 'anciao', nome: 'Covil do Dragão Ancião', faixa: [50, 75], nm: [50, 68], tier: 8, monstros: [['X', 1]] },
+        { id: 'fj-tundra', nome: 'Tundra Uivante', faixa: [50, 60], nm: [50, 58], tier: 8, mundo: 'freljord', monstros: [['X', 1]] },
+        { id: 'fj', nome: 'Freljord', arena: true, mundo: 'freljord', monstros: [['X', 1]] },
+        { id: 'fonte', nome: 'Fonte', base: true, monstros: [['X', 1]] },
+      ] });
+      const r = auto.rankRegioes('xp');
+      t.check('R1: região NOVA do Rift (anciao) entra no ranking', r.some((x) => x.id === 'anciao'));
+      t.check('R2: zona do Freljord (outro mundo) fica FORA do ranking', !r.some((x) => x.id === 'fj-tundra'));
+      t.check('R3: arena (fj) e Fonte ficam FORA do ranking', !r.some((x) => x.id === 'fj') && !r.some((x) => x.id === 'fonte'));
+      t.check('R4: fail-closed — região sem faixa não é região de farm', auto.ehRegiaoDeFarm({ id: 'x', nome: 'X' }) === false);
+      const src = readFileSync(new URL('../../extension/inject.js', import.meta.url), 'utf8');
+      t.check('R5: inject.js manda LOCAIS + LOCAIS_FRELJORD (as zonas novas chegam ao META)',
+        /M\.LOCAIS_FRELJORD/.test(src) && /locais\.push/.test(src));
     }
 
     /* =====================================================================

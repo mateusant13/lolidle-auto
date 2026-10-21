@@ -427,7 +427,16 @@
 
   function enviarMeta() { window.postMessage({ __lolidleAuto: 'meta', ...meta }, '*'); }
   import('https://lolidle.com/js/motor.js').then((M) => {
-    meta.monstros = M.MONSTROS; meta.locais = M.LOCAIS;
+    meta.monstros = M.MONSTROS;
+    // LOCAIS = mapa do Summoner's Rift; LOCAIS_FRELJORD = zonas do 2.º mundo (motor.js:577-590,
+    // `LOCAL` = os dois). Mandar só `LOCAIS` deixava a extensão CEGA às zonas novas do Freljord.
+    // Dedupe por id: `LOCAL` no motor é exactamente esta concatenação (motor.js:591).
+    const locais = Array.isArray(M.LOCAIS) ? M.LOCAIS.slice() : [];
+    if (Array.isArray(M.LOCAIS_FRELJORD)) {
+      const vistos = new Set(locais.map((l) => String(l && l.id)));
+      for (const l of M.LOCAIS_FRELJORD) if (l && !vistos.has(String(l.id))) { locais.push(l); vistos.add(String(l.id)); }
+    }
+    meta.locais = locais;
     // dados de combate/poção direto do motor (sem hardcode!)
     meta.pocoes = M.POCOES; meta.exaustao = M.EXAUSTAO; meta.pocaoPvp = M.POCAO_PVP;
     meta.noturno = M.NOTURNO; meta.furioso = M.FURIOSO; meta.gemas = M.GEMAS;
