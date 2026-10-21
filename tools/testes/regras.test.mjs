@@ -355,5 +355,34 @@ export const suite = {
       t.check('T12: CONTROLO - a chave marcada é a do passo (`mercado`)',
         w.auto.estaIndisponivel('mercado') === true);
     }
+
+    /* ================= T13 - O CICLO "VOLTA À BASE TODA HORA" (2026-10-20) =================
+     * Duas causas medidas no código:
+     *  (1) `n.cura` era `vidaCur < vida` (faltar 1 ponto): em combate é SEMPRE verdade, logo
+     *      o supervisor recordava a cada 20 s para a Soraka curar.
+     *  (2) o `supervisarBase` calculava `motivoViagem` (a venda só paga a viagem com a mochila
+     *      quase cheia ou >= venderMinItens) e NUNCA o usava: quem decidia era `motivo`, onde
+     *      `vender` entrava com UM item. */
+    {
+      const w = novoMundo();
+      alimentarCatalogo(w.m);
+      definirCampeao(w.m, 'adtest');
+      w.auto.setConfig({ enabled: true });
+      w.m.montar('#hud-vida-txt', [w.m.el({ label: 'hud-vida-txt', textContent: '900 / 1000' })]);
+      t.check('T13: com 90% de vida, a cura NAO paga uma viagem', w.auto.necessidadesBase().cura === false);
+      w.m.montar('#hud-vida-txt', [w.m.el({ label: 'hud-vida-txt', textContent: '200 / 1000' })]);
+      t.check('T13: com 20% de vida, a cura passa a ser necessidade', w.auto.necessidadesBase().cura === true);
+      const comVenda = (itens, cheia) => w.auto.motivosDeViagem(['cura', 'vender'], { _venda: { itens: itens, mochilaQuaseCheia: cheia } }, { venderMinItens: 6 });
+      t.check('T13: 1 item para vender NAO paga a viagem (a cura continua a pagar)',
+        JSON.stringify(comVenda(1, false)) === '["cura"]');
+      t.check('T13: 6 itens para vender PAGAM a viagem',
+        JSON.stringify(comVenda(6, false)) === '["cura","vender"]');
+      t.check('T13: mochila quase cheia PAGA a viagem mesmo com poucos itens',
+        JSON.stringify(comVenda(2, true)) === '["cura","vender"]');
+      t.check('T13: sem necessidade de venda a lista fica vazia',
+        JSON.stringify(w.auto.motivosDeViagem(['vender'], { _venda: { itens: 1, mochilaQuaseCheia: false } }, { venderMinItens: 6 })) === '[]');
+      t.check('T13: ler o cofre NAO e necessidade primaria (nao paga uma viagem sozinha)',
+        w.auto.NECESSIDADES_PRIMARIAS.indexOf('lerCofre') < 0);
+    }
   },
 };

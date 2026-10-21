@@ -91,6 +91,9 @@
     // (regiões: ouro/xp/runas) continua a ser o único "objetivo" do dono.
     keepEpicA: true,
     minPotion: { vida: 200, vidaF: 100, vidaS: 30 },
+    // Fração de vida ABAIXO da qual vale a pena voltar à Fonte para a Soraka curar. Acima disto
+    // a auto-poção trata, e uma viagem custa mais do que o problema. (Antes: qualquer dano.)
+    curaAbaixo: 0.45,
     buyPotion: { vida: 3000, vidaF: 1500, vidaS: 700 },
     // ESPERA NA BASE sem nada pendente. Era 3 min e o dono via "idle 176 s < 180 s" no
     // diagnóstico como se fosse uma trava — e o boneco ficava parado à espera do relógio.
@@ -3936,7 +3939,12 @@ const CFG_VER = 2;
   // `lerCofre` passou a PRIMÁRIA (pedido do dono: "andar pra fonte ... tem q fazer automatico"): é
   // ela que PAGA a ida à Fonte de X em X minutos para ler o cofre. A cadência (`cfg.cofreCadenciaMin`)
   // limita-o, logo não é o need-eterno que causava o ciclo de recall.
-  const NECESSIDADES_PRIMARIAS = ['presente', 'cura', 'vender', 'repor', 'tarefa', 'hab', 'atrib', 'equip', 'buscar', 'cofre', 'anunciar', 'lerCofre', 'comprarWatch'];
+  // NECESSIDADES que PAGAM uma viagem. `lerCofre` NÃO está aqui de propósito: o comentário do
+  // `necessidadesBase` já o chamava "oportunidade" mas a lista dizia o contrário e ele era
+  // PRIMÁRIO — logo, a cada 10 min o boneco largava o farm para ir ler o cofre. A ESTREIA
+  // (sem nenhuma leitura ainda) continua a acontecer porque o bloco `!haPrimaria` só a desliga
+  // depois de existir uma leitura (`_cofreAt`). É o desenho que o comentário descrevia.
+  const NECESSIDADES_PRIMARIAS = ['presente', 'cura', 'vender', 'repor', 'tarefa', 'hab', 'atrib', 'equip', 'buscar', 'cofre', 'anunciar', 'comprarWatch'];
   /** NECESSIDADES da base (só o que FALTA) — evita rodar tudo à toa a cada visita. */
   // =======================================================================================
   // HIERARQUIA DE INTERRUPTORES (pedido do dono, 2026-10-14, verbatim):
@@ -4114,10 +4122,18 @@ const CFG_VER = 2;
     // CUSTO da ida à base (em ouro-equivalente) — é contra ele que as decisões de IR são
     // medidas. Ver `custoIdaBase`. Declarado AQUI porque `n.vender`/`n._custoIda` o usam.
     const custo = custoIdaBase();
-    // `player().vida` é o MÁXIMO (`hp.max`, ver automation.js:1795) e `vidaMax`/`max` não
-    // existem nesse objecto: a comparação antiga era `max < 0` = sempre false, logo a cura
-    // NUNCA era pedida. O actual é `vidaCur` (`hp.cur`).
-    try { const pl = player() || {}; n.cura = pl.vidaCur != null && (pl.vidaCur || 0) < (pl.vida || 0); } catch { n.cura = false; }
+    // CURA: só quando a vida está BAIXA o suficiente para o próximo combate ser perigoso.
+    // Antes era `cur < max` (faltar 1 ponto de vida): em combate isso é SEMPRE verdade, logo
+    // o supervisor voltava à Fonte a cada 20 s para curar. É o ciclo "vai e volta" que o dono
+    // viu em 2026-10-20. O limite é `cfg.curaAbaixo` (45% por omissão) e a vida máxima vem do
+    // HUD (`lerVidaHud`), não de um número escrito aqui.
+    try {
+      const pl = player() || {};
+      const max = Number(pl.vida) || 0;
+      const cur = pl.vidaCur;
+      const limiar = numOr(cfg.curaAbaixo, 0.45);
+      n.cura = cur != null && max > 0 && (Number(cur) / max) < limiar;
+    } catch { n.cura = false; }
     // P0 AO VIVO (ciclo de recall): usava `minimoPocoes()`, que inclui a POÇÃO SUPREMA — e a
     // loja só a vende no nível 30 (motor.js:264). Com `vidaS: 0` e mínimo 8, isto ficava
     // `true` PARA SEMPRE: o boneco recordava, não conseguia comprar, saía, e voltava 20 s
@@ -4351,6 +4367,22 @@ const CFG_VER = 2;
   ];
   const PASSOS_CHAVES = new Set(PASSOS_BASE.map((p) => p[0]));
   /** Necessidades PENDENTES que têm passo (a lista que decide "a base está completa?"). */
+  /** NECESSIDADES que PAGAM uma viagem (sair do campo e voltar à Fonte). A lista de
+   *  `necessidadesBase` diz o que FALTA; isto diz o que vale a pena IR BUSCAR.
+   *  A única que não paga sozinha é `vender`: 3 itens de ~1.680 não cobrem 8-20 s de viagem
+   *  mais os abates perdidos. Só paga com a mochila quase cheia (o loot deixa de entrar) ou
+   *  com `venderMinItens` para descartar.
+   *  DEFEITO CORRIGIDO (2026-10-20): esta conta existia dentro do `supervisarBase` e o
+   *  resultado (`motivoViagem`) era CALCULADO E NUNCA USADO. Quem decidia a viagem era o
+   *  `motivo` cru, onde `vender` entrava com UM item: recall a cada 20 s. */
+  function motivosDeViagem(falta, necess, cfgAtual) {
+    const c = cfgAtual || cfg;
+    const venda = necess && necess._venda;
+    const itensVenda = Number(venda && venda.itens) || 0;
+    const minVenda = Math.max(1, Number(c.venderMinItens) || 6);
+    const vendaPaga = !!venda && (!!venda.mochilaQuaseCheia || itensVenda >= minVenda);
+    return (Array.isArray(falta) ? falta : []).filter((f) => f !== 'vender' || vendaPaga);
+  }
   function faltandoNaBase(n) {
     const x = n || necessidadesBase();
     return Object.keys(x).filter((k) => x[k] === true && PASSOS_CHAVES.has(k));
@@ -10486,7 +10518,7 @@ const CFG_VER = 2;
       const itensVenda = Number(venda && venda.itens) || 0;
       const minVenda = Math.max(1, Number(cfg.venderMinItens) || 6);
       const vendaPagaViagem = !!venda && (!!venda.mochilaQuaseCheia || itensVenda >= minVenda);
-      const faltaViagem = falta.filter((f) => f !== 'vender' || vendaPagaViagem);
+      const faltaViagem = motivosDeViagem(falta, necess);
       motivoViagem = faltaViagem.length ? ('base: ' + faltaViagem.join(',')) : null;
       info.vendaPagaViagem = vendaPagaViagem; info.venderMinItens = minVenda;
       if (venda && !vendaPagaViagem && falta.indexOf('vender') >= 0) info.vendaAdiada = { itens: itensVenda, min: minVenda, motivo: 'nao paga a viagem (vende-se se ja estiver na base)' };
@@ -10599,10 +10631,10 @@ const CFG_VER = 2;
       // MODO FARM FORÇADO no campo: NÃO recorda (era este o `press('b')` que fechava o ciclo
       // "viaja, mata 1 mob, volta"). Fica a farmar e marca-se activo.
       marcarAtiva();
-    } else if (!teste && motivo && Date.now() - _ultimaVenda > 20000) {
+    } else if (!teste && motivoViagem && Date.now() - _ultimaVenda > 20000) {
       _ultimaVenda = Date.now(); if (querTarefa) _ultimaTarefa = Date.now();
       // MOTIVO COM VALOR: `venda:{itens,valor}` + `custoIda:{ouro,seg}` - o dono vê a conta.
-      logEvent('base', { ir: motivo, ...info });
+      logEvent('base', { ir: motivoViagem, ...info });
       press('b');
       setTimeout(() => { try { if (naBase()) acaoBase(); } catch { /* ignore */ } }, esperaRecallMs());
     } else {
@@ -10979,7 +11011,7 @@ const CFG_VER = 2;
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },
     barraSaidasAtivas: () => [..._barraSaidas.keys()],
     skillsPorFase: () => cfg.skillsPorFase !== false,
-    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, cacheBuildEstado: () => (_buildCache ? { chave: _buildCache.chave, execs: _buildExecs, ms: _buildCache.ms, ids: _buildCache.ids.slice() } : null), infoBeam: () => Object.assign({}, _beamInfo), invalidarCacheBuild: () => { _buildCache = null; _buildCacheMap.clear(); }, planoTodos, perfilDe, pesoMana, manaInfoDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
+    podeFazer, arvoreInterruptores, INTERRUPTORES, regiaoAntesDaBase, regiaoSegura, rmMonstro, armMagicaEfetiva, valorEquip, valorVenda, nomeCompleto, ehCampeaoAlvo, campeoesAlvo, campeoesDoJogo, estadoCompleto, cofreInfo, valorDoPonto, dpsRank, valorBuff, ctxDano, modeloAtribDe, necessidadesBase, faltandoNaBase, motivosDeViagem, passoFalhou, PASSOS_BASE, precisaRefino, scoreRegiao, taxaXpOuro, abaixoDoNivel, objDe, minimoPocoes, minimoPocoesAgora, pocaoCompravel, estaIndisponivel, marcarIndisponivel, FARM_FORCADO_MS, custoIdaBase, NECESSIDADES_PRIMARIAS, buildDaClasse, lendariosDaClasse, ehLendarioDaBuild, buildIdeal, buildIdealPara, cacheBuildEstado: () => (_buildCache ? { chave: _buildCache.chave, execs: _buildExecs, ms: _buildCache.ms, ids: _buildCache.ids.slice() } : null), infoBeam: () => Object.assign({}, _beamInfo), invalidarCacheBuild: () => { _buildCache = null; _buildCacheMap.clear(); }, planoTodos, perfilDe, pesoMana, manaInfoDe, basicosDaBuild, comprarNoMercado, lerOfertasCompra, snapshotJogo, simularCaminho, substitutos, melhorCompra, salvarOfertas, ofertasEmCache, iniciarTeste, pararTeste, testeAtivo, testeEstado, passoTeste, equiparItem, desequiparItem, aplicarItens, iniciarGiro, pararGiro, giroAtivo, ondeItem, localId, viajarPara, exportar, importar,
     // ---- O HUD DO JOGO COMO FONTE (frente OBSERVABILIDADE, 2026-10-14) ----
     // Leitores dos numeros que O PROPRIO JOGO escreve no DOM e as mecanicas que passaram a ser
     // modeladas com eles: vida com k/M e escudo, recarga exacta, efeitos activos, recarga de item,
