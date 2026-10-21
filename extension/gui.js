@@ -282,24 +282,25 @@ switches: 'interruptores',
   const idRegiaoDe = (txt) => ler('localId', null, txt) || null;
 
   // ============================================================ 2. KIT DE INTERFACE
+  // TEXTO CORTO (ordem do dono, 2026-10-21): o subtítulo de ajuda saiu do cabeçalho. O título
+  // diz o que é; o resto era explicação do óbvio.
   const card = (titulo, ajuda, corpo, id) =>
     '<section class="card"' + (id ? ' id="' + id + '"' : '') + '><h3>' + titulo +
-    (ajuda ? '<span class="obs">' + ajuda + '</span>' : '') + '</h3><div class="corpo">' + corpo + '</div></section>';
+    '</h3><div class="corpo">' + corpo + '</div></section>';
   /** Cartão com botão de MINIMIZAR no cabeçalho (o mesmo padrão do bloco da build por fase).
    *  `min` = true mostra só o título; o estado vive nas preferências da GUI e sobrevive ao F5. */
   const cardMin = (id, titulo, ajuda, corpo, min, btnId, aberto) =>
     '<section class="card' + (min ? ' min' : '') + '"' + (id ? ' id="' + id + '"' : '') + '><h3>' + titulo +
-    (ajuda ? '<span class="obs">' + ajuda + '</span>' : '') +
     '<button class="ic bf-min" id="' + btnId + '" title="' +
     (aberto ? 'Minimizar: deixa só o título (o mesmo botão volta abrindo)' : 'Abrir este bloco') + '">' +
     (aberto ? '▾' : '▸') + '</button></h3><div class="corpo">' + corpo + '</div></section>';
   const kv = (rotulo, valor, ajuda) =>
-    '<div class="kv2"><span>' + rotulo + '</span><b>' + valor + '</b>' + (ajuda ? '<small>' + ajuda + '</small>' : '') + '</div>';
+    '<div class="kv2"><span>' + rotulo + '</span><b>' + valor + '</b></div>';
   const linha = (rotulo, ajuda, ctrl) =>
-    '<div class="ctl"><div class="ctl-l"><b>' + rotulo + '</b>' + (ajuda ? '<small>' + ajuda + '</small>' : '') + '</div><div class="ctl-c">' + ctrl + '</div></div>';
-  // `off` (opcional): botão que NÃO pode ser usado agora — fica desativado e a ajuda diz por quê.
+    '<div class="ctl"><div class="ctl-l"><b>' + rotulo + '</b></div><div class="ctl-c">' + ctrl + '</div></div>';
+  // `off` (opcional): botão que NÃO pode ser usado agora — fica desativado.
   const acao = (id, texto, ajuda, cls, off) =>
-    '<div class="acao"><button id="' + id + '" class="btn ' + (cls || '') + '"' + (off ? ' disabled' : '') + '>' + texto + '</button><small>' + ajuda + '</small></div>';
+    '<div class="acao"><button id="' + id + '" class="btn ' + (cls || '') + '"' + (off ? ' disabled' : '') + '>' + texto + '</button></div>';
   /** Bloco de AÇÕES MANUAIS — sempre despromovido e no fim do cartão.
    *  A GUI mostra o que acontece SOZINHO (estado, switches, o que a automação vai fazer e o que
    *  está bloqueado); o clique manual fica aqui, rotulado como manutenção manual, para não
@@ -308,15 +309,15 @@ switches: 'interruptores',
   const diag = (titulo, corpo) => '<p class="diag-t">' + titulo + '</p>' + (corpo || '');
   const acaoD = (id, texto, ajuda, off) =>
     '<div class="acao"><button id="' + id + '" class="btn sec"' + (off ? ' disabled' : '') + '>' + texto
-    + '<small class="tagd">manual</small></button><small>' + ajuda + '</small></div>';
+    + '<small class="tagd">manual</small></button></div>';
   const tg = (id, rotulo, ajuda, marcado) =>
     '<label class="tg"><input type="checkbox" id="' + id + '"' + (marcado ? ' checked' : '') + '><span class="sw"></span>' +
-    '<span class="tg-t"><b>' + rotulo + '</b><small>' + ajuda + '</small></span></label>';
+    '<span class="tg-t"><b>' + rotulo + '</b></span></label>';
   /** Igual ao `tg`, mas com a CHAVE da automação em `data-cfg`. O handler genérico lê-a e escreve por
    *  `definirCfg` — é assim que a GUI nunca escreve o nome da chave à mão (lê-o da automação). */
   const tgCfg = (id, cfgKey, rotulo, ajuda, marcado) =>
     '<label class="tg"><input type="checkbox" id="' + id + '" data-cfg="' + esc(cfgKey) + '"' + (marcado ? ' checked' : '') + '><span class="sw"></span>' +
-    '<span class="tg-t"><b>' + rotulo + '</b><small>' + ajuda + '</small></span></label>';
+    '<span class="tg-t"><b>' + rotulo + '</b></span></label>';
   const itemFrame = (base, qual, refino, raridade, titulo) =>
     '<span class="iframe ' + esc(raridade || '') + '" title="' + esc(titulo || '') + '">' +
     // O REFINO muda a ARTE (jogo.js:167): usa-se a pasta `ref/<base>-<N>.png` quando há refino.
@@ -648,6 +649,9 @@ switches: 'interruptores',
     '@keyframes lolidle-spin{to{transform:rotate(360deg)}}',
     '#lolidle-ap .muted{color:var(--dim)}',
     '#lolidle-ap .hint{color:var(--dim);font-size:11px;line-height:1.45}',
+    // TEXTO CORTO (ordem do dono, 2026-10-21): parágrafos que só EXPLICAVAM o óbvio ficam fora da
+    // vista. O que é estado/medida (Falta:, Pendente agora, Região em uso) continua visível.
+    '#lolidle-ap .hint.tira{display:none}',
     '#lolidle-ap .pend{color:var(--verm)}',
     /* botão flutuante para abrir o painel */
     '#lolidle-ap-launch{position:fixed;right:8px;bottom:8px;z-index:2147483646;background:#1b1815;color:#ffd070;border:1px solid #3a3126;border-radius:8px;padding:5px 9px;font:700 11px/1.2 system-ui,sans-serif;cursor:pointer;opacity:.45;transition:.15s}',
@@ -1297,7 +1301,7 @@ switches: 'interruptores',
       'Em mobs veste a build de limpeza; quando o chefe aparece veste a de alvo único. O que sai fica na mochila e nunca é vendido.', on)
       + (on ? '' : '<p class="aviso warn">Desligado: a automação volta usando uma build só e deixa de reservar as peças da outra.</p>')
       + '<div class="bf-grid">' + bfColuna(pMob, 'mobs') + bfColuna(pChefe, 'chefe') + '</div>'
-      + '<p class="hint">Campeão: <b>' + esc(ident.nome || '-') + '</b>. Cada peça diz DE ONDE vem: <b>equipado</b>, <b>na mochila</b>, <b>no mercado</b> (oferta sua) ou <b>no cofre</b>. "Falta" = não existe em lado nenhum.</p>';
+      + '<p class="hint tira">Campeão: <b>' + esc(ident.nome || '-') + '</b>. Cada peça diz DE ONDE vem: <b>equipado</b>, <b>na mochila</b>, <b>no mercado</b> (oferta sua) ou <b>no cofre</b>. "Falta" = não existe em lado nenhum.</p>';
     // Cabeçalho próprio (não usa card()) porque leva o botão de minimizar ao lado do estado.
     setHtml('ap-build-fase',
       '<section class="card bf' + (abertoBf ? '' : ' min') + '">'
@@ -1353,7 +1357,7 @@ switches: 'interruptores',
       + kv('onde você está', esc(a.local))
       + '</div>'
       + barra
-      + '<p class="hint">A vida vem da barra do jogo (é a verdade). O ouro vem do contador do HUD.</p>'));
+      + '<p class="hint tira">A vida vem da barra do jogo (é a verdade). O ouro vem do contador do HUD.</p>'));
 
     // 2) o que o auto-play está fazendo
     const cur = a.cur;
@@ -1400,14 +1404,14 @@ switches: 'interruptores',
         : '<p class="aviso ok">A base está completa: nada falta fazer aqui.</p>';
       bloqueio = (dg.motivo ? '<p class="aviso warn">Motivo mais urgente: <b>' + esc(dg.motivo) + '</b></p>' : '')
         + lista
-        + '<p class="hint">Quando esta lista fica vazia, a automação viaja para ' + esc(a.regiao || 'a melhor região') + '.</p>'
+        + '<p class="hint tira">Quando esta lista fica vazia, a automação viaja para ' + esc(a.regiao || 'a melhor região') + '.</p>'
         + diag('Forçar agora (manutenção manual)',
           '<div class="acoes">' + acaoD('ap-base-go-agora', '🏠 Rodar a rotina de base agora', 'Executa todos os passos pendentes de uma vez. A automação faz isto sozinho quando decide voltar à Fonte.') + '</div>');
     } else if (dg && travaReal(dg).length) {
       const esp = esperaReal(dg);
       bloqueio = '<ul style="margin:2px 0 0;padding-left:18px">' + travaReal(dg).map((t) => '<li>' + esc(traduzTrava(t)) + '</li>').join('') + '</ul>'
         + (esp.length ? '<p class="aviso warn">Aguardando: ' + esc(esp.map(traduzTrava).join(' · ')) + '</p>' : '')
-        + '<p class="hint">Quando nenhuma destas travas estiver ativa, a automação viaja sozinho para ' + esc(a.regiao || 'a melhor região') + '.</p>';
+        + '<p class="hint tira">Quando nenhuma destas travas estiver ativa, a automação viaja sozinho para ' + esc(a.regiao || 'a melhor região') + '.</p>';
     } else {
       bloqueio = '<p class="aviso ok">Nada a travar: a automação está a jogar.</p>';
     }
@@ -1469,7 +1473,7 @@ switches: 'interruptores',
     const planoPocao = ler('planPotions', null, counts);
     setHtml('ap-now-pocoes', card('Poções', 'a auto-poção usa a mais fraca que for suficiente',
       '<div class="pots">' + cartoes + '</div>'
-      + '<p class="hint">A auto-poção decide pelo <b>golpe que o monstro acabou de dar</b> (não por médias) e conta a cura das suas habilidades. Se a cura chegar, não gasta poção.</p>'
+      + '<p class="hint tira">A auto-poção decide pelo <b>golpe que o monstro acabou de dar</b> (não por médias) e conta a cura das suas habilidades. Se a cura chegar, não gasta poção.</p>'
       + (ultima ? '<p class="aviso ok">Última decisão: usou <b>' + esc(POCAO_NOME[ultima.k] || ultima.k) + '</b>, ' + esc(ultima.reason || '') + '</p>' : '<p class="vazio">ainda não usou nenhuma poção</p>')
       + (planoPocao ? '<p class="aviso warn">Em falta: ' + esc((planoPocao.faltas || []).map((k) => POCAO_NOME[k]).join(', ')) + '. Vai comprar: '
         + esc(ORDER.filter((k) => planoPocao.comprar[k] > 0).map((k) => POCAO_NOME[k] + ' ×' + fmt(planoPocao.comprar[k])).join(' · ') || 'nada (sem ouro)') + '</p>'
@@ -1483,7 +1487,7 @@ switches: 'interruptores',
     if (!est || !est.at) {
       setHtml('ap-now-jogo', card('Estado completo do jogo', 'a automação mantém isto atualizado sozinho (a cada 20 s)',
         '<p class="vazio">A primeira leitura do estado do jogo ainda não chegou.</p>'
-        + '<p class="hint">O retrato completo é gravado cerca de 2,5 s depois de a automação arrancar e volta a ser gravado a cada 20 s.</p>'));
+        + '<p class="hint tira">O retrato completo é gravado cerca de 2,5 s depois de a automação arrancar e volta a ser gravado a cada 20 s.</p>'));
     } else {
       const nomeDe = (b) => nomeItem(b);
       const inv = est.inventario;
@@ -1680,8 +1684,9 @@ switches: 'interruptores',
     else if (porExcecao) motivo = '<span class="arv-motivo">⚠ a automação pula este agora: ' + esc(arvExc(nome, s)) + '</span>';
     else if (porPai) motivo = '<span class="arv-motivo">' + (inerte ? 'não age enquanto ' : 'bloqueado por ')
       + '<b>' + esc(ARV_NOME[z.quem] || z.quem) + '</b>' + (inerte ? ' estiver desligado' : ' (está desligado)') + '</span>';
-    const cobre = ARV_COBRE[nome] || null;
-    const linha = cobre ? '<p class="arv-cobre ' + (bloqueado ? 'off' : 'on') + '">' + esc(bloqueado ? cobre.off : cobre.on) + '</p>' : '';
+    // TEXTO CORTO (ordem do dono, 2026-10-21): a frase do que o switch "cobre" saiu da lista.
+    // O nome do switch já diz o que é; a explicação ficou no tooltip (`ARV_AJUDA`).
+    const linha = '';
     const ctrl = s.ignorarCfg
       ? '<span class="tag" title="este switch não tem liga/desliga: a vigia trabalha sempre, mesmo com os switches desligados">sempre</span>'
       : temCfg
@@ -1730,7 +1735,7 @@ switches: 'interruptores',
           : r.erro === 'sem-funcao'
             ? 'Esta versão da automação ainda não expõe a lista de switches (falta <b>arvoreInterruptores</b>).'
             : 'A automação respondeu, mas não declarou nenhum switch.') + '</p>'
-        + '<p class="hint">Este bloco não inventa nada: mostra exatamente os switches que a automação declara'
+        + '<p class="hint tira">Este bloco não inventa nada: mostra exatamente os switches que a automação declara'
         + (semMotor ? ', recarregue a página com <b>F5</b>.' : '.') + '</p>');
       return;
     }
@@ -1898,12 +1903,12 @@ switches: 'interruptores',
       // ESTADO, não ação: quem decide é o switch. Os botões para forçar cada passo vivem no
       // cartão de manutenção manual, no fim do Painel — a GUI é para o que é automático.
       setHtml('ap-auto-base', card('Ações de base, quem decide', 'a automação executa sozinho quando vai à Fonte',
-        '<p class="hint">Ir à Fonte, vender, repor poções, cofre, mercado, atributos e tarefas são decididos pelos <b>switches</b> da lista acima. Quando o switch está ligado e alguma pendência paga a viagem, a automação vai e faz, não há nada para clicar aqui.</p>'
-        + '<p class="hint">Para forçar um passo agora, use <b>Manutenção manual</b>, no fim deste painel.</p>'));
+        '<p class="hint tira">Ir à Fonte, vender, repor poções, cofre, mercado, atributos e tarefas são decididos pelos <b>switches</b> da lista acima. Quando o switch está ligado e alguma pendência paga a viagem, a automação vai e faz, não há nada para clicar aqui.</p>'
+        + '<p class="hint tira">Para forçar um passo agora, use <b>Manutenção manual</b>, no fim deste painel.</p>'));
 
       setHtml('ap-auto-tarefa', card('Tarefas e recompensas', 'Capitão da Legião, na Fonte',
         '<div id="ap-tarefa-estado"></div>'
-        + '<p class="hint">Aceitar a tarefa, entregar quando fica pronta e pegar as diárias são feitos sozinhos na rotina de base (com o switch <b>Manutenção</b> ligado).</p>'));
+        + '<p class="hint tira">Aceitar a tarefa, entregar quando fica pronta e pegar as diárias são feitos sozinhos na rotina de base (com o switch <b>Manutenção</b> ligado).</p>'));
 
     }
     // A ÁRVORE DE INTERRUPTORES redesenha SEMPRE (o estado dela muda com a config, com o campeão
@@ -1922,7 +1927,7 @@ switches: 'interruptores',
       setHtml('ap-auto-champ', card('Campeão actual', 'o auto-play corre em qualquer campeão',
         '<p class="aviso ' + (ident.id ? 'ok' : 'warn') + '">Campeão actual: <b>' + esc(nomeAtual) + '</b>'
         + (ident.id ? '' : ', a automação ainda não identificou o campeão (F5 se demorar).') + '</p>'
-        + '<p class="hint">Não há lista de alvos: a automação joga com o campeão que estiver na conta. '
+        + '<p class="hint tira">Não há lista de alvos: a automação joga com o campeão que estiver na conta. '
         + 'Trocar de campeão não exige mudar nenhum switch. Isto <b>não</b> liga o auto-play, quem liga é o switch mestre.</p>'));
     }
     // valores dinâmicos
@@ -1965,7 +1970,7 @@ switches: 'interruptores',
     } else {
       setHtml('ap-auto-falta', card('O que falta fazer na base', 'lista da automação, só o que é preciso',
         '<p class="vazio">Ainda sem a lista da base.</p>'
-        + '<p class="hint">A automação preenche isto quando lê o estado do jogo.</p>'));
+        + '<p class="hint tira">A automação preenche isto quando lê o estado do jogo.</p>'));
     }
     // auto-poção: valores actuais (sem reconstruir o cartão, para não perder o foco)
     sincronizarPocao();
@@ -2077,7 +2082,7 @@ switches: 'interruptores',
         + (i.base ? itemImgTag(i.base, i.refino, nomeCofre(i)) : '') + esc(nomeCofre(i))
         + '</td><td>' + esc(i.qual || 'C') + '</td><td>' + (i.refino ? '+' + esc(i.refino) : '-') + '</td><td>' + (i.qtd == null ? '-' : '×' + fmt(i.qtd)) + '</td></tr>').join(''))
       : '<p class="vazio">Ainda não há leitura do cofre, não sei o que está guardado.</p>'
-        + '<p class="hint">A automação lê o cofre sozinho quando passa pela Fonte e <b>grava</b> o que lá está. A partir daí esta lista aparece aqui sempre que você quiser, onde você estiver.</p>';
+        + '<p class="hint tira">A automação lê o cofre sozinho quando passa pela Fonte e <b>grava</b> o que lá está. A partir daí esta lista aparece aqui sempre que você quiser, onde você estiver.</p>';
     const corpo = lista
       + (pode ? '' : '<p class="hint">O cofre só abre na Fonte ou na cidade (Tesoureira de Piltover / Burrinho de Carga), você está em <b>' + esc(local) + '</b>. A lista acima é a última leitura gravada.</p>')
       + diag('Cofre: forçar leitura e ações manuais (manutenção manual)')
@@ -2233,7 +2238,7 @@ switches: 'interruptores',
     setHtml('ap-it-proteg', card('Blindados, nunca são vendidos', 'o mesmo critério que a automação aplica',
       '<div class="chips" data-blindados="motor">' + Array.from(prot.entries()).sort((x, y) => ordemItemGui({ base: x[0] }, { base: y[0] })).map(([b, motivo]) =>
         '<span class="chip ' + (String(b) === RABADON ? 'lendario' : '') + '" title="' + esc(motivo) + '">' + (ITEM_IMG(b) ? '<img src="' + ITEM_IMG(b) + '" alt="">' : '') + esc(nomeItem(b)) + ' <small>🔒</small></span>').join('') + '</div>'
-      + '<p class="hint">O que não se vende: itens de classe, especiais do campeão, lendários da build, peças da outra fase, o que está equipado em S ou SS e itens ainda em avaliação.</p>'));
+      + '<p class="hint tira">O que não se vende: itens de classe, especiais do campeão, lendários da build, peças da outra fase, o que está equipado em S ou SS e itens ainda em avaliação.</p>'));
 
     // mochila: a automação lê o `#mochila` DIRECTAMENTE (o jogo mantém-no atual, aberto ou não —
     // jogo.js:6621), logo tenta-se uma leitura passiva antes de pedir um clique ao usuário.
@@ -2241,7 +2246,7 @@ switches: 'interruptores',
     if (!bagLida) {
       setHtml('ap-it-mochila', card('Mochila', 'ainda não legível nesta página',
         '<p class="vazio">A mochila ainda não está legível.</p>'
-        + '<p class="hint">Se você ainda não abriu a bolsa desde que a página carregou, abra uma vez no jogo (tecla I). A partir daí a automação lê-a sozinho, sem voltando abrindo.</p>'
+        + '<p class="hint tira">Se você ainda não abriu a bolsa desde que a página carregou, abra uma vez no jogo (tecla I). A partir daí a automação lê-a sozinho, sem voltando abrindo.</p>'
         + diag('Leitura da mochila (manutenção manual)')
       + '<div class="acoes">' + acaoD('ap-scan', '🎒 Forçar leitura da mochila', 'Lê o conteúdo da mochila, não abre nem fecha nada no jogo.') + '</div>'));
       setHtml('ap-it-plano', card('O que vai acontecer a cada item', 'plano da automação',
@@ -2277,7 +2282,7 @@ switches: 'interruptores',
               '<div class="ln ' + info.cls + '">' + itemImgTag(x.it.base, x.it.refino, nomeItem(x.it.base) + ' ' + (x.it.qual || '') + (x.it.refino ? ' +' + x.it.refino : '')) + '<b>' + esc(nomeItem(x.it.base)) + '</b> ' + esc(x.it.qual || '') + (x.it.refino ? '+' + x.it.refino : '')
               + '<span class="d">' + esc(x.why || '') + '</span></div>').join('') + '</div>';
           }).join('')
-          + '<p class="hint">Os motivos são escritos pela automação; esta lista é o que a rotina de base vai executar.</p>'));
+          + '<p class="hint tira">Os motivos são escritos pela automação; esta lista é o que a rotina de base vai executar.</p>'));
       } else {
         setHtml('ap-it-plano', card('O que vai acontecer a cada item', 'plano da automação',
           '<p class="aviso err">Não foi possível calcular o plano da mochila: '
@@ -2292,10 +2297,10 @@ switches: 'interruptores',
       const linhaD = (t, titulo) => t ? '<p class="hint">' + titulo + ': ' + t.porItem.map((x) => esc(x.nome) + ' <b>' + fmt(x.dps) + '</b>').join(' · ') + ' → total <b>' + fmt(t.total) + '</b>/s</p>' : '';
       setHtml('ap-it-dps', card('Quanto cada item dá de dano para você', 'estimativa da automação para esta região',
         (linhaD(dps.chefe, 'Contra o chefe') || '') + (linhaD(dps.mob, 'Contra mobs') || '')
-        + '<p class="hint">Serve para ver se vale trocar uma peça: o número é o dano por segundo que aquele item acrescenta ao conjunto.</p>'));
+        + '<p class="hint tira">Serve para ver se vale trocar uma peça: o número é o dano por segundo que aquele item acrescenta ao conjunto.</p>'));
     } else setHtml('ap-it-dps', card('Quanto cada item dá de dano para você', 'estimativa da automação para esta região',
       '<p class="vazio">Ainda sem estimativa de dano por item.</p>'
-      + '<p class="hint">A automação calcula isto quando lê o equipamento e a região.</p>'));
+      + '<p class="hint tira">A automação calcula isto quando lê o equipamento e a região.</p>'));
 
     // O antigo cartão "Farmar itens específicos" MUDOU-SE para a aba Ganhos, onde passou a ser a
     // modalidade "Auto farm pra item" (renderFarmItens, seção 5). O div `ap-it-farmar` deixou de
@@ -2313,7 +2318,7 @@ switches: 'interruptores',
       // GUI ESTÁVEL (queixa do dono, 2026-10-20): os cartões ficam TODOS com o mesmo cabeçalho
       // e uma linha de espera, em vez de desaparecerem e voltarem quando a leitura chega.
       const espera = '<p class="vazio">Ainda sem leitura das habilidades.</p>'
-        + '<p class="hint">A automação lê isto do jogo; se demorar, recarrega a página (F5).</p>';
+        + '<p class="hint tira">A automação lê isto do jogo; se demorar, recarrega a página (F5).</p>';
       setHtml('ap-sk-barra', card('Barra de combate', 'as habilidades que o jogo usa sozinho', espera));
       setHtml('ap-sk-pontos', card('Pontos para gastar', 'lido do HUD dourado do jogo', espera));
       setHtml('ap-sk-ideal', card('Barra ideal (recomendada)', 'as 4 habilidades que mais rendem agora', espera));
@@ -2332,13 +2337,13 @@ switches: 'interruptores',
     }).join('') || '<span class="vazio">nenhuma habilidade na barra</span>';
     setHtml('ap-sk-barra', card('Barra de combate', 'as habilidades que o jogo usa sozinho',
       '<div class="chips">' + barra + '</div>'
-      + '<p class="hint">A ultimate só é usada contra chefes ou em áreas muito difíceis.</p>'));
+      + '<p class="hint tira">A ultimate só é usada contra chefes ou em áreas muito difíceis.</p>'));
 
     const pontos = sk.pontos || 0, pontosAtrib = sk.pontosAtrib || 0;
     setHtml('ap-sk-pontos', card('Pontos para gastar', 'lido do HUD dourado do jogo',
       '<div class="kvs">' + kv('habilidades', String(pontos)) + kv('atributos', String(pontosAtrib)) + '</div>'
       + '<p class="hint">' + (sk.hudTexto ? 'O jogo diz: "' + esc(sk.hudTexto) + '"' : 'O HUD não está mostrando pontos.') + '</p>'
-      + '<p class="hint">Habilidades e atributos ficam na mesma aba, <b>Personagem</b>: aqui sobem-se as habilidades; os pontos de atributo estão logo abaixo.</p>'));
+      + '<p class="hint tira">Habilidades e atributos ficam na mesma aba, <b>Personagem</b>: aqui sobem-se as habilidades; os pontos de atributo estão logo abaixo.</p>'));
 
     // ordem de subida (a MESMA regra da automação: rank 0 primeiro, depois maior dano)
     const arsenal = (sk.arsenal || []).slice();
@@ -2400,7 +2405,7 @@ switches: 'interruptores',
       + acaoD('ap-rotacao', '🔁 Repor a rotação na barra', 'Põe na barra as 4 habilidades prontas que dão mais dano (mantém sempre as melhores disponíveis).')
       + acaoD('ap-trocar-skills', '🔄 Trocar só as que estão em recarga', 'Substitui as habilidades em recarga por outras já desbloqueadas e prontas.')
       + '</div>'
-      + '<p class="hint">A ultimate nunca é trocada para fora da barra pela automação.</p>'));
+      + '<p class="hint tira">A ultimate nunca é trocada para fora da barra pela automação.</p>'));
   }
 
   // ---------------------------------------------------------------- ABA ATRIBUTOS
@@ -2432,7 +2437,7 @@ switches: 'interruptores',
     setHtml('ap-at-pontos', card('Pontos livres', 'ganhas 3 por nível',
       '<div class="kvs">' + kv('pontos por gastar', String(sk.pontosAtrib || 0)) + '</div>'
       + '<p class="hint">' + (sk.hudTexto ? 'O jogo diz: "' + esc(sk.hudTexto) + '"' : 'O HUD não está mostrando pontos de atributo.') + '</p>'
-      + '<p class="hint">Se a lista ao lado estiver vazia, abra a aba <b>Atributos</b> no jogo uma vez para o painel existir na página.</p>'));
+      + '<p class="hint tira">Se a lista ao lado estiver vazia, abra a aba <b>Atributos</b> no jogo uma vez para o painel existir na página.</p>'));
 
     setHtml('ap-at-lista', card('Distribuição atual', 'lida do painel do jogo',
       atrs.length
@@ -2532,14 +2537,14 @@ switches: 'interruptores',
           + kv('ouro por chefe', pk ? fmt(pk.gold) : '-') + kv('xp por chefe', pk ? fmt(pk.xp) : '-')
           + kv('tempo do chefe', fmtDur(ms)) + kv('poções usadas', potTxt(fase, pm(fase && fase.potions)))
           + '</div>'
-          + '<p class="hint">A fase do chefe mede <b>um</b> chefe, então os números são <b>por chefe</b> (loot ÷ abates), com o tempo ao lado como custo. '
+          + '<p class="hint tira">A fase do chefe mede <b>um</b> chefe, então os números são <b>por chefe</b> (loot ÷ abates), com o tempo ao lado como custo. '
           + 'Por minuto aqui não compara chefes: o xp do chefe é quase fixo e o loot varia, dividir pelo tempo só premia quem morre rápido.</p>'
         : '<div class="kvs">'
           + kv('ouro por minuto', fmt(pm(fase && fase.gold))) + kv('xp por minuto', fmt(pm(fase && fase.xp)))
           + kv('poções por minuto', potTxt(fase, pm(fase && fase.potions))) + kv('abates por minuto', fmt(pm(fase && fase.kills)))
           + kv('dano causado', fmt(pm(fase && fase.dmg))) + kv('cura', fmt(pm(fase && fase.heal)))
           + '</div>'
-          + '<p class="hint">Fase de mobs: muitos abates numa janela longa, então aqui a taxa <b>por minuto</b> é a leitura certa.</p>';
+          + '<p class="hint tira">Fase de mobs: muitos abates numa janela longa, então aqui a taxa <b>por minuto</b> é a leitura certa.</p>';
       setHtml('ap-fm-agora', card('Ganhos AGORA', 'medido neste ciclo (' + (boss ? 'fase do chefe' : 'fase de mobs') + ')',
         kvs
         + '<p class="hint">Região: <b>' + esc(limparNivel(cur.region)) + '</b> · ciclo começou há ' + fmtDur(Date.now() - (cur.startedAt || Date.now())) + (cur.deaths ? ' · mortes neste ciclo: ' + cur.deaths : '') + '</p>'));
@@ -2562,7 +2567,7 @@ switches: 'interruptores',
       setHtml('ap-fm-previsor', card('Previsão para a sua build de agora', 'medido quando existe; teoria quando não',
         bloco('Mobs', prev.mob, prev.teorico && prev.teorico.mob)
         + bloco('Chefe', prev.chefe, prev.teorico && prev.teorico.chefe)
-        + '<p class="hint">O que foi medido manda; a estimativa só preenche o que falta.</p>'
+        + '<p class="hint tira">O que foi medido manda; a estimativa só preenche o que falta.</p>'
         + diag('Medição (manutenção manual)')
         + '<div class="acoes">' + acaoD('ap-fm-testes', '🧪 Medir conjuntos de itens', 'O teste mede cada conjunto no jogo e alimenta esta previsão.') + '</div>'));
     } else setHtml('ap-fm-previsor', card('Previsão para a sua build de agora', 'medido quando existe; teoria quando não',
@@ -2599,7 +2604,7 @@ switches: 'interruptores',
             + '</td><td>' + esc(x.chefe || '-') + '</td><td>' + fmt(x.xpMin) + '</td><td>' + fmt(x.goldMin) + '</td><td>' + fmt(x.runasH) + '</td><td>' + riscoDe(x) + '</td></tr>'),
           'sem dados do catálogo')
         : '<p class="vazio">O jogo ainda não entregou o catálogo.</p>'
-        + '<p class="hint">Esta tabela é a comparação crua do objetivo; a de cima é o que foi medido e manda na escolha.</p>'));
+        + '<p class="hint tira">Esta tabela é a comparação crua do objetivo; a de cima é o que foi medido e manda na escolha.</p>'));
 
     // últimos ciclos: MOBS por minuto, CHEFE por abate (ver a nota no topo desta seção)
     const ciclos = (f.cycles || []).slice(0, 30);
@@ -2614,9 +2619,9 @@ switches: 'interruptores',
             + '<td>' + (c2.boss ? (pk ? fmt(pk.gold) : '-') : '-') + '</td><td>' + (c2.boss ? (pk ? fmt(pk.xp) : '-') : '-')
             + '</td><td>' + (c2.bossDurMs ? fmtDur(c2.bossDurMs) : '-') + '</td></tr>';
         }), 'sem ciclos registados')
-      + '<p class="hint">Nas colunas do <b>chefe</b> o número é <b>por abate</b> (loot ÷ abates), não por minuto: comparar chefes pela taxa da janela premia quem morre rápido. '
+      + '<p class="hint tira">Nas colunas do <b>chefe</b> o número é <b>por abate</b> (loot ÷ abates), não por minuto: comparar chefes pela taxa da janela premia quem morre rápido. '
       + 'Nas colunas de <b>mobs</b> a taxa é <b>por minuto</b>, que é o que faz sentido com muitos abates.</p>'
-      + '<p class="hint">Poções aparece como <b>, </b> quando a fase teve abates e nenhuma poção foi usada: 0/min não é medição de combate, é a automação sem agir (modo observação) ou sem precisar de poção.</p>'));
+      + '<p class="hint tira">Poções aparece como <b>, </b> quando a fase teve abates e nenhuma poção foi usada: 0/min não é medição de combate, é a automação sem agir (modo observação) ou sem precisar de poção.</p>'));
   }
 
 
@@ -2716,7 +2721,7 @@ switches: 'interruptores',
           + (alvo.dropsH != null ? ' · ' + fmt1(alvo.dropsH) + ' drops/hora de ' + esc(alvo.nome) : '')
           + (alvo.chefeFatal === true ? ' · ⚠ o chefe dessa zona mata você (a automação fica só nos mobs)' : '') + '.</p>'
         : '')
-      + '<p class="hint">A primeira linha de cada item é a melhor zona dele. <b>Chance por abate</b> e <b>drops/hora</b> são contas da automação (catálogo do jogo × abates medidos na região); ", " = a automação não tem esse número.</p>');
+      + '<p class="hint tira">A primeira linha de cada item é a melhor zona dele. <b>Chance por abate</b> e <b>drops/hora</b> são contas da automação (catálogo do jogo × abates medidos na região); ", " = a automação não tem esse número.</p>');
   }
   /** Chips dos itens escolhidos (com o × para tirar). Vive no cartão do auto farm pra item. */
   function renderChips() {
@@ -2752,8 +2757,8 @@ switches: 'interruptores',
       + '<div class="acoes">'
       + acaoD('ap-fm-go', '▶ Ir agora para a melhor região', 'Liga o auto-play e viaja já para a melhor região para o seu nível. Um clique.')
       + '</div>'
-      + '<p class="hint">A automação escolhe a região sozinho e muda quando compensa. Para mudar o objetivo, use a aba <b>Painel</b>.</p>';
-    const corpoItem = '<p class="hint">Marque abaixo os itens que você quer dropar: a automação diz em que região cada um cai, com a chance e os drops/hora, e leva você até lá.</p>';
+      + '<p class="hint tira">A automação escolhe a região sozinho e muda quando compensa. Para mudar o objetivo, use a aba <b>Painel</b>.</p>';
+    const corpoItem = '<p class="hint tira">Marque abaixo os itens que você quer dropar: a automação diz em que região cada um cai, com a chance e os drops/hora, e leva você até lá.</p>';
     const minModo = guiPrefs.fmModoMin === true;
     setHtml('ap-fm-modo', cardMin(null, 'Como você quer farmar', 'duas modalidades, escolha uma',
       '<div class="modos">'
@@ -2771,7 +2776,7 @@ switches: 'interruptores',
     setHtml('ap-fm-itens', cardMin(null, 'Auto farm pra item, o que quero dropar', n ? n + ' item(ns) escolhido(s)' : 'nenhum item escolhido',
       '<div class="chips" id="ap-fm-chips"></div>'
       + (n ? '' : '<p class="vazio">Nenhum item escolhido ainda.</p>'
-        + '<p class="hint">Clique em <b>Escolher itens</b> e marque o que você quer. A lista mostra os itens do jogo agrupados por raridade e por espaço (arma, armadura, cabeça, mão, botas, acessório)'
+        + '<p class="hint tira">Clique em <b>Escolher itens</b> e marque o que você quer. A lista mostra os itens do jogo agrupados por raridade e por espaço (arma, armadura, cabeça, mão, botas, acessório)'
         + (total ? ', ' + total + ' itens no catálogo' : '') + '.</p>')
       + '<div class="acoes">'
       + acao('ap-pick', '🔍 Escolher itens (<b id="ap-sel-n">' + n + '</b>)', 'Abre a lista de itens do jogo para você marcar o que quer dropar.')
@@ -2779,7 +2784,7 @@ switches: 'interruptores',
       + acao('ap-plan-limpar', '✖ Limpar escolha', 'Tira todos os itens da escolha (não mexe em nada no jogo).', 'sec', !n)
       + '</div>'
       + '<div id="ap-plan-out"></div>'
-      + '<p class="hint">A automação não tem (ainda) um modo "farmar até cair": a região fica <b>fixa</b> e ele continua lá até você mudar, não para sozinho quando o item cai.</p>', minItens, 'ap-fm-min-itens', !minItens));
+      + '<p class="hint tira">A automação não tem (ainda) um modo "farmar até cair": a região fica <b>fixa</b> e ele continua lá até você mudar, não para sozinho quando o item cai.</p>', minItens, 'ap-fm-min-itens', !minItens));
     renderPlanoItens();
     renderChips();
   }
@@ -2803,7 +2808,7 @@ switches: 'interruptores',
         ? tabela(['item', 'raridade', 'qualidade', 'preço'], ordenarItens(ofertas).map((o) => '<tr><td>' + esc(o.nome || o.base || '?') + '</td><td>' + esc(o.raridade || '-')
           + '</td><td>' + esc(o.qual || '-') + '</td><td>' + fmt(o.preco) + '</td></tr>'))
         : '<p class="vazio">Ainda não há leitura das suas ofertas.</p>'
-          + '<p class="hint">A automação lê-as quando passa pelo mercado e grava a lista, a partir daí aparece aqui, sem precisar clicar em nada. O botão abaixo força uma leitura nova.</p>')
+          + '<p class="hint tira">A automação lê-as quando passa pelo mercado e grava a lista, a partir daí aparece aqui, sem precisar clicar em nada. O botão abaixo força uma leitura nova.</p>')
       + diag('Mercado: leitura e ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-mk-ler', '📖 Forçar leitura das minhas ofertas', 'Abre o mercado, lê a aba "Minhas ofertas", grava e fecha. Não muda nada.')
@@ -2827,7 +2832,7 @@ switches: 'interruptores',
       + acaoD('ap-ornn-ler', '📜 Forçar leitura das receitas do Ornn', 'Fala com o Ornn na Fonte e lista tudo o que ele pode montar, com o custo e as peças que você tem.')
       + acaoD('ap-mk-montar', '🔨 Montar a melhor receita', 'Escolhe a receita mais barata que serve a sua build e tenta montar. Gasta ouro por tentativa.')
       + '</div>'
-      + '<p class="hint">Cada tentativa custa ouro e tem ~1,2% de chance (2,4% com a Runa Arcana). As peças só são consumidas quando dá certo.</p>'));
+      + '<p class="hint tira">Cada tentativa custa ouro e tem ~1,2% de chance (2,4% com a Runa Arcana). As peças só são consumidas quando dá certo.</p>'));
 
     setHtml('ap-mk-compra', card('Vale a pena comprar agora?', 'decisão da automação com base no seu ouro',
       '<div id="ap-mk-compra-out">' + (compraCache ? esc(compraCache.texto || '') : '<p class="vazio">Ainda não calculei. Use o botão abaixo.</p>') + '</div>'
@@ -2880,8 +2885,8 @@ switches: 'interruptores',
         + ' <b data-wvend="' + esc(v) + '" style="cursor:pointer;color:#ff9a6a" title="remover">×</b></span>').join('') + '</div>'
       : '<p class="vazio" id="ap-watch-vendedores-chips">Nenhum jogador escolhido, escreva o nome abaixo e clique em Adicionar.</p>';
     setHtml('ap-mk-watch', card('Watch do mercado, itens e jogadores', 'detecta em tempo real e compra sozinho',
-      '<p class="hint">Vigia o mercado dos jogadores pelo SERVIDOR (todas as ofertas, com vendedor) e, quando algo casa, compra pelo próprio mercado do jogo. <b>Só gasta ouro</b> (nunca Gemas/diamantes) e nunca abaixo da reserva de poções. Para comprar sozinho tem de estar no <b>Mercador</b> (base), a deteção corre em qualquer sítio.</p>'
-      + '<p class="hint">A vigia não tem liga/desliga: se há itens ou jogadores na lista, ela está ativa e compra sozinha. Lista vazia = não vigia nada.</p>'
+      '<p class="hint tira">Vigia o mercado dos jogadores pelo SERVIDOR (todas as ofertas, com vendedor) e, quando algo casa, compra pelo próprio mercado do jogo. <b>Só gasta ouro</b> (nunca Gemas/diamantes) e nunca abaixo da reserva de poções. Para comprar sozinho tem de estar no <b>Mercador</b> (base), a deteção corre em qualquer sítio.</p>'
+      + '<p class="hint tira">A vigia não tem liga/desliga: se há itens ou jogadores na lista, ela está ativa e compra sozinha. Lista vazia = não vigia nada.</p>'
       + '<p class="hint">Itens que você quer (escolha nos ícones abaixo):</p>'
       + chipsItens
       // A GRADE DE ÍCONES FICA SEMPRE À VISTA (pedido do dono 2026-10-20: "make a item
@@ -2889,7 +2894,7 @@ switches: 'interruptores',
       // "Adicionar itens" e o painel parecia uma watch vazia. A busca filtra por nome; o
       // clique no ícone marca/desmarca. O id só existe por baixo (é o que o servidor devolve).
       + '<div class="watch-picker" id="ap-watch-picker">'
-      +   '<p class="hint">Clique nos ícones para escolher os itens que quer comprar. Lista vazia não vigia item nenhum.</p>'
+      +   '<p class="hint tira">Clique nos ícones para escolher os itens que quer comprar. Lista vazia não vigia item nenhum.</p>'
       +   '<input id="ap-watch-busca" type="search" placeholder="procurar item por nome…" autocomplete="off">'
       +   '<div class="scroll" id="ap-watch-grade" style="max-height:240px"></div>'
       +   '<div class="acoes"><button id="ap-watch-ok" class="btn sec">Salvar itens escolhidos</button></div>'
@@ -2905,11 +2910,11 @@ switches: 'interruptores',
       +   '<option value="so"' + (String(cfgWatch.filtroVendedores || 'so') === 'so' ? ' selected' : '') + '>Só destes jogadores</option>'
       +   '<option value="qualquer"' + (String(cfgWatch.filtroVendedores || 'so') === 'qualquer' ? ' selected' : '') + '>Qualquer jogador (itens da lista)</option>'
       + '</select></label>'
-      + '<p class="hint"><b>Só destes jogadores</b>: se a lista tem nomes, nenhuma oferta de outro jogador é comprada. Se também escolheu itens, só compra esses itens deles.</p>'
+      + '<p class="hint tira"><b>Só destes jogadores</b>: se a lista tem nomes, nenhuma oferta de outro jogador é comprada. Se também escolheu itens, só compra esses itens deles.</p>'
       + '<div class="acoes">' + acao('ap-watch-vendedor-ok', '＋ Adicionar jogador', 'Adiciona o nome escrito à lista de jogadores vigiados.', 'sec') + '</div>'
       + '<label class="campo">Preço máximo por oferta (ouro)<input id="ap-watch-preco" type="number" min="0" step="1000" value="' + (wPreco || 0) + '" placeholder="0 = sem limite"></label>'
       + '<label class="campo">Limite de gasto por compra (ouro)<input id="ap-watch-teto" type="number" min="0" step="1000" value="' + (wTeto || 0) + '" placeholder="0 = sem limite"></label>'
-      + '<p class="hint">0 = sem limite. A deteção é no servidor; a compra só acontece no <b>Mercador</b> (Fonte).</p>'
+      + '<p class="hint tira">0 = sem limite. A deteção é no servidor; a compra só acontece no <b>Mercador</b> (Fonte).</p>'
       + '<div class="acoes">' + acao('ap-watch-30k', '30.000 nos dois', 'Preenche preço máximo e limite de gasto com 30.000 ouro.', 'sec') + '</div>'
       // PERCENTAGEM DO OURO ATUAL: escala com o ouro. 90 = pode gastar até 90% de AGORA.
       + '<label class="campo">Gastar até (% do ouro atual)<input id="ap-watch-pct" type="number" min="0" max="100" step="5" value="' + wPct + '"></label>'
@@ -3000,7 +3005,7 @@ switches: 'interruptores',
         ? '<div class="lista">' + iss.map((e) => '<div class="ln loj"><time>' + hora(e.at) + '</time><b>' + esc(e.type || '') + '</b><span class="d">'
           + esc(typeof e === 'string' ? e : Object.keys(e).filter((k) => k !== 'at' && k !== 'type').map((k) => k + ': ' + String(e[k])).join(' · ')).slice(0, 200) + '</span></div>').join('') + '</div>'
         : '<p class="aviso ok">Nenhum problema detectado.</p>'
-        + '<p class="hint">Aqui aparecem falhas da automação (um passo da base que deu erro, um selector que mudou no jogo, etc.).</p>'));
+        + '<p class="hint tira">Aqui aparecem falhas da automação (um passo da base que deu erro, um selector que mudou no jogo, etc.).</p>'));
   }
 
   // ---------------------------------------------------------------- HISTÓRICO 48 h
@@ -3099,7 +3104,7 @@ switches: 'interruptores',
       + kv('mortes', fmt(mortes.length))
       + '</div>'
       + (mortes.length ? '<p class="aviso warn">Última morte: ' + esc(eventoDesc(mortes[0])) + (eventoLocal(mortes[0]) ? ' · em ' + esc(eventoLocal(mortes[0])) : '') + '</p>' : '')
-      + '<p class="hint">Fonte: ' + fonte + '. O histórico é gravado no armazenamento local da extensão e mantém as últimas 500 entradas (48 h).</p>'));
+      + '<p class="hint">Fonte: ' + fonte + '</p>'));
     // Repetições seguidas do MESMO evento ("rotina de base" 3× no mesmo minuto) ficam numa
     // linha só com ×N: o jogador quer o que aconteceu, não quantas vezes a rotina passou.
     const seq = [];
@@ -3136,7 +3141,7 @@ switches: 'interruptores',
     setHtml('ap-pc-resumo', card('Como a auto-poção decide', 'inteligente no PvE do mapa, limiar de vida fora dele',
       tgCfg('ap-pc-smart', 'pocaoSmart', 'Decisão inteligente de poção',
         'Ligada, usa o golpe que o monstro acabou de dar e conta a cura das suas habilidades. Desligada, usa o limiar de vida. Só vale no PvE do mapa.', smart)
-      + '<p class="hint">No <b>PvE do mapa</b> ela olha o <b>golpe que o monstro acabou de dar</b> (não a média) e conta a cura das suas habilidades. Se a cura das skills chegar, não gasta poção.</p>'
+      + '<p class="hint tira">No <b>PvE do mapa</b> ela olha o <b>golpe que o monstro acabou de dar</b> (não a média) e conta a cura das suas habilidades. Se a cura das skills chegar, não gasta poção.</p>'
       + '<p class="aviso ' + (inteligente ? 'ok' : 'warn') + '"><b>Agora: ' + esc(motivo || modo) + '.</b> '
       + (inteligente
         ? 'A decisão inteligente está a mandar.'
@@ -3160,13 +3165,13 @@ switches: 'interruptores',
   function renderManual() {
     renderAuto();
     setHtml('ap-manual-info', card('Atalhos para as ações manuais', 'o que fica em cada aba',
-      '<p class="hint">Estas ações <b>não</b> são necessárias para o auto-play. Use só para forçar, medir ou corrigir.</p>'
+      '<p class="hint tira">Estas ações <b>não</b> são necessárias para o auto-play. Use só para forçar, medir ou corrigir.</p>'
       + '<div class="acoes">'
       + '<button class="btn sec" id="ap-goto-itens">🧰 Itens e cofre</button>'
       + '<button class="btn sec" id="ap-goto-mercado">💰 Mercado e Ornn</button>'
       + '<button class="btn sec" id="ap-goto-personagem">🧠 Habilidades e atributos</button>'
       + '</div>'
-      + '<p class="hint">A lista completa de forçar/medir está logo abaixo.</p>'));
+      + '<p class="hint tira">A lista completa de forçar/medir está logo abaixo.</p>'));
   }
 
   // ---------------------------------------------------------------- AJUDA
@@ -3299,7 +3304,7 @@ switches: 'interruptores',
       + kv('itens sem carta', fmt(livres))
       + '</div>'
       + (cb.lista.length ? '<div class="chips">' + cb.lista.slice(0, 12).map((x) => '<span class="chip">' + esc(x.nome || x.id) + ' <small>×' + fmt(x.qtd) + '</small></span>').join('') + '</div>' : '<p class="vazio">Nenhuma carta revelada.</p>')
-      + '<p class="hint">A melhor para o seu campeão agora: <b>' + esc(melhor ? (melhor.nome || melhor.id) : 'nenhuma') + '</b>. O bônus é % do atributo total, por isso o tipo importa e o item não.</p>'
+      + '<p class="hint">A melhor para o seu campeão agora: <b>' + esc(melhor ? (melhor.nome || melhor.id) : 'nenhuma') + '</b></p>'
       + '<div class="acoes">'
       + acao('ap-cartas-abrir', 'Abrir cartas misteriosas', 'Abre todas. Dá em qualquer sítio e é grátis.', 'sec', cb.novas < 1)
       + acao('ap-cartas-encaixar', 'Encaixar no Ornn', 'Encaixa uma carta em cada item equipado sem carta. Só na Fonte.', 'sec', !livres || !cb.lista.length)
@@ -3599,7 +3604,7 @@ switches: 'interruptores',
         + (dec.length ? tabela(['item', 'preço no mercado', 'o que fazer', 'espera'],
           ordenarItens(dec).map((x) => '<tr><td>' + esc(x.item || x.id) + '</td><td>' + (x.ofertaIdeal ? fmt(x.ofertaIdeal.menor) : 'sem oferta')
             + '</td><td>' + esc(x.acao || '-') + '</td><td>' + (x.esperaMin == null ? '-' : x.esperaMin + ' min') + '</td></tr>')) : '')
-        + '<p class="hint">A automação compara comprar já, comprar um substituto mais barato, ou continuar farmando. O ouro/min usado é o que você mediu, não um valor inventado.</p>');
+        + '<p class="hint tira">A automação compara comprar já, comprar um substituto mais barato, ou continuar farmando. O ouro/min usado é o que você mediu, não um valor inventado.</p>');
       return { ok: true, msg: v.resumo ? String(v.resumo) : (v.motivo || 'calculado (veja a resposta na aba).') };
     });
   }
