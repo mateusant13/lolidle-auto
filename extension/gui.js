@@ -1087,7 +1087,7 @@ switches: 'interruptores',
   /** Identidade do campeão — cache de 30 s. */
   const identidade = () => cache('ident', 30000, () => ler('identidadeCampeao', null));
   /** Build ideal — cache de 30 s. */
-  const buildIdeal = () => cache('ideal', 30000, () => ler('buildIdeal', []) || []);
+  const buildIdeal = () => cache('ideal', 30000, () => ler('buildIdealAgora', []) || ler('buildIdeal', []) || []);
 
   // ============================ OS 4 ESTADOS DO AUTO-PLAY (controles)
   // O MOTOR tem TRÊS controles com semânticas DIFERENTES (automation.js:5363-5398):

@@ -142,6 +142,9 @@
     cartasEncaixar: true,
     // FARM: desligado, o boneco não viaja nem farma (fica a base/manutenção a correr).
     autoFarm: true,
+    // ITENS QUE O DONO NUNCA QUER COMPRAR (pedido de 2026-10-21: "nao tenta comprar lichbane").
+    // A build pode usá-los se já os tiver; a COMPRA (mercado/loja) ignora-os sempre.
+    naoComprar: ['3100'],
     ultWaveSeg: 12,           // segundos p/ 3 waves: acima disso a fase e DIFICIL (a ultimate so entra aí/chefe)
     killLentoMs: 3500,        // tempo mediano entre kills acima disso = área difícil (fallback sem burst)
     testeForcar: false,       // permite iniciar teste em região letal (default: recusa)
@@ -1894,7 +1897,7 @@ const CFG_VER = 2;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-21c';
+  const BUILD = '2026-10-21d';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -8395,6 +8398,11 @@ const CFG_VER = 2;
     return [c.id, c.adBase || 0, c.adNivel || 0, !!c.magia, fase || 'unica', loc, alvo, ars, eq, kit, nivel, cfgKey, h >>> 0].join('|');
   }
   function buildIdeal(fase) { garantirCampeao(); return montarBuildDe(META.champAtual, normalizaFase(fase)); }
+  /** A build que a automação VAI equipar AGORA (fase atual). É ESTA que a GUI mostra como
+   *  "ideal": antes a GUI usava `buildIdeal()` sem fase e a build da fase era outra, logo a
+   *  mesma aba mostrava duas sugestões contraditórias (medido 2026-10-21: Liandry+Cajado do
+   *  Vazio numa lista e Eco de Luden+Ímpeto na outra). */
+  function buildIdealAgora() { try { return buildIdeal(faseAtual()); } catch { return buildIdeal(); } }
   /** BUILD IDEAL para QUALQUER campeão (perfil próprio) — usado no plano de todos.
    *  `fase` ausente/null = build ÚNICA de sempre (é o que o banco de regressão fixa). */
   function buildIdealPara(c) { return montarBuildDe(c, null); }
@@ -9056,7 +9064,10 @@ const CFG_VER = 2;
     const ouro = S.jogador.ouro;
     const tenho = new Set(S.equipado.map((e) => e.base));
     for (const i of S.mochila) if (i.base) tenho.add(i.base);
-    const faltam = S.buildIdeal.filter((b) => !tenho.has(b.id));
+    // NUNCA COMPRAR: lista do dono (cfg.naoComprar). A build pode usá-los se já os tiver;
+    // comprar é que não (pedido 2026-10-21: "nao tenta comprar lichbane").
+    const proibidos = new Set((Array.isArray(cfg.naoComprar) ? cfg.naoComprar : []).map(String));
+    const faltam = S.buildIdeal.filter((b) => !tenho.has(b.id) && !proibidos.has(String(b.id)));
     if (!faltam.length) return { ok: true, ouro, decisao: [], resumo: 'build ideal completa' };
     const m = mercadoEl(true); if (!m) return { ok: false, motivo: 'sem mercado' };
     if (m.hidden) { press('j'); await esperar(600); }
@@ -9177,12 +9188,15 @@ const CFG_VER = 2;
       const ofertas = lerOfertasCompra();
       if (!ofertas.length) { /* os grupos carregam sob demanda, segue mesmo assim */ }
       const ideal = cfg.buildPorFase !== false ? buildDaFase(faseAtual()) : buildIdeal();
+      const proibidos = new Set((Array.isArray(cfg.naoComprar) ? cfg.naoComprar : []).map(String));
       const tenho = new Set(readEquip().map((e) => e.base));
       try { for (const i of (scanBag().items || [])) if (i.kind === 'item') tenho.add(i.base); } catch { /* ignore */ }
       let ouro = readGold();
       const compras = [];
       for (const base of ideal) {
         if (tenho.has(base)) continue;
+        // Lista do dono: nunca comprar estes (cfg.naoComprar). Se já os tiver, usa-os.
+        if (proibidos.has(String(base))) { compras.push({ base, comprou: false, motivo: 'nao comprar (cfg.naoComprar)' }); continue; }
         // O item que o dono pos na VIGIA (com jogadores) e comprado pela VIGIA, do
         // jogador escolhido. A compra normal nao pode apanha-lo mais barato de outro.
         if (baseReservadaWatch(base)) { compras.push({ base, comprou: false, motivo: 'reservado para a vigia de jogadores' }); continue; }                                    // já tem
@@ -9365,9 +9379,11 @@ const CFG_VER = 2;
     if (!_mercadoServidor.ok) return null;                 // desconhecido -> não bloquear
     try {
       const ideal = new Set((cfg.buildPorFase !== false ? buildDaFase(faseAtual()) : buildIdeal()).map(String));
+      const proibidos = new Set((Array.isArray(cfg.naoComprar) ? cfg.naoComprar : []).map(String));
       for (const o of _mercadoServidor.ofertas) {
         if (!o || o.minha || (o.para && o.paraMim !== true)) continue;
         const base = baseDoItemMercado(o.item);
+        if (base && proibidos.has(String(base))) continue;      // não se compra (cfg.naoComprar)
         if (base && ideal.has(String(base)) && !baseReservadaWatch(base)) return true;
       }
       return false;
@@ -11359,7 +11375,7 @@ const CFG_VER = 2;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
+  window.__lolidleAuto = { BUILD, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },
