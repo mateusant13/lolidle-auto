@@ -806,7 +806,6 @@ switches: 'interruptores',
       + '    <div id="ap-now-jogo"></div>'
       + '    <div id="ap-auto-tarefa"></div>'
       + '    <div id="ap-auto-base"></div>'
-      + '    <div id="ap-auto-ferramentas"></div>'
       + '  </section>'
       + '  <section class="pane" id="ap-t-itens">'
       + '    <p class="intro">Tudo o que é ITEM: a build por fase (mobs ↔ chefe), a build de agora contra a ideal, o que está blindado, a mochila e o cofre. O mercado e o Ornn têm aba própria.</p>'
@@ -1303,7 +1302,8 @@ switches: 'interruptores',
   function renderBuildResumo() {
     const el = $('ap-painel-build');
     if (!el) return;
-    if (!MOTOR()) { setHtml('ap-painel-build', ''); return; }
+    // SEM `''`: um contentor vazio faz o cartao APARECER depois (o dono pediu GUI estavel).
+    if (!MOTOR()) { setHtml('ap-painel-build', '<p class="hint">Build por fase (mobs ↔ chefe): <b>à espera do motor</b>, o HUD do jogo ainda não carregou.</p>'); return; }
     const c = cfg();
     if (c.buildPorFase === false) {
       setHtml('ap-painel-build', '<p class="hint">Build por fase (mobs ↔ chefe): <b>desligada</b>, o motor usa uma build só. Liga-a em <b>Itens</b> ▸ Build por fase.</p>');
@@ -1452,7 +1452,9 @@ switches: 'interruptores',
     // houver retrato (a primeira gravação corre ~2,5 s depois de o motor arrancar), não se inventa.
     const est = estadoStore;
     if (!est || !est.at) {
-      setHtml('ap-now-jogo', '');
+      setHtml('ap-now-jogo', card('Estado completo do jogo', 'o motor mantém isto atualizado sozinho (a cada 20 s)',
+        '<p class="vazio">A primeira leitura do estado do jogo ainda não chegou.</p>'
+        + '<p class="hint">O retrato completo é gravado cerca de 2,5 s depois de o motor arrancar e volta a ser gravado a cada 20 s.</p>'));
     } else {
       const nomeDe = (b) => nomeItem(b);
       const inv = est.inventario;
@@ -1845,8 +1847,6 @@ switches: 'interruptores',
         '<div id="ap-tarefa-estado"></div>'
         + '<p class="hint">Aceitar a tarefa, entregar quando fica pronta e pegar as diárias são feitos sozinhos na rotina de base (com o switch <b>Manutenção</b> ligado).</p>'));
 
-      // Os botões desta antiga "Ferramentas" passaram para o cartão de manutenção manual (fim do Painel).
-      setHtml('ap-auto-ferramentas', '');
     }
     // A ÁRVORE DE INTERRUPTORES redesenha SEMPRE (o estado dela muda com a config, com o campeão
     // e com o local) — não faz parte do bloco "constrói uma vez" acima.
@@ -1905,7 +1905,9 @@ switches: 'interruptores',
           : 'Nada pendente: a base está completa.') + '</p>'
         + (naBase() ? '' : '<p class="hint">Você não está na Fonte, esta lista só se executa lá.</p>')));
     } else {
-      setHtml('ap-auto-falta', '');
+      setHtml('ap-auto-falta', card('O que falta fazer na base', 'lista do motor, só o que é preciso',
+        '<p class="vazio">Ainda sem a lista da base.</p>'
+        + '<p class="hint">O motor preenche isto quando lê o estado do jogo.</p>'));
     }
     // auto-poção: valores actuais (sem reconstruir o cartão, para não perder o foco)
     sincronizarPocao();
@@ -2185,7 +2187,8 @@ switches: 'interruptores',
         + '<p class="hint">Se você ainda não abriu a bolsa desde que a página carregou, abra uma vez no jogo (tecla I). A partir daí o motor lê-a sozinho, sem voltando abrindo.</p>'
         + diag('Leitura da mochila (manutenção manual)')
       + '<div class="acoes">' + acaoD('ap-scan', '🎒 Forçar leitura da mochila', 'Lê o conteúdo da mochila, não abre nem fecha nada no jogo.') + '</div>'));
-      setHtml('ap-it-plano', '');
+      setHtml('ap-it-plano', card('O que vai acontecer a cada item', 'plano do motor',
+        '<p class="vazio">Ainda sem plano: a mochila ainda não foi lida.</p>'));
     } else {
       const b = bagLida;
       setHtml('ap-it-mochila', card('Mochila', bagAuto ? 'lida diretamente do jogo' : 'lida há ' + fmtDur(Date.now() - bagLidaEm),
@@ -2233,7 +2236,9 @@ switches: 'interruptores',
       setHtml('ap-it-dps', card('Quanto cada item dá de dano para você', 'estimativa do motor para esta região',
         (linhaD(dps.chefe, 'Contra o chefe') || '') + (linhaD(dps.mob, 'Contra mobs') || '')
         + '<p class="hint">Serve para ver se vale trocar uma peça: o número é o dano por segundo que aquele item acrescenta ao conjunto.</p>'));
-    } else setHtml('ap-it-dps', '');
+    } else setHtml('ap-it-dps', card('Quanto cada item dá de dano para você', 'estimativa do motor para esta região',
+      '<p class="vazio">Ainda sem estimativa de dano por item.</p>'
+      + '<p class="hint">O motor calcula isto quando lê o equipamento e a região.</p>'));
 
     // O antigo cartão "Farmar itens específicos" MUDOU-SE para a aba Ganhos, onde passou a ser a
     // modalidade "Auto farm pra item" (renderFarmItens, seção 5). O div `ap-it-farmar` deixou de
@@ -2247,7 +2252,19 @@ switches: 'interruptores',
   function renderSkills() {
     const sk = ler('readSkills', null);
     const dps = ler('dpsPorHabilidade', null);
-    if (!sk) { setHtml('ap-sk-barra', card('Barra de combate', '', '<p class="aviso err">O motor não conseguiu ler as habilidades. Recarrega a página.</p>')); setHtml('ap-sk-pontos', ''); setHtml('ap-sk-ordem', ''); setHtml('ap-sk-dps', ''); setHtml('ap-sk-acoes', ''); return; }
+    if (!sk) {
+      // GUI ESTÁVEL (queixa do dono, 2026-10-20): os cartões ficam TODOS com o mesmo cabeçalho
+      // e uma linha de espera, em vez de desaparecerem e voltarem quando a leitura chega.
+      const espera = '<p class="vazio">Ainda sem leitura das habilidades.</p>'
+        + '<p class="hint">O motor lê isto do jogo; se demorar, recarrega a página (F5).</p>';
+      setHtml('ap-sk-barra', card('Barra de combate', 'as habilidades que o jogo usa sozinho', espera));
+      setHtml('ap-sk-pontos', card('Pontos para gastar', 'lido do HUD dourado do jogo', espera));
+      setHtml('ap-sk-ideal', card('Barra ideal (recomendada)', 'as 4 habilidades que mais rendem agora', espera));
+      setHtml('ap-sk-ordem', card('Ordem de subida', 'a mesma regra que o motor usa no botão de subir', espera));
+      setHtml('ap-sk-dps', card('Dano de cada habilidade', 'estimativa do motor com os seus stats', espera));
+      setHtml('ap-sk-acoes', card('Habilidades, o que o motor sobe sozinho', 'o switch "Subir habilidades" faz isto; os botões abaixo são manutenção manual', espera));
+      return;
+    }
     const barra = (sk.bar || []).map((h) => {
       const ult = ler('ehUltimate', false, h.t);
       return '<span class="chip ' + (h.ready ? '' : '') + '" title="' + esc(h.nome || h.t) + '">' + esc(h.nome || h.t) + ' <small>' + (h.ready ? 'pronto' : (h.cd != null ? h.cd + 's' : 'em recarga')) + (ult ? ' · ULTIMATE' : '') + '</small></span>';
@@ -2313,7 +2330,8 @@ switches: 'interruptores',
             ? 'Em jogo a barra troca pelas habilidades prontas; esta é a que mais rende.'
             : 'A sua barra está diferente da ideal: o switch "Repor a rotação na barra" corrige isto sozinho.')) + '</p>'
         + tg('ap-cfg-barraDisp', 'Barra pelas habilidades prontas', 'Põe na barra as habilidades disponíveis e as que ficam prontas mais cedo. Desligado, a barra fica presa às 4 de maior dano.', cfg().barraPorDisponibilidade !== false)));
-    } else setHtml('ap-sk-ideal', '');
+    } else setHtml('ap-sk-ideal', card('Barra ideal (recomendada)', 'as 4 habilidades que mais rendem agora',
+      '<p class="vazio">Ainda sem a barra ideal: o motor está a ler o arsenal.</p>'));
     setHtml('ap-sk-acoes', card('Habilidades, o que o motor sobe sozinho', 'o switch "Subir habilidades" faz isto; os botões abaixo são manutenção manual',
       diag('Habilidades: ações manuais (manutenção manual)')
       + '<div class="acoes">'
@@ -2481,7 +2499,8 @@ switches: 'interruptores',
         + '<p class="hint">Assinatura da build: ' + esc(prev.assinatura || '-') + '. O motor prefere sempre o que foi <b>medido</b>; a teoria serve só para começar.</p>'
         + diag('Medição (manutenção manual)')
         + '<div class="acoes">' + acaoD('ap-fm-testes', '🧪 Medir conjuntos de itens', 'O teste mede cada conjunto no jogo e alimenta esta previsão.') + '</div>'));
-    } else setHtml('ap-fm-previsor', '');
+    } else setHtml('ap-fm-previsor', card('Previsão para a sua build de agora', 'medido quando existe; teoria quando não',
+      '<p class="vazio">Ainda sem previsão para esta build.</p>'));
 
     // regiões (medido × meta)
     const agg = agregado();
