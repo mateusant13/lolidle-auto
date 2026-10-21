@@ -132,6 +132,27 @@ export const suite = {
       t.check('W4: `regiaoSegura` recusa o Barao aos 29 (fail-closed)', auto.regiaoSegura('barao') === false);
     }
 
+    /* ============ W4b - ABA OCULTA: a rotina da base NÃO corre (e não marca nada) ============
+     * P0 medido 2026-10-21 (lab): com a aba em segundo plano o jogo para o loop (rAF) e o Lojista
+     * aberto por clique no canvas cai no vazio -> `venderBase` -> "sem lojista" -> a necessidade
+     * `vender` ficava INDISPONÍVEL 45 min por uma falha que não é falha. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarMeta(m);
+      montarLocal(m, 'Fonte');
+      auto.setConfig({ enabled: true, manutencao: true, champAlvo: 'adtest' });
+      m.documento.hidden = true;
+      const r = await auto.acaoBase();
+      t.check('W4b: aba oculta -> acaoBase RECUSA (nada de abrir loja com o jogo parado)',
+        r && r.ok === false && /segundo plano/i.test(r.motivo || ''));
+      const logs = (auto.getFarm().log || []).filter((l) => l.type === 'base');
+      t.check('W4b: aba oculta -> NENHUM evento `base` (não se marcou necessidade nenhuma)', logs.length === 0);
+      m.documento.hidden = false;
+    }
+
     /* ============ W5 - TK-01-13: regiaoIdeal() null passa a dizer PORQUE ============ */
     {
       const m = criarMundo();

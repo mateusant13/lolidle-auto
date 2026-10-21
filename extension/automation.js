@@ -4450,6 +4450,9 @@ const CFG_VER = 2;
   const BASE_MAX_PASSAGENS = 3;
   async function acaoBase() {
     if ((readLocation().text || '') !== 'Fonte') return { ok: false, motivo: 'nao esta na base' };
+    // Defesa em profundidade (o supervisor já não chama com a aba oculta): com o jogo parado
+    // nada aqui funciona, e um `ok:false` marcaria a necessidade como indisponível 45 min.
+    if (typeof document !== 'undefined' && document.hidden) return { ok: false, motivo: 'aba em segundo plano: o jogo nao corre' };
     if (pausado) return { ok: false, motivo: 'pausado' };
     if (baseLock && Date.now() - baseLockAt < BASE_LOCK_MS) return { ok: false, motivo: 'base ocupada (mutex)' };
     if (baseLock) logEvent('base', { mutex: 'expirado', presoMs: Date.now() - baseLockAt });   // auto-cura
@@ -10582,6 +10585,11 @@ const CFG_VER = 2;
   let ocupado = false;   // operação em andamento (mercado/loja) → NUNCA viajar no meio
   function supervisarBase() {
     if (!podeFazer('manutencao').pode || pausado) return;   // base = manutencao (vender/cofre/repor)
+    // ABA EM SEGUNDO PLANO: o jogo usa requestAnimationFrame, logo com a aba oculta o loop para
+    // e os NPCs abertos por clique no canvas caem no vazio. Correr a rotina aqui NÃO é só inútil:
+    // marca as necessidades como indisponíveis 45 min por uma falha que não existe. P0 medido
+    // 2026-10-21 (lab): `venda` -> `sem lojista` numa aba oculta. Não se faz nada até voltar.
+    if (typeof document !== 'undefined' && document.hidden) return;
     // Avalia a NECESSIDADE (vale na base E no campo): mochila cheia, tarefa pronta, lixo, sem tarefa
     let motivo = null, motivoViagem = null, info = {}, querTarefa = false, falta = [], necess = null;
     try {
