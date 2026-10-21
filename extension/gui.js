@@ -623,6 +623,9 @@ switches: 'interruptores',
     '#lolidle-ap .chip img{width:18px;height:18px;image-rendering:pixelated}',
     '#lolidle-ap .chip.lendario{border-color:#b07a20}#lolidle-ap .chip.epico{border-color:#7a4fbf}',
     '#lolidle-ap .chip small{color:var(--dim)}',
+    '#lolidle-ap .chip .wlim{width:78px;padding:1px 3px;font-size:10px;background:var(--pnl);border:1px solid var(--lin2);border-radius:4px;color:var(--txt)}',
+    '#lolidle-ap .arv-cfg{margin-left:4px;padding:0 5px;font-size:11px;line-height:16px;border:1px solid var(--lin2);border-radius:4px;background:var(--pnl2);color:var(--ouro);cursor:pointer}',
+    '#lolidle-ap .arv-cfg:hover{background:var(--pnl)}',
     '#lolidle-ap .bar{height:14px;border-radius:7px;background:#241f19;overflow:hidden;position:relative;border:1px solid var(--lin)}',
     '#lolidle-ap .bar>i{display:block;height:100%;background:linear-gradient(90deg,#2f6b38,#4ce06a);transition:width .25s}',
     '#lolidle-ap .bar>i.low{background:linear-gradient(90deg,#7a3a10,#ff9a5a)}',
@@ -738,7 +741,7 @@ switches: 'interruptores',
     //      largura toda (mestre, intro, árvore, campeões, blocos de combate/parado) ocupam as duas.
     '#lolidle-ap #ap-t-painel.on{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}',
     '#lolidle-ap #ap-t-painel.on>*{break-inside:avoid;page-break-inside:avoid}',
-    '#lolidle-ap #ap-t-painel.on>#ap-painel-estado,#lolidle-ap #ap-t-painel.on>.intro,#lolidle-ap #ap-t-painel.on>#ap-now-combate,#lolidle-ap #ap-t-painel.on>#ap-now-parado,#lolidle-ap #ap-t-painel.on>#ap-auto-arvore,#lolidle-ap #ap-t-painel.on>#ap-auto-champ{grid-column:1/-1}',
+    '#lolidle-ap #ap-t-painel.on>#ap-painel-estado,#lolidle-ap #ap-t-painel.on>.intro,#lolidle-ap #ap-t-painel.on>#ap-now-combate,#lolidle-ap #ap-t-painel.on>#ap-now-parado,#lolidle-ap #ap-t-painel.on>#ap-auto-arvore,#lolidle-ap #ap-t-painel.on>#ap-auto-champ,#lolidle-ap #ap-t-painel.on>#ap-fm-itens,#lolidle-ap #ap-t-painel.on>#ap-now-jogo{grid-column:1/-1}',
     '@media (max-width:900px){#lolidle-ap #ap-t-painel.on{grid-template-columns:1fr}}',
   ].join('\n');
 
@@ -789,6 +792,7 @@ switches: 'interruptores',
       // `<section class="pane">` onde cada um vive.
       + '<nav id="ap-tabs">'
       + '  <button class="tab ativa" data-tab="painel">Painel</button>'
+      + '  <button class="tab" data-tab="macro">Macro</button>'
       + '  <button class="tab" data-tab="itens">Itens</button>'
       + '  <button class="tab" data-tab="mercado">Mercado</button>'
       + '  <button class="tab" data-tab="personagem">Personagem</button>'
@@ -803,6 +807,9 @@ switches: 'interruptores',
       // principal cujo rótulo diz o que muda; pausar/parar tudo ficam secundários.
       + '    <div id="ap-painel-estado"></div>'
       + '    <p class="intro">O que está a acontecer agora e os switches que mandam no auto-play.</p>'
+      // AUTO FARM NO PAINEL (pedido do dono 2026-10-21): modalidade + objetivo + alvos.
+      + '    <div class="grid2"><div id="ap-fm-modo"></div><div id="ap-fm-objetivo"></div></div>'
+      + '    <div id="ap-fm-itens"></div>'
       + '    <div class="grid2">'
       + '      <div id="ap-now-estado"></div>'
       + '      <div id="ap-now-fase"></div>'
@@ -819,12 +826,19 @@ switches: 'interruptores',
       + '    <div class="grid2"><div id="ap-auto-regiao"></div><div id="ap-auto-falta"></div></div>'
       + '    <div id="ap-now-jogo"></div>'
       + '    <div id="ap-auto-tarefa"></div>'
+      + '  </section>'
+      // MACRO (pedido do dono 2026-10-21): os DETALHES de cada rotina, um bloco por assunto.
+      // O ⚙ de cada switch na árvore leva aqui. Nada de ações manuais: é configuração.
+      + '  <section class="pane" id="ap-t-macro">'
+      + '    <p class="intro">Os detalhes de cada rotina, um bloco por assunto.</p>'
+      + '    <div id="ap-macro-farm"></div>'
+      + '    <div id="ap-macro-cartas"></div>'
+      + '    <div id="ap-macro-mercado"></div>'
       + '    <div id="ap-auto-base"></div>'
+      + '    <div id="ap-build-fase"></div>'
       + '  </section>'
       + '  <section class="pane" id="ap-t-itens">'
       + '    <p class="intro">A build por fase, o que está equipado, a mochila e o cofre.</p>'
-      // O BLOCO GRANDE DA BUILD POR FASE (com minimizar) passa a viver aqui, e não antes das abas.
-      + '    <div id="ap-build-fase"></div>'
       + '    <div id="ap-it-build"></div>'
       + '    <div id="ap-it-proteg"></div>'
       + '    <div id="ap-it-mochila"></div>'
@@ -851,9 +865,6 @@ switches: 'interruptores',
       + '  </section>'
       + '  <section class="pane" id="ap-t-ganhos">'
       + '    <p class="intro">O que você está a ganhar por minuto e por região.</p>'
-      + '    <div id="ap-fm-objetivo"></div>'
-      + '    <div id="ap-fm-modo"></div>'
-      + '    <div id="ap-fm-itens"></div>'
       + '    <div id="ap-fm-agora"></div>'
       + '    <div id="ap-fm-previsor"></div>'
       + '    <div id="ap-fm-regioes"></div>'
@@ -1542,6 +1553,31 @@ switches: 'interruptores',
     skillsPorFase: 'Trocar as habilidades conforme a luta',
     rotacao: 'Repor a rotação na barra',
     vigiarMercado: 'Vigiar o mercado (itens e jogadores) e comprar',
+    farm: 'Auto farm (viajar e farmar)',
+    cartasAbrir: 'Abrir cartas misteriosas',
+    cartasEncaixar: 'Encaixar cartas nos itens (Ornn)',
+  };
+  /** Switch -> bloco da aba MACRO onde os detalhes daquele switch se configuram. O ⚙ da
+   *  árvore leva lá (pedido do dono 2026-10-21). Chave = `cfg` do switch. */
+  const MACRO_ALVO = {
+    autoFarm: 'ap-macro-farm',
+    autoVender: 'ap-macro-base',
+    autoRepor: 'ap-macro-base',
+    autoCofre: 'ap-macro-base',
+    autoComprar: 'ap-macro-mercado',
+    autoRefino: 'ap-macro-base',
+    autoMontar: 'ap-macro-base',
+    autoAnunciar: 'ap-macro-mercado',
+    autoVigiarMercado: 'ap-macro-mercado',
+    cartasAbrir: 'ap-macro-cartas',
+    cartasEncaixar: 'ap-macro-cartas',
+    buildPorFase: 'ap-macro-build',
+    skillsPorFase: 'ap-macro-build',
+    rotacaoSkills: 'ap-macro-build',
+    autoHab: 'ap-t-personagem',
+    autoAtrib: 'ap-t-personagem',
+    pocaoSmart: 'ap-t-pocao',
+    autoEquip: 'ap-macro-base',
   };
   const ARV_AJUDA = {
     manutencao: 'recurso base (vender, equipar, mercado, pontos, cofre), funciona em qualquer campeão',
@@ -1649,6 +1685,12 @@ switches: 'interruptores',
         + '><span class="sw"></span></label>'
       : '<span class="arv-erro" title="este switch não tem chave na automação desta página, recarregue (F5) para a versão nova">versão antiga: recarregue</span>';
     const meus = ramos[nome] || [];
+    // BOTÃO ⚙ -> aba MACRO, no bloco de detalhes DESTE switch (pedido do dono 2026-10-21).
+    // Só aparece nos switches que têm detalhes configuráveis (`MACRO_ALVO`).
+    const alvoMacro = MACRO_ALVO[s.cfg];
+    const engr = alvoMacro
+      ? '<button type="button" class="arv-cfg" data-macro="' + esc(alvoMacro) + '" title="Configurar os detalhes">⚙</button>'
+      : '';
     // SWITCH À ESQUERDA: o interruptor vem antes do nome, não no fim da linha.
     // `.arv-item` agrupa o nó + a linha do que ele cobre + os filhos. Sem este invólucro o
     // `grid` da árvore colocava a descrição numa coluna e o nó noutra.
@@ -1657,6 +1699,7 @@ switches: 'interruptores',
       + '<i class="arv-dot"></i>'
       + ctrl
       + '<b>' + esc(ARV_NOME[nome] || nome) + '</b>'
+      + engr
       + '<small class="arv-est">' + esc(est) + '</small>'
       + motivo
       + (s.temExcecao ? '<span class="tag arv-exc" title="a automação pula este switch em certas condições">⚠ ' + esc(arvExc(nome, s)) + '</span>' : '')
@@ -2448,19 +2491,20 @@ switches: 'interruptores',
     if (!v && fase && (fase.kills || 0) > 0) return '-';
     return fmt1(v);
   };
-  function renderFarm() {
-    // OBJETIVO DO FARM: o critério que escolhe a região (xp, ouro ou runas). Fica AQUI, na aba
-    // dos ganhos, ao lado do que ele decide.
+  function renderFarmObjetivo() {
+    // OBJETIVO DO FARM: o critério que escolhe a região (xp, ouro ou runas). Vive no PAINEL.
     const c0 = cfg();
     const objAtual = String(c0.objetivo || 'xp');
-    setHtml('ap-fm-objetivo', card('O que você quer ganhar', 'o objetivo muda a região que a automação escolhe',
-      linha('Objetivo do farm', 'a região ideal passa a ser escolhida por isto',
+    setHtml('ap-fm-objetivo', card('O que você quer ganhar', 'o objetivo muda a região escolhida',
+      linha('Objetivo', 'a região ideal passa a ser escolhida por isto',
         '<select id="ap-obj">'
         + '<option value="ouro+xp"' + (objAtual === 'ouro+xp' ? ' selected' : '') + '>Ouro e experiência (o melhor dos dois)</option>'
         + '<option value="xp"' + (objAtual === 'xp' ? ' selected' : '') + '>Experiência (subir de nível)</option>'
         + '<option value="ouro"' + (objAtual === 'ouro' ? ' selected' : '') + '>Ouro (comprar itens)</option>'
         + '<option value="runas"' + (objAtual === 'runas' ? ' selected' : '') + '>Runas</option>'
         + '</select>')));
+  }
+  function renderFarm() {
     const f = farm();
     const cur = f.current;
     if (cur) {
@@ -2807,10 +2851,12 @@ switches: 'interruptores',
         }))
         : '<p class="vazio">A última vigia (há ' + fmtDur(Date.now() - w.at) + ') não achou nada que casasse.</p>';
     const wUlt = w.ultimaCompra;
-    // Chips dos itens escolhidos (ids em title; a GUI não mostra a lista crua no meio da tela).
-    const wItens = Array.isArray(cfgWatch.itens) ? cfgWatch.itens : [];
+    // Chips dos itens escolhidos, cada um com o SEU limite em ouro (pedido do dono 2026-10-21:
+    // "item x até x de gold, item y até y"). Vazio/0 = vale o tecto global.
+    const limWatch = (cfgWatch && cfgWatch.limites) || {};
     const chipsItens = wItens.length
       ? '<div class="chips" id="ap-watch-chips">' + ordenarItens(wItens).map((b) => '<span class="chip" title="' + esc(b) + '">' + itemImgTag(b) + esc(nomeItem(b))
+        + ' <input class="wlim" data-wlim="' + esc(b) + '" type="number" min="0" step="1000" title="limite de ouro para este item (0 = tecto global)" value="' + (Number(limWatch[b]) > 0 ? Number(limWatch[b]) : '') + '" placeholder="limite">'
         + ' <b data-wrem="' + esc(b) + '" style="cursor:pointer;color:#ff9a6a">×</b></span>').join('') + '</div>'
       : '<p class="vazio" id="ap-watch-chips">Nenhum item escolhido, marque nos ícones abaixo (ou vigie só um jogador).</p>';
     const vendedoresWatch = cfgWatch.vendedores || w.vendedores || [];
@@ -3189,17 +3235,69 @@ switches: 'interruptores',
     }
     Array.from(alvo.children).forEach((g) => { if (!g.querySelector('.acao')) g.remove(); });
   }
+  // ---------------------------------------------------------------- ABA MACRO
+  /** Detalhes de cada rotina. Tudo o que se configura vive aqui; a árvore de switches
+   *  tem um ⚙ que leva ao bloco certo. Nada nesta aba é ação manual do jogo. */
+  function renderMacro() {
+    const c = cfg();
+    const rota = c.rotaFarm || null;
+    // ---------- FARM: objetivo, alvos e ROTA ----------
+    const alvos = Array.from(selItens || []);
+    const rotaHtml = (rota && Array.isArray(rota.passos) && rota.passos.length)
+      ? '<div class="lista">' + rota.passos.map((p, i) => '<div class="ln ' + (rota.ativa && i === (Number(rota.indice) || 0) ? 'proteg' : '') + '">'
+        + '<b>' + (i + 1) + '. ' + esc(limparNivel(p.nome || p.regiao)) + '</b><span class="d">' + esc(p.motivo || '')
+        + (p.tipo === 'cartas' ? ' · ' + (p.minutos || 30) + ' min' : '') + (p.alvos && p.alvos.length ? ' · ' + esc(p.alvos.map((x) => nomeItem(x.item)).join(', ')) : '') + '</span></div>').join('') + '</div>'
+        + '<p class="hint">' + (rota.ativa ? 'A seguir o passo ' + ((Number(rota.indice) || 0) + 1) + '.' : 'Rota parada' + (rota.parou ? ': ' + esc(rota.parou) : '') + '.') + '</p>'
+      : '<p class="vazio">Ainda sem rota. Escolha os itens no Painel e monte a rota.</p>';
+    setHtml('ap-macro-farm', card('Rota de farm (itens e cartas)', 'calculada com os drops do jogo e guardada',
+      rotaHtml
+      + '<label class="campo" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="ap-rota-cartas"> incluir uma paragem para cartas</label>'
+      + '<div class="acoes">'
+      + acao('ap-rota-montar', 'Montar e seguir', 'Usa os itens escolhidos no Painel mais a paragem de cartas e viaja para o 1.º passo.')
+      + acao('ap-rota-parar', 'Parar a rota', 'Pára a rota e volta a escolher a região sozinha.', 'sec', !(rota && rota.ativa))
+      + '</div>'));
+
+    // ---------- CARTAS ----------
+    const cb = ler('cartasNaBolsa', null) || { novas: 0, lista: [] };
+    const eq = ler('readEquip', []) || [];
+    const livres = eq.filter((e) => !e.carta).length;
+    const melhor = (() => { try { const m = ler('melhorCartaDisponivel', null, cb.lista); return m; } catch { return null; } })();
+    setHtml('ap-macro-cartas', card('Cartas', 'abrir as misteriosas e encaixar a melhor',
+      '<div class="kvs">'
+      + kv('misteriosas', fmt(cb.novas))
+      + kv('na bolsa', fmt(cb.lista.reduce((s, x) => s + (Number(x.qtd) || 0), 0)))
+      + kv('itens sem carta', fmt(livres))
+      + '</div>'
+      + (cb.lista.length ? '<div class="chips">' + cb.lista.slice(0, 12).map((x) => '<span class="chip">' + esc(x.nome || x.id) + ' <small>×' + fmt(x.qtd) + '</small></span>').join('') + '</div>' : '<p class="vazio">Nenhuma carta revelada.</p>')
+      + '<p class="hint">A melhor para o seu campeão agora: <b>' + esc(melhor ? (melhor.nome || melhor.id) : 'nenhuma') + '</b>. O bônus é % do atributo total, por isso o tipo importa e o item não.</p>'
+      + '<div class="acoes">'
+      + acao('ap-cartas-abrir', 'Abrir cartas misteriosas', 'Abre todas. Dá em qualquer sítio e é grátis.', 'sec', cb.novas < 1)
+      + acao('ap-cartas-encaixar', 'Encaixar no Ornn', 'Encaixa uma carta em cada item equipado sem carta. Só na Fonte.', 'sec', !livres || !cb.lista.length)
+      + '</div>'));
+
+    // ---------- MERCADO: resumo dos detalhes (o editor completo está na aba Mercado) ----------
+    const w = (c.mercadoWatch || {});
+    const itens = Array.isArray(w.itens) ? w.itens : [];
+    const lim = w.limites || {};
+    setHtml('ap-macro-mercado', card('Watch do mercado', 'itens, limites e jogadores',
+      (itens.length ? '<div class="chips">' + itens.map((b) => '<span class="chip">' + esc(nomeItem(b)) + ' <small>' + (Number(lim[b]) > 0 ? 'até ' + fmt(lim[b]) : 'tecto global') + '</small></span>').join('') + '</div>' : '<p class="vazio">Nenhum item vigiado.</p>')
+      + '<p class="hint">Comprar de: <b>' + (String(w.filtroVendedores || 'so') === 'qualquer' ? 'qualquer jogador' : 'só dos jogadores listados') + '</b>'
+      + (Array.isArray(w.vendedores) && w.vendedores.length ? ' (' + esc(w.vendedores.join(', ')) + ')' : '') + '.</p>'
+      + '<div class="acoes">' + acao('ap-goto-mercado', 'Abrir o Mercado', 'Editar itens, limites, jogadores e a compra da build.') + '</div>'));
+  }
+
   function renderTudo() {
     // O render NÃO depende de o painel estar aberto: ele corre no arranque e nos segundos
     // seguintes (ver o arranque). Um portão de cadência aqui deixaria os blocos no placeholder
     // inicial até alguém abrir o painel. O gate de cadência vive só no `tick()` (que continua
     // a não fazer nada com o painel fechado).
     renderCabecalho();
-    if (tabAtiva === 'painel') renderPainel();
+    if (tabAtiva === 'painel') { renderPainel(); renderFarmModo(); renderFarmItens(); renderFarmObjetivo(); }
+    else if (tabAtiva === 'macro') renderMacro();
     else if (tabAtiva === 'itens') { renderBuildFase(); renderItens(); }
     else if (tabAtiva === 'mercado') renderMercado();
     else if (tabAtiva === 'personagem') { renderSkills(); renderAtrib(); }
-    else if (tabAtiva === 'ganhos') { renderFarm(); renderFarmModo(); renderFarmItens(); renderHist(); }
+    else if (tabAtiva === 'ganhos') { renderFarm(); renderHist(); }
     else if (tabAtiva === 'historico') renderHistorico();
     else if (tabAtiva === 'pocao') renderPocao();
     else if (tabAtiva === 'manual') renderManual();
@@ -3213,7 +3311,7 @@ switches: 'interruptores',
   // Cadência por aba: a do Painel acompanha o HUD (o content.js publica a vida a cada 1 s e
   // `estadoAgora()` tem cache de 2 s; o resto do painel lê caches de 10 s/15 s da automação). As abas
   // de relatório são mais lentas porque recalculam listas grandes.
-  const CADENCIA = { painel: 1500, itens: 8000, mercado: 5000, personagem: 3000, ganhos: 8000, historico: 15000, pocao: 3000, manual: 15000 };
+  const CADENCIA = { painel: 1500, macro: 5000, itens: 8000, mercado: 5000, personagem: 3000, ganhos: 8000, historico: 15000, pocao: 3000, manual: 15000 };
   function tick() {
     if (!aberto) return;
     renderCabecalho();                                   // o cabeçalho é sempre o primeiro a saber
@@ -3735,6 +3833,36 @@ switches: 'interruptores',
     'ap-painel-pausar': (b) => pausarAuto(b),
     'ap-painel-kill': (b) => pararTudo(b),
     'ap-farm-go': (b) => farmarAgora(b),
+    'ap-goto-macro': () => setTab('macro'),
+    'ap-rota-montar': (b) => executar(b, 'Montar a rota', async () => {
+      const alvos = Array.from(selItens || []);
+      const cartas = !!(document.getElementById('ap-rota-cartas') || {}).checked;
+      if (cartas) alvos.push('cartas');
+      if (!alvos.length) return { ok: false, motivo: 'escolha pelo menos um item (ou inclua cartas) no Painel.' };
+      const r = await chamarA('iniciarRota', alvos);
+      if (!r.ok || !r.v || !r.v.ok) return { ok: false, motivo: (r.v && r.v.motivo) || r.erro || 'não consegui montar a rota.' };
+      ultimoRender = 0;
+      return { ok: true, msg: 'Rota montada com ' + (r.v.rota.passos.length) + ' passo(s). A seguir.' };
+    }),
+    'ap-rota-parar': (b) => executar(b, 'Parar a rota', async () => {
+      const r = await chamarA('pararRota', 'pedido');
+      if (!r.ok) return { ok: false, motivo: r.erro || 'não consegui parar.' };
+      ultimoRender = 0; return { ok: true, msg: 'Rota parada.' };
+    }),
+    'ap-cartas-abrir': (b) => executar(b, 'Abrir cartas', async () => {
+      const r = await chamarA('abrirCartasMisteriosas');
+      if (!r.ok) return { ok: false, motivo: (r.v && r.v.motivo) || r.erro || 'não consegui abrir.' };
+      const v = r.v || {};
+      ultimoRender = 0;
+      return { ok: true, msg: v.depois === 0 ? 'Abri ' + fmt(v.antes) + ' carta(s).' : 'Abri ' + fmt((v.antes || 0) - (v.depois || 0)) + ', faltam ' + fmt(v.depois) + '.' };
+    }),
+    'ap-cartas-encaixar': (b) => executar(b, 'Encaixar cartas', async () => {
+      const r = await chamarA('encaixarCartas');
+      if (!r.ok) return { ok: false, motivo: (r.v && r.v.motivo) || r.erro || 'não consegui encaixar.' };
+      const v = r.v || {};
+      ultimoRender = 0;
+      return { ok: !!v.ok, msg: v.ok ? 'Encaixei ' + fmt((v.feitas || []).length) + ' carta(s).' : (v.motivo || 'nada encaixado.') };
+    }),
     'ap-base-go': (b) => rotinaBase(b),
     'ap-cal': (b) => executar(b, 'Calibrar previsões', async () => {
       const r = chamar('calibrar');
@@ -4134,6 +4262,17 @@ switches: 'interruptores',
           : 'Switches religados como você tinha escolhido antes.');
         return;
       }
+      // ⚙ de um switch -> aba MACRO (ou a aba do assunto), no bloco daquele switch
+      const cfgBtn = e.target.closest ? e.target.closest('[data-macro]') : null;
+      if (cfgBtn && painel.contains(cfgBtn)) {
+        const alvo = String(cfgBtn.dataset.macro || '');
+        if (alvo.indexOf('ap-t-') === 0) setTab(alvo.slice(5));
+        else {
+          setTab('macro');
+          setTimeout(() => { const el = document.getElementById(alvo); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' }); }, 80);
+        }
+        return;
+      }
       // remover um item escolhido (delegação: o contentor dos chips nasce só quando a aba Ganhos desenha)
       const rem = e.target.closest ? e.target.closest('[data-rem]') : null;
       if (rem && rem.dataset && painel.contains(rem)) { selItens.delete(String(rem.dataset.rem)); mudouEscolha(); return; }
@@ -4189,6 +4328,16 @@ switches: 'interruptores',
     });
     painel.addEventListener('change', (e) => {
       const el = e.target;
+      // LIMITE POR ITEM da watch (input dentro do chip): guarda em mercadoWatch.limites[base].
+      if (el && el.dataset && el.dataset.wlim) {
+        const base = String(el.dataset.wlim);
+        const v = Math.max(0, Number(el.value) || 0);
+        const atuais = Object.assign({}, (cfg().mercadoWatch || {}).limites || {});
+        if (v > 0) atuais[base] = v; else delete atuais[base];
+        definirCfg({ mercadoWatch: novoWatch({ limites: atuais }) });
+        fb('ok', v > 0 ? nomeItem(base) + ': compra até ' + fmt(v) + ' ouro.' : nomeItem(base) + ': volta ao tecto global.');
+        return;
+      }
       if (!el || !el.id) return;
       // INTERRUPTOR DA ÁRVORE (hierarquia): id ap-arv-<nome>, chave da automação em data-cfg
       if (el.dataset && el.dataset.arv) {

@@ -7706,8 +7706,93 @@ const CFG_VER = 2;
     return { ok: true, ids: alvo, regiao, destino: melhor, viajou: !!regiao, motivo: regiao ? null : 'o motor nao sabe onde estes itens dropam (catalogo incompleto?)' };
   }
 
-  function farmarItemPasso() {
-    const ids = _farmItem.ids.length ? _farmItem.ids : farmarItemIds(cfg.farmarItem);
+  // ============================================ ROTA DE FARM (itens e cartas)
+  /** MONTAR A ROTA: o dono escolhe itens e/ou "cartas" e a rota é CALCULADA com o que o jogo
+   *  diz (drops por região em `planejar`; cartas caem por abate, motor.js:185). Não há lista
+   *  fixa aqui: fica gravada em `cfg.rotaFarm` e a GUI edita-a.
+   *
+   *  Passos: uma região por conjunto de itens (a de mais drops/h onde o chefe não é fatal) e,
+   *  se pedido, uma paragem de cartas na região com mais abates/min MEDIDOS. */
+  function planejarRota(alvos) {
+    const lista = (alvos || []).map((a) => String(a).trim()).filter(Boolean);
+    const ids = lista.filter((a) => /^\d+$/.test(a));
+    const querCartas = lista.some((a) => /carta/i.test(a));
+    const passos = [];
+    const vistos = new Set();
+    let plano = [];
+    try { plano = ids.length ? (planejar(ids) || []) : []; } catch { plano = []; }
+    for (const p of plano) {
+      const k = String(p.zona || '');
+      if (!k || vistos.has(k) || p.chefeFatal === true) continue;
+      vistos.add(k);
+      passos.push({ regiao: k, nome: p.zonaNome || k, tipo: 'item',
+        alvos: plano.filter((x) => String(x.zona) === k).map((x) => ({ item: String(x.item), nome: x.nome, dropsH: x.dropsH })),
+        motivo: 'dropa o que você pediu' });
+    }
+    if (querCartas) {
+      let reg = null;
+      try {
+        const agg = (agregar() || []).filter((r) => r && Number(r.killsMin) > 0 && (!r.risco || !r.risco.morte))
+          .sort((a, b) => Number(b.killsMin) - Number(a.killsMin))[0];
+        if (agg) reg = { regiao: localId(agg.region) || agg.region, nome: agg.region, killsMin: Number(agg.killsMin) };
+      } catch { /* sem agregado */ }
+      if (!reg) { const r = regiaoIdeal(); if (r) reg = { regiao: r, nome: r, killsMin: null }; }
+      if (reg) passos.push({ regiao: reg.regiao, nome: reg.nome, tipo: 'cartas', minutos: 30, killsMin: reg.killsMin,
+        motivo: 'cartas caem por abate' });
+    }
+    return passos;
+  }
+  /** Grava a rota e arranca no 1.º passo. `alvos` aceita ids de item e a palavra "cartas". */
+  function iniciarRota(alvos) {
+    if (cfg.autoFarm === false) return { ok: false, motivo: 'switch do farm desligado' };
+    const passos = planejarRota(alvos);
+    if (!passos.length) return { ok: false, motivo: 'nenhum passo: o jogo não sabe onde estes alvos dropam' };
+    const rota = { alvos: (alvos || []).map(String), passos, indice: 0, desde: Date.now(), ativa: true, at: Date.now() };
+    setConfig({ rotaFarm: rota, regionDefault: passos[0].regiao });
+    try { logEvent('rota', { acao: 'iniciar', passos: passos.length, regiao: passos[0].regiao }); } catch { /* ignore */ }
+    try { viajarPara(passos[0].regiao); } catch { /* sem mapa */ }
+    return { ok: true, rota };
+  }
+  function pararRota(motivo) {
+    const r = cfg.rotaFarm;
+    if (!r) return { ok: true, motivo: 'sem rota' };
+    setConfig({ rotaFarm: Object.assign({}, r, { ativa: false, parou: motivo || 'pedido', at: Date.now() }) });
+    try { logEvent('rota', { acao: 'parar', motivo: motivo || 'pedido' }); } catch { /* ignore */ }
+    return { ok: true };
+  }
+  /** Avança a rota: item que caiu (ou todos) completa o passo; cartas completam por tempo.
+   *  Corre no tick; devolve o passo atual (ou null). */
+  function rotaPasso() {
+    const r = cfg.rotaFarm;
+    if (!r || !r.ativa || !Array.isArray(r.passos) || !r.passos.length) return null;
+    let i = Math.max(0, Math.min(r.passos.length - 1, Number(r.indice) || 0));
+    for (let guarda = 0; guarda < r.passos.length + 1; guarda++) {
+      const p = r.passos[i];
+      if (!p) { pararRota('rota completa'); return null; }
+      let feito = false;
+      if (p.tipo === 'cartas') {
+        feito = (Date.now() - Number(r.desde || Date.now())) >= Math.max(1, Number(p.minutos) || 30) * 60000;
+      } else {
+        const alvos = (p.alvos || []).map((x) => String(x.item));
+        feito = alvos.length > 0 && alvos.every((b) => farmarItemTenho(b) === true);
+      }
+      if (!feito) {
+        if (i !== Number(r.indice) || String(cfg.regionDefault) !== String(p.regiao)) {
+          setConfig({ rotaFarm: Object.assign({}, r, { indice: i, desde: Date.now(), at: Date.now() }), regionDefault: p.regiao });
+          try { viajarPara(p.regiao); } catch { /* ignore */ }
+        }
+        return Object.assign({ indice: i, total: r.passos.length }, p);
+      }
+      // passo cumprido -> próximo
+      i += 1;
+      if (i >= r.passos.length) { pararRota('rota completa'); return null; }
+      setConfig({ rotaFarm: Object.assign({}, r, { indice: i, desde: Date.now(), at: Date.now() }), regionDefault: r.passos[i].regiao });
+      try { logEvent('rota', { acao: 'passo', indice: i, regiao: r.passos[i].regiao }); } catch { /* ignore */ }
+    }
+    return null;
+  }
+
+  function farmarItemPasso() {    const ids = _farmItem.ids.length ? _farmItem.ids : farmarItemIds(cfg.farmarItem);
     if (!ids.length) return { ativo: false };
     if (!_farmItem.ids.length) _farmItem = { ids, regiao: cfg.regionDefault || null, desde: _farmItem.desde || Date.now(), parou: null, destino: null };
     const caiu = ids.filter((b) => farmarItemTenho(b) === true);
@@ -8120,7 +8205,9 @@ const CFG_VER = 2;
       const id = b.getAttribute('data-abrir-cartas') || '';
       const qtd = parseInt(String(b.querySelector('b')?.textContent || '0').replace(/\D+/g, ''), 10) || 0;
       const n = (String(b.className || '').match(/(?:^|\s)c([123])(?:\s|$)/) || [])[1];
-      return { id, qtd, n: n ? +n : 1 };
+      // O NOME vem do texto que o jogo desenhou (nada de tabela copiada).
+      const nome = String(b.querySelector('span')?.textContent || '').replace(/\s+/g, ' ').trim();
+      return { id, qtd, n: n ? +n : 1, nome };
     }).filter((c) => c.id && c.qtd > 0);
     return { novas, lista };
   }
@@ -10935,6 +11022,7 @@ const CFG_VER = 2;
       }
     } catch { /* ignore */ }
     try { loop(); feito.push('loop'); } catch (e) { logIssue('tick:loop', { erro: String(e) }); }
+    try { rotaPasso(); feito.push('rotaPasso'); } catch (e) { logIssue('tick:rota', { erro: String(e) }); }
     try { supervisarBase(); feito.push('supervisarBase'); } catch (e) { logIssue('tick:base', { erro: String(e) }); }
     try { checarPocoes(); feito.push('checarPocoes'); } catch (e) { logIssue('tick:pocoes', { erro: String(e) }); }
     try { checarRotacao(); feito.push('checarRotacao'); } catch (e) { logIssue('tick:rotacao', { erro: String(e) }); }
@@ -11271,7 +11359,7 @@ const CFG_VER = 2;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
+  window.__lolidleAuto = { BUILD, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },
