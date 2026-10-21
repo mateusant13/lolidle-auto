@@ -57,6 +57,15 @@ export const suite = {
     t.check('F3: já ligado não volta a clicar', r.ok === false && /ja ligado/.test(r.motivo));
     t.check('F3: nenhum clique novo', m.estado.clicks.length === antes);
 
+    /* ---- F5 - a build VOLTA a precisar de folhas: o filtro tem de DESLIGAR ----
+     * Ordem do dono: "no minimo tem que garantir os itens pro personagem". Se o filtro
+     * ficasse ligado com B>0, o básico era descartado antes de entrar (motor.js:1794) e a
+     * build nunca se completava. Aqui a mochila perde a folha: B volta a 1. */
+    m.montar('#mochila', [m.el({ label: 'mochila', children: [] })]);
+    r = await auto.clicarIgnorarBasicos();
+    t.check('F5: B>0 com o filtro ligado DESLIGA (não bloqueia a build)', r.ok === true && r.B === 1 && r.ligou === false);
+    t.check('F5: o checkbox ficou desligado', caixaLigada(m) === false);
+
     /* ---- F4 - no plano COMPRAR PRONTO (cfg.autoComprar) B=0 desde o abate 1 ---- */
     const m2 = criarMundo();
     const auto2 = carregarAutomation(m2);

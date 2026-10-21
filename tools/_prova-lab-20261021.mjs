@@ -30,6 +30,7 @@ const probe = `JSON.stringify({
   receberDiariasProntas: typeof (window.__lolidleAuto && window.__lolidleAuto.receberDiariasProntas),
   itensParaCarta: typeof (window.__lolidleAuto && window.__lolidleAuto.itensParaCarta),
   fator: window.__lolidleAuto && window.__lolidleAuto.fatorAnuncio && window.__lolidleAuto.fatorAnuncio(),
+  buildIncompleta: typeof (window.__lolidleAuto && window.__lolidleAuto.buildIncompleta),
   pct: window.__lolidleAuto && window.__lolidleAuto.PCT_CARTA,
   cfg: window.__lolidleAuto && window.__lolidleAuto.getConfig && (function(){var c=window.__lolidleAuto.getConfig();return {cartasAbrir:c.cartasAbrir,cartasEncaixar:c.cartasEncaixar,compraMinTier:c.compraMinTier,cartaMinRaridade:c.cartaMinRaridade};})(),
   pulsoFix: window.__lolidlePulsoFix,
@@ -42,9 +43,9 @@ for (const c of ctxs) {
     const r = await send('Runtime.evaluate', { expression: probe, contextId: c.id, returnByValue: true }, att.sessionId);
     const raw = r.result && r.result.value; if (!raw) continue;
     const o = JSON.parse(raw);
-    if (o.auto !== 'undefined' || o.pulsoFix) { console.log('CTX', c.id, JSON.stringify(o)); if (o.BUILD === '2026-10-21g') prova = o; }
+    if (o.auto !== 'undefined' || o.pulsoFix) { console.log('CTX', c.id, JSON.stringify(o)); if (o.BUILD === '2026-10-21i') prova = o; }
   } catch (e) { /* contexto morto */ }
 }
-console.log(prova ? 'PROVA AO VIVO: BUILD 2026-10-21g no mundo da extensao' : 'NAO PROVADO');
+console.log(prova ? 'PROVA AO VIVO: BUILD 2026-10-21i no mundo da extensao' : 'NAO PROVADO');
 await send('Target.closeTarget', { targetId: t.targetId });
 process.exit(prova ? 0 : 3);

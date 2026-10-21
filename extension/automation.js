@@ -531,13 +531,27 @@
    *  Efeito de ligar, lido no motor: motor.js:1794 `if (estado.ignorarBasicos &&
    *  raridade(infoItem(id)) === 'basico') continue;` — o básico é descartado DEPOIS do
    *  sorteio (não mexe em espólios/gemas/ouro/XP e corta também o básico de chefe).
-   *  Verificação (a do próprio jogo): `document.querySelector('#ignorar-basicos').checked`. */
+   *  Verificação (a do próprio jogo): `document.querySelector('#ignorar-basicos').checked`.
+   *
+   *  MÃO DUPLA (2026-10-21): com B>0 e o filtro ligado, DESLIGA-O. O critério B é "faltam
+   *  folhas para a build"; se é verdade, o filtro está a impedir a build de sair do papel. */
   async function clicarIgnorarBasicos() {
     const el = document.querySelector('#ignorar-basicos');
     if (!el) return { ok: false, motivo: 'sem checkbox no ecra' };
-    if (el.checked) return { ok: false, motivo: 'ja ligado' };
     const B = folhasDeReceitaFaltando();
-    if (B > 0) return { ok: false, motivo: 'faltam folhas de receita', B };
+    if (B > 0) {
+      // A BUILD PRECISA DE FOLHAS: o filtro TEM de estar DESLIGADO, senão o básico é
+      // descartado antes de entrar na mochila (motor.js:1794) e a build nunca se completa.
+      // Sem isto, ligar o filtro com a build completa e depois trocar de campeão (ou perder
+      // uma peça) deixava a conta nova sem matéria-prima — o oposto de "garantir os itens pro
+      // personagem". Só se o próprio jogo o tiver ligado; nunca se escreve `.checked`.
+      if (!el.checked) return { ok: false, motivo: 'faltam folhas de receita', B };
+      el.click();
+      const ligou = !!el.checked;
+      logEvent('filtro-basicos', { B, clicado: true, ligou });
+      return { ok: true, B, ligou, desligou: !ligou };
+    }
+    if (el.checked) return { ok: false, motivo: 'ja ligado' };
     el.click();                                   // dispara o change do jogo, nunca .checked
     const ligou = !!el.checked;
     logEvent('filtro-basicos', { B, clicado: true, ligou });
@@ -1968,7 +1982,7 @@ const CFG_VER = 3;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-21h';
+  const BUILD = '2026-10-21i';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
