@@ -104,18 +104,38 @@ export const suite = {
       t.check('S1: cartaMinRaridade guardado = 2', auto.getConfig().cartaMinRaridade === 2);
     }
 
-    /* ---- S2 - migração ver:3 desliga o `true` que o arranque tinha GRAVADO ---- */
+    /* ---- S2 - migrações: o `true` que o MESTRE gravava é limpo (ver 3 e ver 4) ---- */
     {
       const m = criarMundo();
       const auto = carregarAutomation(m);
-      t.check('S2: CFG_VER = 3', auto.CFG_VER === 3);
+      t.check('S2: CFG_VER = 4', auto.CFG_VER === 4);
       const r = auto.migrarCfg({ cfgVer: 2, automation: { cartasEncaixar: true, cartasAbrir: true } });
       t.check('S2: migra cartasEncaixar true -> false', r.cfg.cartasEncaixar === false);
       t.check('S2: migra cartasAbrir true -> false', r.cfg.cartasAbrir === false);
-      t.check('S2: registou as duas migrações', r.migrou.length === 2);
-      // one-shot: já em ver 3, um `true` explícito do dono NÃO é pisado.
-      const r2 = auto.migrarCfg({ cfgVer: 3, automation: { cartasEncaixar: true } });
-      t.check('S2: em ver 3 a escolha do dono fica intacta', r2.cfg.cartasEncaixar === true);
+      // A ver 3 é o caso REAL do dono: o mestre gravou `true` DEPOIS da migração da ver 3 e o
+      // cfgVer ficou em 3, por isso ela nunca voltava a correr. A ver 4 tem de limpar também.
+      const r2 = auto.migrarCfg({ cfgVer: 3, automation: { cartasEncaixar: true, cartasAbrir: true } });
+      t.check('S2: em ver 3 o true do mestre é limpo (a queixa do CDR no tier C)', r2.cfg.cartasEncaixar === false && r2.cfg.cartasAbrir === false);
+      // one-shot: já em ver 4, um `true` explícito do dono NÃO é pisado.
+      const r3 = auto.migrarCfg({ cfgVer: 4, automation: { cartasEncaixar: true } });
+      t.check('S2: em ver 4 a escolha do dono fica intacta', r3.cfg.cartasEncaixar === true);
+    }
+
+    /* ---- S3 - o MESTRE nunca liga as cartas (defeito que pôs CDR num tier C) ---- */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      auto.setConfig({ cartasEncaixar: false, cartasAbrir: false });
+      auto.setConfig({ enabled: true });                         // "liga tudo"
+      t.check('S3: ligar o mestre NÃO liga cartasEncaixar', auto.getConfig().cartasEncaixar === false);
+      t.check('S3: ligar o mestre NÃO liga cartasAbrir', auto.getConfig().cartasAbrir === false);
+      t.check('S3: as cartas nem entram na lista do mestre', !auto.chavesSwitches(true).includes('cartasEncaixar'));
+      auto.alternarTodosSwitches();                              // desliga tudo (guarda escolhas)
+      auto.alternarTodosSwitches();                              // religa o que estava
+      t.check('S3: "pausar/religar tudo" também não liga as cartas', auto.getConfig().cartasEncaixar === false);
+      // e a deixa passar só quando o dono quer: `podeFazer` deixa de ser o gate, o cfg é que é.
+      auto.setConfig({ cartasEncaixar: true });
+      t.check('S3: com o dono a ligar, o switch fica ligado', auto.getConfig().cartasEncaixar === true);
     }
 
     /* ---- P1 - preço: factor EXACTO 0,90 (era 0,88–0,92 aleatório) ---- */

@@ -1977,12 +1977,12 @@
   /** MIGRACOES DO CFG (ramo w10): cada entrada diz de que valor PARA que valor migrar. Nada e
    *  aplicado se o valor do dono for DIFERENTE do default velho (nunca se pisa uma escolha dele). */
   /** Versao do esquema do cfg (ramo w10) — gravada no arranque para a migracao ser ONE-SHOT. */
-const CFG_VER = 3;
+const CFG_VER = 4;
   /** MARCADOR DISCRIMINANTE DE BUILD (REGRA Nº 4). Exportado em `window.__lolidleAuto.BUILD`:
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-21i';
+  const BUILD = '2026-10-21j';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -1999,6 +1999,15 @@ const CFG_VER = 3;
       porquê: 'cartas: encaixar no Ornn passa a ser opt-in (o dono nao autorizou; carta basica num Rabadon)' },
     { ver: 3, chave: 'cartasAbrir', de: true, para: false,
       porquê: 'cartas: abrir as misteriosas tambem opt-in, pela mesma ordem (o dono nao habilitou cartas)' },
+    // ver 4 (2026-10-21): a migração da ver 3 não bastou porque o MESTRE voltava a gravar `true`
+    // (`chavesSwitches` incluía as cartas). Uma vez que o cfgVer ficou em 3 com o valor a `true`,
+    // a migração da ver 3 nunca mais corria. Aqui limpa-se outra vez, agora com a origem fechada
+    // (`SWITCHES_OPT_IN`). Só se toca no valor que o mestre pôs; um `true` posterior do dono
+    // (já em ver 4) fica intacto.
+    { ver: 4, chave: 'cartasEncaixar', de: true, para: false,
+      porquê: 'cartas: o mestre ligava este switch sozinho e o boneco encaixou CDR num item tier C do dono' },
+    { ver: 4, chave: 'cartasAbrir', de: true, para: false,
+      porquê: 'cartas: mesmo defeito do encaixe; abrir continua opt-in' },
   ];
 
   const NIVEL_DIF_FB = { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5, danoJogador: 0.12, minDanoJogador: 0.25 };
@@ -4173,12 +4182,22 @@ const CFG_VER = 3;
   // tudo". O dono mandou-os desligar e reclamou do clique na forja; um mestre que os liga
   // sozinho voltaria a comprar a aposta sem ele pedir. Ligam-se à mão, um a um.
   const SWITCHES_APOSTA = ['autoRefino', 'autoMontar'];
+  /** CARTAS — opt-in ESTRITO (ordem do dono, 2026-10-21: "colocou cdr no meu item tier c").
+   *
+   *  DEFEITO QUE ISTO FECHA: `setConfig({enabled:true})` fazia `for (const k of chavesSwitches(false))
+   *  cfg[k] = true` e o `guardarEscolhasSwitches()` tratava `undefined` como LIGADO — logo o
+   *  interruptor MESTRE ligava `cartasEncaixar`/`cartasAbrir` sozinho. Com a config guardada a
+   *  `true`, a guarda `cfg.cartasEncaixar !== false` (que existia antes do opt-in) deixava passar e
+   *  o boneco encaixava cartas sem o dono pedir. As cartas NUNCA entram no "liga tudo",
+   *  no "pausar tudo" nem no retrato de escolhas: só mudam quando o dono toca no switch delas. */
+  const SWITCHES_OPT_IN = ['cartasAbrir', 'cartasEncaixar'];
   /** Chaves de TODOS os switches (menos o mestre). `comAposta` inclui o Ornn. */
   function chavesSwitches(comAposta) {
     const ks = [];
     for (const nome of Object.keys(INTERRUPTORES)) {
       const s = INTERRUPTORES[nome];
       if (!s || !s.cfg || s.cfg === 'enabled') continue;
+      if (SWITCHES_OPT_IN.indexOf(s.cfg) >= 0) continue;      // cartas: só à mão
       if (!comAposta && SWITCHES_APOSTA.indexOf(s.cfg) >= 0) continue;
       if (ks.indexOf(s.cfg) < 0) ks.push(s.cfg);
     }
@@ -8591,11 +8610,18 @@ const CFG_VER = 3;
       q1('#janela-npc [data-palavra="cartas"]')?.click();
       await esperar(700);
       const feitas = [];
-      // Uma carta por item; o índice `itens:k` é a ORDEM de `estado.itens`, a mesma do `#equip`
-      // (o jogo desenha o mesmo array: jogo.js:7929 `estado.itens.map`).
+      // UMA CARTA POR ITEM — e no ITEM CERTO. O índice `itens:k` é a posição em `estado.itens`,
+      // mas o `readEquip()` só vê slots COM item (`#equip > button.slot[data-id]`): com um slot
+      // vazio os índices desalinham-se e a carta ia para o item vizinho. Foi assim que uma carta
+      // de CDR caiu num item TIER C do dono (2026-10-21). O alvo passa a ser encontrado pelo
+      // `base` do item (a imagem do slot), nunca pela posição.
       const alvos = [...document.querySelectorAll('#janela-cartas [data-carta-item^="itens:"]')];
-      for (const { e, i } of livres) {
-        const slot = alvos[i];
+      const slotDe = (e) => alvos.find((s) => {
+        const src = s.querySelector('img')?.getAttribute('src') || '';
+        return src.includes('/' + e.base + '.');
+      }) || null;
+      for (const { e } of livres) {
+        const slot = slotDe(e);
         if (!slot) continue;
         const c = melhorCartaDisponivel(cartasNaBolsa().lista, minN);
         if (!c) break;
