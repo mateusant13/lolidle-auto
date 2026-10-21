@@ -64,6 +64,16 @@ export const SELETORES_CONHECIDOS = [
   '#mochila',
   '#mochila-qtd',
   '#mochila button.slot[data-id]',
+  // cartas (jogo: `#cartas-bolsa` desenha as misteriosas e as reveladas; jogo.js:7389)
+  '#cartas-bolsa',
+  '#cartas-bolsa .carta-misteriosa [data-carta-abrir]',
+  '#cartas-bolsa [data-abrir-cartas]',
+  '#janela-cartas',
+  '#janela-cartas [data-carta-item^="itens:"]',
+  '#janela-cartas [data-carta-usar]',
+  '#janela-cartas [data-carta-encaixar]',
+  '#janela-cartas [data-carta-usar="x"]',
+  '.pacote-fundo [data-pacote-ok]',
   // mapa
   '#janela-mapa',
   '#marcadores .marcador[data-local]',

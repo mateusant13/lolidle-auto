@@ -135,6 +135,13 @@
     // em Runeterra e nas dungeons a poção é por LIMIAR de vida, porque nesses sítios a cura
     // é 30%, a exaustão é 6 s e a cura das habilidades cai para 65% (motor.js:1390).
     pocaoSmart: true,
+    // CARTAS (mecânica do jogo, motor.js:143-215): abrir as misteriosas é grátis em qualquer
+    // sítio; encaixar no Ornn é grátis e 1 por item. Ligadas por omissão, como o resto do
+    // auto-play. Vender cartas NÃO tem switch (é aposta: o mercado paga mais que o Lojista).
+    cartasAbrir: true,
+    cartasEncaixar: true,
+    // FARM: desligado, o boneco não viaja nem farma (fica a base/manutenção a correr).
+    autoFarm: true,
     ultWaveSeg: 12,           // segundos p/ 3 waves: acima disso a fase e DIFICIL (a ultimate so entra aí/chefe)
     killLentoMs: 3500,        // tempo mediano entre kills acima disso = área difícil (fallback sem burst)
     testeForcar: false,       // permite iniciar teste em região letal (default: recusa)
@@ -183,6 +190,9 @@
       tierMin: null,
       refinoMin: 0,
       cadenciaMs: 2000,     // cadencia do poller em tempo real
+      // LIMITE POR ITEM (pedido do dono 2026-10-21): "item x ate x de gold, item y ate y".
+      // Mapa base -> tecto em ouro DAQUELE item; ausente = vale o tecto global.
+      limites: {},
     },
     // ===== WATCH-LIST DO MERCADO (fim) ========================================================
     // PENALIZAÇÃO de item da CLASSE OPOSTA no SCORING. O motor do jogo NÃO restringe itens por
@@ -1206,11 +1216,14 @@
   function readEquip() {
     return [...document.querySelectorAll('#equip > button.slot[data-id]')].map((b) => {
       const [baseRef, qual] = (b.getAttribute('data-id') || '').split('~');
-      const [base, ref] = (baseRef || '').split('+');
+      // A chave do jogo é `<base>+<refino>#<carta>~<qual>` (motor.js:143: a carta fica ANTES da
+      // qualidade). Sem separar o `#`, um item com carta dava `refino: NaN` e a carta era perdida.
+      const [baseR, carta] = String(baseRef || '').split('#');
+      const [base, ref] = baseR.split('+');
       const dica = b.getAttribute('data-dica') || '';
       const cls = String(b.className);
       return {
-        id: b.getAttribute('data-id'), base, refino: ref ? +ref : 0, qual,
+        id: b.getAttribute('data-id'), base, refino: ref ? +ref : 0, qual, carta: carta || null,
         nome: dica.split('(')[0].trim(), dica, stats: parseDica(dica),
         raridade: cls.includes('lendario') ? 'lendario' : cls.includes('epico') ? 'epico' : 'basico',
       };
@@ -4005,6 +4018,9 @@ const CFG_VER = 2;
     // mas JA NAO e um bloqueio: `podeFazer('autoplay')` nao olha para o campeao.
     // Cada interruptor tem cfg PROPRIA (nenhum `cfg:null`) — fim do "ligado (implicito)".
     autoplay:     { pai: null,         cfg: 'enabled' },
+    // FARM: viajar e farmar (região/objetivo). Desligado, fica onde está e só a manutenção
+    // continua. Detalhes (objetivo, itens, cartas) ficam na aba Macro.
+    farm:         { pai: 'autoplay',   cfg: 'autoFarm' },
     manutencao:   { pai: 'autoplay',   cfg: 'manutencao' },
     // ramo da BASE: tudo o que exige ir a Fonte.
     irBase:       { pai: 'manutencao', cfg: 'autoIrBase' },
@@ -4034,6 +4050,10 @@ const CFG_VER = 2;
     // POÇÃO INTELIGENTE: só no PvE do mapa. Desligada, a poção volta ao limiar de vida.
     // Em PvP/Arena/Runeterra/dungeon o limiar já é o modo certo e este switch não muda nada.
     pocaoSmart:   { pai: 'manutencao', cfg: 'pocaoSmart' },
+    // CARTAS: abrir as misteriosas (grátis, em qualquer sítio) e encaixar a melhor nos itens
+    // equipados (grátis, na bancada do Ornn). Um espaço por item (motor.js:143-215).
+    cartasAbrir:    { pai: 'manutencao', cfg: 'cartasAbrir' },
+    cartasEncaixar: { pai: 'manutencao', cfg: 'cartasEncaixar' },
   };
   // ---- MEMÓRIA DAS ESCOLHAS DO DONO (ordem de 2026-10-20) --------------------------------
   // Exceção declarada: os dois switches do ORNN (refino e montagem) ficam FORA do "liga
@@ -4310,6 +4330,9 @@ const CFG_VER = 2;
         && (!_ultimaVendaCofre || (Date.now() - _ultimaVendaCofre) > cadLixo);
     } catch { n.venderLixoCofre = false; }
     n.mercado = n.anunciar;      // só vai ao mercado se houver lendário <A p/ anunciar
+    // CARTAS: há item equipado sem carta E carta na bolsa. NÃO é primária (não paga a viagem):
+    // a rotina aproveita uma ida que já ia acontecer.
+    try { n.cartas = podeFazer('cartasEncaixar').pode && cartasParaEncaixar().faltam > 0; } catch { n.cartas = false; }
     // MONTAGEM AUTÓNOMA: no máximo 1x/30 min e só com ouro que sobre à reserva.
     n.montar = podeFazer('montar').pode && (Date.now() - _ultimaMontagem) > cadencia(1800000) && readGold() > 60000;
     // O comentário antigo dizia "checa barato e sai cedo" — MEDIDO: 13,5 s por
@@ -4387,6 +4410,9 @@ const CFG_VER = 2;
     ['hab', 'habs', () => subirHabilidades()],
     ['atrib', 'atrib', () => distribuirAtributos()],
     ['equip', 'equip', () => equiparMelhores()],
+    // CARTAS: encaixar a melhor nos itens equipados (grátis, na bancada do Ornn). Não paga
+    // viagem sozinha (não é primária): se já estiver na Fonte, faz-se.
+    ['cartas', 'cartas', () => encaixarCartas()],
     ['buscar', 'buscar no cofre', () => buscarPecasDaFase(faseAtual())],
     ['cofre', 'cofre', async () => {
       const bag = scanBag(true); const p = bag ? planBag(bag) : null;
@@ -7661,6 +7687,7 @@ const CFG_VER = 2;
   }
 
   function farmarItem(ids) {
+    if (cfg.autoFarm === false) return { ok: false, motivo: 'switch do farm desligado' };
     const alvo = farmarItemIds(ids);
     if (!alvo.length) return { ok: false, motivo: 'sem itens (use farmarItem(["3089"]))' };
     // O destino vem do PLANEJADOR do motor (drops/h medidos; `planejar` le META.ondeItem).
@@ -8074,6 +8101,124 @@ const CFG_VER = 2;
     const okTudo = anunciados.length > 0 || porAnunciar.length === 0;
     return { ok: okTudo, anunciados, cancelados, motivo: okTudo ? null : 'nada anunciado de ' + porAnunciar.map((x) => x.base).join(',') };
     } finally { try { fecharJanelas(); } catch { /* ignore */ } ocupado = false; }
+  }
+
+  // ========================================================== CARTAS (mecânica do jogo)
+  /** MECÂNICA LIDA no jogo (jogo.js:7389-7392 `#cartas-bolsa`; motor.js:143-215):
+   *   - caem dos monstros como "Carta misteriosa" (`estado.cartasNovas`), abertas em qualquer
+   *     sítio (jogo.js:7987 "Abrir dá em qualquer lugar"), 50 por clique;
+   *   - 1 carta por item, encaixada GRÁTIS no Ornn (jogo.js:8000 `encaixarCartaEm`), tirar custa
+   *     10k/100k/1M (motor.js:167-169);
+   *   - o bónus é % do atributo TOTAL do campeão (motor.js:622 `somaCartas`), logo o TIPO importa
+   *     e o item escolhido não. Básica +2%, rara +5%, lendária +10% (ou valores próprios).
+   *  Tudo é lido do DOM que o jogo desenha; não há tabela copiada aqui. */
+  function cartasNaBolsa() {
+    const el = document.querySelector('#cartas-bolsa');
+    const novasEl = el && el.querySelector('.carta-misteriosa b');
+    const novas = novasEl ? (parseInt(String(novasEl.textContent).replace(/\D+/g, ''), 10) || 0) : 0;
+    const lista = !el ? [] : [...el.querySelectorAll('[data-abrir-cartas]')].map((b) => {
+      const id = b.getAttribute('data-abrir-cartas') || '';
+      const qtd = parseInt(String(b.querySelector('b')?.textContent || '0').replace(/\D+/g, ''), 10) || 0;
+      const n = (String(b.className || '').match(/(?:^|\s)c([123])(?:\s|$)/) || [])[1];
+      return { id, qtd, n: n ? +n : 1 };
+    }).filter((c) => c.id && c.qtd > 0);
+    return { novas, lista };
+  }
+  /** Peso de cada TIPO de carta para ESTE campeão, a partir dos stats lidos (`player`).
+   *  Não é gosto: o bónus é % do total, então o tipo que mais pesa é o atributo dominante. */
+  function pesosCartas() {
+    const p = (() => { try { return player() || {}; } catch { return {}; } })();
+    const ap = Math.max(0, Number(p.poder) || 0), ad = Math.max(0, Number(p.dano) || 0);
+    const soma = ap + ad || 1;
+    let cdr = 0;
+    try { cdr = Number((readStats() || {}).cdr) || 0; } catch { cdr = 0; }
+    const domAp = ap / soma, domAd = ad / soma;
+    return {
+      poder: 0.8 + 3 * domAp,
+      ataque: 0.8 + 3 * domAd,
+      vida: 1.6,
+      armadura: 1.2,
+      rm: 1.2,
+      velocidade: 1.1 + 0.6 * domAd,
+      critico: 0.7 + 1.4 * domAd,
+      roubo: 0.9 + 0.8 * domAd,
+      vampirismo: 1.1 + 0.4 * domAd,
+      recarga: cdr < 0.4 ? 2 : 0.6,
+    };
+  }
+  /** A melhor carta disponível: raridade × peso do tipo. `tipo` sai do id (`ataque1` -> ataque). */
+  function melhorCartaDisponivel(lista) {
+    const w = pesosCartas();
+    const tipoDe = (id) => String(id || '').replace(/[123]$/, '');
+    return (lista || []).slice().sort((a, b) => (b.n * (w[tipoDe(b.id)] || 1)) - (a.n * (w[tipoDe(a.id)] || 1)))[0] || null;
+  }
+  /** ABRE todas as cartas misteriosas. Dá em qualquer sítio, não paga viagem. */
+  async function abrirCartasMisteriosas() {
+    if (!podeFazer('cartasAbrir').pode) return { ok: false, motivo: 'interruptor desligado' };
+    const antes = cartasNaBolsa().novas;
+    if (!antes) return { ok: true, novas: 0, motivo: 'sem cartas misteriosas' };
+    let cliques = 0;
+    for (let i = 0; i < 6 && cartasNaBolsa().novas > 0; i++) {
+      const b = document.querySelector('#cartas-bolsa .carta-misteriosa [data-carta-abrir]');
+      if (!b) break;
+      b.click(); cliques++;
+      await esperar(1300);
+      // O "pacote" das cartas cobre o ecrã até se clicar em Continuar.
+      for (let k = 0; k < 3; k++) { const ok = document.querySelector('.pacote-fundo [data-pacote-ok]'); if (!ok) break; ok.click(); await esperar(220); }
+    }
+    const depois = cartasNaBolsa().novas;
+    try { fecharJanelas(); } catch { /* ignore */ }
+    logEvent('cartas', { acao: 'abrir', antes, depois, cliques });
+    return { ok: depois < antes, antes, depois, cliques, motivo: depois ? 'ainda faltam ' + depois : null };
+  }
+  /** Quantos itens equipados estão SEM carta e há carta para encaixar (necessidade da base). */
+  function cartasParaEncaixar() {
+    const eq = readEquip();
+    const livres = eq.filter((e) => !e.carta).length;
+    const bolsa = cartasNaBolsa().lista.length;
+    return { livres, cartas: bolsa, faltam: Math.min(livres, bolsa) };
+  }
+  /** ENCAIXA a melhor carta em cada item equipado sem carta, na bancada do Ornn (grátis). */
+  async function encaixarCartas() {
+    if (!podeFazer('cartasEncaixar').pode) return { ok: false, motivo: 'interruptor desligado' };
+    if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
+    const eq = readEquip();
+    const livres = eq.map((e, i) => ({ e, i })).filter((x) => !x.e.carta);
+    const bolsa0 = cartasNaBolsa().lista;
+    if (!livres.length) return { ok: true, motivo: 'todos os itens já têm carta' };
+    if (!bolsa0.length) return { ok: true, motivo: 'sem cartas na bolsa' };
+    ocupado = true;
+    try {
+      let falou = false;
+      if (clickNPC('Ornn')) falou = !!(await waitForNpc('#janela-npc [data-palavra="cartas"]', 1500));
+      if (!falou) falou = await clicarNpcNaTela('Ornn', 2);
+      if (!falou) return { ok: false, motivo: 'sem Ornn' };
+      q1('#janela-npc [data-palavra="cartas"]')?.click();
+      await esperar(700);
+      const feitas = [];
+      // Uma carta por item; o índice `itens:k` é a ORDEM de `estado.itens`, a mesma do `#equip`
+      // (o jogo desenha o mesmo array: jogo.js:7929 `estado.itens.map`).
+      const alvos = [...document.querySelectorAll('#janela-cartas [data-carta-item^="itens:"]')];
+      for (const { e, i } of livres) {
+        const slot = alvos[i];
+        if (!slot) continue;
+        const c = melhorCartaDisponivel(cartasNaBolsa().lista);
+        if (!c) break;
+        slot.click(); await esperar(320);
+        const card = document.querySelector('#janela-cartas [data-carta-usar="' + c.id + '"]');
+        if (!card) break;
+        card.click(); await esperar(320);
+        const enc = [...document.querySelectorAll('#janela-cartas [data-carta-encaixar]')].find((b) => !b.disabled);
+        if (!enc) { await esperar(300); continue; }
+        enc.click(); await esperar(500);
+        clicarDialogo(/^(encaixar|sim|ok)$/i);
+        await esperar(900);
+        feitas.push({ item: e.base, carta: c.id, n: c.n });
+      }
+      try { fecharJanelas(); } catch { /* ignore */ }
+      logEvent('cartas', { acao: 'encaixar', feitas: feitas.length, itens: feitas.map((f) => f.item) });
+      return { ok: feitas.length > 0, feitas, motivo: feitas.length ? null : 'nada encaixado (sem carta ou Ornn não abriu)' };
+    } finally { ocupado = false; }
   }
 
   /** Ofertas de COMPRA abertas no Mercado: [{ id, base, qual, preco }] (id = data-comprar). */
@@ -9168,6 +9313,16 @@ const CFG_VER = 2;
     const t = Number(oferta && oferta.libera);
     return Number.isFinite(t) && t > 0 ? Math.max(0, t - Date.now()) : 0;
   }
+  /** Tecto DAQUELE item (por base) definido na GUI (`mercadoWatch.limites`). null = sem limite
+   *  próprio (vale o tecto global). */
+  function limiteItemWatch(item) {
+    try {
+      const lim = (cfg.mercadoWatch && cfg.mercadoWatch.limites) || {};
+      const base = baseDoItemMercado(item);
+      const v = Number(lim[base]);
+      return Number.isFinite(v) && v > 0 ? v : null;
+    } catch { return null; }
+  }
   function podeComprarOfertaWatch(oferta, ouro, watch) {
     const w = watch || {};
     const of = oferta || {};
@@ -9180,6 +9335,10 @@ const CFG_VER = 2;
     if (falta > 0) return { ok: false, motivo: 'travada por ' + Math.ceil(falta / 1000) + 's (lendario A/S/SS recem-anunciado)', liberaEm: Number(of.libera), faltaMs: falta };
     const teto = w.precoMax != null && Number(w.precoMax) > 0 ? Number(w.precoMax) : null;
     if (teto != null && preco > teto) return { ok: false, motivo: 'acima do tecto (' + preco + ' > ' + teto + ')' };
+    // LIMITE POR ITEM (pedido do dono 2026-10-21): cada item escolhido pode ter o seu tecto.
+    // Vale por BASE (o mesmo item em qualquer qualidade/refino), definido na lista da watch.
+    const limItem = limiteItemWatch(of.item);
+    if (limItem != null && preco > limItem) return { ok: false, motivo: 'acima do limite deste item (' + preco + ' > ' + limItem + ')' };
     const tetoPass = Number(w.tetoCompra) > 0 ? Number(w.tetoCompra) : Infinity;
     if (preco > tetoPass) return { ok: false, motivo: 'acima do tecto por passagem (' + preco + ' > ' + tetoPass + ')' };
     // TECTO RELATIVO: `percentualOuro` é lido AGORA contra o ouro AGORA — se o ouro subir,
@@ -10081,6 +10240,16 @@ const CFG_VER = 2;
     try { await clicarIgnorarBasicos(); } catch { /* ignore */ }
   }
   let _rotBusy = false;
+  /** CARTAS: abrir as misteriosas quando há alguma. A cadência é larga (45 s) porque abrir é
+   *  instantâneo e a bolsa é atualizada pelo próprio jogo; abrir não paga viagem. */
+  let _cartasAt = 0;
+  async function checarCartas() {
+    if (!podeFazer('cartasAbrir').pode || pausado || ocupado) return;
+    if (Date.now() - _cartasAt < 45000) return;
+    if (!cartasNaBolsa().novas) return;
+    _cartasAt = Date.now();
+    try { await abrirCartasMisteriosas(); } catch (e) { logIssue('cartas:abrir', { erro: String(e) }); }
+  }
   let _ultimaRotacao = 0;      // cadência própria da barra (ver `cfg.barraCadenciaMs`)
   async function checarRotacao() {
     // O ACTOR PERGUNTA À HIERARQUIA (correcção do Lead, 2026-10-14): antes havia aqui um portão
@@ -10656,7 +10825,7 @@ const CFG_VER = 2;
           // o actor pergunta à HIERARQUIA — viajar para farmar é auto-play, e o auto-play tem
           // a excepção de campeão. Era este portão directo que deixava a Katarina (enabled=false,
           // manutencao=true) sair da base a viajar para o Covil do Barão (40-50) aos 29.
-          if (res && res.ok && !faltaAgora.length && podeFazer('autoplay').pode && !ocupado && !pausado && !baseLock) {
+          if (res && res.ok && !faltaAgora.length && podeFazer('farm').pode && !ocupado && !pausado && !baseLock) {
             _baseFalhas = 0; _recallsSemFechar = 0;
             // VOLTAR PARA ONDE ESTAVA (regra implicita do dono): prefere a regiao onde ele
             // estava ANTES de ir a base — MAS SÓ SE A ZONA FOR SEGURA (ver `regiaoSegura`).
@@ -10678,7 +10847,7 @@ const CFG_VER = 2;
                 _farmForcadoAte = Date.now() + FARM_FORCADO_MS;
                 const reg = regiaoIdeal();
                 logEvent('base', { farmar: 'FORCADO (3 visitas sem fechar nada, modo farm)', regiao: reg, falta: faltaAgora, restou: (res && res.restou) || null, minutos: FARM_FORCADO_MS / 60000 });
-                if (reg && podeFazer('autoplay').pode && !ocupado && !pausado && !baseLock) { marcarAtiva(); viajarPara(reg); }   // hierarquia, não cfg.enabled
+                if (reg && podeFazer('farm').pode && !ocupado && !pausado && !baseLock) { marcarAtiva(); viajarPara(reg); }   // hierarquia, não cfg.enabled
                 return;
               }
             } else { _recallsSemFechar = 0; }
@@ -10706,7 +10875,7 @@ const CFG_VER = 2;
       // PORTÃO QUE FALTAVA (correcção do Lead, 2026-10-14): este ramo viajava para farmar SEM
       // perguntar nada — era o caminho que, com o auto-play desligado, punha a Katarina a
       // caminho de uma zona letal. Viajar para farmar é AUTO-PLAY: pergunta-se à hierarquia.
-      if (!podeFazer('autoplay').pode) return;
+      if (!podeFazer('farm').pode) return;
       const reg = regiaoIdeal();
       if (!reg) return;
       logEvent('afk-farmar', { regiao: reg, paradoMin: Math.round((Date.now() - ativaEm) / 60000) });
@@ -10771,6 +10940,7 @@ const CFG_VER = 2;
     try { checarRotacao(); feito.push('checarRotacao'); } catch (e) { logIssue('tick:rotacao', { erro: String(e) }); }
     try { checarFiltroBasicos().catch(() => { /* ignore */ }); feito.push('checarFiltroBasicos'); } catch (e) { logIssue('tick:filtro-basicos', { erro: String(e) }); }
     try { checarItens().catch(() => { /* ignore */ }); feito.push('checarItens'); } catch (e) { logIssue('tick:itens', { erro: String(e) }); }
+    try { checarCartas().catch(() => { /* ignore */ }); feito.push('checarCartas'); } catch (e) { logIssue('tick:cartas', { erro: String(e) }); }
     if (teste && !pausado) { try { passoTeste().catch(() => { /* ignore */ }); feito.push('passoTeste'); } catch (e) { /* ignore */ } }
     return { feito, at: _ultimoTick };
   }
@@ -11101,7 +11271,7 @@ const CFG_VER = 2;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
+  window.__lolidleAuto = { BUILD, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },
