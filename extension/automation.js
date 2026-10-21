@@ -371,7 +371,18 @@
         if (id.startsWith('esp:')) {
           const [, espId, qty] = id.split(':');
           espo++;
-          items.push({ kind: 'espolio', id: espId, qty: parseNum(qty), el: null });
+          // VALOR do espólio lido do TÍTULO que o jogo desenha (jogo.js:6470-6472
+          // `slotEspolio`: "Espólio: o Lojista compra por {valor} de ouro cada ({total} esta
+          // pilha)"). É a única fonte do valor no DOM antes de abrir o Lojista; o `fmt` do jogo
+          // usa k/M (cena.js:226) e o `parseNum` já os lê. Sem isto, a decisão de vender espólio
+          // não tinha número nenhum e o espólio ficava fora de qualquer conta.
+          const qtd = parseNum(qty);
+          const titulo = s.getAttribute('title') || s.getAttribute('data-titulo') || '';
+          const cadaM = titulo.match(/compra por\s+([\d.,]+\s*[kKmM]?)\s+de ouro cada/i);
+          const totalM = titulo.match(/\(([\d.,]+\s*[kKmM]?)\s+esta pilha\)/i);
+          const valorUn = cadaM ? parseNum(cadaM[1]) : null;
+          const valor = totalM ? parseNum(totalM[1]) : (Number.isFinite(valorUn) ? valorUn * qtd : null);
+          items.push({ kind: 'espolio', id: espId, qty: qtd, valorUn, valor, el: null });
           continue;
         }
         // A chave do jogo é `<base>[+refino][#carta]~<qual>` (a MESMA de `readEquip`,
@@ -496,9 +507,14 @@
   function folhasDeReceitaFaltando() {
     if (cfg.autoComprar) return 0;               // plano comprar pronto: nada a montar
     try {
+      const bag = scanBag(true);          // força a releitura: a mochila muda entre abates
+      // BUILD COMPLETA e montagem desligada: já não há peça nenhuma a montar — as folhas que
+      // sobram são lixo. Sem esta linha o B nunca chegava a 0 numa conta que compra pronto e
+      // NÃO monta (o default), logo o filtro de básicos do jogo nunca ligava e o básico caía
+      // a rodos para ser vendido — exactamente o que o dono chamou de "imbecil" no nível 1.
+      if (!montagemLigada() && !buildIncompleta(bag)) return 0;
       const nec = basicosDaBuild(META.champAtual);
       const tenho = {};
-      const bag = scanBag(true);          // força a releitura: a mochila muda entre abates
       for (const i of ((bag && bag.items) || [])) {
         if (i.kind !== 'item' || !i.base) continue;
         tenho[String(i.base)] = (tenho[String(i.base)] || 0) + 1;
@@ -542,6 +558,29 @@
     return nec;
   }
 
+  /** A BUILD está INCOMPLETA (falta alguma peça que o `buildIdeal` pede)?
+   *
+   *  PORQUÊ (ordem do dono, 2026-10-21): *"se é uma conta level 1, vender item basico a rodo ou
+   *  epico seria imbecil, no minimo tem que garantir os itens pro personagem"*. O `planBag`
+   *  protegia os básicos da receita SÓ com a montagem ligada (`cfg.autoMontar`), que nasce
+   *  desligada — numa conta nova isso vendia a matéria-prima do próprio personagem. Enquanto a
+   *  build não estiver completa, as folhas que ela pede ficam guardadas (o excedente acima do
+   *  tecto da receita continua a ir ao Lojista, logo a mochila não entope). Com a build
+   *  completa, o básico deixa de ter uso e o filtro do jogo (`ignorarBasicos`) assume.
+   *
+   *  Fonte da verdade: `buildIdeal()` (motor) + equipamento e mochila do DOM. Sem build
+   *  conhecida devolve `false` (não se inventa proteção). */
+  function buildIncompleta(bag) {
+    try {
+      const ideal = (buildIdeal() || []).map(String);
+      if (!ideal.length) return false;
+      const tenho = new Set();
+      for (const e of (readEquip() || [])) if (e && e.base) tenho.add(String(e.base));
+      for (const i of ((bag && bag.items) || [])) if (i.kind === 'item' && i.base) tenho.add(String(i.base));
+      return ideal.some((id) => !tenho.has(String(id)));
+    } catch { return false; }
+  }
+
   /** A MONTAGEM (bancada do Ornn) está ligada? É ESTA a fonte única que o PLANEADOR
    *  (`planBag`) e o ACTOR (`venderBase`) consultam para decidir se guardam matéria-prima.
    *  REGRA DO DONO (verbatim): "eu nao mandei nunca montar itens. e sempre comprar do mercado."
@@ -565,6 +604,10 @@
     const itens = bag.items.filter((i) => i.kind === 'item');
     const espolios = bag.items.filter((i) => i.kind === 'espolio');
     const ident = identidadeCampeao();
+    // BUILD INCOMPLETA: guarda as folhas que o personagem ainda vai precisar (ver
+    // `buildIncompleta`). Só BÁSICOS — os épicos componentes continuam a seguir a regra do
+    // "compra pronto" (`autoMontar`), inclusive para não quebrar o actor que os vende.
+    const faltaBuild = buildIncompleta(bag);
     // O PLANEADOR passa a saber EQUIPAR (era a regra que FALTAVA — docs/itens-ideal.md D7).
     // `planoEquipar` é a MESMA função que o actor `equiparMelhores` usa: planeador e actor
     // nunca podem discordar (era essa discordância que prendia o Tiamat na mochila, D16).
@@ -680,7 +723,7 @@
       else if (it.raridade === 'basico' && basExcesso.has(it)) acts.push({ action: 'VENDER_LOJISTA', it, why: `básico em EXCESSO (a build precisa de ${necBas[it.base] || 0})` });
       // MONTAGEM LIGADA: o básico que a receita pede (até ao tecto) FICA. É a MESMA regra do
       // `venderBase`; com a montagem desligada cai no ramo seguinte e vai ao Lojista.
-      else if (it.raridade === 'basico' && montagemLigada() && componentesDaBuild().has(String(it.base))) acts.push({ action: 'PROTEGER', it, why: `básico componente da build (montagem ligada, receita ${necBas[it.base] || 0})` });
+      else if (it.raridade === 'basico' && (montagemLigada() || faltaBuild) && componentesDaBuild().has(String(it.base))) acts.push({ action: 'PROTEGER', it, why: `básico componente da build (${faltaBuild ? 'build incompleta: garante as peças do personagem' : 'montagem ligada'}, receita ${necBas[it.base] || 0})` });
       // REGRA DO DONO (2026-10-14, verbatim): "eu nao mandei nunca montar itens. e sempre comprar
       // do mercado." -> NAO se guarda materia-prima para receita. Basico inutil vai ao Lojista.
       // (Antes: `basico COMPONENTE da build -> GUARDAR`, que enchia a mochila com pecas para
@@ -1925,7 +1968,7 @@ const CFG_VER = 3;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-21g';
+  const BUILD = '2026-10-21h';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -3795,10 +3838,12 @@ const CFG_VER = 3;
     const necBas = basicosDaBuild(META.champAtual);
     const porBaseBag = {}; const vendidosPorBase = {};
     let transbordo = 0;
+    let faltaBuild = false;
     try {
       const b2 = scanBag();
       for (const s2 of (b2.items || [])) if (s2.kind === 'item') porBaseBag[s2.base] = (porBaseBag[s2.base] || 0) + 1;
       transbordo = Math.max(0, (b2.used || 0) - (b2.cap || 0));
+      faltaBuild = buildIncompleta(b2);
     } catch { /* ignore */ }
     // A janela de venda RE-RENDERIZA a cada clique (o slot muda de nó). Guardar a lista uma vez
     // e clicar nos nós antigos só vende o PRIMEIRO — medido ao vivo 2026-10-19: 4 marcados,
@@ -3866,7 +3911,7 @@ const CFG_VER = 3;
       if (!forcar(id) && montagemLigada() && catIt && catIt.raridade === 'epico' && componentesDaBuild().has(String(puro))) { regras.protegidos.push({ id, motivo: 'componente da build ideal (epico do catalogo)', montagem: true }); continue; }
       // BÁSICO COMPONENTE: guarda até ao tecto da receita, vende só o excedente (MESMA regra do
       // `planBag` — sem esta reconciliação voltava o ping-pong mochila<->Lojista).
-      if (!forcar(id) && montagemLigada() && catIt && catIt.raridade === 'basico' && componentesDaBuild().has(String(puro))) {
+      if (!forcar(id) && (montagemLigada() || faltaBuild) && catIt && catIt.raridade === 'basico' && componentesDaBuild().has(String(puro))) {
         const tenho = porBaseBag[puro] || 0;
         const jaVendi = vendidosPorBase[puro] || 0;
         // TRANSBORDO: com a mochila acima da capacidade o tecto desce pelo tamanho do transbordo
@@ -4282,19 +4327,30 @@ const CFG_VER = 3;
       // A ida ao Lojista é motivada por ESPAÇO (a mochila a transbordar) e pelo que é LIXO — o
       // `planBag` já decidiu isso (`prioridade`), não se inventa critério novo.
       const prioridade = atosVenda.length > 0;
+      // ESPÓLIO (2026-10-21): o `planBag` sempre o devolveu à parte (`pl.espolios`) e o
+      // `n.vender` só olhava para os ACTOS de item — logo o espólio NUNCA era uma necessidade e
+      // o boneco passava pela base sem o vender ("quando recarrego, ele nao vende espolios na
+      // base"). O valor sai do TÍTULO do slot (jogo.js:6470-6472), não de tabela copiada.
+      // Regra: vende-se SEMPRE que já se está na base; uma viagem SÓ por espólio só com a
+      // mochila quase cheia (o ouro do Lojista continua fora da decisão, R1 — o gatilho é ESPAÇO).
+      const espolios = (pl && pl.espolios) || [];
+      const espolioValor = espolios.reduce((s, e) => s + (Number(e.valor) || 0), 0);
+      const espolioQtd = espolios.reduce((s, e) => s + (Number(e.qty) || 0), 0);
+      const temEspolio = espolios.length > 0;
       // P0 MEDIDO AO VIVO (2026-10-20): a mochila estava 23/32 (longe de cheia) com 15 itens
       // marcados pelo `planBag` (epicos + espolios) e `n.vender` dava FALSE por causa do
       // `&& mochilaQuaseCheia`. O comentario acima ja dizia "ESPACO **OU** PRIORIDADE" - o
       // codigo exigia os dois. O `planBag` e a regra do dono ("basico/epico/duplicado vai ao
       // Lojista; tier S+ nao"): se ele marcou, vende-se. A mochila cheia continua a ser o
       // gatilho de ESPACO e o motivo registado distingue os dois casos.
-      n.vender = podeFazer('vender').pode && prioridade;
+      n.vender = podeFazer('vender').pode && (prioridade || (temEspolio && (naBase() || mochilaQuaseCheia)));
       // `valor` fica como INFORMAÇÃO; `receita` é o que conta como OURO (0 fora do começo do jogo) —
       // é esta marcação explícita que impede alguém de voltar a somar isto como ganho.
       // `valor` = INFORMAÇÃO (o dono vê o que desperdiçou); `receita` = 0 SEMPRE — o ouro do Lojista
       // não entra em contabilidade nenhuma (R1). `inicioJogo` fica registado só como contexto.
       n._venda = { itens: atosVenda.length, valor: valorDaVenda, receita: 0, inicioJogo,
-        motivo: mochilaQuaseCheia ? 'espaco' : 'prioridade',
+        espoliosTipos: espolios.length, espoliosQtd: espolioQtd, valorEspolio: espolioValor,
+        motivo: mochilaQuaseCheia ? 'espaco' : (prioridade ? 'prioridade' : 'espolio'),
         mochilaQuaseCheia, used: bag && bag.used, cap: bag && bag.cap, espolios: bag && bag.espacosEspolio };
       n.cofre = podeFazer('cofre').pode && acts.some((a) => a.action === 'GUARDAR_COFRE');
       // P0 MEDIDO (2026-10-20): `planBag` marca o lendário <A para o mercado, mas NÃO sabe
@@ -4396,7 +4452,7 @@ const CFG_VER = 3;
     n.mercado = n.anunciar;      // só vai ao mercado se houver lendário <A p/ anunciar
     // CARTAS: há item equipado sem carta E carta na bolsa. NÃO é primária (não paga a viagem):
     // a rotina aproveita uma ida que já ia acontecer.
-    try { n.cartas = podeFazer('cartasEncaixar').pode && cartasParaEncaixar().faltam > 0; } catch { n.cartas = false; }
+    try { n.cartas = cfg.cartasEncaixar === true && podeFazer('cartasEncaixar').pode && cartasParaEncaixar().faltam > 0; } catch { n.cartas = false; }
     // MONTAGEM AUTÓNOMA: no máximo 1x/30 min e só com ouro que sobre à reserva.
     n.montar = podeFazer('montar').pode && (Date.now() - _ultimaMontagem) > cadencia(1800000) && readGold() > 60000;
     // O comentário antigo dizia "checa barato e sai cedo" — MEDIDO: 13,5 s por
@@ -4521,7 +4577,14 @@ const CFG_VER = 3;
     const venda = necess && necess._venda;
     const itensVenda = Number(venda && venda.itens) || 0;
     const minVenda = Math.max(1, Number(c.venderMinItens) || 6);
-    const vendaPaga = !!venda && (!!venda.mochilaQuaseCheia || itensVenda >= minVenda);
+    // A CONTA (pedido do dono, 2026-10-21): um lote de básicos/epicos só paga a viagem se o
+    // valor REAL de venda cobrir o que se deixa de ganhar no caminho (`custoIda.ouro`, medido
+    // pela mesma `estimarRegiao` do farm). Sem números medidos (`_custoIda`/`valor` ausentes)
+    // mantém-se a regra antiga — não se inventa um custo para bloquear.
+    const custoOuro = Number(necess && necess._custoIda && necess._custoIda.ouro) || 0;
+    const valor = Number(venda && venda.valor) || 0;
+    const valePelaConta = !custoOuro || !valor || valor >= custoOuro;
+    const vendaPaga = !!venda && (!!venda.mochilaQuaseCheia || (itensVenda >= minVenda && valePelaConta));
     return (Array.isArray(falta) ? falta : []).filter((f) => f !== 'vender' || vendaPaga);
   }
   function faltandoNaBase(n) {
@@ -8447,7 +8510,11 @@ const CFG_VER = 3;
   }
   /** ABRE todas as cartas misteriosas. Dá em qualquer sítio, não paga viagem. */
   async function abrirCartasMisteriosas() {
-    if (!podeFazer('cartasAbrir').pode) return { ok: false, motivo: 'interruptor desligado' };
+    // OPT-IN ESTRITO: só corre com `cfg.cartasAbrir === true`. A guarda antiga
+    // (`podeFazer(...).pode`) tratava uma chave AUSENTE como ligada (o `podeFazer` só bloqueia em
+    // `=== false`); o dono viu o boneco a abrir/olhar cartas sem ter ligado nada. Agora uma
+    // config que não diga exactamente `true` não abre carta nenhuma.
+    if (cfg.cartasAbrir !== true) return { ok: false, motivo: 'interruptor desligado (opt-in)' };
     const antes = cartasNaBolsa().novas;
     if (!antes) return { ok: true, novas: 0, motivo: 'sem cartas misteriosas' };
     let cliques = 0;
@@ -8490,6 +8557,10 @@ const CFG_VER = 3;
   }
   /** ENCAIXA a melhor carta em cada item equipado sem carta, na bancada do Ornn (grátis). */
   async function encaixarCartas() {
+    // OPT-IN ESTRITO (ver `abrirCartasMisteriosas`): sem `cfg.cartasEncaixar === true` NÃO se
+    // toca no Ornn, não se selecciona item e não se escolhe carta. É a ordem do dono: "nao
+    // permita isso a nao ser q eu queria".
+    if (cfg.cartasEncaixar !== true) return { ok: false, motivo: 'interruptor desligado (opt-in)' };
     if (!podeFazer('cartasEncaixar').pode) return { ok: false, motivo: 'interruptor desligado' };
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     const livres = itensParaCarta();
@@ -10591,6 +10662,7 @@ const CFG_VER = 3;
    *  instantâneo e a bolsa é atualizada pelo próprio jogo; abrir não paga viagem. */
   let _cartasAt = 0;
   async function checarCartas() {
+    if (cfg.cartasAbrir !== true) return;                 // opt-in estrito (ver `abrirCartasMisteriosas`)
     if (!podeFazer('cartasAbrir').pode || pausado || ocupado) return;
     if (Date.now() - _cartasAt < 45000) return;
     if (!cartasNaBolsa().novas) return;
@@ -11620,7 +11692,7 @@ const CFG_VER = 3;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
+  window.__lolidleAuto = { BUILD, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },

@@ -19,7 +19,7 @@
  * CONTRATO: t.check(rotulo, condicao) só passa com condicao === true.
  */
 
-import { criarMundo, carregarAutomation, definirCampeao } from './dom-stub.mjs';
+import { criarMundo, carregarAutomation, definirCampeao, alimentarCatalogo, montarMochila } from './dom-stub.mjs';
 
 export const suite = {
   nome: 'fix-2026-10-21',
@@ -132,6 +132,108 @@ export const suite = {
       const m = criarMundo();
       const auto = carregarAutomation(m);
       t.check('P2: compraMinTier = A por omissão', auto.getConfig().compraMinTier === 'A');
+    }
+
+    /* =====================================================================
+     * ESPÓLIO (queixa: "quando recarrego, ele nao vende espolios na base")
+     * O valor NÃO é copiado: lê-se do `title` que o jogo desenha
+     * (jogo.js:6470-6472). O `n.vender` passa a conhecer o espólio; uma
+     * viagem SÓ por espólio continua proibida sem pressão de espaço.
+     * ===================================================================== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      // `vender` pende de `irBase` -> `manutencao` -> mestre `enabled` (TK-01, ver w10 V1).
+      auto.setConfig({ enabled: true });
+      m.montar('#local-nome', [m.el({ tag: 'span', label: 'local', textContent: 'Fonte' })]);
+      montarMochila(m, [{
+        id: 'esp:escudo-quebrado:37', raridade: '',
+        title: 'Escudo Quebrado ×37\nEspólio: o Lojista compra por 40 de ouro cada (1480 esta pilha).\nEmpilha até 1000 por espaço.',
+      }], 30);
+
+      const bag = auto.scanBag(true);
+      const esp = bag.items.find((i) => i.kind === 'espolio');
+      t.check('E1: valor unitário lido do título do jogo', !!esp && esp.valorUn === 40);
+      t.check('E1: valor da pilha lido do título', !!esp && esp.valor === 1480);
+      t.check('E1: quantidade lida da chave do slot', !!esp && esp.qty === 37);
+
+      const n = auto.necessidadesBase();
+      t.check('E1: com espólio na Fonte, vender é necessidade', n.vender === true);
+      t.check('E1: o motivo registado é espolio', !!n._venda && n._venda.motivo === 'espolio');
+      t.check('E1: valorEspolio exposto ao painel/decisão', !!n._venda && n._venda.valorEspolio === 1480);
+      t.check('E1: espólio SOZINHO não paga viagem de campo',
+        auto.motivosDeViagem(['vender'], n).length === 0);
+
+      // Longe da Fonte e sem itens: o espólio NÃO vira necessidade (nem dispara viagem).
+      m.montar('#local-nome', [m.el({ tag: 'span', label: 'local', textContent: 'Rio nível 25–35' })]);
+      const n2 = auto.necessidadesBase();
+      t.check('E2: longe da base e sem itens, espólio não vira necessidade', n2.vender === false);
+    }
+
+    /* ---- E3 - a conta do dono: valor do lote vs custo da viagem ---- */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      const caro = { _venda: { itens: 6, valor: 1000, valorEspolio: 0, mochilaQuaseCheia: false }, _custoIda: { ouro: 2000 } };
+      const paga = { _venda: { itens: 6, valor: 5000, valorEspolio: 0, mochilaQuaseCheia: false }, _custoIda: { ouro: 2000 } };
+      t.check('E3: 6 básicos que não cobrem a viagem NÃO pagam ida',
+        auto.motivosDeViagem(['vender'], caro, { venderMinItens: 6 }).length === 0);
+      t.check('E3: 6 itens que cobrem o custo PAGAM a ida',
+        auto.motivosDeViagem(['vender'], paga, { venderMinItens: 6 }).indexOf('vender') >= 0);
+      t.check('E3: mochila quase cheia paga a ida mesmo com valor baixo',
+        auto.motivosDeViagem(['vender'], { _venda: { itens: 1, valor: 10, mochilaQuaseCheia: true } }, { venderMinItens: 6 }).indexOf('vender') >= 0);
+      t.check('E3: sem custo medido mantém a regra antiga (não inventa bloqueio)',
+        auto.motivosDeViagem(['vender'], { _venda: { itens: 6, valor: 1, mochilaQuaseCheia: false } }, { venderMinItens: 6 }).indexOf('vender') >= 0);
+    }
+
+    /* =====================================================================
+     * BÁSICOS DA BUILD (queixa: "conta level 1, vender basico a rodo
+     * seria imbecil; no minimo tem que garantir os itens pro personagem")
+     * Com a build INCOMPLETA, as folhas da receita ficam guardadas mesmo
+     * com a montagem desligada. O excedente acima do tecto continua a sair.
+     * ===================================================================== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      auto.setConfig({ autoMontar: false, autoComprar: false });
+
+      montarMochila(m, [{ id: '1001~C', raridade: 'basico' }], 30);
+      const bag = auto.scanBag(true);
+      t.check('B1: build incompleta sem equipamento', auto.buildIncompleta(bag) === true);
+      const acts = auto.planBag(bag).acts;
+      const a = acts.find((x) => x.it.id === '1001~C');
+      t.check('B1: básico da receita PROTEGIDO com montagem desligada', !!a && a.action === 'PROTEGER');
+
+      // 1005 não serve a build: continua a ir ao Lojista (não se travou o Lojista).
+      const acts2 = auto.planBag((montarMochila(m, [{ id: '1005~C', raridade: 'basico' }], 30), auto.scanBag(true))).acts;
+      t.check('B2: básico que NÃO serve a build continua a ser vendido',
+        acts2.some((x) => x.it.id === '1005~C' && x.action === 'VENDER_LOJISTA'));
+
+      // Excedente: a receita guarda até ao tecto; o resto vai ao Lojista.
+      const muitos = Array.from({ length: 9 }, () => ({ id: '1001~C', raridade: 'basico' }));
+      const acts3 = auto.planBag((montarMochila(m, muitos, 30), auto.scanBag(true))).acts;
+      const prot = acts3.filter((x) => x.it.id === '1001~C' && x.action === 'PROTEGER').length;
+      const vend = acts3.filter((x) => x.it.id === '1001~C' && x.action === 'VENDER_LOJISTA').length;
+      t.check('B3: guarda o tecto da receita e vende o excedente', prot > 0 && vend > 0);
+    }
+
+    /* =====================================================================
+     * CARTAS: opt-in ESTRITO. Sem `=== true` não se abre, não se encaixa,
+     * não se selecciona nada. Uma chave ausente já não conta como ligada.
+     * ===================================================================== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      auto.setConfig({ cartasEncaixar: false, cartasAbrir: false });
+      const a = await auto.encaixarCartas();
+      const b = await auto.abrirCartasMisteriosas();
+      t.check('C1: encaixar recusa com opt-in desligado', a.ok === false && /opt-in/.test(String(a.motivo)));
+      t.check('C1: abrir recusa com opt-in desligado', b.ok === false && /opt-in/.test(String(b.motivo)));
+      t.check('C1: nada foi clicado no Ornn/cartas', m.cliqueDe('carta-abrir') === false && m.cliqueDe('carta-encaixar') === false);
     }
   },
 };

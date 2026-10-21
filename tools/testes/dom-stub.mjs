@@ -694,7 +694,7 @@ export function montarMochila(mundo, slots, cap) {
     tag: 'button',
     label: 'mochila:' + s.id,
     className: 'slot ' + (s.raridade || 'basico'),
-    attrs: { 'data-id': s.id, 'data-dica': s.dica || '' },
+    attrs: { 'data-id': s.id, 'data-dica': s.dica || '', ...(s.title ? { title: s.title } : {}) },
   }));
   mundo.montar('#janela-bolsa', [mundo.el({ label: 'janela-bolsa', hidden: true })]);
   mundo.montar('#mochila', [mundo.el({ label: 'mochila', children: filhos })]);
