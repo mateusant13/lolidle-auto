@@ -142,7 +142,7 @@ switches: 'interruptores',
   /** Eventos de ROTINA que não dizem nada ao jogador (subir habilidade, repor a barra, golpe a
    *  golpe do chefe, resumo de grupo). O histórico é do bolso e da vida, não da automação. */
   const RUIDO_HIST = new Set([
-    'habilidades', 'rotacao', 'skills', 'barra', 'ofertas',
+    'habilidades', 'rotacao', 'skills', 'barra', 'ofertas', 'regioes',
     'evento:habilidade', 'evento:grupo', 'evento:efeito',
     'evento:chefeGolpe', 'evento:chefeCarrega', 'evento:chefeInterrompido',
   ]);
@@ -2441,7 +2441,13 @@ switches: 'interruptores',
         : '<p class="vazio">O painel de atributos do jogo ainda não está na página. Abra a aba "Atributos" no jogo e volte aqui.</p>'));
 
     const modelos = meta.modelos || null;
-    const dica = meta.dicaAtributos || null;
+    // `DICA_ATRIBUTOS` do jogo é um MAPA campeão -> frase (inject.js:464), não uma frase. Sem
+    // isto a GUI mostrava "[object Object]" (visto ao vivo 2026-10-21).
+    const dicaMapa = meta.dicaAtributos || null;
+    const nomeCh = String((identidade() || {}).nome || '').toLowerCase();
+    const dica = !dicaMapa ? null
+      : (typeof dicaMapa === 'string' ? dicaMapa
+        : (dicaMapa[nomeCh] || dicaMapa[Object.keys(dicaMapa).find((k) => nomeCh.includes(String(k).toLowerCase()))] || null));
     const blocoModelo = '<p class="hint">' + (modelos ? Object.keys(modelos).map((k) => '<b>' + esc(modelos[k].nome || k) + '</b>: ' + esc(Object.keys(modelos[k].pesos || {}).map((p) => p + ' ' + modelos[k].pesos[p]).join(', '))).join(' · ') : 'Modelo equilibrado.') + '</p>';
 
     const st = ler('readStats', {}) || {};
@@ -3070,6 +3076,9 @@ switches: 'interruptores',
     if (!h.length) { h = farm().log || []; fonte = 'sessão atual'; }
     // Ruído de rotina não entra no histórico: o jogador quer ver o que mexeu no bolso ou na vida.
     h = h.filter((e) => !RUIDO_HIST.has(e && e.type));
+    // A vigia do mercado gravava cada passagem (2 s antes da correcção de 2026-10-21) e o
+    // historico ficou com milhares de "mercado: watch". Nao se mostra o que nao mudou nada.
+    h = h.filter((e) => !(e && e.type === 'mercado' && (e.acao === 'watch' || e.acao === 'watch-travada')));
     const abates = h.filter((e) => e.type === 'evento:abate');
     const ouro = abates.reduce((s, e) => s + (Number(e.ouro) || 0), 0);
     const xp = abates.reduce((s, e) => s + (Number(e.xp) || 0), 0);
