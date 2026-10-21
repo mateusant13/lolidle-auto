@@ -72,6 +72,9 @@ import { suite as suiteTarefaBanner } from './tarefa-banner.test.mjs';
 // TK-06: BUILD POR BEAM SEARCH + CACHE + ORÇAMENTO (pedido do Lead 2026-10-19).
 import { suite as suiteBuildBeam } from './build-beam.test.mjs';
 import { suite as suiteMotorMatematica } from './motor-matematica.test.mjs';
+// QUEIXAS DE 2026-10-21: diaria pronta recebida em qualquer lugar, escala real das cartas,
+// switches opt-in + migracao ver:3, factor de anuncio 0.90 e piso de compra tier A.
+import { suite as suiteFix20261021 } from './fix-2026-10-21.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -102,6 +105,7 @@ const SUITES = [
   suiteTarefaBanner,
   suiteBuildBeam,
   suiteMotorMatematica,
+  suiteFix20261021,
 ];
 const checks = [];
 const notas = [];

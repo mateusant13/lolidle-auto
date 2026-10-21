@@ -135,16 +135,28 @@
     // em Runeterra e nas dungeons a poção é por LIMIAR de vida, porque nesses sítios a cura
     // é 30%, a exaustão é 6 s e a cura das habilidades cai para 65% (motor.js:1390).
     pocaoSmart: true,
-    // CARTAS (mecânica do jogo, motor.js:143-215): abrir as misteriosas é grátis em qualquer
-    // sítio; encaixar no Ornn é grátis e 1 por item. Ligadas por omissão, como o resto do
-    // auto-play. Vender cartas NÃO tem switch (é aposta: o mercado paga mais que o Lojista).
-    cartasAbrir: true,
-    cartasEncaixar: true,
+    // CARTAS (mecânica do jogo, motor.js:143-215). ORDEM DO DONO (2026-10-21, verbatim):
+    // "meu boneco ta colocando carta no rabadon, sendo que eu nao mandei habilitar isso no meu".
+    // -> os dois switches de cartas passam a nascer DESLIGADOS (opt-in, como o Ornn). O default
+    // era `true` e a chave `!== false` fazia uma config ANTIGA (sem a chave) ficar ligada sem
+    // ninguém pedir; ver a migração `ver: 3` mais abaixo, que desliga o que ficou gravado.
+    // `cartaMinRaridade`: 1=básica, 2=rara, 3=lendária. Uma carta básica vale +2% (motor,
+    // `somaCartas`) e QUEIMA o espaço do item (tirar custa 10k/100k/1M) — por omissão só se
+    // gasta rara ou melhor.
+    cartasAbrir: false,
+    cartasEncaixar: false,
+    cartaMinRaridade: 2,
     // FARM: desligado, o boneco não viaja nem farma (fica a base/manutenção a correr).
     autoFarm: true,
     // ITENS QUE O DONO NUNCA QUER COMPRAR (pedido de 2026-10-21: "nao tenta comprar lichbane").
     // A build pode usá-los se já os tiver; a COMPRA (mercado/loja) ignora-os sempre.
     naoComprar: ['3100'],
+    // PISO DE QUALIDADE PARA GASTAR OURO (ordem do dono, 2026-10-21, verbatim): "ele quer gastar
+    // recurso em um item tier b". O caminho de compra ordenava só por PREÇO (a oferta mais barata
+    // é quase sempre C/B, motor.js:180-186) e comprava tier B. Agora a qualidade é PORTEIRO:
+    // 'A' = só A/S/SS. Oferta sem qualidade legível não é bloqueada (não se inventa tier).
+    // A vigia do mercado tem o seu próprio (`mercadoWatch.tierMin`), respeitado à parte.
+    compraMinTier: 'A',
     ultWaveSeg: 12,           // segundos p/ 3 waves: acima disso a fase e DIFICIL (a ultimate so entra aí/chefe)
     killLentoMs: 3500,        // tempo mediano entre kills acima disso = área difícil (fallback sem burst)
     testeForcar: false,       // permite iniciar teste em região letal (default: recusa)
@@ -362,14 +374,26 @@
           items.push({ kind: 'espolio', id: espId, qty: parseNum(qty), el: null });
           continue;
         }
-        const [baseRaw, qual] = id.split('~');
-        const base = String(baseRaw || '').replace(/\+.*$/, '');   // o id vem "<base>+<refino>~<qual>"
+        // A chave do jogo é `<base>[+refino][#carta]~<qual>` (a MESMA de `readEquip`,
+        // automation.js:1222-1230). Aqui o `#carta` NÃO era separado: um item COM carta e refino
+        // 0 virava base `3089#ataque1` e deixava de casar com a build/duplicados — podia ser
+        // vendido por não parecer o item que é. E qualidade ausente: o motor diz B
+        // (`qualidadeDe`, motor.js:170), não C — o C fazia um item sem marca parecer pior.
+        const [baseRaw, qualRaw] = id.split('~');
+        const base = String(baseRaw || '').replace(/#.*$/, '').replace(/\+.*$/, '');
+        const qual = (() => {
+          const q = String(qualRaw || '').toUpperCase();
+          // SEM sufixo `~qual` = B (default do motor, `qualidadeDe`). COM sufixo ilegível ou '?'
+          // = DESCONHECIDA, e desconhecida NUNCA é tratada como C/B (é `PROTEGER`).
+          if (!q) return 'B';
+          return QUAL.includes(q) ? q : '?';
+        })();
         const cls = String(s.className || '');
         const rar = cls.includes('lendario') ? 'lendario' : cls.includes('epico') ? 'epico' : cls.includes('basico') ? 'basico' : '?';
         const dica = s.getAttribute('data-dica') || '';
         const vendaM = dica.match(/Vale\s+([\d.,]+\s*[kKmM]?)\s+de ouro no Lojista/i);
         items.push({
-          kind: 'item', base, qual: qual || 'C', raridade: rar, id, refino: (id.match(/\+(\d+)/) || [])[1] ? +(id.match(/\+(\d+)/)[1]) : 0,
+          kind: 'item', base, qual, raridade: rar, id, refino: (id.match(/\+(\d+)/) || [])[1] ? +(id.match(/\+(\d+)/)[1]) : 0,
           vendaLojista: vendaM ? parseNum(vendaM[1]) : null, dica, stats: parseDica(dica),
         });
       }
@@ -591,6 +615,9 @@
       // ALINHADO com o `venderBase` (que agora só protege S+): antes mandava épico A+ para o cofre
       // enquanto o ator podia vendê-lo — risco de venda não intencional.
       else if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('S')) acts.push({ action: 'GUARDAR_COFRE', it, why: `épico ${it.qual} (S+), só pro cofre` });
+      // ÉPICO A+ DA MINHA CLASSE: "poderia ser usável" (dono, 2026-10-21) — não se vende, não se
+      // anuncia, fica na mochila para o equipador. Mesma regra do lendário A+.
+      else if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('A') && classeItem(it.base) === classeCampeao()) acts.push({ action: 'PROTEGER', it, why: `épico ${it.qual} da minha classe: utilizável, nunca se vende` });
       // ============ REGRA DO DONO (verbatim, 2026-10-14) ============
       // "item basico, epico, duplicado: vende no lojista. a nao ser q seja tier s mais."
       // As excepções S+ já estão tratadas ACIMA (lendário A/S/SS -> PROTEGER; épico A/S/SS
@@ -1893,12 +1920,12 @@
   /** MIGRACOES DO CFG (ramo w10): cada entrada diz de que valor PARA que valor migrar. Nada e
    *  aplicado se o valor do dono for DIFERENTE do default velho (nunca se pisa uma escolha dele). */
   /** Versao do esquema do cfg (ramo w10) — gravada no arranque para a migracao ser ONE-SHOT. */
-const CFG_VER = 2;
+const CFG_VER = 3;
   /** MARCADOR DISCRIMINANTE DE BUILD (REGRA Nº 4). Exportado em `window.__lolidleAuto.BUILD`:
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-21f';
+  const BUILD = '2026-10-21g';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -1906,6 +1933,15 @@ const CFG_VER = 2;
       porquê: 'a unica accao que nascia DESLIGADA era o refino; o dono mandou ligar por defeito' },
     { ver: 2, chave: 'champAlvo', de: 'yasuo', para: ['yasuo', 'ryze'],
       porquê: 'o dono passou a jogar de Ryze (17/10/2026); a lista de alvos passa de "so o Yasuo" para incluir o Ryze, so migra quem tinha o default antigo' },
+    // ORDEM DO DONO (2026-10-21): ele não pediu o encaixe de cartas e o boneco pôs uma carta
+    // básica num Rabadon. A chave foi gravada como `true` pelo arranque (que persiste os defaults)
+    // sem ele tocar em nada — logo o valor guardado é o DEFAULT VELHO e migra-se para `false`.
+    // Se ele voltar a ligar na GUI, fica `false`→`true` guardado e a migração (one-shot por
+    // `cfgVer`) já não corre outra vez.
+    { ver: 3, chave: 'cartasEncaixar', de: true, para: false,
+      porquê: 'cartas: encaixar no Ornn passa a ser opt-in (o dono nao autorizou; carta basica num Rabadon)' },
+    { ver: 3, chave: 'cartasAbrir', de: true, para: false,
+      porquê: 'cartas: abrir as misteriosas tambem opt-in, pela mesma ordem (o dono nao habilitou cartas)' },
   ];
 
   const NIVEL_DIF_FB = { livre: 4, danoMonstro: 0.35, maxDanoMonstro: 5, danoJogador: 0.12, minDanoJogador: 0.25 };
@@ -3423,7 +3459,12 @@ const CFG_VER = 2;
   /** Cadência com variação: um intervalo de 30 min cravado é uma assinatura. ±18%. */
   const cadencia = (ms) => Math.max(1000, Math.round(Number(ms || 0) * (0.82 + Math.random() * 0.36)));
   /** Preço de anúncio: ~90% do menor, com ±2 pontos de variação (não é um carimbo). */
-  const fatorAnuncio = () => 0.88 + Math.random() * 0.04;
+  // 90% do mais barato do MESMO TIER (ordem do dono, 2026-10-21, verbatim: "e 90% do mais barato
+  // do mesmo tier, tem que ser"). ERA 0,88–0,92 aleatório: o preço anunciado não era o que ele
+  // mandou e não havia como provar de onde veio. Fixo em 0,90 (o jitter de ±2% não comprava
+  // camuflagem nenhuma e tornava o número irreprodutível). O tier de referência é responsabilidade
+  // do chamador (`anunciarLendarios`/`planejarMercado`), que só compara com a MESMA qualidade.
+  const fatorAnuncio = () => 0.90;
 
   /** Pede ao JOGO para falar com o NPC pelo NOME.
    *  O jogo tem um listener único em `#npcs` (`jogo.js:5546`) que faz
@@ -3784,6 +3825,13 @@ const CFG_VER = 2;
       const qual = mq[1].toUpperCase();
       const lend = /lend[áa]rio/i.test(dica), epi = /[ée]pico/i.test(dica);
       if (lend && lendaBuild.has(String(puro))) { regras.protegidos.push({ id, motivo: 'lendário da build da classe' }); continue; }
+      // LENDÁRIO A+ NUNCA VAI AO LOJISTA (qualquer classe). ORDEM DO DONO (2026-10-21, verbatim:
+      // "é um item tier A que é da minha classe, que poderia ser usavel"). O `planBag` já o marca
+      // PROTEGER (automation.js:590) e o actor vendia-o na MESMA passagem — planeador e actor a
+      // discordarem. Um A/S/SS de lendário fica na mochila; vende-se no MERCADO se for o caso.
+      if (lend && qIdx(qual) >= qIdx('A')) { regras.protegidos.push({ id, motivo: `lendário ${qual}: A+ nunca vai ao Lojista` }); continue; }
+      // ÉPICO DA MINHA CLASSE A+ também não: "poderia ser usável" é a mesma regra do lendário.
+      if (epi && qIdx(qual) >= qIdx('A') && classeItem(puro) === classeCampeao()) { regras.protegidos.push({ id, motivo: `épico ${qual} da minha classe: utilizável, não vai ao Lojista` }); continue; }
       // L4 (regra do dono): LENDÁRIO DUPLICADO com o mercado SATURADO fica na MOCHILA — nunca ao
       // Lojista nem anunciado. A contagem de duplicados é o `dups` do topo desta função (3032).
       if (lend && mercadoSaturado().sat) {   // L4: mercado saturado -> o lendario NAO vai ao Lojista
@@ -4285,7 +4333,14 @@ const CFG_VER = 2;
       n.tarefa = cfg.autoTarefa !== false
         && (!!st.pronta || (!st.tem && (Date.now() - _ultimaTarefa) > cadencia(300000)));
       n._tarefa = { tem: !!st.tem, pronta: !!st.pronta, esperaMs: Date.now() - _ultimaTarefa };
-    } catch { n.tarefa = false; }
+      // DIÁRIAS — ACEITAR no Capitão. OPORTUNIDADE (não paga a viagem): aproveita uma ida que já
+      // ia acontecer, com cadência de 30 min. RECEBER as prontas não depende disto: o
+      // `checarDiaria` do tick clica o rastreador em qualquer lugar (`receberDiariasProntas`).
+      // Antes, aceitar/entregar diárias só acontecia dentro do passo `tarefa`, e só quando NÃO
+      // havia tarefa pronta — com tarefa em andamento nunca corria.
+      n.diaria = cfg.autoTarefa !== false && (Date.now() - _ultimaDiaria) > cadencia(1800000);
+      n._diaria = { aceites: diariaEstado(), esperaMs: Date.now() - _ultimaDiaria };
+    } catch { n.tarefa = false; n.diaria = false; }
     // PONTOS DE SKILL: a necessidade é "há pontos por gastar" (antes bastava `readSkills().pontos`,
     // que já era isto — mantido).
     try { n.hab = podeFazer('hab').pode && readSkills().pontos > 0; } catch { n.hab = false; }
@@ -4368,7 +4423,7 @@ const CFG_VER = 2;
     const haPrimaria = NECESSIDADES_PRIMARIAS.some((k) => n[k] === true);
     // A estreia do cofre (sem leitura nenhuma ainda) sobrevive a falta de primaria: e o que faz
     // o painel ter dados. Com leitura ja gravada, volta a ser oportunidade como as outras.
-    if (!haPrimaria) { n.mercado = false; n.comprar = false; n.refino = false; n.montar = false; if (_ultimoLerCofre || _cofreAt) n.lerCofre = false; }
+    if (!haPrimaria) { n.mercado = false; n.comprar = false; n.refino = false; n.montar = false; n.diaria = false; if (_ultimoLerCofre || _cofreAt) n.lerCofre = false; }
     n._custoIda = custo;
     // NECESSIDADES QUE FALHARAM ficam SILENCIOSAS (ver `marcarIndisponivel`): é isto que
     // impede o ciclo de recall quando a loja não tem o que ele pede.
@@ -4399,6 +4454,7 @@ const CFG_VER = 2;
     ['repor', 'reposto', () => reporPocoes()],
     ['tarefa', 'tarefas', async () => {
       const st = tarefaEstado() || {};
+      const r = {};
       if (st.pronta) {
         // TK-01: o banner `#rastreio-tarefa.pronta` é um atalho que abre o diálogo do Capitão
         // directamente (jogo.js:6407). Tenta o banner primeiro; se clicar, o diálogo já está aberto
@@ -4410,12 +4466,22 @@ const CFG_VER = 2;
         // (o `fecharJanelas()` do caminho normal FECHARIA o diálogo que o banner abriu). O
         // `clicarTarefaProntaEAbrir` só devolve `aberto:true` com a janela do NPC VISÍVEL: o
         // clique no banner inicia a CAMINHADA até ao Capitão, não abre logo o diálogo.
-        const r = { entregou: await entregarTarefa({ dialogoAberto: banner && banner.aberto === true }), banner };
-        if (!(tarefaEstado() || {}).tem) r.nova = await aceitarTarefa();
-        return r;
+        r.entregou = await entregarTarefa({ dialogoAberto: banner && banner.aberto === true });
+        r.banner = banner;
       }
-      return { diaria: await aceitarDiarias(), nova: await aceitarTarefa() };
+      // DIÁRIAS SEMPRE — o defeito era esta linha estar dentro do `return` do ramo "sem tarefa
+      // pronta" (dono, 2026-10-21: "missao diaria completa e o boneco nao conclui. so conclui a
+      // missao padrao"). Com uma tarefa EM ANDAMENTO o `n.tarefa` é falso e o passo nem corria;
+      // com tarefa PRONTA entregava a tarefa e saía sem tocar nas diárias. O Capitão entrega as
+      // prontas ao abrir a opção e aceita as disponíveis de hoje no mesmo diálogo (jogo.js:5458).
+      r.diaria = await aceitarDiarias();
+      if (!(tarefaEstado() || {}).tem) r.nova = await aceitarTarefa();
+      return r;
     }],
+    // O passo `diaria` próprio existe para a oportunidade de ACEITAR quando a tarefa ainda está a
+    // meio (o `n.diaria` tem cadência própria). Receber as prontas não passa por aqui: é o
+    // `checarDiaria` do tick, que funciona em qualquer lugar.
+    ['diaria', 'diarias', () => aceitarDiarias()],
     ['hab', 'habs', () => subirHabilidades()],
     ['atrib', 'atrib', () => distribuirAtributos()],
     ['equip', 'equip', () => equiparMelhores()],
@@ -4613,7 +4679,7 @@ const CFG_VER = 2;
         const base = String(baseDoItemMercado(o.item));
         const it = infoItem(base);
         const partes = String(o.item).split('~');
-        return { id: String(o.id), base, nome: (it && it.nome) || base, qual: partes[1] || null,
+        return { id: String(o.id), base, nome: (it && it.nome) || base, qual: partes[1] || null, item: String(o.item),
           preco: o.preco != null ? Number(o.preco) : null, raridade: (it && it.raridade) || null, txt: null };
       };
       const minhas = todas.filter((o) => o.minha === true).map(mapear);
@@ -4794,6 +4860,65 @@ const CFG_VER = 2;
     return { tem: true, pronta: bt.classList.contains('pronta'), texto: (bt.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 140) };
   }
 
+  // ---------------------------------------------------------------- MISSÕES DIÁRIAS
+  /** Rastreadores das duas diárias (jogo.js:6784-6795): `hidden` = não aceite; `.pronta` =
+   *  1000/1000 feitos ("Missão diária completa! Clique aqui para receber o prêmio."); `.fora` =
+   *  o progresso não corre no sítio onde o boneco está. */
+  const CAMPOS_DIARIA = { rift: '#rastreio-diaria-rift', runeterra: '#rastreio-diaria' };
+  function diariaEstado() {
+    const out = [];
+    for (const tipo of Object.keys(CAMPOS_DIARIA)) {
+      const el = document.querySelector(CAMPOS_DIARIA[tipo]);
+      if (!el || el.hidden) continue;
+      out.push({
+        tipo, pronta: el.classList.contains('pronta'), fora: el.classList.contains('fora'),
+        texto: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+      });
+    }
+    return out;
+  }
+  /** RECEBE as diárias PRONTAS.
+   *
+   *  DEFEITO (dono, 2026-10-21, verbatim: "missao diaria completa e o boneco nao conclui. so
+   *  conclui a missao padrao"): o único caminho para as diárias era `acaoBase['tarefa']`, e lá
+   *  estavam no ramo `else` do `if (st.pronta)` — ou seja, só corriam quando NÃO havia tarefa
+   *  pronta. Com uma tarefa em andamento a necessidade `n.tarefa` é falsa, o passo não corria e a
+   *  diária ficava completa para sempre, sem prémio.
+   *
+   *  FONTE (jogo.js:5480-5495 e 6402-6405): o prémio é entregue por `/api/diaria` e o clique no
+   *  próprio RASTREADOR chama `receberDiaria` — "o prêmio sai em qualquer lugar" (jogo.js:5477).
+   *  Logo não é preciso Fonte nem Capitão: clica-se o rastreador onde o boneco estiver. */
+  async function receberDiariasProntas() {
+    const prontas = diariaEstado().filter((d) => d.pronta);
+    if (!prontas.length) return { ok: true, recebeu: [] };
+    const recebeu = [];
+    for (const d of prontas) {
+      const el = document.querySelector(CAMPOS_DIARIA[d.tipo]);
+      if (!el) continue;
+      el.click();
+      // O prémio vem do servidor; o rastreador deixa de estar `.pronta` quando ele responde.
+      for (let i = 0; i < 20; i++) {
+        await esperar(200);
+        const cur = document.querySelector(CAMPOS_DIARIA[d.tipo]);
+        if (!cur || cur.hidden || !cur.classList.contains('pronta')) break;
+      }
+      recebeu.push(d.tipo);
+    }
+    if (recebeu.length) logEvent('diaria', { recebeu, textos: prontas.map((p) => p.texto) });
+    return { ok: recebeu.length > 0, recebeu };
+  }
+  let _diariaAt = 0;
+  let _ultimaDiaria = 0;      // última visita ao Capitão para ACEITAR diárias (cadência própria)
+  /** Tick do auto-play: diária pronta = dinheiro parado, e recebe-se em qualquer sítio. */
+  async function checarDiaria() {
+    if (pausado || ocupado) return;
+    if (Date.now() - _diariaAt < 15000) return;
+    _diariaAt = Date.now();
+    if (!diariaEstado().some((d) => d.pronta)) return;
+    ocupado = true;
+    try { await receberDiariasProntas(); } catch (e) { logIssue('diaria:receber', { erro: String(e) }); } finally { ocupado = false; }
+  }
+
   /** Clica no banner `#rastreio-tarefa` quando visível e `.pronta` (TK-01).
    *  O jogo mostra "Tarefa pronta! Clique aqui para falar com o Capitão." (jogo.js:6774-6783)
    *  e o click handler (jogo.js:6407) chama `falarCom('Capitão da Legião')` — mas só na base.
@@ -4915,9 +5040,12 @@ const CFG_VER = 2;
   }
 
   /** Recebe as diárias prontas e aceita as disponíveis no Capitão (na Fonte).
-   *  Fluxo: NPC → `[data-palavra="diaria"]` → o jogo premia as prontas e mostra as aceitáveis. */
+   *  Fluxo: NPC → `[data-palavra="diaria"]` → o jogo premia as prontas e mostra as aceitáveis
+   *  (jogo.js:5458-5462). Serve para ACEITAR; as prontas também são recebidas pelo rastreador em
+   *  qualquer lugar (`checarDiaria`/`receberDiariasProntas`), que é o caminho que faltava. */
   async function aceitarDiarias() {
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
+    _ultimaDiaria = Date.now();
     fecharJanelas(); await humano(250);
     if (!(await abrirNpc('Capitão da Legião', '#janela-npc [data-palavra="diaria"]'))) return { ok: false, motivo: 'sem capitao' };
     const btn = await waitForNpc('#janela-npc [data-palavra="diaria"]', 4000);
@@ -4926,9 +5054,12 @@ const CFG_VER = 2;
     const btns = [...document.querySelectorAll('[data-aceitar-diaria]')].filter((b) => !b.disabled);
     const ks = btns.map((b) => b.dataset.aceitarDiaria);
     for (const b of btns) { b.click(); await humano(450); }
-    logEvent('diaria', { aceitou: ks });
+    // "Feita hoje ✓" (jogo.js:5470) = não há nada para aceitar desta; marca-se para não voltar a
+    // abrir o diálogo por nada (o `n.diaria` tem cadência de 30 min).
+    const feitas = [...document.querySelectorAll('.diaria-feita')].map((e) => (String(e.parentElement?.className || '') + ' ' + String(e.textContent || '')).trim());
+    logEvent('diaria', { aceitou: ks, feitasHoje: feitas.length });
     fecharJanelas();
-    return { ok: true, aceitou: ks, quantas: ks.length };
+    return { ok: true, aceitou: ks, quantas: ks.length, feitasHoje: feitas.length };
   }
 
   /** Retira do cofre (ABERTO) o melhor item por nome/base. */
@@ -4981,6 +5112,9 @@ const CFG_VER = 2;
       const rar = it ? (it.raridade || (it.lendario ? 'lendario' : 'basico')) : rarDe(base);
       if (rar !== 'basico' && rar !== 'epico') continue;            // LENDÁRIO NUNCA é lixo
       if (qIdx(s.qual) >= qIdx('S')) continue;                      // S/SS intocáveis
+      // ÉPICO A+ DA MINHA CLASSE: "poderia ser usável" (dono, 2026-10-21). O cofre é lixo só
+      // para básico/epico <A; um épico A/S da minha classe não sai de lá para o Lojista.
+      if (rar === 'epico' && qIdx(s.qual) >= qIdx('A') && classeItem(base) === classeCampeao()) continue;
       if (ehEspecialMeu(base) || especiais.has(base)) continue;     // tratamento especial
       if (ehReservado(base) || reserv.has(base)) continue;          // reservado p/ a troca por fase
       if (ideal.has(base)) continue;                                // peça FINAL da build: nunca
@@ -6304,7 +6438,7 @@ const CFG_VER = 2;
       if (!mk || mk.preco == null || o.preco == null) { if (!mk) acoes.push({ id: o.id, nome: o.nome, qual: o.qual, acao: 'manter (sem comparativo no mercado)' }); continue; }
       const alvo = Math.max(1, Math.round(mk.preco * fatorAnuncio()));
       // SÓ SOBE — NUNCA abaixa o preço de uma oferta viva (o dono quer CARO; o mínimo do jogo é lixo)
-      if (o.preco < alvo * 0.95) acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, de: o.preco, para: alvo, acao: 'reanunciar (subir p/ 90% do menor)' });
+      if (o.preco < alvo * 0.95) acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, item: o.item || null, de: o.preco, para: alvo, acao: 'reanunciar (subir p/ 90% do menor)' });
       else acoes.push({ id: o.id, nome: o.nome, qual: o.qual, acao: 'ok' });
     }
     const plano = { at: Date.now(), mercado: mercado.length, minhas: minhas.length, saturado: minhas.length >= 10, acoes, mercadoPrecos: mercado };
@@ -6335,8 +6469,21 @@ const CFG_VER = 2;
     return null;
   }
 
-  /** Anuncia um item da mochila pelo id-base (aba Vender), com preço. */
-  async function anunciarItemPorBase(base, preco) {
+  /** Anuncia um item da mochila (aba Vender), com preço.
+   *  `alvo` = id EXATO do item (`<base>[+refino][#carta]~<qual>`).
+   *
+   *  DEFEITO QUE ISTO CORRIGE (dono, 2026-10-21, verbatim: "meu boneco vendeu um item tier a no
+   *  mercado... é um item tier A que é da minha classe"): a versão antiga escolhia o PRIMEIRO slot
+   *  com o ÍCONE daquele base. Com duas cópias na mochila (B e A), o `anunciarLendarios` decidia
+   *  sobre a B e o clique anunciava a A que estava ao lado — e ao preço calculado para a B.
+   *  Prova de qual cópia ficou seleccionada: o jogo escreve o id EXACTO em
+   *  `#mj-minimo[data-chave="<item>|<moeda>"]` (jogo.js:2700, `refItem = estado.mochila[vendendo]`).
+   *  Se o id pedido não for o seleccionado, passa-se ao slot seguinte; se nenhum casar, NÃO anuncia.
+   *
+   *  PORTEIRO DE TIER (defesa em profundidade): nenhuma cópia A/S/SS sai daqui, seja qual for o
+   *  chamador. A regra vive no `planBag`/`anunciarLendarios`, mas um caminho novo não pode voltar a
+   *  deitar um A no mercado. */
+  async function anunciarItemPorBase(base, preco, alvo) {
     if (ehLendarioDaBuild(base)) return { ok: false, motivo: 'lendario da build da classe, nao anuncia' };   // REGRA DO DONO
     // PRIORIDADE EXTREMA (3031/3089, automation.js:47): nunca anunciado, NEM DUPLICADO (regra do dono).
     if (ehPrioridadeExtrema(base)) { const e = prioExtremaDe(base); return { ok: false, motivo: `PRIORIDADE EXTREMA (${e.motivo}), nao anuncia [${e.fonte}]` }; }
@@ -6344,12 +6491,30 @@ const CFG_VER = 2;
     if (m.hidden) { press('j'); await humano(500); }
     m.querySelector('[data-aba="vender"]')?.click();
     await humano(380);
-    const b = [...m.querySelectorAll('[data-escolher]')].find((s) => {
+    const iguais = (a, b) => {
+      if (!b) return true;                          // sem alvo: comportamento antigo (1.º do base)
+      const A = parseSlotId(a), B = parseSlotId(b);
+      return String(A.base) === String(B.base) && A.refino === B.refino && A.qual === B.qual;
+    };
+    const slots = [...m.querySelectorAll('[data-escolher]')].filter((s) => {
       const img = s.querySelector('img')?.getAttribute('src') || '';
       return img.includes('/' + base + '.');
     });
-    if (!b) return { ok: false, motivo: 'sem ' + base + ' na mochila' };
-    b.click(); await humano(320);
+    if (!slots.length) return { ok: false, motivo: 'sem ' + base + ' na mochila' };
+    let b = null, escolhido = null;
+    for (const s of slots) {
+      s.click(); await humano(240);
+      // o id da cópia seleccionada (pode demorar um render a aparecer)
+      let chave = '';
+      for (let i = 0; i < 6 && !chave; i++) { chave = String(q1('#mj-minimo')?.dataset?.chave || '').split('|')[0] || ''; if (!chave) await esperar(120); }
+      if (iguais(chave, alvo)) { b = s; escolhido = chave || null; break; }
+    }
+    if (!b) return { ok: false, motivo: 'a copia pedida nao esta na mochila (nao se anuncia outra)', alvo: alvo || null, candidatos: slots.length };
+    // PORTEIRO: A/S/SS nunca vão ao mercado.
+    const q = parseSlotId(escolhido || alvo || '').qual;
+    if (QUAL.includes(q) && qIdx(q) >= qIdx('A')) return { ok: false, motivo: `tier ${q}: A+ nunca vai ao mercado`, tier: q, id: escolhido || alvo || null };
+    if (escolhido) logEvent('mercado', { acao: 'seleccionado', base, id: escolhido, alvo: alvo || null });
+    await humano(80);
     // ESPERA o painel de referência do jogo carregar (ele busca o preço no servidor)
     let min = minimoMercado();
     for (let i = 0; i < 14 && !min; i++) { await esperar(150); min = minimoMercado(); }
@@ -6386,7 +6551,7 @@ const CFG_VER = 2;
     }
     // 2) RE-ANUNCIA no alvo (aba Vender)
     for (const a of alvos) {
-      const r = await anunciarItemPorBase(a.base, a.para);
+      const r = await anunciarItemPorBase(a.base, a.para, a.item || (a.qual ? a.base + '~' + a.qual : null));
       exec.push({ nome: a.nome, qual: a.qual, de: a.de, para: a.para, feito: !!r.ok, motivo: r.motivo || null });
       await humano(420);
     }
@@ -8173,17 +8338,24 @@ const CFG_VER = 2;
         await cancelarOferta(epi.id); cancelados.push(epi.id); await humano(350);
       }
       const mk = mercado.filter((x) => String(x.base) === String(it.base) && x.preco > 0);
+      // REFERÊNCIA DO MESMO TIER, SÓ. ORDEM DO DONO (2026-10-21, verbatim): "e 90% do mais barato
+      // do mesmo tier, tem que ser". Havia um fallback (`mesmoTier.length ? mesmoTier : mk`) que,
+      // quando não havia oferta do MESMO tier, comparava com os outros tiers — um A caía ao preço
+      // do B/C mais barato. Sem referência do mesmo tier NÃO se inventa uma: usa-se o
+      // `precoSemComparavel` (regra do dono, 2026-10-14: "1,5."), nunca o preço de outro tier.
       const mesmoTier = mk.filter((x) => String(x.qual || '').toUpperCase() === String(it.qual || '').toUpperCase());
-      const base = (mesmoTier.length ? mesmoTier : mk).map((x) => x.preco).filter((p) => p > 0);
-      const menor = base.length ? Math.min(...base) : null;
-      // SEM REFERÊNCIA DE PREÇO NO MERCADO: PEDIDO DO DONO (2026-10-14, verbatim): "1,5." -> o
-      // preço passa a ser `cfg.precoSemComparavel` (1.500.000, configurável) em vez de PULAR o
-      // anúncio. O mínimo do jogo (`minimoMercado`, lido dentro do `anunciarItemPorBase`)
-      // continua a ser respeitado como PISO — é isso que impede vender pelo mínimo.
+      const precosTier = mesmoTier.map((x) => x.preco).filter((p) => p > 0);
+      const menor = precosTier.length ? Math.min(...precosTier) : null;
       const preco = menor ? Math.max(1, Math.round(menor * fatorAnuncio())) : Math.max(1, Math.round(numOr(cfg.precoSemComparavel, 1500000)));
-      // sem preço de referência: regista o preço mínimo no log (não duplica em anunciados)
-      const r = await anunciarItemPorBase(it.base, preco);
-      if (r.ok) anunciados.push({ base: it.base, qual: it.qual, preco }); else break;
+      // O ID EXACTO da cópia (`it.id`) viaja ate ao clique: sem isso o anuncio podia apanhar OUTRA
+      // cópia do mesmo base (ver `anunciarItemPorBase`).
+      const r = await anunciarItemPorBase(it.base, preco, it.id);
+      // O que o dono precisa de ver no histórico: DE ONDE veio o preço, quantas ofertas do tier
+      // havia, e qual cópia foi. É a prova do "90% do mais barato do mesmo tier".
+      logEvent('mercado', { acao: 'preco', base: it.base, id: it.id, qual: it.qual,
+        refTier: menor, ofertasTier: precosTier.length, ofertasBase: mk.length,
+        preco, regra: menor ? '90% do menor do MESMO tier' : 'sem comparavel do tier -> precoSemComparavel' });
+      if (r.ok) anunciados.push({ base: it.base, qual: it.qual, id: it.id, preco, refTier: menor, ofertasTier: precosTier.length }); else break;
     }
     if (Array.isArray(_ofertasCache)) for (const a of anunciados) if (a.preco) _ofertasCache.push({ id: 'novo:' + a.base + ':' + a.qual, base: a.base, qual: a.qual, raridade: 'lendario', preco: a.preco });
     logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length });
@@ -8220,33 +8392,58 @@ const CFG_VER = 2;
     }).filter((c) => c.id && c.qtd > 0);
     return { novas, lista };
   }
-  /** Peso de cada TIPO de carta para ESTE campeão, a partir dos stats lidos (`player`).
-   *  Não é gosto: o bónus é % do total, então o tipo que mais pesa é o atributo dominante. */
+  /** PERCENTAGEM que cada RARIDADE de carta dá. FONTE: `somaCartas` do motor (lida no jogo vivo,
+   *  `docs/relatorio-2026-10-21.md:48-49`): básica +2%, rara +5%, lendária +10% do atributo
+   *  TOTAL. Não é 1/2/3 — a versão anterior usava 1, 2 e 3, o que valorizava a básica 25% acima
+   *  do devido contra a rara e 67% acima contra a lendária. Foi assim que uma BÁSICA de AD ganhou
+   *  a uma rara/lendária na escolha do dono. */
+  const PCT_CARTA = { 1: 0.02, 2: 0.05, 3: 0.10 };
+  /** Raridade mínima que se gasta (`cfg.cartaMinRaridade`: 1 báscia, 2 rara, 3 lendária). */
+  const minCartaN = () => Math.max(1, Math.min(3, Number(cfg.cartaMinRaridade) || 2));
+  /** PESO de cada TIPO de carta para ESTE campeão — valor = pct(raridade) × total do atributo.
+   *
+   *  O bónus é percentagem do atributo TOTAL (motor `somaCartas`), logo o valor de uma carta é
+   *  `pct × (total do atributo) × (quanto vale 1 ponto desse atributo para mim)`. A versão
+   *  anterior (a) usava a raridade na escala 1/2/3 (o jogo paga 2/5/10) e (b) dava `vida: 1,6`
+   *  e `armadura/rm: 1,2` FIXOS — não olhava se o campeão tem 1.200 ou 6.000 de vida. Num
+   *  campeão AD, `ataque = 3,8` ganhava à rara de vida (3,2) e à lendária de poder (2,4).
+   *  Os factores abaixo só ORDENAM cartas; não são um modelo de dano. */
   function pesosCartas() {
     const p = (() => { try { return player() || {}; } catch { return {}; } })();
     const ap = Math.max(0, Number(p.poder) || 0), ad = Math.max(0, Number(p.dano) || 0);
-    const soma = ap + ad || 1;
-    let cdr = 0;
-    try { cdr = Number((readStats() || {}).cdr) || 0; } catch { cdr = 0; }
-    const domAp = ap / soma, domAd = ad / soma;
+    const vida = Math.max(0, Number(p.vidaEff || p.vida) || 0);
+    const arm = Math.max(0, Number(p.armadura) || 0), rm = Math.max(0, Number(p.rm) || 0);
+    const va = Math.max(0, Number(p.va) || 0);
+    const crit = Math.max(0, Number(p.critico) || 0);
+    const rv = Math.max(0, Number(p.rv) || 0);
+    const critMult = Math.max(0, (Number(p.critDano) || 1.75) - 1);
+    let cdr = 0; try { cdr = Number((readStats() || {}).cdr) || 0; } catch { cdr = 0; }
+    const magia = !!(META.champAtual && META.champAtual.magia);
+    // AP só rende em quem escala com AP; AD em quem escala com AD (o resto vale ~1/3).
+    const wAp = magia ? 1 : 0.35, wAd = magia ? 0.35 : 1;
     return {
-      poder: 0.8 + 3 * domAp,
-      ataque: 0.8 + 3 * domAd,
-      vida: 1.6,
-      armadura: 1.2,
-      rm: 1.2,
-      velocidade: 1.1 + 0.6 * domAd,
-      critico: 0.7 + 1.4 * domAd,
-      roubo: 0.9 + 0.8 * domAd,
-      vampirismo: 1.1 + 0.4 * domAd,
-      recarga: cdr < 0.4 ? 2 : 0.6,
+      poder: ap * wAp,
+      ataque: ad * wAd,
+      vida: vida * 0.10,                 // 1 ponto de vida ≈ 1/10 de 1 de dano
+      armadura: arm * 0.9,               // 1 ponto ≈ 1% de vida efectiva contra físico
+      rm: rm * 0.9,                      // idem contra mágico
+      velocidade: va * ad * 0.5,         // DPS ≈ va × AD
+      critico: crit * ad * critMult,     // crítico e roubo vêm em PONTOS (não em %)
+      roubo: rv * ad,
+      vampirismo: rv * ad,
+      recarga: cdr < 0.4 ? (ap * wAp + ad * wAd) * 0.35 : 0,   // tecto do motor: 0,4
     };
   }
-  /** A melhor carta disponível: raridade × peso do tipo. `tipo` sai do id (`ataque1` -> ataque). */
-  function melhorCartaDisponivel(lista) {
+  /** A melhor carta disponível: `pct(raridade) × peso do tipo`. `tipo` sai do id (`ataque1` ->
+   *  ataque). `minN` filtra a raridade mínima que o dono aceita gastar.
+   *  Tipo DESCONHECIDO vale 0 (não 1): se o jogo mudar os nomes, não se gasta nada errado — a
+   *  escolha fica vazia e o encaixe não acontece (melhor não gastar do que gastar ao calhas). */
+  function melhorCartaDisponivel(lista, minN) {
     const w = pesosCartas();
     const tipoDe = (id) => String(id || '').replace(/[123]$/, '');
-    return (lista || []).slice().sort((a, b) => (b.n * (w[tipoDe(b.id)] || 1)) - (a.n * (w[tipoDe(a.id)] || 1)))[0] || null;
+    const min = Math.max(1, Number(minN) || 1);
+    return (lista || []).filter((c) => (c.n || 1) >= min).slice().sort((a, b) =>
+      ((PCT_CARTA[b.n] || 0.02) * (w[tipoDe(b.id)] || 0)) - ((PCT_CARTA[a.n] || 0.02) * (w[tipoDe(a.id)] || 0)))[0] || null;
   }
   /** ABRE todas as cartas misteriosas. Dá em qualquer sítio, não paga viagem. */
   async function abrirCartasMisteriosas() {
@@ -8271,22 +8468,35 @@ const CFG_VER = 2;
     logEvent('cartas', { acao: 'abrir', antes, depois, cliques });
     return { ok: depois < antes, antes, depois, cliques, motivo: depois ? 'ainda faltam ' + depois : null };
   }
-  /** Quantos itens equipados estão SEM carta e há carta para encaixar (necessidade da base). */
+  /** Itens equipados SEM carta que a BUILD quer.
+   *
+   *  O bónus da carta é % do atributo TOTAL e o item escolhido não muda o número (motor
+   *  `somaCartas`) — mas a carta fica PRESA no item: tirar custa 10.000/100.000/1.000.000
+   *  (`docs/relatorio-2026-10-21.md:46`). Gastá-la num item fora da build é deitá-la fora quando
+   *  esse item for trocado. Só se gasta carta em item que a build usa. */
+  function itensParaCarta() {
+    const eq = readEquip().map((e, i) => ({ e, i })).filter((x) => !x.e.carta);
+    let build = new Set();
+    try { build = new Set(((buildIdealAgora && buildIdealAgora()) || buildIdeal() || []).map(String)); } catch { build = new Set(); }
+    if (!build.size) return [];                       // sem build conhecida não se gasta nada
+    return eq.filter((x) => build.has(String(x.e.base)));
+  }
+  /** Quantos itens equipados (DA BUILD) estão SEM carta e há carta boa para encaixar. */
   function cartasParaEncaixar() {
-    const eq = readEquip();
-    const livres = eq.filter((e) => !e.carta).length;
-    const bolsa = cartasNaBolsa().lista.length;
-    return { livres, cartas: bolsa, faltam: Math.min(livres, bolsa) };
+    const alvos = itensParaCarta();
+    const min = minCartaN();
+    const bolsa = cartasNaBolsa().lista.filter((c) => (c.n || 1) >= min).length;
+    return { livres: alvos.length, cartas: bolsa, faltam: Math.min(alvos.length, bolsa), minRaridade: min };
   }
   /** ENCAIXA a melhor carta em cada item equipado sem carta, na bancada do Ornn (grátis). */
   async function encaixarCartas() {
     if (!podeFazer('cartasEncaixar').pode) return { ok: false, motivo: 'interruptor desligado' };
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
-    const eq = readEquip();
-    const livres = eq.map((e, i) => ({ e, i })).filter((x) => !x.e.carta);
+    const livres = itensParaCarta();
     const bolsa0 = cartasNaBolsa().lista;
-    if (!livres.length) return { ok: true, motivo: 'todos os itens já têm carta' };
-    if (!bolsa0.length) return { ok: true, motivo: 'sem cartas na bolsa' };
+    const minN = minCartaN();
+    if (!livres.length) return { ok: true, motivo: 'nenhum item da build sem carta' };
+    if (!bolsa0.some((c) => (c.n || 1) >= minN)) return { ok: true, motivo: 'sem carta de raridade ' + minN + '+ na bolsa' };
     ocupado = true;
     try {
       let falou = false;
@@ -8302,7 +8512,7 @@ const CFG_VER = 2;
       for (const { e, i } of livres) {
         const slot = alvos[i];
         if (!slot) continue;
-        const c = melhorCartaDisponivel(cartasNaBolsa().lista);
+        const c = melhorCartaDisponivel(cartasNaBolsa().lista, minN);
         if (!c) break;
         slot.click(); await esperar(320);
         const card = document.querySelector('#janela-cartas [data-carta-usar="' + c.id + '"]');
@@ -9087,9 +9297,15 @@ const CFG_VER = 2;
       if (inp && nome) { inp.value = nome; inp.dispatchEvent(new Event('input', { bubbles: true })); await esperar(420); }
       const cards = [...m.querySelectorAll('.mj-card[data-grupo]')].filter((c) => String((c.dataset.grupo || '').split('~')[0]) === String(base));
       let cands = [];
-      for (const c of cards) { c.click(); await esperar(400); cands = cands.concat(lerOfertasCompra()); }
+      for (const c of cards) { c.click(); await esperar(400); cands = cands.concat(lerOfertasCompra().map((o) => ({ ...o, qual: (String(c.dataset.grupo || '').split('~')[1]) || o.qual }))); }
+      // MESMO PORTEIRO DE QUALIDADE do `comprarNoMercado`: o "menor preço" só conta entre
+      // ofertas do tier mínimo (`cfg.compraMinTier`, 'A'). Um B barato não é referência de preço
+      // para decidir comprar — é lixo que o dono não quer pagar.
+      const minTier = String(cfg.compraMinTier || 'A').toUpperCase();
+      const minIdx = QUAL.includes(minTier) ? qIdx(minTier) : qIdx('A');
+      cands = cands.filter((o) => !QUAL.includes(String(o.qual || '').toUpperCase()) || qIdx(String(o.qual).toUpperCase()) >= minIdx);
       cands.sort((a, b) => a.preco - b.preco);
-      return cands.length ? { menor: cands[0].preco, n: cands.length } : null;
+      return cands.length ? { menor: cands[0].preco, n: cands.length, qual: cands[0].qual || null, tierMin: minTier } : null;
     };
     // gpm: ouro/min usado para estimar 'quanto tempo até poder comprar'.
     // BUG (achado na auditoria da build): cfg.ouroMin = 4000 esta 5-13x acima do
@@ -9217,8 +9433,17 @@ const CFG_VER = 2;
         const cards = [...mm.querySelectorAll('.mj-card[data-grupo]')].filter((c) => String((c.dataset.grupo || '').split('~')[0]) === String(base));
         let cands = [];
         for (const c of cards) { c.click(); await esperar(600); cands = cands.concat(lerOfertasCompra().map((o) => ({ ...o, base, qual: (String(c.dataset.grupo || '').split('~')[1]) || o.qual }))); }
+        // PORTEIRO DE QUALIDADE (ordem do dono, 2026-10-21: "ele quer gastar recurso em um item
+        // tier b"). Antes só se ordenava por PREÇO — e a oferta mais barata é quase sempre C/B
+        // (motor.js:180-186). `qual` vem do cartão do mercado (`lerOfertasCompra`, [A]/[B]/...)
+        // ou do grupo (`data-grupo="base~qual"`). Sem qualidade legível NÃO se bloqueia (não se
+        // inventa tier); com qualidade abaixo do piso, a oferta é ignorada e fica registada.
+        const minTier = String(cfg.compraMinTier || 'A').toUpperCase();
+        const minIdx = QUAL.includes(minTier) ? qIdx(minTier) : qIdx('A');
+        const abaixo = cands.filter((o) => QUAL.includes(String(o.qual || '').toUpperCase()) && qIdx(String(o.qual).toUpperCase()) < minIdx);
+        cands = cands.filter((o) => !QUAL.includes(String(o.qual || '').toUpperCase()) || qIdx(String(o.qual).toUpperCase()) >= minIdx);
         cands.sort((a, b) => a.preco - b.preco);
-        if (!cands.length) continue;
+        if (!cands.length) { compras.push({ base, comprou: false, motivo: abaixo.length ? 'so havia abaixo de ' + minTier + ' (' + abaixo.map((o) => o.qual).join('/') + ')' : 'sem oferta', tierMin: minTier }); continue; }
         const melhor = cands[0];
         // RESERVA DE POÇÃO data-driven. Antes: `ouro * 0.5` — uma reserva de METADE do
         // ouro para poções que custam ~5.200 por lote completo. Efeito medido: com
@@ -9390,10 +9615,16 @@ const CFG_VER = 2;
     try {
       const ideal = new Set((cfg.buildPorFase !== false ? buildDaFase(faseAtual()) : buildIdeal()).map(String));
       const proibidos = new Set((Array.isArray(cfg.naoComprar) ? cfg.naoComprar : []).map(String));
+      // A oferta só "paga a viagem" se for do tier mínimo: a versão anterior olhava só para a
+      // BASE, logo um B à venda fazia o boneco ir à Fonte comprar um B (ordem do dono, 2026-10-21).
+      const minTier = String(cfg.compraMinTier || 'A').toUpperCase();
+      const minIdx = QUAL.includes(minTier) ? qIdx(minTier) : qIdx('A');
       for (const o of _mercadoServidor.ofertas) {
         if (!o || o.minha || (o.para && o.paraMim !== true)) continue;
         const base = baseDoItemMercado(o.item);
         if (base && proibidos.has(String(base))) continue;      // não se compra (cfg.naoComprar)
+        const q = parseSlotId(o.item || '').qual;
+        if (QUAL.includes(q) && qIdx(q) < minIdx) continue;     // tier abaixo do piso
         if (base && ideal.has(String(base)) && !baseReservadaWatch(base)) return true;
       }
       return false;
@@ -11058,6 +11289,7 @@ const CFG_VER = 2;
     try { checarFiltroBasicos().catch(() => { /* ignore */ }); feito.push('checarFiltroBasicos'); } catch (e) { logIssue('tick:filtro-basicos', { erro: String(e) }); }
     try { checarItens().catch(() => { /* ignore */ }); feito.push('checarItens'); } catch (e) { logIssue('tick:itens', { erro: String(e) }); }
     try { checarCartas().catch(() => { /* ignore */ }); feito.push('checarCartas'); } catch (e) { logIssue('tick:cartas', { erro: String(e) }); }
+    try { checarDiaria().catch(() => { /* ignore */ }); feito.push('checarDiaria'); } catch (e) { logIssue('tick:diaria', { erro: String(e) }); }
     if (teste && !pausado) { try { passoTeste().catch(() => { /* ignore */ }); feito.push('passoTeste'); } catch (e) { /* ignore */ } }
     return { feito, at: _ultimoTick };
   }
@@ -11388,7 +11620,7 @@ const CFG_VER = 2;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
+  window.__lolidleAuto = { BUILD, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },
@@ -11426,6 +11658,8 @@ const CFG_VER = 2;
     auditoriaPassivas,
     PRIORIDADE_EXTREMA, ehPrioridadeExtrema,
     getMeta: () => META, getFarm: () => farm, getConfig: () => cfg,
+    // Seam de teste (2026-10-21): constantes que o banco tem de conferir sem as copiar.
+    PCT_CARTA, fatorAnuncio,
     // Banco (REGRA N.o 6): o `handleLog` e o caminho REAL da frase do jogo -> ciclo/fase.
     // Expor permite provar que o ciclo NASCE e que o chefe muda a fase para 'boss' (a
     // ultimate depende disso) sem depender de um MutationObserver que o stub nao dispara.

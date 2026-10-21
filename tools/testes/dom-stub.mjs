@@ -121,6 +121,10 @@ export const SELETORES_CONHECIDOS = [
   '#vender-preco',
   // tarefas / atributos / presentes / tutorial / novidades
   '#rastreio-tarefa',
+  // MISSOES DIARIAS (jogo.js:6784-6795): os dois rastreios lidos por `diariaEstado()` em
+  // automation.js (`receberDiariasProntas`/`checarDiaria`). Sem eles aqui seria UNSTUBBED.
+  '#rastreio-diaria-rift',
+  '#rastreio-diaria',
   '#rastreio-login',
   '.presente-pegar',
   '#atributos [data-atrib]',

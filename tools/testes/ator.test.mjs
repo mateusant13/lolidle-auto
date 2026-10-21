@@ -105,8 +105,13 @@ export const suite = {
       // saturado. Os EPICOS <A (4001~A e 4001~C) continuam a ir — sao lixo, e o Lojista e o descarte.
       t.check('R2: o lendario <A 9500~C NAO vai ao Lojista (regra do dono)',
         res.epicosVendidos.indexOf('9500~C') < 0);
-      t.check('R2: conjunto EXATO de slots clicados = {4001~A, 4001~C} (so os epicos <A)',
-        conjunto(clicados) === conjunto(['4001~A', '4001~C']));
+      // ACTUALIZADO 2026-10-21 (regra do dono, verbatim: "é um item tier A que é da minha classe,
+      // que poderia ser usavel"). 4001 é épico AD (classe do adtest) → A+ da MINHA classe NÃO vai
+      // ao Lojista. O 4001~C (abaixo de A) continua a ser lixo vendável — é o controlo.
+      t.check('R2: o epico A da MINHA classe 4001~A NAO vai ao Lojista (regra do dono 2026-10-21)',
+        res.epicosVendidos.indexOf('4001~A') < 0);
+      t.check('R2: conjunto EXATO de slots clicados = {4001~C} (só o épico <A)',
+        conjunto(clicados) === conjunto(['4001~C']));
       t.check('R2: o fluxo chegou ao fim (ok + cesta clicada)',
         res.ok === true && w.m.cliqueDe('vender-cesta') === true);
     }
