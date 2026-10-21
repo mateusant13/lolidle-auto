@@ -299,7 +299,10 @@ export const suite = {
       /* chrome.storage.local com callback ASSINCRONO: a 1a chamada ainda nao ve as ofertas,
        * o callback (queueMicrotask, como no MV3) alimenta a cache e a 2a chamada ve. */
       const guardadas = ofertasLendarias(10).map((o, i) => ({ id: 'st:' + i, raridade: 'lendario', qual: 'S', txt: o.txt }));
-      const w = novoMundo({ storage: { 'lolidleAutoPotion:ofertas': { at: 1, ofertas: guardadas } } });
+      // ACTUALIZADO 2026-10-21: o `at` tem de ser RECENTE (`OFERTAS_TTL_MS`). Uma lista velha
+      // passou a ser "não sei" — era ela que reabria a necessidade `mercado` e mandava o boneco
+      // à Fonte sem nada para anunciar (P0 medido ao vivo).
+      const w = novoMundo({ storage: { 'lolidleAutoPotion:ofertas': { at: Date.now(), ofertas: guardadas } } });
       alimentarCatalogo(w.m);
       definirCampeao(w.m, 'adtest');
       const antes = w.auto.mercadoSaturado();
@@ -309,6 +312,18 @@ export const suite = {
         depois.sat === true && depois.lend === 10);
       t.check('T11: ...e antes do callback async a oferta guardada ainda nao era visivel',
         antes.sat === false);
+    }
+    {
+      // CONTROLO (2026-10-21): lista GUARDADA VELHA não alimenta a cache. Sem isto, voltar a
+      // confiar no storage antigo passaria despercebido.
+      const guardadas = ofertasLendarias(10).map((o, i) => ({ id: 'stv:' + i, raridade: 'lendario', qual: 'S', txt: o.txt }));
+      const w = novoMundo({ storage: { 'lolidleAutoPotion:ofertas': { at: 1, ofertas: guardadas } } });
+      alimentarCatalogo(w.m);
+      definirCampeao(w.m, 'adtest');
+      w.auto.mercadoSaturado();
+      await null;
+      t.check('T11: lista guardada VELHA (at antigo) NAO alimenta a cache de ofertas',
+        w.auto.mercadoSaturado().sat === false);
     }
     {
       const w = novoMundo();
@@ -346,14 +361,32 @@ export const suite = {
       definirCampeao(w.m, 'adtest');
       w.auto.setConfig({ enabled: true });
       mochila(w.m, w.auto, [slot('9500~C', 'lendario')]);
+      // ACTUALIZADO 2026-10-21: a necessidade `mercado` só abre com a lista de ofertas CONHECIDA
+      // e RECENTE. Antes abria às cegas e o boneco viajava sem nada para anunciar. Aqui lê-se do
+      // servidor (lista vazia = nada anunciado), que é o caminho real do arranque.
+      stubFetchMercado(w.m, []);
+      await w.auto.salvarOfertas();
       const n0 = w.auto.necessidadesBase();
-      t.check('T12: sem saturação, o lendário <A abre a necessidade `mercado`', n0.mercado === true);
+      t.check('T12: sem saturação e com a lista de ofertas fresca, o lendário <A abre `mercado`', n0.mercado === true);
       w.auto.marcarIndisponivel('mercado', 'teste de regressão');
       const n1 = w.auto.necessidadesBase();
       t.check('T12: `mercado` indisponível -> a necessidade FECHA (não fica eterna)',
         n1.mercado === false && n1.anunciar === false);
       t.check('T12: CONTROLO - a chave marcada é a do passo (`mercado`)',
         w.auto.estaIndisponivel('mercado') === true);
+    }
+    {
+      /* 2026-10-21 (P0 medido ao vivo): com a lista de ofertas DESCONHECIDA o boneco viajava à
+       * Fonte, abria o mercado e voltava sem anunciar nada — a cada ~10 s. Sem leitura, não se
+       * decide: a necessidade fica fechada e a leitura é pedida em background. */
+      const w = novoMundo();
+      alimentarCatalogo(w.m);
+      definirCampeao(w.m, 'adtest');
+      w.auto.setConfig({ enabled: true });
+      mochila(w.m, w.auto, [slot('9500~C', 'lendario')]);
+      const n = w.auto.necessidadesBase();
+      t.check('T12: sem leitura de ofertas (cache desconhecida) `mercado` NAO abre (não se viaja a adivinhar)',
+        n.mercado === false && n.anunciar === false);
     }
 
     /* ================= T13 - O CICLO "VOLTA À BASE TODA HORA" (2026-10-20) =================

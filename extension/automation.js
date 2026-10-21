@@ -504,6 +504,14 @@
     return nec;
   }
 
+  /** A MONTAGEM (bancada do Ornn) está ligada? É ESTA a fonte única que o PLANEADOR
+   *  (`planBag`) e o ACTOR (`venderBase`) consultam para decidir se guardam matéria-prima.
+   *  REGRA DO DONO (verbatim): "eu nao mandei nunca montar itens. e sempre comprar do mercado."
+   *  Logo, com a montagem DESLIGADA (o default), básico/épico componente vão ao Lojista como
+   *  qualquer outro. Antes o planeador mandava vender e o actor guardava o componente: o actor
+   *  vendia 0, o `n.vender` ficava true e a loja abria 5× por rotina (P0 medido 2026-10-21). */
+  function montagemLigada() { try { return !!cfg.autoMontar; } catch { return false; } }
+
   /** PLANO só dos ITENS (espólio trata junto ao vender épico no lojista). */
   /** O mercado está saturado? = minhas ofertas têm 10 LENDÁRIOS (regra do dono). */
   function mercadoSaturado() {
@@ -629,6 +637,9 @@
       // a arrancar (o `basExcesso` já existia mas era CÓDIGO MORTO — o ramo "básico -> Lojista"
       // vinha antes dele e vendia tudo, ver docs/itens-ideal.md §2.2).
       else if (it.raridade === 'basico' && basExcesso.has(it)) acts.push({ action: 'VENDER_LOJISTA', it, why: `básico em EXCESSO (a build precisa de ${necBas[it.base] || 0})` });
+      // MONTAGEM LIGADA: o básico que a receita pede (até ao tecto) FICA. É a MESMA regra do
+      // `venderBase`; com a montagem desligada cai no ramo seguinte e vai ao Lojista.
+      else if (it.raridade === 'basico' && montagemLigada() && componentesDaBuild().has(String(it.base))) acts.push({ action: 'PROTEGER', it, why: `básico componente da build (montagem ligada, receita ${necBas[it.base] || 0})` });
       // REGRA DO DONO (2026-10-14, verbatim): "eu nao mandei nunca montar itens. e sempre comprar
       // do mercado." -> NAO se guarda materia-prima para receita. Basico inutil vai ao Lojista.
       // (Antes: `basico COMPONENTE da build -> GUARDAR`, que enchia a mochila com pecas para
@@ -644,6 +655,7 @@
       // epicos, e TODOS os epicos passam por aqui) e foi removido: deixar codigo inalcancavel
       // esconderia a regra real. `isTrash` continua vivo noutro consumidor (`infoItem`, o
       // `lixo:` do painel).
+      else if (it.raridade === 'epico' && montagemLigada() && componentesDaBuild().has(String(it.base))) acts.push({ action: 'PROTEGER', it, why: 'componente da build ideal (montagem ligada), não se vende' });
       else if (it.raridade === 'epico') acts.push({ action: 'VENDER_LOJISTA', it, why: 'regra do dono: épico → Lojista' });
       // DUPLICATA por RARIDADE (regra do dono, verbatim): "a liandry c e anunciada no mercado...
       // e fica a liandry a. se eu tenho outra liandry a, (duas), anuncia uma delas no mercado."
@@ -3778,10 +3790,13 @@ const CFG_VER = 2;
       // Usa a RARIDADE DO CATÁLOGO (não a dica do slot): é a fonte fiável. Um item de
       // raridade 'epico' que sirva de componente à build ideal nunca vai para o Lojista.
       const catIt = (META.itens || []).find((x) => String(x.id) === String(puro));
-      if (!forcar(id) && catIt && catIt.raridade === 'epico' && componentesDaBuild().has(String(puro))) { regras.protegidos.push({ id, motivo: 'componente da build ideal (epico do catalogo)' }); continue; }
+      // A guarda só vale com a MONTAGEM LIGADA (ver `montagemLigada`): é a regra do dono
+      // "eu nao mandei nunca montar itens. e sempre comprar do mercado". Desligada, o actor
+      // vende o que o `planBag` manda vender (senão vendia 0 e a loja abria em ciclo).
+      if (!forcar(id) && montagemLigada() && catIt && catIt.raridade === 'epico' && componentesDaBuild().has(String(puro))) { regras.protegidos.push({ id, motivo: 'componente da build ideal (epico do catalogo)', montagem: true }); continue; }
       // BÁSICO COMPONENTE: guarda até ao tecto da receita, vende só o excedente (MESMA regra do
       // `planBag` — sem esta reconciliação voltava o ping-pong mochila<->Lojista).
-      if (!forcar(id) && catIt && catIt.raridade === 'basico' && componentesDaBuild().has(String(puro))) {
+      if (!forcar(id) && montagemLigada() && catIt && catIt.raridade === 'basico' && componentesDaBuild().has(String(puro))) {
         const tenho = porBaseBag[puro] || 0;
         const jaVendi = vendidosPorBase[puro] || 0;
         // TRANSBORDO: com a mochila acima da capacidade o tecto desce pelo tamanho do transbordo
@@ -4208,8 +4223,13 @@ const CFG_VER = 2;
       // devolvia `anunciados:0`, e o `n.anunciar` continuava `true` para sempre -> a base
       // repetia `mercado` a cada passagem e nunca fechava (`farmar:NAO (falta mercado)`).
       // A cache de ofertas (`_ofertasCache`, lida do servidor) é a prova de "já está lá".
-      const anunciadas = new Set((Array.isArray(_ofertasCache) ? _ofertasCache : []).map((o) => String(o.base)));
-      n.anunciar = podeFazer('anunciar').pode
+      // MAS só serve se for RECENTE: uma lista velha (ou o storage, escrito antes do último
+      // anúncio) dizia "não está anunciado" e o boneco voltava à Fonte sem nada para anunciar.
+      // Sem leitura fresca: NÃO se viaja a adivinhar; pede-se a leitura e fecha-se a necessidade.
+      const fresca = ofertasFrescas();
+      if (!fresca) { try { salvarOfertas(); } catch { /* ignore */ } }
+      const anunciadas = new Set((fresca ? _ofertasCache : []).map((o) => String(o.base)));
+      n.anunciar = fresca && podeFazer('anunciar').pode
         && acts.some((a) => a.action === 'ANUNCIAR_MERCADO' && !anunciadas.has(String(a.it.base)));
     } catch { /* ignore */ }
     // PRESENTE — P0 MEDIDO AO VIVO (o ciclo que restava): o `#rastreio-login` está SEMPRE no DOM
@@ -4449,16 +4469,34 @@ const CFG_VER = 2;
       await humano(300, 800);
     };
     try {
+      // CADA NECESSIDADE UMA VEZ POR IDA. Antes, uma necessidade que o actor não conseguia
+      // fechar (ex.: `vender` com tudo protegido) era re-tentada nas 3 passagens: P0 medido
+      // 2026-10-21, ordem = venda,mercado,venda,mercado,venda,venda,venda,mercado,venda,mercado
+      // (5 aberturas de loja e 5 do mercado numa só ida). Passagem 2/3 servem só para o que
+      // APARECEU durante a rotina, não para repetir o que já falhou.
+      const feitas = new Set();
       for (let p = 1; p <= BASE_MAX_PASSAGENS; p++) {
         await humano(250, 650);
+        // SAIU DA FONTE (uma caminhada/tarefa levou o boneco): parar já. Continuar aqui é o
+        // que produzia os 6 `mercado` com "so na Fonte" no log.
+        if ((readLocation().text || '') !== 'Fonte') {
+          res.saiu = p; res.ok = false; res.motivo = 'saiu da Fonte durante a rotina (passagem ' + p + ')';
+          logEvent('base', res); marcarAtiva(); return res;
+        }
         const n = necessidadesBase();          // RE-AVALIADO a cada passagem (CAUSA 1)
         res.passagens = p;
         res.necessidades = n;
-        const fila = PASSOS_BASE.filter((x) => n[x[0]] === true);
+        const fila = PASSOS_BASE.filter((x) => n[x[0]] === true && !feitas.has(x[0]));
         if (p === 1) inicio = fila.map((x) => x[0]);
         if (!fila.length) break;               // nada a fazer: sai já, sem passagem extra
-        for (const x of fila) res.ordem.push(x[1]);
-        for (const x of fila) await passo(x[1], x[2]);
+        for (const x of fila) { feitas.add(x[0]); res.ordem.push(x[1]); }
+        for (const x of fila) {
+          await passo(x[1], x[2]);
+          if ((readLocation().text || '') !== 'Fonte') {
+            res.saiu = p; res.ok = false; res.motivo = 'saiu da Fonte durante a rotina (passo ' + x[1] + ')';
+            logEvent('base', res); marcarAtiva(); return res;
+          }
+        }
       }
       // CAUSA (2)/(3): o veredicto é a RE-LEITURA, não a esperança do código.
       const fim = necessidadesBase();
@@ -5446,9 +5484,13 @@ const CFG_VER = 2;
 
   // --------------------------------------------- ofertas do mercado (persistir)
   const OFERTAS_KEY = STORAGE_KEY + ':ofertas';
+  /** Validade da lista de ofertas. Passado isto a lista é "não sei": não se decide por ela
+   *  (nem se viaja para o mercado com base nela). */
+  const OFERTAS_TTL_MS = 10 * 60000;
   /** Lê Minhas ofertas e persiste (a extensão passa a saber o que está anunciado). */
   let _ofertasCache = null;   // cache em memória: `mercadoSaturado()` é chamado SINCRONO (planBag decide
                               // anunciar-vs-vender), e antes NÃO tinha como ler — dava sempre "não saturado".
+  let _ofertasAt = 0;         // QUANDO esta lista foi lida do servidor (0 = nunca) — ver `ofertasFrescas`
   async function salvarOfertas() {
     try {
       // TK-01: LEITURA do servidor (sem abrir o mercado). Quando o servidor falha (banco sem
@@ -5458,15 +5500,30 @@ const CFG_VER = 2;
       // existia (`|| (await lerMinhasOfertas())`) foi REMOVIDO: esse fallback abria #janela-mercado
       // so para VER as ofertas — exatamente o que o P0 proibe.
       const o = await lerMinhasOfertasServidor();
-      if (o) { _ofertasCache = o; chrome.storage.local.set({ [OFERTAS_KEY]: { at: Date.now(), ofertas: o } }); logEvent('ofertas', { n: o.length }); }
+      if (o) { _ofertasCache = o; _ofertasAt = Date.now(); chrome.storage.local.set({ [OFERTAS_KEY]: { at: _ofertasAt, ofertas: o } }); logEvent('ofertas', { n: o.length }); }
       return o;
     } catch { return null; }
   }
   function lerOfertasSalvas() { return Array.isArray(_ofertasCache) ? _ofertasCache.slice() : null; }
+  /** A lista em memória é recente o suficiente para decidir "isto já está anunciado"? */
+  function ofertasFrescas() { return Array.isArray(_ofertasCache) && _ofertasAt > 0 && (Date.now() - _ofertasAt) <= OFERTAS_TTL_MS; }
   function ofertasEmCache(cb) {
     const done = typeof cb === 'function' ? cb : null;
     if (done) { try { chrome.storage.local.get(OFERTAS_KEY, (r) => done(r?.[OFERTAS_KEY]?.ofertas || [])); } catch { done([]); } return _ofertasCache; }
-    try { chrome.storage.local.get(OFERTAS_KEY, (r) => { _ofertasCache = r?.[OFERTAS_KEY]?.ofertas || []; }); } catch { /* ignore */ }
+    // A memória (lida do SERVIDOR) manda. Antes, uma leitura assíncrona do storage substituía esta
+    // lista por outra mais velha: o `n.anunciar` fechava e reabria a cada tick (P0 medido
+    // 2026-10-21: "FARMAR=NAO (falta mercado)" 3 s depois de a rotina ter fechado a necessidade).
+    if (_ofertasAt) return _ofertasCache || [];
+    try {
+      chrome.storage.local.get(OFERTAS_KEY, (r) => {
+        const s = r?.[OFERTAS_KEY];
+        if (!s || !Array.isArray(s.ofertas)) return;
+        const at = Number(s.at) || 0;
+        if (!at || (Date.now() - at) > OFERTAS_TTL_MS) return;   // velho = "não sei", não serve para decidir
+        if (_ofertasAt) return;                                   // entretanto chegou uma leitura do servidor
+        _ofertasCache = s.ofertas; _ofertasAt = at;
+      });
+    } catch { /* ignore */ }
     return _ofertasCache || [];
   }
 
@@ -7971,7 +8028,10 @@ const CFG_VER = 2;
     if (!mk) return { ok: false, motivo: 'sem leitura do mercado', anunciados: [], cancelados: [] };
     const mercado = mk.mercado || [];
     const minhas = mk.minhas || [];
-    _ofertasCache = minhas;                                        // saturação passa a saber o que está anunciado
+    _ofertasCache = minhas; _ofertasAt = Date.now();               // saturação passa a saber o que está anunciado
+    // PERSISTE já: sem isto o storage guardava a lista ANTIGA e, no tick seguinte, o
+    // `ofertasEmCache` ressuscitava-a — a necessidade `mercado` reabria e o boneco voltava à Fonte.
+    try { chrome.storage.local.set({ [OFERTAS_KEY]: { at: _ofertasAt, ofertas: minhas } }); } catch { /* ignore */ }
     const anunciados = []; const cancelados = [];
     const mm = minhas.length ? mercadoEl(true) : null;   // só se houver o que cancelar quando saturar
     for (const it of cand) {
@@ -7998,7 +8058,13 @@ const CFG_VER = 2;
     }
     if (Array.isArray(_ofertasCache)) for (const a of anunciados) if (a.preco) _ofertasCache.push({ id: 'novo:' + a.base + ':' + a.qual, base: a.base, qual: a.qual, raridade: 'lendario', preco: a.preco });
     logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length });
-    return { ok: true, anunciados, cancelados };
+    // FALHA AUTO-DIAGNOSTICADA: havia candidato que NÃO está anunciado e nada foi anunciado
+    // (mercado saturado só com lendários, clique/preço falhou). Devolver `ok:true` fazia a
+    // necessidade ficar `true` para sempre e a rotina repetir `mercado` em cada passagem
+    // (P0 medido 2026-10-21: 10 passos, 5 aberturas de mercado numa só ida à base).
+    const porAnunciar = cand.filter((it) => !minhas.some((o) => String(o.base) === String(it.base)));
+    const okTudo = anunciados.length > 0 || porAnunciar.length === 0;
+    return { ok: okTudo, anunciados, cancelados, motivo: okTudo ? null : 'nada anunciado de ' + porAnunciar.map((x) => x.base).join(',') };
     } finally { try { fecharJanelas(); } catch { /* ignore */ } ocupado = false; }
   }
 
@@ -8463,7 +8529,8 @@ const CFG_VER = 2;
   async function puxarDoMercado(bases) {
     const minhas = await lerMinhasOfertasServidor();
     if (!minhas) return { ok: false, motivo: 'sem leitura do mercado', cancelados: [] };
-    _ofertasCache = minhas;
+    _ofertasCache = minhas; _ofertasAt = Date.now();
+    try { chrome.storage.local.set({ [OFERTAS_KEY]: { at: _ofertasAt, ofertas: minhas } }); } catch { /* ignore */ }
     const cancelados = [];
     let m = null;
     try {

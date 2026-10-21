@@ -41,6 +41,7 @@ async function cenario(slots, opts) {
   alimentarCatalogo(m);
   definirCampeao(m, 'adtest');
   if (opts.saturado) await saturarMercado(auto, m);
+  if (opts.autoMontar) auto.setConfig({ autoMontar: true });
   montarMochila(m, slots.map((s) => ({ id: s.id, raridade: s.classe, dica: s.dica })));
   if (opts.semLojista) {
     m.montar('[data-fechar]', []);
@@ -125,8 +126,14 @@ export const suite = {
       const clicados = w.m.clicksDePrefixo('slot:');
       t.check('R3: com o mercado saturado, os dois epicos sub-A vao inteiro (4001~B e 4001~C)',
         ['4001~B', '4001~C'].every((id) => res.epicosVendidos.indexOf(id) >= 0));
-      t.check('R3-NOVO: epico COMPONENTE da build (2002~C) NAO foi vendido',
-        res.epicosVendidos.indexOf('2002~C') < 0);
+      // ACTUALIZADO 2026-10-21 (regra do dono, verbatim: "eu nao mandei nunca montar itens. e
+      // sempre comprar do mercado"). ANTES o actor guardava TODO componente da build ideal mesmo
+      // com a montagem desligada; o `planBag` mandava vender (`basico/épico → Lojista`), o actor
+      // vendia 0, a necessidade `vender` ficava `true` e a loja abria 5× por ida à base (P0 medido
+      // no log de 2026-10-21). Agora a guarda de componente só vale com `autoMontar` LIGADO:
+      // montagem desligada -> vende (como o planeador manda). R3b prova o outro lado.
+      t.check('R3-NOVO: com a montagem DESLIGADA, o epico COMPONENTE (2002~C) E vendido (plano do planBag)',
+        res.epicosVendidos.indexOf('2002~C') >= 0);
       // ACTUALIZADO 2026-10-14 (regra do dono, verbatim): "lendarios sao desejados pelos jogadores,
       // entao nunca se vende lendario pelo lojista, so pelo mercado". Com o mercado SATURADO nao ha
       // lugar para anunciar, mas o Lojista continua PROIBIDO para lendarios -> o motor GUARDA-os.
@@ -136,13 +143,27 @@ export const suite = {
       t.check('R3: CONTROLO de protecao - o lendario da build 2001~C NAO foi vendido',
         res.epicosVendidos.indexOf('2001~C') < 0);
       // So os dois EPICOS sao clicados: os lendarios ficam guardados (mercado saturado + Lojista
-      // proibido para lendarios). O 2002~C nao entra (componente da build) e o 2001~C nao entra
-      // (lendario da build, protegido).
-      t.check('R3: conjunto EXATO de slots clicados = {4001~B, 4001~C} (so os epicos)',
-        conjunto(clicados) === conjunto(['4001~B', '4001~C']));
+      // proibido para lendarios). O 2002~C entra (componente, mas montagem DESLIGADA) e o 2001~C
+      // nao entra (lendario da build, protegido).
+      t.check('R3: conjunto EXATO de slots clicados = {4001~B, 4001~C, 2002~C} (epicos, montagem desligada)',
+        conjunto(clicados) === conjunto(['4001~B', '4001~C', '2002~C']));
       t.check('R3: o fluxo chegou ao fim', res.ok === true && w.m.cliqueDe('vender-cesta') === true);
       t.check('R3: nenhum item vendido era ACIMA de A (A/S/SS)',
         res.epicosVendidos.every((id) => /~(A|S|SS)$/.test(id) === false));
+    }
+
+    /* ========= R3b - MONTAGEM LIGADA (`autoMontar`): o componente É protegido =========
+     * O outro lado da mesma regra. Sem este controlo, "vender o componente" passaria tanto com a
+     * montagem ligada como desligada e a guarda podia ser apagada sem o banco dar por isso. */
+    {
+      const slots = [sl('4001~B', 'epico'), sl('2002~C', 'epico')];
+      const w = await cenario(slots, { saturado: true, autoMontar: true });
+      const res = await w.auto.venderBase();
+      const clicados = w.m.clicksDePrefixo('slot:');
+      t.check('R3b: com a montagem LIGADA, o epico COMPONENTE (2002~C) NAO foi vendido',
+        res.epicosVendidos.indexOf('2002~C') < 0 && clicados.indexOf('2002~C') < 0);
+      t.check('R3b: ...mas o epico que nao serve a build (4001~B) continua a ser vendido',
+        res.epicosVendidos.indexOf('4001~B') >= 0);
     }
 
     /* ================= R4 - Rabadon '3089+2' (base 3089) nunca vai ao Lojista ================= */
