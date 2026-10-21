@@ -244,6 +244,7 @@
     venderMinItens: 6,
     autoRepor: true,          // repor poções na Fonte (repor)
     autoCofre: true,          // ler/guardar no cofre da Tesoureira (cofre)
+    autoTarefa: true,         // aceitar/entregar tarefas do Capitão (tarefa)
     autoAnunciar: true,       // anunciar no mercado (anunciar)
     autoHab: false,           // subir pontos de habilidade (hab)
     manutencao: true,         // RECURSO BASE do script: vender/equipar/mercado/pontos/cofre
@@ -1897,7 +1898,7 @@ const CFG_VER = 2;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-21d';
+  const BUILD = '2026-10-21e';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -4034,6 +4035,8 @@ const CFG_VER = 2;
     refino:       { pai: 'irBase',     cfg: 'autoRefino' },
     montar:       { pai: 'irBase',     cfg: 'autoMontar' },
     cofre:        { pai: 'irBase',     cfg: 'autoCofre', excecao: () => ehRuneterra(), excecaoTxt: 'skippado em Runeterra' },
+    // TAREFAS (aceitar/entregar) com switch próprio.
+    tarefa:       { pai: 'irBase',     cfg: 'autoTarefa' },
     // FUGA = SOBREVIVENCIA, nao auto-play: pende da manutencao, com cfg propria.
     fugir:        { pai: 'manutencao', cfg: 'fugir' },
     // ramo do CAMPO: nao exige a base
@@ -4277,7 +4280,10 @@ const CFG_VER = 2;
     // throttle — sem isto ele ia buscar uma tarefa a cada 20 s quando não havia tarefa nenhuma.
     try {
       const st = tarefaEstado() || {};
-      n.tarefa = !!st.pronta || (!st.tem && (Date.now() - _ultimaTarefa) > cadencia(300000));
+      // SWITCH PRÓPRIO (pedido do dono 2026-10-21: cada automação tem o seu): desligado, não
+      // aceita nem entrega tarefas; o resto da base continua.
+      n.tarefa = cfg.autoTarefa !== false
+        && (!!st.pronta || (!st.tem && (Date.now() - _ultimaTarefa) > cadencia(300000)));
       n._tarefa = { tem: !!st.tem, pronta: !!st.pronta, esperaMs: Date.now() - _ultimaTarefa };
     } catch { n.tarefa = false; }
     // PONTOS DE SKILL: a necessidade é "há pontos por gastar" (antes bastava `readSkills().pontos`,

@@ -1556,6 +1556,7 @@ switches: 'interruptores',
     farm: 'Auto farm (viajar e farmar)',
     cartasAbrir: 'Abrir cartas misteriosas',
     cartasEncaixar: 'Encaixar cartas nos itens (Ornn)',
+    tarefa: 'Aceitar e entregar tarefas',
   };
   /** Switch -> bloco da aba MACRO onde os detalhes daquele switch se configuram. O ⚙ da
    *  árvore leva lá (pedido do dono 2026-10-21). Chave = `cfg` do switch. */
@@ -1578,6 +1579,7 @@ switches: 'interruptores',
     autoAtrib: 'ap-t-personagem',
     pocaoSmart: 'ap-t-pocao',
     autoEquip: 'ap-macro-base',
+    autoTarefa: 'ap-macro-base',
   };
   const ARV_AJUDA = {
     manutencao: 'recurso base (vender, equipar, mercado, pontos, cofre), funciona em qualquer campeão',
