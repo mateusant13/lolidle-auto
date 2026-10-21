@@ -665,8 +665,78 @@
       }
     }
 
+    // Pressão da mochila (uma vez, usada pelo mercado de A e pelo cofre mais abaixo).
+    const excesso = bag.used - bag.cap;
+    const folga = Math.max(0, Number(cfg.venderFolga != null ? cfg.venderFolga : 2) || 0);
+    const pressao = excesso > 0 || bag.used >= Math.max(1, bag.cap - folga);
+
+    // =====================================================================================
+    // A EM EXCESSO -> MERCADO (pedido do dono, 2026-10-21, verbatim):
+    //   "quando tem muita copia A, ou muito A enchendo, anuncia A no mercado. os menos
+    //    desejaveis pra minha classe. (a classe atual, nao LITERALMENTE A MINHA...)"
+    // A CLASSE É A DO CAMPEÃO CARREGADO (`META.champAtual`), não uma lista do dono — a
+    // extensão é usada por outras pessoas e a mesma regra tem de valer para o campeão delas.
+    // "Menos desejável" = `valorDeFase` (a MESMA conta de stats/pesos da classe que a build
+    // usa), desempate por tier/refino. O MELHOR de cada base fica na mochila; os outros vão
+    // ao mercado quando há duplicata OU quando a mochila está em pressão. S/SS, prioridade
+    // extrema, peça da fase actual e peça reservada única NÃO entram.
+    const faseA = (() => { try { return faseAtual(); } catch { return null; } })();
+    const valorA = (it) => {
+      try { return Number(valorDeFase(it.base, null, faseA, { qual: it.qual, refino: it.refino })) || 0; }
+      catch { return 0; }
+    };
+    const chaveA = (it) => String(it.base);
+    const aPorBase = {};
+    let totalA = 0;
     for (const it of itens) {
-      if (it.raridade === 'lendario' && ehLendarioDaBuild(it.base)) acts.push({ action: 'PROTEGER', it, why: `LENDÁRIO DA BUILD DA CLASSE (${ident.perfil}/${ident.classe}), nem mercado, nem Lojista` });
+      if (it.raridade === 'basico' || !QUAL.includes(it.qual) || qIdx(it.qual) !== qIdx('A')) continue;
+      totalA++;
+      (aPorBase[chaveA(it)] = aPorBase[chaveA(it)] || []).push(it);
+    }
+    const aAnunciar = new Set();
+    const aProtegidos = (it) => {
+      if (ehPrioridadeExtrema(it.base)) return true;
+      if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('S')) return true;
+      return false;
+    };
+    for (const base of Object.keys(aPorBase)) {
+      const arr = aPorBase[base].slice().sort((a, b) =>
+        (valorA(b) - valorA(a)) || (tierDe(b) - tierDe(a)) || ((b.refino || 0) - (a.refino || 0)));
+      // 1.ª cópia = a mais desejável para a classe -> fica. As restantes são "muita cópia A".
+      for (let i = 1; i < arr.length; i++) if (!aProtegidos(arr[i])) aAnunciar.add(arr[i]);
+    }
+    // "MUITO A ENCHENDO": com a mochila acima da folga, os A de MENOR valor para a classe
+    // também saem (uma cópia por base), até libertar o número de slots necessário.
+    if (pressao) {
+      const alvo = Math.max(0, bag.used - Math.max(1, bag.cap - folga));
+      const candidatos = [];
+      for (const base of Object.keys(aPorBase)) {
+        const arr = aPorBase[base].slice().sort((a, b) =>
+          (valorA(a) - valorA(b)) || (tierDe(a) - tierDe(b)) || ((a.refino || 0) - (b.refino || 0)));
+        const pior = arr[0];
+        if (!pior || aAnunciar.has(pior) || aProtegidos(pior)) continue;
+        // build da fase actual / reservada única / upgrade escolhido: NÃO se anuncia só por pressão
+        let fs = []; try { fs = fasesDoItem(pior.base); } catch { fs = []; }
+        if (faseA && fs.indexOf(faseA) >= 0) continue;
+        if (ehReservado(pior.base)) continue;
+        if (equiparIds.has(pior.id) || equiparBases.has(String(pior.base))) continue;
+        candidatos.push(pior);
+      }
+      candidatos.sort((a, b) => (valorA(a) - valorA(b)) || (tierDe(a) - tierDe(b)));
+      // Nunca se anuncia o MAIS desejável da mochila só para "fazer número": fica sempre
+      // pelo menos 1 A (o melhor para a classe). Anuncia-se o fundo da lista, até ao alvo.
+      const vagas = Math.max(0, Math.min(alvo - aAnunciar.size, candidatos.length - 1));
+      for (let i = 0; i < vagas; i++) aAnunciar.add(candidatos[i]);
+    }
+
+    for (const it of itens) {
+      if (aAnunciar.has(it)) {
+        const ms = mercadoSaturado();
+        acts.push(ms.sat
+          ? { action: 'PROTEGER', it, why: `A em excesso (${totalA} A na mochila), a MENOS desejável para ${ident.perfil}/${ident.classe}; mercado SATURADO: fica no cofre/mochila` }
+          : { action: 'ANUNCIAR_MERCADO', it, why: `A em excesso (${totalA} A na mochila): a MENOS desejável para ${ident.perfil}/${ident.classe} → mercado` });
+      }
+      else if (it.raridade === 'lendario' && ehLendarioDaBuild(it.base)) acts.push({ action: 'PROTEGER', it, why: `LENDÁRIO DA BUILD DA CLASSE (${ident.perfil}/${ident.classe}), nem mercado, nem Lojista` });
       else if (!QUAL.includes(it.qual)) acts.push({ action: 'PROTEGER', it, why: "qualidade '?' sendo avaliada, nunca mexer" });
       else if (it.raridade === 'lendario' && acimaDeA(it)) acts.push({ action: 'PROTEGER', it, why: 'lendário A/S/SS, nunca mexer' });
       // ALINHADO com o `venderBase` (que agora só protege S+): antes mandava épico A+ para o cofre
@@ -785,9 +855,6 @@
     // que NÃO é da build da fase também vai — guardado, nunca vendido.
     // A build da fase ATUAL fica na mochila de propósito: se fosse para o cofre, o `buscar`
     // puxava-a de volta no tick seguinte (ping-pong Fonte↔cofre).
-    const excesso = bag.used - bag.cap;
-    const folga = Math.max(0, Number(cfg.venderFolga != null ? cfg.venderFolga : 2) || 0);
-    const pressao = excesso > 0 || bag.used >= Math.max(1, bag.cap - folga);
     if (pressao) {
       const cofreLigado = (() => { try { return podeFazer('cofre').pode; } catch { return false; } })();
       if (cofreLigado) {
@@ -852,7 +919,11 @@
           // TRANSBORDO: o mercado cheio rebaixava o anúncio para o LOJISTA — proibido para
           // LENDÁRIO (regra do dono: "nunca se vende lendario pelo lojista, so pelo mercado").
           // Um lendário sem vaga no mercado fica na mochila (PROTEGER).
-          if (a.action === 'ANUNCIAR_MERCADO') a.action = a.it.raridade === 'lendario' ? 'PROTEGER' : (marketCount >= marketCap ? 'VENDER_LOJISTA' : 'ANUNCIAR_MERCADO');
+          // LENDÁRIO e A nunca caem no Lojista (regra do dono: A vai ao MERCADO; se não há
+          // vaga, fica guardado — o cofre apanha-o em seguida). Só básico/epico <A desce.
+          if (a.action === 'ANUNCIAR_MERCADO') a.action =
+            (a.it.raridade === 'lendario' || qIdx(a.it.qual) >= qIdx('A')) ? 'PROTEGER'
+              : (marketCount >= marketCap ? 'VENDER_LOJISTA' : 'ANUNCIAR_MERCADO');
           else if (a.action === 'GUARDAR' && a.it.raridade === 'basico') a.action = 'VENDER_LOJISTA';
         }
       }
@@ -2041,7 +2112,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-21k';
+  const BUILD = '2026-10-21l';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },

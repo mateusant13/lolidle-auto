@@ -260,9 +260,24 @@ export const suite = {
       montarMochila(m, slots, 30);
       const acts = auto.planBag(auto.scanBag(true)).acts;
       const do9500 = acts.filter((a) => String(a.it.id).startsWith('9500'));
-      t.check('K1: mochila em pressão manda o EXCEDENTE do lendário A+ para o cofre',
-        do9500.filter((a) => a.action === 'GUARDAR_COFRE').length === 1);
-      t.check('K1: a melhor cópia fica na mochila (PROTEGER)', do9500.filter((a) => a.action === 'PROTEGER').length === 1);
+      // REGRA NOVA (dono, 2026-10-21): A em excesso vai ao MERCADO (não ao cofre).
+      t.check('K1: duplicata de lendário A+ vai ao MERCADO (o excedente)',
+        do9500.filter((a) => a.action === 'ANUNCIAR_MERCADO').length === 1);
+      t.check('K1: a melhor cópia não é anunciada', do9500.filter((a) => a.action !== 'ANUNCIAR_MERCADO').length === 1);
+
+      // K1b: o cofre continua a apanhar o excedente de itens PROTEGIDOS que NÃO são A
+      // (aqui S: A já tem a via do mercado; S+ é intocável para venda).
+      const mS = criarMundo();
+      const autoS = carregarAutomation(mS);
+      alimentarCatalogo(mS);
+      definirCampeao(mS, 'adtest', { nivel: 30 });
+      autoS.setConfig({ enabled: true });
+      const sS = [];
+      for (let i = 0; i < 28; i++) sS.push({ id: '1005~C', raridade: 'basico' });
+      sS.push({ id: '9500~S', raridade: 'lendario' }, { id: '9500~S', raridade: 'lendario' });
+      montarMochila(mS, sS, 30);
+      const doS = autoS.planBag(autoS.scanBag(true)).acts.filter((a) => String(a.it.id).startsWith('9500'));
+      t.check('K1b: excedente de S (não-A) vai para o COFRE', doS.filter((a) => a.action === 'GUARDAR_COFRE').length === 1);
 
       // TRANSBORDO: 30 itens numa mochila de 29. A cópia ÚNICA (que não é da fase) vai ao cofre.
       const m2 = criarMundo();
@@ -277,6 +292,50 @@ export const suite = {
       const a2 = auto2.planBag(auto2.scanBag(true)).acts;
       t.check('K2: transbordo guarda no cofre (não vende) o item único fora da fase',
         a2.some((a) => String(a.it.id).startsWith('9500') && a.action === 'GUARDAR_COFRE'));
+    }
+
+    /* =====================================================================
+     * A EM EXCESSO -> MERCADO (ordem do dono, 2026-10-21): "quando tem muita
+     * copia A, ou muito A enchendo, anuncia A no mercado. os menos desejaveis
+     * pra minha classe". O ranking de desejo é `valorDeFase` da CLASSE DO
+     * CAMPEÃO CARREGADO — nunca uma lista do dono.
+     * ===================================================================== */
+    {
+      // M1: duas cópias A do mesmo base -> a pior vai ao mercado, fica 1.
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest', { nivel: 30 });
+      auto.setConfig({ enabled: true });
+      const slots = [];
+      for (let i = 0; i < 28; i++) slots.push({ id: '1005~C', raridade: 'basico' });
+      slots.push({ id: '3153~A', raridade: 'lendario' }, { id: '3153~A', raridade: 'lendario' });
+      montarMochila(m, slots, 30);
+      const acts = auto.planBag(auto.scanBag(true)).acts;
+      const doA = acts.filter((a) => String(a.it.id) === '3153~A');
+      t.check('M1: duplicata A -> 1 fica e 1 vai ao MERCADO (nunca ao Lojista)',
+        doA.filter((a) => a.action === 'ANUNCIAR_MERCADO').length === 1 &&
+        doA.every((a) => a.action !== 'VENDER_LOJISTA'));
+
+      // M2: mochila cheia de A de classes diferentes -> o PIOR para o campeão
+      // (AP no adtest) vai ao mercado; o melhor (AD) fica.
+      const m2 = criarMundo();
+      const auto2 = carregarAutomation(m2);
+      alimentarCatalogo(m2);
+      definirCampeao(m2, 'adtest', { nivel: 30 });
+      auto2.setConfig({ enabled: true });
+      const s2 = [];
+      for (let i = 0; i < 28; i++) s2.push({ id: '1005~C', raridade: 'basico' });
+      s2.push({ id: '3003~A', raridade: 'lendario' });   // AP: pouco desejável p/ AD
+      s2.push({ id: '3153~A', raridade: 'lendario' });   // AD: desejável
+      montarMochila(m2, s2, 30);
+      const a2 = auto2.planBag(auto2.scanBag(true)).acts;
+      const ap = a2.find((a) => String(a.it.id) === '3003~A');
+      const ad = a2.find((a) => String(a.it.id) === '3153~A');
+      t.check('M2: com A enchendo, o MENOS desejável para a classe vai ao mercado',
+        !!ap && ap.action === 'ANUNCIAR_MERCADO');
+      t.check('M2: o mais desejável da classe NÃO é anunciado só para fazer número',
+        !!ad && ad.action !== 'ANUNCIAR_MERCADO');
     }
 
     /* =====================================================================

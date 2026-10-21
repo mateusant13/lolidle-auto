@@ -661,10 +661,14 @@ switches: 'interruptores',
     '#st-nome::before{content:"";position:absolute;inset:-7px -14px;border-radius:6px}',
     '#st-nome:hover::before{background:rgba(216,180,90,.12)}',
     /* modais */
-    '#lolidle-ap-modal,#lolidle-ap-testes,#lolidle-ap-confirma,#lolidle-ap-ajuda{position:fixed;inset:0;z-index:2147483647;background:#000b;display:none;align-items:center;justify-content:center;font:12px/1.45 system-ui,"Segoe UI",sans-serif;color:#e9e0cf}',
-    '#lolidle-ap-modal.on,#lolidle-ap-testes.on,#lolidle-ap-confirma.on,#lolidle-ap-ajuda.on{display:flex}',
-    '#lolidle-ap-modal .box,#lolidle-ap-testes .box,#lolidle-ap-ajuda .box{background:#100e0c;border:1px solid #3a3126;border-radius:11px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 16px 60px #000c}',
+    '#lolidle-ap-modal,#lolidle-ap-testes,#lolidle-ap-confirma,#lolidle-ap-ajuda,#lolidle-ap-macro{position:fixed;inset:0;z-index:2147483647;background:#000b;display:none;align-items:center;justify-content:center;font:12px/1.45 system-ui,"Segoe UI",sans-serif;color:#e9e0cf}',
+    '#lolidle-ap-modal.on,#lolidle-ap-testes.on,#lolidle-ap-confirma.on,#lolidle-ap-ajuda.on,#lolidle-ap-macro.on{display:flex}',
+    '#lolidle-ap-modal .box,#lolidle-ap-testes .box,#lolidle-ap-ajuda .box,#lolidle-ap-macro .box{background:#100e0c;border:1px solid #3a3126;border-radius:11px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 16px 60px #000c}',
     '#lolidle-ap-modal .box{width:min(880px,94vw);height:min(700px,90vh)}',
+    // ⚙ dos switches: POPUP com os detalhes, sem sair da página/aba em que o dono está.
+    '#lolidle-ap-macro .box{width:min(780px,94vw);height:auto;max-height:min(84vh,760px)}',
+    '#lolidle-ap-macro .corpo{padding:10px 12px 14px;overflow:auto}',
+    '#lolidle-ap-macro .corpo>.card{margin:0}',
     '#lolidle-ap-testes .box{width:min(960px,94vw);height:min(720px,90vh)}',
     '#lolidle-ap-ajuda .box{width:min(780px,94vw);height:min(700px,90vh)}',
     '.lolidle-box header{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#1c1916;border-bottom:1px solid #332c24;flex-wrap:wrap}',
@@ -1569,19 +1573,22 @@ switches: 'interruptores',
    *  árvore leva lá (pedido do dono 2026-10-21). Chave = `cfg` do switch. */
   const MACRO_ALVO = {
     autoFarm: 'ap-macro-farm',
-    autoVender: 'ap-macro-base',
-    autoRepor: 'ap-macro-base',
-    autoCofre: 'ap-macro-base',
+    // ATENÇÃO aos IDs: os blocos reais da aba Macro são `ap-auto-base` e `ap-build-fase`
+    // (gui.js:844-845). `ap-macro-base`/`ap-macro-build` NÃO existiam — o ⚙ desses switches
+    // abria a aba e rolava para o vazio (defeito encontrado 2026-10-21 ao fazer o popup).
+    autoVender: 'ap-auto-base',
+    autoRepor: 'ap-auto-base',
+    autoCofre: 'ap-auto-base',
     autoComprar: 'ap-macro-mercado',
-    autoRefino: 'ap-macro-base',
-    autoMontar: 'ap-macro-base',
+    autoRefino: 'ap-auto-base',
+    autoMontar: 'ap-auto-base',
     autoAnunciar: 'ap-macro-mercado',
     autoVigiarMercado: 'ap-macro-mercado',
     cartasAbrir: 'ap-macro-cartas',
     cartasEncaixar: 'ap-macro-cartas',
-    buildPorFase: 'ap-macro-build',
-    skillsPorFase: 'ap-macro-build',
-    rotacaoSkills: 'ap-macro-build',
+    buildPorFase: 'ap-build-fase',
+    skillsPorFase: 'ap-build-fase',
+    rotacaoSkills: 'ap-build-fase',
     autoHab: 'ap-t-personagem',
     autoAtrib: 'ap-t-personagem',
     pocaoSmart: 'ap-t-pocao',
@@ -4277,6 +4284,68 @@ switches: 'interruptores',
     'ap-watch-cad': (el) => { const s = Math.max(2, Number(el.value) || 5); definirCfg({ mercadoWatch: novoWatch({ cadenciaMs: s * 1000 }) }); fb('ok', 'Cadência da vigia: ' + s + ' s.'); },
   };
 
+  // ============================================================ 6c. POPUP DOS DETALHES (⚙)
+  // O ⚙ de um switch ABRE o bloco de detalhes num popup, sem trocar de aba. O bloco é o
+  // MESMO nó do DOM: move-se para o popup e devolve-se ao lugar no fecho. Clonar quebraria
+  // os `id` (dois elementos com o mesmo id) e os handlers que os procuram no documento.
+  const MACRO_POP_TITULO = {
+    'ap-macro-farm': 'Rota de farm',
+    'ap-macro-cartas': 'Cartas',
+    'ap-macro-mercado': 'Mercado e watch',
+    'ap-auto-base': 'Rotina de base',
+    'ap-build-fase': 'Build por fase',
+  };
+  let _macroPop = null, _macroPopVoltar = null;
+  function garantirMacroPopup() {
+    if (_macroPop && document.body.contains(_macroPop)) return _macroPop;
+    const host = document.getElementById('lolidle-ap') || document.body || document.documentElement;
+    const m = document.createElement('div');
+    m.id = 'lolidle-ap-macro'; m.hidden = true;
+    m.innerHTML = '<div class="box lolidle-box">'
+      + '<header><b id="ap-macro-pop-tit">Configurar</b><span class="sp"></span>'
+      + '<button id="ap-macro-pop-x" class="sec" type="button">Fechar</button></header>'
+      + '<div class="corpo" id="ap-macro-pop-corpo"></div>'
+      + '</div>';
+    // clique no fundo escuro ou no Fechar; os controlos lá dentro continuam a subir para o
+    // `painel` (o popup é filho dele), portanto a delegação existente apanha-os.
+    m.addEventListener('click', (ev) => {
+      const x = ev.target && ev.target.closest ? ev.target.closest('#ap-macro-pop-x') : null;
+      if (x || ev.target === m) fecharMacroPopup();
+    });
+    host.appendChild(m);
+    _macroPop = m;
+    return m;
+  }
+  function abrirMacroPopup(alvo) {
+    if (!alvo) return false;
+    try {
+      if (alvo.indexOf('ap-macro-') === 0) renderMacro();
+      else if (alvo === 'ap-build-fase') renderBuildFase();
+      else if (alvo === 'ap-auto-base') renderAuto();
+    } catch { /* sem dados ainda: o bloco mostra o placeholder */ }
+    const el = document.getElementById(alvo);
+    if (!el) { fbErro('Este bloco de detalhes ainda não existe nesta versão. Recarregue (F5).'); return false; }
+    fecharMacroPopup();                       // devolve um popup anterior antes de abrir outro
+    const m = garantirMacroPopup();
+    const corpo = m.querySelector('#ap-macro-pop-corpo');
+    _macroPopVoltar = { el, pai: el.parentNode, prox: el.nextSibling };
+    if (corpo) corpo.appendChild(el);
+    const t = m.querySelector('#ap-macro-pop-tit');
+    if (t) t.textContent = MACRO_POP_TITULO[alvo] || 'Configurar';
+    m.hidden = false; m.classList.add('on');
+    return true;
+  }
+  function fecharMacroPopup() {
+    if (!_macroPop || _macroPop.hidden) return false;
+    if (_macroPopVoltar && _macroPopVoltar.el) {
+      const { el, pai, prox } = _macroPopVoltar;
+      if (pai) pai.insertBefore(el, prox && prox.parentNode === pai ? prox : null);
+    }
+    _macroPopVoltar = null;
+    _macroPop.hidden = true; _macroPop.classList.remove('on');
+    return true;
+  }
+
   function bind() {
     const painel = $('lolidle-ap');
     if (!painel) return;
@@ -4297,15 +4366,13 @@ switches: 'interruptores',
           : 'Switches religados como você tinha escolhido antes.');
         return;
       }
-      // ⚙ de um switch -> aba MACRO (ou a aba do assunto), no bloco daquele switch
+      // ⚙ de um switch -> POPUP com os detalhes (pedido do dono 2026-10-21: "pode abrir um
+      // popup invés de sair da página"). Antes isto fazia `setTab('macro')` e o dono perdia a
+      // aba em que estava. O bloco é MOVIDO para o popup e devolvido no fecho — assim os
+      // controlos continuam a ser os mesmos (IDs e delegação de eventos intactos).
       const cfgBtn = e.target.closest ? e.target.closest('[data-macro]') : null;
       if (cfgBtn && painel.contains(cfgBtn)) {
-        const alvo = String(cfgBtn.dataset.macro || '');
-        if (alvo.indexOf('ap-t-') === 0) setTab(alvo.slice(5));
-        else {
-          setTab('macro');
-          setTimeout(() => { const el = document.getElementById(alvo); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' }); }, 80);
-        }
+        abrirMacroPopup(String(cfgBtn.dataset.macro || ''));
         return;
       }
       // remover um item escolhido (delegação: o contentor dos chips nasce só quando a aba Ganhos desenha)
@@ -4448,8 +4515,12 @@ switches: 'interruptores',
     document.addEventListener('keydown', (e) => {
       if (e.key === 'F8') { e.preventDefault(); e.stopPropagation(); (aberto ? fechar() : abrir()); return; }
       if (e.key === 'Escape' && aberto) {
-        const m = qa('#lolidle-ap-modal.on,#lolidle-ap-testes.on,#lolidle-ap-ajuda.on,#lolidle-ap-confirma.on')[0];
-        if (m) { if (m.id === 'lolidle-ap-confirma') fecharConfirmar(false); else { m.hidden = true; m.classList.remove('on'); } }
+        const m = qa('#lolidle-ap-modal.on,#lolidle-ap-testes.on,#lolidle-ap-ajuda.on,#lolidle-ap-confirma.on,#lolidle-ap-macro.on')[0];
+        if (m) {
+          if (m.id === 'lolidle-ap-confirma') fecharConfirmar(false);
+          else if (m.id === 'lolidle-ap-macro') fecharMacroPopup();   // devolve o bloco à aba
+          else { m.hidden = true; m.classList.remove('on'); }
+        }
         else fechar();
       }
     }, true);
