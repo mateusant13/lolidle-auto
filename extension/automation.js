@@ -10536,13 +10536,14 @@ const CFG_VER = 2;
       let e = null; try { e = estimarRegiao(l.id); } catch { /* ignore */ }
       if (!e) return null;
       return { id: l.id, nome: (l.nome || '').replace(/ nível.*/, ''), xpMin: e.xpMin, goldMin: e.goldMin, runasH: e.runasH, morte: e.morte,
-        // `sobrevive` explícito (correcção do Lead, 2026-10-14): uma região onde o boneco MORRE
-        // não pode aparecer em #1 com a taxa teórica. Fica listada (a GUI mostra-a) mas com
-        // `sobrevive:false`, `riscoMob` e o `score` que a põe ABAIXO das que ele sobrevive.
+        // `sobrevive` explícito: a GUI mostra o risco na coluna dele. O ranking é ORDENADO PELO
+        // OBJETIVO (xp/ouro/runas): o dono viu o Covil do Barão em último com números maiores
+        // (2026-10-21). Quem decide ONDE farmar continua a ser `regiaoRecomendada` (fail-closed,
+        // só regiões onde sobrevive); esta tabela é a comparação crua do objetivo.
         sobrevive: e.morte === false, riscoMob: e.riscoMob, riscoDps: e.riscoDps,
         mobLevel: e.mobLevel, abaixoDoNivel: abaixoDoNivel(l, player()), score: Math.round(scoreRegiao(e, obj, null)),
         chefe: l.chefe ? l.chefe[0] : null };
-    }).filter(Boolean).sort((a, b) => (Number(b.sobrevive) - Number(a.sobrevive)) || (b.score - a.score));
+    }).filter(Boolean).sort((a, b) => (b.score - a.score) || (Number(b.sobrevive) - Number(a.sobrevive)));
   }
 
   /** Poção baixa → volta à base e repõe. EXCEÇÃO: se está no CHEFE e o que temos
