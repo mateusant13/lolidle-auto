@@ -32,11 +32,17 @@ export const suite = {
       const m = criarMundo();
       const auto = carregarAutomation(m);
       definirCampeao(m, 'adtest');
-      m.montar('#rastreio-diaria', [m.el({
+      const d1 = m.el({
         label: 'rastreio-diaria',
         className: 'pronta',
         textContent: 'Missão diária completa! Clique aqui para receber o prêmio.',
-      })]);
+      });
+      // Simula o SERVIDOR: no jogo, `receberDiaria` põe `estado.diaria = null` e `atualizarUI`
+      // esconde o rastreador (jogo.js:7148). Sem esta confirmação o teste antigo dava "recebeu"
+      // mesmo quando o servidor recusava.
+      const clickOriginal = d1.click;
+      d1.click = () => { clickOriginal(); d1.hidden = true; d1.classList.remove('pronta'); };
+      m.montar('#rastreio-diaria', [d1]);
       const antes = auto.diariaEstado();
       t.check('D1: diariaEstado le a diaria de Runeterra visivel+pronta',
         antes.length === 1 && antes[0].tipo === 'runeterra' && antes[0].pronta === true);
@@ -61,7 +67,66 @@ export const suite = {
       t.check('D2: o rastreador NAO foi clicado', m.cliqueDe('rastreio-diaria-rift') === false);
     }
 
-    /* ---- C1 - raridade mínima: carta BÁSICA não é gasta por omissão (minN=2) ---- */
+    /* ---- D3 - progresso da diária é LIDO do rastreador (com separador de milhar) ---- */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      m.montar('#rastreio-diaria-rift', [m.el({
+        label: 'rastreio-diaria-rift', className: '', textContent: 'Diária do Rift 1.234/1.000 · do seu nível',
+      })]);
+      const d = auto.diariaEstado().find((x) => x.tipo === 'rift');
+      t.check('D3: lê feitos/qtd e resta do texto do jogo', !!d && d.feitos === 1234 && d.qtd === 1000 && d.resta === 0);
+      const p = auto.parseQtdDiaria('300/1000');
+      t.check('D3: parseQtdDiaria lê 300/1000', p.feitos === 300 && p.qtd === 1000);
+    }
+
+    /* ---- D4 - só a diária do RIFT é aceita; a de Runeterra é MANUAL ---- */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      t.check('D4: aceita a diária do Rift', auto.diariaAceitavel('rift') === true);
+      t.check('D4: NÃO aceita a diária manual de Runeterra', auto.diariaAceitavel('runeterra') === false);
+    }
+
+    /* ---- D5 - vale a pena? Runeterra nunca; Rift conta onde está = custo zero ---- */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      t.check('D5: Runeterra é manual -> não vale a pena para o bot',
+        auto.diariaValeAPena({ tipo: 'runeterra', manual: true }).vale === false);
+      t.check('D5: Rift onde os monstros contam -> progresso grátis',
+        auto.diariaValeAPena({ tipo: 'rift' }, { conta: true }).vale === true);
+      t.check('D5: Rift pronto -> só receber, não "completar"',
+        auto.diariaValeAPena({ tipo: 'rift', pronta: true }).vale === false);
+    }
+
+    /* ---- D6 - o monstro conta para a diária? nível mínimo do local >= nível-5 ---- */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      const alto = { faixa: [40, 50], nm: [40, 50] };
+      const baixo = { faixa: [1, 10], nm: [1, 10] };
+      t.check('D6: nível 44 num local 40-50 conta', auto.diariaContaLocal(alto, 44) === true);
+      t.check('D6: nível 46 no MESMO local já não conta (mínimo 40 < 41)', auto.diariaContaLocal(alto, 46) === false);
+      t.check('D6: local 1-10 não conta para nível 40', auto.diariaContaLocal(baixo, 40) === false);
+      t.check('D6: arena nunca conta', auto.diariaContaLocal({ faixa: [1, 99], nm: [1, 99], arena: true }, 40) === false);
+    }
+
+    /* ---- D7 - servidor recusou (mochila cheia): NÃO diz "recebeu" e deixa .pronta ---- */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      m.montar('#rastreio-diaria-rift', [m.el({
+        label: 'rastreio-diaria-rift', className: 'pronta', textContent: 'Missão diária completa!',
+      })]);
+      const r = await auto.receberDiariasProntas();
+      t.check('D7: não confirmou -> ok=false e falha registada',
+        r.ok === false && r.falhas.indexOf('rift') >= 0 && r.recebeu.length === 0);
+      t.check('D7: não regista "recebeu" quando o rastreador continua .pronta',
+        (auto.getFarm().log || []).every((l) => !(l.type === 'diaria' && Array.isArray(l.recebeu) && l.recebeu.length && l.recebeu.indexOf('rift') >= 0)));
+    }
+
+
     {
       const m = criarMundo();
       const auto = carregarAutomation(m);

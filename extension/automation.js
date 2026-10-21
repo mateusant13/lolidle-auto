@@ -2112,7 +2112,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-21l';
+  const BUILD = '2026-10-21m';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -4242,7 +4242,7 @@ const CFG_VER = 4;
   // PRIMÁRIO — logo, a cada 10 min o boneco largava o farm para ir ler o cofre. A ESTREIA
   // (sem nenhuma leitura ainda) continua a acontecer porque o bloco `!haPrimaria` só a desliga
   // depois de existir uma leitura (`_cofreAt`). É o desenho que o comentário descrevia.
-  const NECESSIDADES_PRIMARIAS = ['presente', 'cura', 'vender', 'repor', 'tarefa', 'hab', 'atrib', 'equip', 'buscar', 'cofre', 'anunciar', 'comprarWatch'];
+  const NECESSIDADES_PRIMARIAS = ['presente', 'cura', 'vender', 'repor', 'tarefa', 'diaria', 'hab', 'atrib', 'equip', 'buscar', 'cofre', 'anunciar', 'comprarWatch'];
   /** NECESSIDADES da base (só o que FALTA) — evita rodar tudo à toa a cada visita. */
   // =======================================================================================
   // HIERARQUIA DE INTERRUPTORES (pedido do dono, 2026-10-14, verbatim):
@@ -4557,8 +4557,21 @@ const CFG_VER = 4;
       // `checarDiaria` do tick clica o rastreador em qualquer lugar (`receberDiariasProntas`).
       // Antes, aceitar/entregar diárias só acontecia dentro do passo `tarefa`, e só quando NÃO
       // havia tarefa pronta — com tarefa em andamento nunca corria.
-      n.diaria = cfg.autoTarefa !== false && (Date.now() - _ultimaDiaria) > cadencia(1800000);
-      n._diaria = { aceites: diariaEstado(), esperaMs: Date.now() - _ultimaDiaria };
+      // DIÁRIAS — ACEITAR no Capitão, SÓ a do RIFT. A de Runeterra é manual e o bot não a
+      // consegue terminar (motor.js:3984; jogo.js:5802) — aceitá-la era o mistério do dono
+      // ("não sei nem como ela foi aceita"). Aceitar é necessidade PRIMÁRIA porque o prémio
+      // (xp+ouro+item) paga a ida à Fonte; se o Capitão já disse "Feita hoje", fica silenciosa
+      // até ao dia seguinte (Brasília), em vez de viajar de 30 em 30 min.
+      const ativasDiaria = diariaEstado();
+      const riftAtiva = ativasDiaria.find((d) => d.tipo === 'rift');
+      const riftFeitaHoje = _diariaFeitaDia === diaHojeLocal();
+      const querAceitar = cfg.autoTarefa !== false && !riftAtiva && !riftFeitaHoje
+        && (Date.now() - _ultimaDiaria) > cadencia(1800000);
+      // "SÓ FAZ SE VALE A PENA": se o boneco não está numa região que conta e NÃO existe
+      // nenhuma região segura que conte, aceitar seria aceitar uma missão impossível.
+      const podeConcluir = !querAceitar || contaDiariaAgora() || !!regiaoQueContaDiaria();
+      n.diaria = querAceitar && podeConcluir;
+      n._diaria = { aceites: ativasDiaria, esperaMs: Date.now() - _ultimaDiaria, feitaHoje: riftFeitaHoje, premio: _diariaInfo.rift || null, podeConcluir };
     } catch { n.tarefa = false; n.diaria = false; }
     // PONTOS DE SKILL: a necessidade é "há pontos por gastar" (antes bastava `readSkills().pontos`,
     // que já era isto — mantido).
@@ -5143,17 +5156,136 @@ const CFG_VER = 4;
    *  1000/1000 feitos ("Missão diária completa! Clique aqui para receber o prêmio."); `.fora` =
    *  o progresso não corre no sítio onde o boneco está. */
   const CAMPOS_DIARIA = { rift: '#rastreio-diaria-rift', runeterra: '#rastreio-diaria' };
+  /** A diária de Runeterra é MANUAL por desenho do jogo (`DIARIAS.runeterra.aqui` = arena e não
+   *  aram, motor.js:3984; o jogo diz "caçando você mesmo"). A automação nunca farma Runeterra
+   *  (`ehRegiaoDeFarm` exclui arena/mundo), logo aceitá-la é aceitar uma missão que o bot NÃO
+   *  consegue terminar — foi exactamente a queixa do dono ("não sei nem como ela foi aceita"). */
+  const DIARIA_MANUAL = { runeterra: true };
+  const diaHojeLocal = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);   // Brasília, igual ao motor
+  /** Só a diária que a automação consegue concluir. O resto é recusado explicitamente. */
+  const diariaAceitavel = (tipo) => String(tipo || '') === 'rift';
+  let _diariaFeitaDia = '';        // dia (Brasília) em que o Capitão já disse "Feita hoje ✓" para o Rift
+  let _diariaInfo = {};            // prémio LIDO do painel do Capitão: { rift:{xp,ouro,lendarioPct,em} }
+  let _diariaSemEspaco = 0;        // última vez que a recolha falhou por mochila cheia
+  let _diariaViagemAt = 0;         // throttle da viagem para uma região que CONTA a diária
+  let _diariaRegiaoCache = { at: 0, nivel: 0, id: null };
+  let _custoDiariaCache = { at: 0, id: null, ouro: 0 };
+  function parseQtdDiaria(txt) {
+    const m = String(txt || '').match(/(\d[\d.\s]*)\s*\/\s*(\d[\d.\s]*)/);
+    if (!m) return { feitos: null, qtd: null };
+    const n = (s) => Number(String(s).replace(/[^\d]/g, '')) || 0;
+    return { feitos: n(m[1]), qtd: n(m[2]) };
+  }
   function diariaEstado() {
     const out = [];
     for (const tipo of Object.keys(CAMPOS_DIARIA)) {
       const el = document.querySelector(CAMPOS_DIARIA[tipo]);
       if (!el || el.hidden) continue;
+      const texto = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+      const { feitos, qtd } = parseQtdDiaria(texto);
+      const resta = (feitos != null && qtd != null) ? Math.max(0, qtd - feitos) : null;
       out.push({
         tipo, pronta: el.classList.contains('pronta'), fora: el.classList.contains('fora'),
-        texto: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+        texto, feitos, qtd, resta,
+        pct: (feitos != null && qtd) ? Math.min(100, Math.round((100 * feitos) / qtd)) : null,
+        manual: !!DIARIA_MANUAL[tipo],
       });
     }
     return out;
+  }
+  /** O monstro conta para a diária? O MOTOR exige `i.nivel >= estado.nivel - DIARIA.abaixo`
+   *  (motor.js:4030) e que o local seja Rift (`DIARIAS.rift.aqui`, motor.js:3983). O nível do
+   *  jogador e a faixa do local vêm do jogo — não há número copiado. `nm[0]` é o nível MÍNIMO
+   *  dos monstros do local; usar o mínimo é conservador (só conta se todos contarem). */
+  function diariaContaLocal(l, nivel) {
+    if (!l || !l.faixa || l.base || l.arena || l.mundo || ehRuneterra(l)) return false;
+    const min = Array.isArray(l.nm) ? Number(l.nm[0]) : null;
+    if (!isFinite(min)) return true;                    // sem `nm` não se inventa bloqueio
+    return min >= (Number(nivel) || 1) - 5;
+  }
+  /** Valor do prémio em OURO equivalente, com os números LIDOS do painel do Capitão
+   *  (`mostrarDiaria`, jogo.js:5806-5814) e a taxa xp<->ouro do motor (`taxaXpOuro`). */
+  function premioDiariaOuro(tipo) {
+    const i = _diariaInfo[tipo];
+    if (!i) return null;
+    const taxa = (() => { try { return taxaXpOuro(player().nivel || 1) || 1; } catch { return 1; } })();
+    // `xp/taxa` = ouro equivalente; `lendarioPct` é probabilidade, não se soma como ouro certo.
+    return (Number(i.xp) || 0) / taxa + (Number(i.ouro) || 0);
+  }
+  /** A diária VALE A PENA vs o farm actual?
+   *  - Rift: o progresso corre a farmar, logo o custo é ZERO se a região actual conta;
+   *  - se não conta, o custo é a viagem (`custoIdaBase` do jogo) — os abates no destino
+   *    continuam a dar o loot deles, não são custo;
+   *  - Runeterra: NUNCA (manual; a automação não vai à arena).
+   *  Sem prémio lido e sem custo, não se bloqueia nada (não se inventa número). */
+  function diariaValeAPena(d, opts) {
+    const o = opts || {};
+    if (!d || d.tipo !== 'rift' || d.manual) return { vale: false, motivo: 'manual (Runeterra)' };
+    if (d.pronta) return { vale: false, motivo: 'já pronta: só receber' };
+    if (o.conta !== false) return { vale: true, motivo: 'conta onde está: progresso é grátis', custo: 0 };
+    const premio = premioDiariaOuro('rift');
+    const custo = Number(o.custoOuro) || 0;
+    if (premio == null || !custo) return { vale: true, motivo: 'sem conta de custo: não se inventa bloqueio', premio, custo };
+    return { vale: premio >= custo, motivo: premio >= custo ? 'prémio cobre a viagem' : 'prémio NÃO cobre a viagem', premio, custo };
+  }
+  /** Melhor região do Rift que CONTA a diária (monstros >= nível-5), segura e em nível.
+   *  Usa a MESMA `estimarRegiao`/`scoreRegiao` do farm; nada copiado. */
+  function regiaoQueContaDiaria() {
+    const p = player(), nivel = p.nivel || 1;
+    if (Date.now() - _diariaRegiaoCache.at < 30000 && _diariaRegiaoCache.nivel === nivel) return _diariaRegiaoCache.id;
+    const cand = (META.locais || []).filter(ehRegiaoDeFarm)
+      .filter((l) => diariaContaLocal(l, nivel))
+      .map((l) => ({ l, e: estimarRegiao(l.id) }))
+      .filter((x) => x.e && x.e.morte === false);
+    if (!cand.length) { _diariaRegiaoCache = { at: Date.now(), nivel, id: null }; return null; }
+    const obj = objDe(cfg.objetivo);
+    cand.sort((a, b) => scoreRegiao(b.e, obj, null) - scoreRegiao(a.e, obj, null));
+    _diariaRegiaoCache = { at: Date.now(), nivel, id: cand[0].l.id };
+    return cand[0].l.id;
+  }
+  /** Região forçada pela diária: só quando NÃO há região fixa nem rota do dono, a diária está
+   *  aceite, não está pronta, a região actual NÃO conta e a conta diz que vale a pena. */
+  /** Custo aproximado da viagem (recall + mapa) em ouro, a partir da região ACTUAL e das
+   *  funções do motor. Não chama `custoIdaBase()` de propósito: essa função pergunta à
+   *  `regiaoIdeal()`, e isto corre DENTRO dela (recursão). */
+  function custoViagemDiariaOuro() {
+    try {
+      const id = localId(readLocation().text);
+      if (Date.now() - _custoDiariaCache.at < 30000 && _custoDiariaCache.id === id) return _custoDiariaCache.ouro;
+      const e = id ? estimarRegiao(id) : null;
+      let ouro = 0;
+      if (e) {
+        const porSeg = scoreRegiao(e, 'ouro+xp', null) / Math.max(0.01, taxaXpOuro(e.mobLevel || 1)) / 60;
+        ouro = Math.max(0, porSeg) * (esperaRecallMs() / 1000 + 8);
+      }
+      _custoDiariaCache = { at: Date.now(), id, ouro };
+      return ouro;
+    } catch { return 0; }
+  }
+
+  function diariaRegiaoForcada() {
+    try {
+      if (cfg.autoTarefa === false) return null;
+      if (cfg.regionDefault) return null;                         // região fixa é ordem do dono
+      if (cfg.rotaFarm && cfg.rotaFarm.ativa) return null;        // rota de item é objective explícito
+      const d = diariaEstado().find((x) => x.tipo === 'rift');
+      if (!d || d.pronta) return null;
+      const nivel = player().nivel || 1;
+      const lid = localId(readLocation().text);
+      const loc = (META.locais || []).find((l) => l.id === lid);
+      const conta = !!(loc && diariaContaLocal(loc, nivel) && !d.fora);
+      const dec = diariaValeAPena(d, { conta, custoOuro: conta ? 0 : custoViagemDiariaOuro() });
+      if (!dec.vale) return null;
+      if (conta) return null;                                     // já conta aqui: não viaja
+      return regiaoQueContaDiaria();
+    } catch { return null; }
+  }
+  /** A região em que o boneco está já conta para a diária? (nível mínimo do local >= nível-5). */
+  function contaDiariaAgora() {
+    try {
+      const loc = (META.locais || []).find((l) => l.id === localId(readLocation().text));
+      return !!(loc && diariaContaLocal(loc, player().nivel || 1));
+    } catch { return false; }
   }
   /** RECEBE as diárias PRONTAS.
    *
@@ -5168,22 +5300,31 @@ const CFG_VER = 4;
    *  Logo não é preciso Fonte nem Capitão: clica-se o rastreador onde o boneco estiver. */
   async function receberDiariasProntas() {
     const prontas = diariaEstado().filter((d) => d.pronta);
-    if (!prontas.length) return { ok: true, recebeu: [] };
-    const recebeu = [];
+    if (!prontas.length) return { ok: true, recebeu: [], falhas: [] };
+    const recebeu = [], falhas = [];
     for (const d of prontas) {
       const el = document.querySelector(CAMPOS_DIARIA[d.tipo]);
       if (!el) continue;
       el.click();
-      // O prémio vem do servidor; o rastreador deixa de estar `.pronta` quando ele responde.
-      for (let i = 0; i < 20; i++) {
+      // O prémio vem do servidor. Só se pode dizer "recebeu" quando o rastreador deixa de estar
+      // `.pronta`/visível (jogo.js:7148-7156: `diaria` volta a null e `bd.hidden = !di`). Se
+      // ficar `.pronta`, o servidor RECUSOU — o caso real é mochila cheia (`entregarDiaria`,
+      // motor.js:4037: `if (mochilaCheia) return {mochilaCheia:true}`); antes isto era registado
+      // como "recebeu" e o prémio ficava parado para sempre.
+      let confirmado = false;
+      for (let i = 0; i < 30; i++) {
         await esperar(200);
         const cur = document.querySelector(CAMPOS_DIARIA[d.tipo]);
-        if (!cur || cur.hidden || !cur.classList.contains('pronta')) break;
+        if (!cur || cur.hidden || !cur.classList.contains('pronta')) { confirmado = true; break; }
       }
-      recebeu.push(d.tipo);
+      if (confirmado) recebeu.push(d.tipo); else falhas.push(d.tipo);
+    }
+    if (falhas.length) {
+      _diariaSemEspaco = Date.now();
+      logEvent('diaria', { falhou: falhas, motivo: 'o rastreador continuou .pronta (servidor recusou; mochila cheia?)' });
     }
     if (recebeu.length) logEvent('diaria', { recebeu, textos: prontas.map((p) => p.texto) });
-    return { ok: recebeu.length > 0, recebeu };
+    return { ok: falhas.length === 0, recebeu, falhas, confirmado: falhas.length === 0 };
   }
   let _diariaAt = 0;
   let _ultimaDiaria = 0;      // última visita ao Capitão para ACEITAR diárias (cadência própria)
@@ -5193,6 +5334,18 @@ const CFG_VER = 4;
     if (Date.now() - _diariaAt < 15000) return;
     _diariaAt = Date.now();
     if (!diariaEstado().some((d) => d.pronta)) return;
+    // O prémio precisa de UM slot livre (`entregarDiaria`, motor.js:4037). Clicar com a mochila
+    // cheia só gasta 6 s e volta a ficar `.pronta`; primeiro a base tem de vender/guardar. As
+    // necessidades `vender`/`cofre` já são primárias e são acordadas por `_diariaSemEspaco`.
+    try {
+      const bag = scanBag(true);
+      if (bag && bag.used >= bag.cap) {
+        if (!_diariaSemEspaco) logEvent('diaria', { espera: 'mochila cheia: vou libertar um slot antes de receber', used: bag.used, cap: bag.cap });
+        _diariaSemEspaco = Date.now();
+        return;
+      }
+      _diariaSemEspaco = 0;
+    } catch { /* sem DOM */ }
     ocupado = true;
     try { await receberDiariasProntas(); } catch (e) { logIssue('diaria:receber', { erro: String(e) }); } finally { ocupado = false; }
   }
@@ -5329,15 +5482,36 @@ const CFG_VER = 4;
     const btn = await waitForNpc('#janela-npc [data-palavra="diaria"]', 4000);
     if (!btn) return { ok: false, motivo: 'sem opcao diaria' };
     btn.click(); await humano(450);
+    // PRÉMIO LIDO DO PAINEL (jogo.js:5806-5814): "X de XP · Y de ouro · épico garantido (Z% de
+    // ser lendário)". É o número do jogo, não uma cópia — serve à conta "vale a pena?".
+    try {
+      for (const k of ['rift', 'runeterra']) {
+        const row = document.querySelector('.tarefa-diaria.diaria-' + k + ' .info small');
+        const txt = (row && row.textContent || '').replace(/\s+/g, ' ').trim();
+        const m = txt.match(/([\d.,]+)\s*de XP.*?([\d.,]+)\s*de ouro.*?\(([\d.,]+)%/i);
+        if (m) _diariaInfo[k] = { xp: parseNum(m[1]), ouro: parseNum(m[2]), lendarioPct: parseNum(m[3]), em: Date.now() };
+      }
+    } catch { /* sem painel */ }
+    // SÓ A DO RIFT. A de Runeterra é manual (o jogo diz "caçando você mesmo"); aceitá-la era
+    // deixar uma missão impossível de concluir na lista (queixa do dono, 2026-10-21).
     const btns = [...document.querySelectorAll('[data-aceitar-diaria]')].filter((b) => !b.disabled);
-    const ks = btns.map((b) => b.dataset.aceitarDiaria);
-    for (const b of btns) { b.click(); await humano(450); }
-    // "Feita hoje ✓" (jogo.js:5470) = não há nada para aceitar desta; marca-se para não voltar a
-    // abrir o diálogo por nada (o `n.diaria` tem cadência de 30 min).
-    const feitas = [...document.querySelectorAll('.diaria-feita')].map((e) => (String(e.parentElement?.className || '') + ' ' + String(e.textContent || '')).trim());
-    logEvent('diaria', { aceitou: ks, feitasHoje: feitas.length });
+    const ks = btns.map((b) => String(b.dataset.aceitarDiaria));
+    const aceitou = [];
+    for (const b of btns) {
+      const k = String(b.dataset.aceitarDiaria);
+      if (!diariaAceitavel(k)) continue;
+      b.click(); await humano(450);
+      aceitou.push(k);
+    }
+    const ignorou = ks.filter((k) => !diariaAceitavel(k));
+    // "Feita hoje ✓" (jogo.js:5810) = não há nada para aceitar desta; marca-se o DIA para não
+    // voltar a abrir o diálogo de 30 em 30 min até amanhã.
+    const feitaRift = !!document.querySelector('.tarefa-diaria.diaria-rift .diaria-feita');
+    if (feitaRift) _diariaFeitaDia = diaHojeLocal();
+    const feitas = [...document.querySelectorAll('.diaria-feita')].length;
+    logEvent('diaria', { aceitou, ignorou, feitasHoje: feitas, premio: _diariaInfo.rift || null });
     fecharJanelas();
-    return { ok: true, aceitou: ks, quantas: ks.length, feitasHoje: feitas.length };
+    return { ok: true, aceitou, ignorou, quantas: aceitou.length, feitasHoje: feitas, feitaRift, premio: _diariaInfo.rift || null };
   }
 
   /** Retira do cofre (ABERTO) o melhor item por nome/base. */
@@ -11343,7 +11517,15 @@ const CFG_VER = 4;
   /** REGIAO EM USO: a FIXA do dono (`cfg.regionDefault`) quando existe, senao a recomendada.
    *  Mantem o contrato antigo (a GUI e a `viagem` automatica usam `regiaoIdeal()` como regiao
    *  a seguir). Para o PREVIEW do modo automatico usa-se `regiaoRecomendada()`. */
-  function regiaoIdeal() { return cfg.regionDefault || regiaoRecomendada(); }
+  function regiaoIdeal() {
+    // DIÁRIA DO RIFT: se a região actual NÃO conta (monstro abaixo de nível-5) e a conta diz
+    // que vale a pena, a região da diária manda — só em modo automático (sem região fixa nem
+    // rota de item, que são objectives explícitos do dono). Sem isto o boneco podia farmar
+    // 1000 abates numa zona baixa e a diária ficava a 0/1000 para sempre.
+    const diaria = diariaRegiaoForcada();
+    if (diaria) return diaria;
+    return cfg.regionDefault || regiaoRecomendada();
+  }
 
   /** A REGIÃO É SEGURA? (regra do dono: "NAO E PRA MORRER, NUNCA, COM ESSE SCRIPT")
    *  Correcção do Lead, 2026-10-14 — MEDIDO AO VIVO: a Katarina (nv 29) estava no COVIL DO
@@ -11431,6 +11613,28 @@ const CFG_VER = 4;
   let _recallsSemFechar = 0, _farmForcadoAte = 0;
   const FARM_FORCADO_MS = 10 * 60 * 1000;   // 10 min
   let ocupado = false;   // operação em andamento (mercado/loja) → NUNCA viajar no meio
+  /** Sai do campo para uma região que CONTA a diária? Só quando: a região actual está fora da
+   *  conta (monstros abaixo de nível-5), a diária está aceite e vale a pena, e NÃO há chefe/
+   *  guardião vivo (não se abandona uma luta), região fixa ou rota do dono. `viajarPara` já
+   *  faz recall primeiro; o throttle evita ping-pong de 5 em 5 s. */
+  function talvezViajarDiaria() {
+    try {
+      if (cfg.autoTarefa === false || pausado || ocupado || _baseBusy || baseLock) return false;
+      if (!podeFazer('farm').pode) return false;
+      if (Date.now() - _diariaViagemAt < 120000) return false;
+      const v = estadoVivo();
+      if (v && Array.isArray(v.inimigos) && v.inimigos.some((i) => i && (i.chefe || i.guardiao) && (i.hp > 0))) return false;
+      const alvo = diariaRegiaoForcada();
+      if (!alvo) return false;
+      const atual = localId(readLocation().text);
+      if (atual === alvo) return false;
+      _diariaViagemAt = Date.now();
+      logEvent('diaria', { ir: alvo, de: atual, motivo: 'a região actual não conta a diária (monstro abaixo de nível-5)' });
+      viajarPara(alvo);
+      return true;
+    } catch { return false; }
+  }
+
   function supervisarBase() {
     if (!podeFazer('manutencao').pode || pausado) return;   // base = manutencao (vender/cofre/repor)
     // ABA EM SEGUNDO PLANO: o jogo usa requestAnimationFrame, logo com a aba oculta o loop para
@@ -11581,6 +11785,7 @@ const CFG_VER = 4;
       press('b');
       setTimeout(() => { try { if (naBase()) acaoBase(); } catch { /* ignore */ } }, esperaRecallMs());
     } else {
+      if (talvezViajarDiaria()) return;
       marcarAtiva();                                              // no mapa = ativo
     }
   }
@@ -11951,7 +12156,7 @@ const CFG_VER = 4;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
+  window.__lolidleAuto = { BUILD, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },
