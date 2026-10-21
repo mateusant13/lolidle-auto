@@ -80,7 +80,11 @@ c.inimigos = [m.criarMonstro(alvoNome, nvAlvo)];
 const pot = {};
 const fontes = {};
 // ---- política "smart" (espelho de decidirPocao) ----
-const PISO_CHEFE = 0.9, MARGEM = 1.1;
+const PISO_CHEFE = Number(opt('--piso', 0.9)), MARGEM = 1.1;
+// Piso depois de o chefe ter ensinado o dano da primeira mecânica (`danoMec`). Antes disso o
+// primeiro burst é DESCONHECIDO e o piso alto é o que segura; depois de aprendido, o `max()` com
+// `prevCarga`/`seq` já cobre o golpe e o piso pode descer (poupa ~30% de poções).
+const PISO_DEPOIS = Number(opt('--pisoDepois', 0));
 const danoMec = {};                 // aprendido: dano real de cada mecânica do chefe
 let ultGolpe = 0, carga = null, cargaAt = 0, sofridoNaCarga = 0, fuga = null;
 function beber(falta) {
@@ -111,7 +115,8 @@ while (t < maxSeg) {
       !(carga && carga.mec === 'invocar')) {
     const prevCarga = carga ? (danoMec[carga.mec] || ultGolpe * 2) * MARGEM : 0;
     const seq = carga ? (danoMec[carga.mec] || ultGolpe * 2) + ultGolpe : 0;
-    const alvo = Math.min(a.vida, Math.max(a.vida * PISO_CHEFE, ultGolpe, prevCarga, seq));
+    const pisoAtual = (PISO_DEPOIS > 0 && Object.keys(danoMec).length) ? PISO_DEPOIS : PISO_CHEFE;
+    const alvo = Math.min(a.vida, Math.max(a.vida * pisoAtual, ultGolpe, prevCarga, seq));
     const falta = alvo - e.vida;
     if (falta > 0) {
       const golpeMax = Math.max(prevCarga, seq, ultGolpe);

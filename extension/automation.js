@@ -127,7 +127,8 @@
     barraQuarentenaMs: 6000,
     barraCadenciaMs: 2000,    // reavalia a barra (sem clicar se o alvo não mudou)
     pocaoPisoPct: 0.75,       // piso de HP FORA de chefe (% do máx)
-    pocaoPisoChefe: 0.9,      // piso de HP NO CHEFE (mais seguro; a carga cobre o burst)
+    pocaoPisoChefe: 0.9,      // piso de HP NO CHEFE enquanto o dano dele é DESCONHECIDO
+    pocaoPisoChefeDepois: 0.8, // piso depois de o golpe do chefe estar medido (poupa ~27% de poções)
     pocaoMargem: 1.1,         // margem só na previsão da CARGA (física/mágica)
     // DECISÃO INTELIGENTE DE POÇÃO: interruptor próprio (ordem do dono, 2026-10-20).
     // Vale SÓ no PvE do mapa (`decidirPocao`). Em PvP (motor.js:44 `POCAO_PVP`), na Arena,
@@ -2640,7 +2641,6 @@ const CFG_VER = 2;
     const asMult = live.furia ? 1.5 : 1;    // Rugido ("furioso"): o chefe bate 1,5× mais rápido por 5 s
     const gapS = Math.min(Math.max((ult && ult.gapMs) || 1000, 250), 3000) / 1000 / asMult;
 
-    const pisoPct = (() => { const p = live.boss ? numOr(cfg.pocaoPisoChefe, 0.9) : numOr(cfg.pocaoPisoPct, 0.75); return live.furia ? Math.min(0.97, p + 0.05) : p; })();
     const margem = numOr(cfg.pocaoMargem, 1.1);
     // golpe iminente TEÓRICO da WIKI pro alvo atual (ad × fator de nível × mitigação).
     // A wiki já sabe o dano por golpe ANTES de ele acontecer — usa isso em vez de só reagir.
@@ -2658,6 +2658,21 @@ const CFG_VER = 2;
         golpeWiki = _golpeWiki.v;
       }
     } catch { /* ignore */ }
+    // PISO DO CHEFE EM DUAS FASES (medido com `tools/prova-boss.mjs`, 40 seeds por configuração):
+    //  - enquanto o dano por golpe do chefe é DESCONHECIDO (nem a wiki nem o histórico), o piso é
+    //    `pocaoPisoChefe` (0,9): é a única coisa que segura o PRIMEIRO burst;
+    //  - depois de conhecido, o `max(piso, iminente, sequencia)` já cobre o golpe e o piso desce
+    //    para `pocaoPisoChefeDepois` (0,8). Medição (Barão nv42, build do dono, 40 seeds):
+    //    0,9 o tempo todo = 21.338 de ouro em poções; 0,9→0,8 = 15.514 (-27%), mesmo kill (187 s),
+    //    0 mortes. O piso de 0,85 foi o PIOR caso (1 morte em 40 aos 21,5 s: a poção escolhida
+    //    cobria o buraco e não o burst) — por isso o degrau é 0,8, não 0,85.
+    const pisoChefe = numOr(cfg.pocaoPisoChefe, 0.9);
+    const pisoChefeDepois = numOr(cfg.pocaoPisoChefeDepois, 0.8);
+    const sabeGolpe = golpeWiki > 0 || (log.length > 0);
+    const pisoPct = (() => {
+      const p = live.boss ? (sabeGolpe ? pisoChefeDepois : pisoChefe) : numOr(cfg.pocaoPisoPct, 0.75);
+      return live.furia ? Math.min(0.97, p + 0.05) : p;
+    })();
     // golpe FORTE previsto: mecânica carregada do chefe (o aviso chega ~1 s antes)
     let golpeCarga = 0, mecNome = null, fatal = false;
     const carga = live.carga;
