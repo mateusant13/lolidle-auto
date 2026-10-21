@@ -164,7 +164,10 @@ switches: 'interruptores',
   const $ = (id) => document.getElementById(id);
   const q1 = (s) => document.querySelector(s);
   const qa = (s) => Array.prototype.slice.call(document.querySelectorAll(s));
-  const esc = (s) => String(s == null ? '' : s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+  // Toda a gente que lê a GUI é jogador, não programador: as citações `[motor.js:123]` que os
+  // motivos trazem para dentro do código saem AQUI, no único sítio que desenha texto.
+  const semFonte = (s) => String(s == null ? '' : s).replace(/\s*\[(?:motor|jogo|inject|cena|dialogo)\.js[^\]]*\]/g, '');
+  const esc = (s) => semFonte(s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
   const fmt = (n) => (Number.isFinite(Number(n)) ? Math.round(Number(n)).toLocaleString('pt-BR') : '-');
   const fmt1 = (n) => (Number.isFinite(Number(n)) ? (Math.round(Number(n) * 10) / 10).toLocaleString('pt-BR') : '-');
   const pct = (n) => (Number.isFinite(Number(n)) ? (Math.round(Number(n) * 1000) / 10).toFixed(1) + '%' : '-');
@@ -741,7 +744,7 @@ switches: 'interruptores',
     //      largura toda (mestre, intro, árvore, campeões, blocos de combate/parado) ocupam as duas.
     '#lolidle-ap #ap-t-painel.on{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}',
     '#lolidle-ap #ap-t-painel.on>*{break-inside:avoid;page-break-inside:avoid}',
-    '#lolidle-ap #ap-t-painel.on>#ap-painel-estado,#lolidle-ap #ap-t-painel.on>.intro,#lolidle-ap #ap-t-painel.on>#ap-now-combate,#lolidle-ap #ap-t-painel.on>#ap-now-parado,#lolidle-ap #ap-t-painel.on>#ap-auto-arvore,#lolidle-ap #ap-t-painel.on>#ap-auto-champ,#lolidle-ap #ap-t-painel.on>#ap-fm-itens,#lolidle-ap #ap-t-painel.on>#ap-now-jogo{grid-column:1/-1}',
+    '#lolidle-ap #ap-t-painel.on>#ap-painel-estado,#lolidle-ap #ap-t-painel.on>.intro,#lolidle-ap #ap-t-painel.on>.grid2,#lolidle-ap #ap-t-painel.on>#ap-now-combate,#lolidle-ap #ap-t-painel.on>#ap-now-parado,#lolidle-ap #ap-t-painel.on>#ap-auto-arvore,#lolidle-ap #ap-t-painel.on>#ap-auto-champ,#lolidle-ap #ap-t-painel.on>#ap-fm-itens,#lolidle-ap #ap-t-painel.on>#ap-now-jogo{grid-column:1/-1}',
     '@media (max-width:900px){#lolidle-ap #ap-t-painel.on{grid-template-columns:1fr}}',
   ].join('\n');
 
@@ -803,13 +806,13 @@ switches: 'interruptores',
       + '</nav>'
       + '<main>'
       + '  <section class="pane on" id="ap-t-painel">'
-      // ESTADO + CONTROLE primeiro: é a primeira aba. Um indicador de estado e UM botão
-      // principal cujo rótulo diz o que muda; pausar/parar tudo ficam secundários.
-      + '    <div id="ap-painel-estado"></div>'
       + '    <p class="intro">O que está a acontecer agora e os switches que mandam no auto-play.</p>'
-      // AUTO FARM NO PAINEL (pedido do dono 2026-10-21): modalidade + objetivo + alvos.
+      // AUTO FARM NO PAINEL (pedido do dono 2026-10-21): modalidade + objetivo + alvos, ANTES do
+      // cartão mestre (que traz a árvore toda e é comprido). É a primeira coisa que se vê.
       + '    <div class="grid2"><div id="ap-fm-modo"></div><div id="ap-fm-objetivo"></div></div>'
       + '    <div id="ap-fm-itens"></div>'
+      // ESTADO + CONTROLE: o interruptor mestre e a árvore dos switches.
+      + '    <div id="ap-painel-estado"></div>'
       + '    <div class="grid2">'
       + '      <div id="ap-now-estado"></div>'
       + '      <div id="ap-now-fase"></div>'
@@ -2855,6 +2858,7 @@ switches: 'interruptores',
     const wUlt = w.ultimaCompra;
     // Chips dos itens escolhidos, cada um com o SEU limite em ouro (pedido do dono 2026-10-21:
     // "item x até x de gold, item y até y"). Vazio/0 = vale o tecto global.
+    const wItens = Array.isArray(cfgWatch.itens) ? cfgWatch.itens : [];
     const limWatch = (cfgWatch && cfgWatch.limites) || {};
     const chipsItens = wItens.length
       ? '<div class="chips" id="ap-watch-chips">' + ordenarItens(wItens).map((b) => '<span class="chip" title="' + esc(b) + '">' + itemImgTag(b) + esc(nomeItem(b))
