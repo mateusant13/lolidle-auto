@@ -1898,7 +1898,7 @@ const CFG_VER = 2;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-21e';
+  const BUILD = '2026-10-21f';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -5543,7 +5543,7 @@ const CFG_VER = 2;
       // existia (`|| (await lerMinhasOfertas())`) foi REMOVIDO: esse fallback abria #janela-mercado
       // so para VER as ofertas — exatamente o que o P0 proibe.
       const o = await lerMinhasOfertasServidor();
-      if (o) { _ofertasCache = o; _ofertasAt = Date.now(); chrome.storage.local.set({ [OFERTAS_KEY]: { at: _ofertasAt, ofertas: o } }); logEvent('ofertas', { n: o.length }); }
+      if (o) { _ofertasCache = o; _ofertasAt = Date.now(); chrome.storage.local.set({ [OFERTAS_KEY]: { at: _ofertasAt, ofertas: o } }); }
       return o;
     } catch { return null; }
   }
@@ -8258,7 +8258,11 @@ const CFG_VER = 2;
       const b = document.querySelector('#cartas-bolsa .carta-misteriosa [data-carta-abrir]');
       if (!b) break;
       b.click(); cliques++;
-      await esperar(1300);
+      // O clique abre também a janela do Ornn (jogo.js:8076). Fecha-a JÁ: abrir não precisa dela e
+      // uma janela no meio do ecrã, mesmo 1,5 s, incomoda quem está a jogar.
+      await esperar(220);
+      try { fecharJanelas(); } catch { /* ignore */ }
+      await esperar(1000);
       // O "pacote" das cartas cobre o ecrã até se clicar em Continuar.
       for (let k = 0; k < 3; k++) { const ok = document.querySelector('.pacote-fundo [data-pacote-ok]'); if (!ok) break; ok.click(); await esperar(220); }
     }
@@ -9623,7 +9627,10 @@ const CFG_VER = 2;
     const travadas = achados.filter((o) => faltaLiberarOferta(o) > 0);
     const prontas = achados.filter((o) => faltaLiberarOferta(o) <= 0);
     if (travadas.length) logEvent('mercado', { acao: 'watch-travada', n: travadas.length, liberaEm: Math.min(...travadas.map((o) => Number(o.libera) || 0)), faltaMs: Math.min(...travadas.map(faltaLiberarOferta)) });
-    logEvent('mercado', { acao: 'watch', n: achados.length, prontas: prontas.length, travadas: travadas.length, primeiro: { id: achados[0].id, vendedor: achados[0].vendedor, item: achados[0].item, preco: achados[0].preco, moeda: achados[0].moeda, libera: achados[0].libera || null } });
+    // NÃO se loga cada passagem da vigia (2 s): o histórico do jogador enchia-se de
+    // "mercado: watch" e não dizia nada (queixa do dono 2026-10-21). Só se regista quando há
+    // uma oferta COMPRÁVEL agora.
+    if (prontas.length) logEvent('mercado', { acao: 'watch', n: achados.length, prontas: prontas.length, travadas: travadas.length, primeiro: { id: achados[0].id, vendedor: achados[0].vendedor, item: achados[0].item, preco: achados[0].preco, moeda: achados[0].moeda, libera: achados[0].libera || null } });
     if (!naBase()) {
       // VOLTAR À BASE IMEDIATAMENTE (dono 2026-10-20): se há uma oferta pronta, o poller
       // (2 s) já manda o recall — não espera pelo supervisor de 5 s nem pelo fim do chefe.

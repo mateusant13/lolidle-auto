@@ -142,7 +142,7 @@ switches: 'interruptores',
   /** Eventos de ROTINA que não dizem nada ao jogador (subir habilidade, repor a barra, golpe a
    *  golpe do chefe, resumo de grupo). O histórico é do bolso e da vida, não da automação. */
   const RUIDO_HIST = new Set([
-    'habilidades', 'rotacao', 'skills', 'barra',
+    'habilidades', 'rotacao', 'skills', 'barra', 'ofertas',
     'evento:habilidade', 'evento:grupo', 'evento:efeito',
     'evento:chefeGolpe', 'evento:chefeCarrega', 'evento:chefeInterrompido',
   ]);
@@ -2212,8 +2212,7 @@ switches: 'interruptores',
       + '<p class="hint"><b>Os itens desta build</b> (' + itens.length + '):</p>'
       + listaItens
       + (bh.aviso ? '<p class="aviso warn">' + esc(bh.aviso) + '</p>' : '')
-      + '<p class="diag-t">Melhores 4 habilidades para esta build</p>'
-      + '<div class="lista">' + hab + '</div>'
+      + '<details><summary>As 4 habilidades que mais rendem com esta build</summary><div class="lista">' + hab + '</div></details>'
       + tecnica));
   }
 
@@ -2325,11 +2324,15 @@ switches: 'interruptores',
     }
     const barra = (sk.bar || []).map((h) => {
       const ult = ler('ehUltimate', false, h.t);
-      return '<span class="chip ' + (h.ready ? '' : '') + '" title="' + esc(h.nome || h.t) + '">' + esc(h.nome || h.t) + ' <small>' + (h.ready ? 'pronto' : (h.cd != null ? h.cd + 's' : 'em recarga')) + (ult ? ' · ULTIMATE' : '') + '</small></span>';
+      // O NOME na barra do jogo vem com a DESCRIÇÃO toda colada. Mostra-se só o nome (antes do
+      // travessão) e o texto inteiro fica no `title`.
+      const cheio = String(h.nome || h.t || '');
+      const curto = cheio.split(/\s+[—–-]\s+/)[0].slice(0, 34);
+      return '<span class="chip" title="' + esc(cheio) + '">' + esc(curto) + ' <small>' + (h.ready ? 'pronto' : (h.cd != null ? h.cd + 's' : 'em recarga')) + (ult ? ' · ULTIMATE' : '') + '</small></span>';
     }).join('') || '<span class="vazio">nenhuma habilidade na barra</span>';
     setHtml('ap-sk-barra', card('Barra de combate', 'as habilidades que o jogo usa sozinho',
       '<div class="chips">' + barra + '</div>'
-      + '<p class="hint">A <b>ultimate</b> só é usada contra chefes (ou em áreas muito difíceis), em mobs normais a automação guarda-a.</p>'));
+      + '<p class="hint">A ultimate só é usada contra chefes ou em áreas muito difíceis.</p>'));
 
     const pontos = sk.pontos || 0, pontosAtrib = sk.pontosAtrib || 0;
     setHtml('ap-sk-pontos', card('Pontos para gastar', 'lido do HUD dourado do jogo',
@@ -3088,9 +3091,21 @@ switches: 'interruptores',
       + '</div>'
       + (mortes.length ? '<p class="aviso warn">Última morte: ' + esc(eventoDesc(mortes[0])) + (eventoLocal(mortes[0]) ? ' · em ' + esc(eventoLocal(mortes[0])) : '') + '</p>' : '')
       + '<p class="hint">Fonte: ' + fonte + '. O histórico é gravado no armazenamento local da extensão e mantém as últimas 500 entradas (48 h).</p>'));
-    const lista = h.slice(0, 300).map((e) => '<div class="ln ' + (e.type === 'morte' || e.type === 'evento:morreu' ? 'loj' : '') + '">'
-      + '<time>' + hora(e.at) + '</time><b>' + esc(EVENTO_NOME[e.type] || String(e.type || '').replace(/^evento:/, '')) + '</b>'
-      + '<span class="d" title="' + esc(eventoDesc(e)) + '">' + esc(eventoDesc(e)) + (eventoLocal(e) ? ' · ' + esc(eventoLocal(e)) : '') + '</span></div>').join('');
+    // Repetições seguidas do MESMO evento ("rotina de base" 3× no mesmo minuto) ficam numa
+    // linha só com ×N: o jogador quer o que aconteceu, não quantas vezes a rotina passou.
+    const seq = [];
+    for (const e of h) {
+      const k = String(e.type) + '|' + eventoDesc(e);
+      const ult = seq[seq.length - 1];
+      if (ult && ult.k === k) { ult.n += 1; continue; }
+      seq.push({ k, e, n: 1 });
+    }
+    const lista = seq.slice(0, 300).map((g) => {
+      const e = g.e;
+      return '<div class="ln ' + (e.type === 'morte' || e.type === 'evento:morreu' ? 'loj' : '') + '">'
+        + '<time>' + hora(e.at) + '</time><b>' + esc(EVENTO_NOME[e.type] || String(e.type || '').replace(/^evento:/, '')) + '</b>'
+        + '<span class="d" title="' + esc(eventoDesc(e)) + '">' + esc(eventoDesc(e)) + (eventoLocal(e) ? ' · ' + esc(eventoLocal(e)) : '') + (g.n > 1 ? ' ×' + g.n : '') + '</span></div>';
+    }).join('');
     setHtml('ap-hi-48h', card('O que aconteceu, por ordem', h.length ? h.length + ' evento(s), ' + fonte : 'sem eventos',
       h.length ? '<div class="lista">' + lista + '</div>' : '<p class="vazio">Ainda não há eventos. Farme um pouco com o auto-play ligado.</p>'));
     renderHist();
