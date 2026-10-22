@@ -1,12 +1,12 @@
 /*
- * LoL Idle — Auto Poção · gui.js  (world: ISOLATED)
+ * LoL Idle - Auto Poção · gui.js  (world: ISOLATED)
  * =============================================================================
  * PAINEL DO USUÁRIO do auto-play.
  *
- * COMO ABRIR (o caminho REAL — é este que as verificações e os prints têm de usar):
+ * COMO ABRIR (o caminho REAL - é este que as verificações e os prints têm de usar):
  *   • hover no SEU NOME (canto superior direito do jogo)  • botão flutuante ⚙  • tecla F8
  *   • ou por código: window.__lolidleGui.abrir()  (fecha com fechar(); troca de aba: setTab())
- * `classList.add('on')` NÃO é o caminho real: só mostra o painel — quem pinta o conteúdo é o
+ * `classList.add('on')` NÃO é o caminho real: só mostra o painel - quem pinta o conteúdo é o
  * `abrir()` interno. Quem abrir por classe vai ver o painel vazio e achar que é bug.
  *
  * COMO ESTE ARQUIVO ESTÁ ORGANIZADO (procura pelos números):
@@ -157,7 +157,7 @@ switches: 'interruptores',
   let aberto = false, fixado = false, saveTimer = null, tabAtiva = 'painel', ultimoRender = 0, cacheAgora = { at: 0, v: null };
   // Espelho de GUI_KEY (preferências da GUI, não da automação). `bfAberto`: o bloco da build por
   // fase está aberto? `farmModo`: 'sozinho' (a automação escolhe a região) ou 'item' (escolhe-se
-  // o que dropar). Lido no boot e reescrito a cada clique — sobrevive ao F5.
+  // o que dropar). Lido no boot e reescrito a cada clique - sobrevive ao F5.
   let guiPrefs = { bfAberto: true, farmModo: 'sozinho', fmModoMin: false, fmItensMin: false };
 
   // ============================================================ 0b. AJUDANTES
@@ -183,7 +183,7 @@ switches: 'interruptores',
   const capNome = (id) => { const s = String(id == null ? '' : id).trim(); return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; };
   const potIcon = (k) => (q1('#hud-pocoes [data-pocao="' + k + '"] img') || {}).src || '';
   // Número como o JOGO o escreve. O `fmt` do jogo (docs/game-src/cena.js:225) mete sufixo
-  // acima de 10.000 ("12.3k") e acima de 1.000.000 ("1.2M") — e é esse texto que vive no DOM
+  // acima de 10.000 ("12.3k") e acima de 1.000.000 ("1.2M") - e é esse texto que vive no DOM
   // (#hud-vida-txt, jogo.js:6203; #st-vida-txt, jogo.js:6438). O parser antigo apagava o sufixo
   // e corrompia a leitura EM SILÊNCIO ("12.3k" virava 123). REGRA (a mesma provada no
   // content.js): grupo de 3 casas ("4.188") é MILHAR; com sufixo ("12.3k") é decimal;
@@ -224,7 +224,7 @@ switches: 'interruptores',
   /** Atalho de LEITURA: devolve o valor ou um valor de recurso.
    *  Regra da ponte: TODOS os argumentos a partir do 3.º são repassados à automação. Sem isso,
    *  `ler('planBag', null, bag)` chamava `planBag()` sem a mochila e a automação rebentava com
-   *  "Cannot read properties of undefined (reading 'items')" — e na GUI isso aparecia como
+   *  "Cannot read properties of undefined (reading 'items')" - e na GUI isso aparecia como
    *  "não foi possível calcular o plano da mochila": um erro NOSSO mostrado como falha da automação.
    *  O mesmo vale para `rankRegioes(obj)`, `dpsItens(ids, regiao)`, `preverBuild(ids, regiao)`,
    *  `ehUltimate(t)`, `localId(txt)`, `planPotions(pot)` e `faltandoNaBase(n)`. */
@@ -298,10 +298,10 @@ switches: 'interruptores',
     '<div class="kv2"><span>' + rotulo + '</span><b>' + valor + '</b></div>';
   const linha = (rotulo, ajuda, ctrl) =>
     '<div class="ctl"><div class="ctl-l"><b>' + rotulo + '</b></div><div class="ctl-c">' + ctrl + '</div></div>';
-  // `off` (opcional): botão que NÃO pode ser usado agora — fica desativado.
+  // `off` (opcional): botão que NÃO pode ser usado agora - fica desativado.
   const acao = (id, texto, ajuda, cls, off) =>
     '<div class="acao"><button id="' + id + '" class="btn ' + (cls || '') + '"' + (off ? ' disabled' : '') + '>' + texto + '</button></div>';
-  /** Bloco de AÇÕES MANUAIS — sempre despromovido e no fim do cartão.
+  /** Bloco de AÇÕES MANUAIS - sempre despromovido e no fim do cartão.
    *  A GUI mostra o que acontece SOZINHO (estado, switches, o que a automação vai fazer e o que
    *  está bloqueado); o clique manual fica aqui, rotulado como manutenção manual, para não
    *  parecer o caminho normal. Nada foi apagado: os mesmos handlers continuam ligados aos
@@ -314,7 +314,7 @@ switches: 'interruptores',
     '<label class="tg"><input type="checkbox" id="' + id + '"' + (marcado ? ' checked' : '') + '><span class="sw"></span>' +
     '<span class="tg-t"><b>' + rotulo + '</b></span></label>';
   /** Igual ao `tg`, mas com a CHAVE da automação em `data-cfg`. O handler genérico lê-a e escreve por
-   *  `definirCfg` — é assim que a GUI nunca escreve o nome da chave à mão (lê-o da automação). */
+   *  `definirCfg` - é assim que a GUI nunca escreve o nome da chave à mão (lê-o da automação). */
   const tgCfg = (id, cfgKey, rotulo, ajuda, marcado) =>
     '<label class="tg"><input type="checkbox" id="' + id + '" data-cfg="' + esc(cfgKey) + '"' + (marcado ? ' checked' : '') + '><span class="sw"></span>' +
     '<span class="tg-t"><b>' + rotulo + '</b></span></label>';
@@ -330,7 +330,7 @@ switches: 'interruptores',
       '</tr></thead><tbody>' + corpo + '</tbody></table></div>';
   };
 
-  /** Faixa de resposta do rodapé — TODAS as ações escrevem aqui. */
+  /** Faixa de resposta do rodapé - TODAS as ações escrevem aqui. */
   function fb(tipo, txt) {
     const el = $('ap-fb');
     if (!el) return;
@@ -402,7 +402,7 @@ switches: 'interruptores',
   // ============================================================ 3. CSS
   // SISTEMA DE DESIGN v3 (revamp completo, ordem do dono 2026-10-22: "gui ta overwhelming,
   // design pessimo, complete overhaul"). O tema antigo era sépia com DOURADO EM TUDO (título de
-  // cartão, botão, interruptor, borda) e caixas dentro de caixas — por isso "tudo parecia igual"
+  // cartão, botão, interruptor, borda) e caixas dentro de caixas - por isso "tudo parecia igual"
   // e a vista não tinha onde descansar. Aqui a hierarquia vem de ESPAÇO e TAMANHO, não de cor:
   // cinza-grafite neutro, UM acento (dourado) só no que está activo, títulos de cartão em
   // maiúsculas pequenas e discretas, e um rail de navegação à esquerda em vez de 9 separadores
@@ -461,7 +461,7 @@ switches: 'interruptores',
     '#lolidle-ap .tab.ativa::before{content:"";position:absolute;left:-10px;top:9px;bottom:9px;width:2px;border-radius:2px;background:var(--ouro)}',
     // `justify-content` reposto: o `main` GLOBAL do jogo tem `justify-content:center` e vazava
     // para dentro do painel, centrando o conteúdo alto e pondo o topo em y negativo (causa
-    // medida do "painel truncado", TK-02 §3). O rail não muda isso — a regra fica.
+    // medida do "painel truncado", TK-02 §3). O rail não muda isso - a regra fica.
     '#lolidle-ap main{flex:1;overflow:auto;padding:14px 16px 20px;display:flex;flex-direction:column;gap:10px;justify-content:flex-start;align-items:stretch;scrollbar-gutter:stable}',
     '#lolidle-ap .pane{display:none;flex-direction:column;gap:10px}',
     '#lolidle-ap .pane.on{display:flex}',
@@ -758,7 +758,7 @@ switches: 'interruptores',
   // ============================================================ 4. ESTRUTURA (DOM)
   // A CASCA mudou por completo (revamp 2026-10-22): rail de navegação à esquerda com os nove
   // destinos agrupados por ASSUNTO (Operar / Ajustar / Acompanhar / Sistema), cabeçalho de uma
-  // faixa e conteúdo num só cartão por assunto. Os IDS dos contentores NÃO mudaram — os
+  // faixa e conteúdo num só cartão por assunto. Os IDS dos contentores NÃO mudaram - os
   // desenhadores e os handlers continuam a encontrar tudo; o que mudou foi o desenho à volta.
   function build() {
     if ($('lolidle-ap')) return;
@@ -947,7 +947,7 @@ switches: 'interruptores',
   // ============================================================ 4b. ABRIR/FECHAR
   /** Volta o scroll do corpo do painel ao topo (TK-02 §3): abrir e trocar de aba deixava o
    *  PRIMEIRO cartão cortado fora do ecrã (o `main` guardava a posição anterior). O `main` é o
-   *  contentor com `overflow:auto` — é ele que rola, não o painel. */
+   *  contentor com `overflow:auto` - é ele que rola, não o painel. */
   function resetScroll() { const m = q1('#lolidle-ap main'); if (m) m.scrollTop = 0; }
   function abrir() { aberto = true; $('lolidle-ap').classList.add('on'); ultimoRender = 0; renderTudo(); resetScroll(); }
   function fechar() { aberto = false; const p = $('lolidle-ap'); if (p) p.classList.remove('on'); }
@@ -978,7 +978,7 @@ switches: 'interruptores',
   function setTab(nome) {
     tabAtiva = TAB_ALIAS[nome] || nome;
     // BUG MEDIDO (2026-10-19): o alias era aplicado ao `tabAtiva` mas a classe usava o nome
-    // ANTIGO (`hist`), que não existe em `data-tab` — o painel ficava em branco. A fonte é a
+    // ANTIGO (`hist`), que não existe em `data-tab` - o painel ficava em branco. A fonte é a
     // `tabAtiva`, a mesma que o `renderTudo` consulta.
     qa('#lolidle-ap .tab').forEach((x) => x.classList.toggle('ativa', x.dataset.tab === tabAtiva));
     qa('#lolidle-ap .pane').forEach((x) => x.classList.toggle('on', x.id === 'ap-t-' + tabAtiva));
@@ -998,7 +998,7 @@ switches: 'interruptores',
     caches[key] = { at: Date.now(), v };
     return v;
   }
-  /** Esquece uma cache (ou todas) — usado quando uma ação muda o que ela guarda. */
+  /** Esquece uma cache (ou todas) - usado quando uma ação muda o que ela guarda. */
   function cacheLimpar(key) { if (key) delete caches[key]; else for (const k of Object.keys(caches)) delete caches[k]; }
   const _ultimoHtml = new Map();
   function setHtml(id, html) {
@@ -1031,9 +1031,9 @@ switches: 'interruptores',
   const ligado = () => !!cfg().enabled;
   const naBase = () => /fonte/i.test(String((ler('readLocation', {}) || {}).text || ''));
 
-  /** Leitura da base (porque a automação está parado) — cache de 10 s. */
+  /** Leitura da base (porque a automação está parado) - cache de 10 s. */
   const diagBase = () => cache('diag', 10000, () => ler('diagnosticoBase', null));
-  /** O QUE FALTA FAZER NA BASE (necessidades reais, da automação) — mesma cache. */
+  /** O QUE FALTA FAZER NA BASE (necessidades reais, da automação) - mesma cache. */
   const faltasBase = () => cache('faltas', 10000, () => {
     const n = ler('necessidadesBase', null);
     if (!n) return null;
@@ -1056,10 +1056,10 @@ switches: 'interruptores',
     refino: 'Refinar no Ornn',
     montar: 'Montar item no Ornn',
   };
-  /** Melhor região agora — cache de 15 s (percorre todas as regiões). */
+  /** Melhor região agora - cache de 15 s (percorre todas as regiões). */
   const recomendacao = () => cache('rec', 15000, () => ler('recomendar', null));
   /** REGIÃO RECOMENDADA pela automação (`estado().regiaoRecomendada`, TK-01): a recomendação
-   *  AUTOMÁTICA — a automação diz sempre qual escolheria, mesmo com uma região FIXA definida. É esta
+   *  AUTOMÁTICA - a automação diz sempre qual escolheria, mesmo com uma região FIXA definida. É esta
    *  que o select mostra em modo automático (com `regiaoIdeal` como recurso, para versão antiga).
    *  Cache de 15 s porque o `estado()` lê a mochila e o equipamento. */
   const regiaoRecomendada = () => cache('regRec', 15000, () => {
@@ -1069,9 +1069,9 @@ switches: 'interruptores',
     if (!rec) return null;
     return typeof rec === 'string' ? rec : (rec.id || rec.regiao || null);
   });
-  /** Identidade do campeão — cache de 30 s. */
+  /** Identidade do campeão - cache de 30 s. */
   const identidade = () => cache('ident', 30000, () => ler('identidadeCampeao', null));
-  /** Build ideal — cache de 30 s. */
+  /** Build ideal - cache de 30 s. */
   const buildIdeal = () => cache('ideal', 30000, () => ler('buildIdealAgora', []) || ler('buildIdeal', []) || []);
 
   // ============================ OS 4 ESTADOS DO AUTO-PLAY (controles)
@@ -1081,7 +1081,7 @@ switches: 'interruptores',
   //                        `despausar()` retoma do mesmo ponto;
   //   desligarTudo()    -> para tudo, LIMPA o estado ativo (prazos, throttles, farm forçado,
   //                        backoff, testes) e PERSISTE em localStorage; `religarTudo()` volta.
-  // A GUI mostra-os como 4 estados distintos — antes havia um rótulo de estado e um botão que
+  // A GUI mostra-os como 4 estados distintos - antes havia um rótulo de estado e um botão que
   // fazia o inverso, sem dizer qual era "onde você está" e qual era "o que acontece se clicar".
   const DESLIGADO_KEY = 'lolidleAuto:desligado';   // chave da automação (automation.js:5371)
   /** O kill da automação vive no localStorage (mesma origem desta página) e a automação não expõe nenhum
@@ -1092,8 +1092,8 @@ switches: 'interruptores',
     if (pausado()) return 'pausado';
     return cfg().enabled ? 'ligado' : 'observacao';
   }
-  /** O que cada estado QUER DIZER, numa linha. O dono pediu TRÊS palavras claras —
-   *  LIGADO / DESLIGADO / PAUSADO — e o motivo por baixo. */
+  /** O que cada estado QUER DIZER, numa linha. O dono pediu TRÊS palavras claras -
+   *  LIGADO / DESLIGADO / PAUSADO - e o motivo por baixo. */
   const EST_AUTO = {
     observacao: { cls: 'off', titulo: 'DESLIGADO', txt: 'só lê o jogo, não clica em nada' },
     ligado: { cls: 'on', titulo: 'LIGADO', txt: 'farmando e decidindo sozinho' },
@@ -1103,7 +1103,7 @@ switches: 'interruptores',
   /** O CARTÃO MESTRE (topo do Painel): UM interruptor + o estado + o motivo. Não há um segundo
    *  botão "DESLIGAR": o interruptor é o único liga/desliga do auto-play. Pausar/Retomar e Parar
    *  tudo ficam como ações SECUNDÁRIAS porque são outras coisas (a pausa é da automação e o kill é
-   *  persistente no navegador) — não são um "desligar" repetido. */
+   *  persistente no navegador) - não são um "desligar" repetido. */
   function renderPainelEstado() {
     const el = $('ap-painel-estado');
     if (!el) return;
@@ -1125,7 +1125,7 @@ switches: 'interruptores',
       + '<div id="ap-auto-arvore" class="mestre-arvore"></div>'
       + '</section>');
   }
-  /** Estado resumido do cabeçalho — cache de 2 s. */
+  /** Estado resumido do cabeçalho - cache de 2 s. */
   function estadoAgora() {
     const t = Date.now();
     if (cacheAgora.v && t - cacheAgora.at < 2000) return cacheAgora.v;
@@ -1189,7 +1189,7 @@ switches: 'interruptores',
     if (el) { el.className = 'pill ' + a.pill.cls; const b = el.querySelector('b'); if (b) b.textContent = a.pill.txt; }
     const fe = $('ap-fase'); if (fe && fe.textContent !== a.fase) fe.textContent = a.fase; if (fe) fe.title = a.fase;
     // Valores que podem ficar cortados (`.mini b` e `.fase` têm ellipsis) ganham `title`
-    // com o texto inteiro — nada fica ilegível por omissão.
+    // com o texto inteiro - nada fica ilegível por omissão.
     const set = (id, txt) => { const e = $(id); if (e && e.textContent !== txt) e.textContent = txt; if (e) e.title = txt; };
     set('ap-h-nivel', a.nivel ? String(a.nivel) : '-');
     set('ap-h-ouro', fmt(a.ouro));
@@ -1198,7 +1198,7 @@ switches: 'interruptores',
     set('ap-h-regiao', a.regiao || '-');
     // O CABEÇALHO NÃO TEM CONTROLO do auto-play: mostra só o ESTADO (a pílula `ap-estado`, agora
     // LIGADO/DESLIGADO/PAUSADO) e o MOTIVO (a linha `ap-fase`). O único interruptor mestre está no
-    // cartão AUTO-PLAY, no topo do Painel — deixar um switch e um botão aqui seria a duplicação
+    // cartão AUTO-PLAY, no topo do Painel - deixar um switch e um botão aqui seria a duplicação
     // que o dono mandou remover. Quem tiver o Painel aberto vê o switch do cartão actualizado.
     const pin = $('ap-pin'); if (pin) pin.classList.toggle('ativo', fixado);
   }
@@ -1215,7 +1215,7 @@ switches: 'interruptores',
     cofre: 'está guardado no cofre (a automação vai buscá-lo quando for à Fonte)',
     falta: 'não está em lado nenhum, só farmando ou comprando a outro jogador',
   };
-  /** Plano de uma fase (mobs/chefe), da automação — cache de 6 s. */
+  /** Plano de uma fase (mobs/chefe), da automação - cache de 6 s. */
   const planoFase = (f) => cache('bf-' + f, 6000, () => { const r = chamar('planoBuildFase', f); return r.ok && r.v ? r.v : null; });
   /** Uma peça da build: ícone + qualidade + DE ONDE VEM. */
   function bfItem(i) {
@@ -1255,9 +1255,9 @@ switches: 'interruptores',
         : '')
       + '</div>';
   }
-  /** Desenha o bloco da build por fase — que agora vive na aba ITENS — com um botão de
+  /** Desenha o bloco da build por fase - que agora vive na aba ITENS - com um botão de
    *  MINIMIZAR no cabeçalho.
-   *  Regras deste bloco: (1) vive na aba Itens — fora de um `.pane` ele aparece por cima de
+   *  Regras deste bloco: (1) vive na aba Itens - fora de um `.pane` ele aparece por cima de
    *  TODAS as abas, porque o CSS dos separadores só esconde `.pane`; (2) minimiza a sério, com o
    *  estado guardado em GUI_KEY (sobrevive ao F5 e à troca de aba). */
   function renderBuildFase() {
@@ -1290,10 +1290,10 @@ switches: 'interruptores',
       + '<div class="corpo">' + corpo + '</div></section>');
   }
   /** RESUMO DE UMA LINHA do mesmo bloco, para a 1.ª aba: a primeira aba é um PAINEL DE
-   *  CONTROLE, não um relatório — o bloco grande mudou para Itens e aqui fica só o
+   *  CONTROLE, não um relatório - o bloco grande mudou para Itens e aqui fica só o
    *  estado (o que está em uso e quantas peças faltam), para não se perder a leitura.
    *  CUSTO: `planoFase` tem cache de 6 s (`cache('bf-'+fase, 6000, …)`), logo isto são no máximo
-   *  2 chamadas aa automação a cada 6 s — e partilha a MESMA cache com o bloco grande. */
+   *  2 chamadas aa automação a cada 6 s - e partilha a MESMA cache com o bloco grande. */
   function renderBuildResumo() {
     const el = $('ap-painel-build');
     if (!el) return;
@@ -1457,7 +1457,7 @@ switches: 'interruptores',
         + esc(ORDER.filter((k) => planoPocao.comprar[k] > 0).map((k) => POCAO_NOME[k] + ' ×' + fmt(planoPocao.comprar[k])).join(' · ') || 'nada (sem ouro)') + '</p>'
         : '<p class="hint">Poções acima do mínimo, nada comprando.</p>')));
 
-    // 6) ESTADO COMPLETO DO JOGO — inventário, equipamento, habilidades, cofre, mobs/bosses e o
+    // 6) ESTADO COMPLETO DO JOGO - inventário, equipamento, habilidades, cofre, mobs/bosses e o
     // próximo passo. É o retrato que o MOTOR mantém atualizado (automation.js: `estadoCompleto`,
     // gravado a cada 20 s em ESTADO_KEY), não uma segunda leitura do DOM feita aqui. Se ainda não
     // houver retrato (a primeira gravação corre ~2,5 s depois de a automação arrancar), não se inventa.
@@ -1517,7 +1517,7 @@ switches: 'interruptores',
   // ------------------------------------- ÁRVORE DE INTERRUPTORES (hierarquia da automação)
   // A automação JÁ tem a tabela (`INTERRUPTORES`) e o resolvedor (`podeFazer`) e expõe
   // os dois por `arvoreInterruptores()` -> [{nome, pai, cfg, temExcecao, pode, porque}].
-  // AQUI SÓ SE DESENHA ESSA VERDADE: pais e filhos indentados. Nada é decidido nesta GUI — se o
+  // AQUI SÓ SE DESENHA ESSA VERDADE: pais e filhos indentados. Nada é decidido nesta GUI - se o
   // motor mudar a tabela (um switch novo é UMA linha lá), a árvore muda sozinha.
   const ARV_NOME = {
     manutencao: 'Manutenção (recurso base)',
@@ -1548,7 +1548,7 @@ switches: 'interruptores',
   const MACRO_ALVO = {
     autoFarm: 'ap-macro-farm',
     // ATENÇÃO aos IDs: os blocos reais da aba Macro são `ap-auto-base` e `ap-build-fase`
-    // (gui.js:844-845). `ap-macro-base`/`ap-macro-build` NÃO existiam — o ⚙ desses switches
+    // (gui.js:844-845). `ap-macro-base`/`ap-macro-build` NÃO existiam - o ⚙ desses switches
     // abria a aba e rolava para o vazio (defeito encontrado 2026-10-21 ao fazer o popup).
     autoVender: 'ap-auto-base',
     autoRepor: 'ap-auto-base',
@@ -1589,7 +1589,7 @@ switches: 'interruptores',
     rotacao: 'põe na barra as 4 habilidades prontas que dão mais dano',
     vigiarMercado: 'lê o mercado dos jogadores em tempo real e compra as ofertas que casam com a sua watch (itens e/ou nomes de jogador), só gasta ouro e nunca abaixo da reserva',
   };
-  /** O QUE CADA SWITCH COBRE — é a linha colorida ao lado dele: VERDE quando está ligado (o que
+  /** O QUE CADA SWITCH COBRE - é a linha colorida ao lado dele: VERDE quando está ligado (o que
    *  passa a acontecer) e VERMELHA quando está desligado (o que deixa de acontecer). O texto fala
    *  do efeito no jogo, não do nome técnico da chave.
    *  Fonte: a tabela INTERRUPTORES da automação (automation.js:2460) e as funções que cada switch
@@ -1625,14 +1625,14 @@ switches: 'interruptores',
   };
   const arvExc = (nome, s) => (s && s.excecaoTxt) || ARV_EXCECAO[nome] || 'pode ser skippado por uma exceção';
   /** Traduz o `porque` da automação ("vender: desligado pelo dono") em {quem, motivo}. O motor
-   *  escreve SEMPRE "<nome do switch que falhou>: <motivo>" — é isso que permite separar
+   *  escreve SEMPRE "<nome do switch que falhou>: <motivo>" - é isso que permite separar
    *  "desligado por você" (quem === este) de "bloqueado pelo pai" (quem === um ancestral). */
   function arvQuemBloqueia(txt) {
     const m = /^\s*([^:]+):\s*(.+?)\s*$/.exec(String(txt == null ? '' : txt));
     return m ? { quem: m[1], motivo: m[2] } : { quem: null, motivo: '' };
   }
   /** UM switch: estado PRÓPRIO + o que ele cobre (linha verde/vermelha) + os filhos indentados.
-   *  INDEPENDÊNCIA: o switch do filho mostra o que ELE diz — se está ligado e o
+   *  INDEPENDÊNCIA: o switch do filho mostra o que ELE diz - se está ligado e o
    *  pai o bloqueia, fica "ligado, mas inerte" e diz por quem, em vez de parecer desligado. */
   function arvNo(s, ramos, nivel) {
     if (nivel > 8) return '';                       // guarda contra um pai cíclico: nunca recursa sem fim
@@ -1827,7 +1827,7 @@ switches: 'interruptores',
     if (!autoConstruido) {
       autoConstruido = true;
       // O antigo cartão "O switch mestre" saiu: o interruptor mestre é UM só e vive no cartão
-      // AUTO-PLAY (topo do Painel, `renderPainelEstado`) — aqui seria um segundo bloco a
+      // AUTO-PLAY (topo do Painel, `renderPainelEstado`) - aqui seria um segundo bloco a
       // explicar o mesmo controlo.
 
       const regioes = (ler('rankRegioes', []) || []).slice(0, 40);
@@ -1882,7 +1882,7 @@ switches: 'interruptores',
           + '</div>')));
 
       // ESTADO, não ação: quem decide é o switch. Os botões para forçar cada passo vivem no
-      // cartão de manutenção manual, no fim do Painel — a GUI é para o que é automático.
+      // cartão de manutenção manual, no fim do Painel - a GUI é para o que é automático.
       setHtml('ap-auto-base', card('Ações de base, quem decide', 'a automação executa sozinho quando vai à Fonte',
         '<p class="hint tira">Ir à Fonte, vender, repor poções, cofre, mercado, atributos e tarefas são decididos pelos <b>switches</b> da lista acima. Quando o switch está ligado e alguma pendência paga a viagem, a automação vai e faz, não há nada para clicar aqui.</p>'
         + '<p class="hint tira">Para forçar um passo agora, use <b>Manutenção manual</b>, no fim deste painel.</p>'));
@@ -1893,10 +1893,10 @@ switches: 'interruptores',
 
     }
     // A ÁRVORE DE INTERRUPTORES redesenha SEMPRE (o estado dela muda com a config, com o campeão
-    // e com o local) — não faz parte do bloco "constrói uma vez" acima.
+    // e com o local) - não faz parte do bloco "constrói uma vez" acima.
     renderArvore();
     // ---- ALVOS DO AUTO-PLAY: em que campeões a automação pode jogar (pedido do dono, 2026-10-18) --
-    // A LISTA de campeões do jogo é a mesma que a automação lê do KITS (nunca escrita à mão — REGRA
+    // A LISTA de campeões do jogo é a mesma que a automação lê do KITS (nunca escrita à mão - REGRA
     // N.º 3); a automação ainda não a pode ter quando este render corre, e por isso este cartão
     // redesenha SEMPRE (fora do "constrói uma vez"). Sem alvos (null/vazio) = qualquer campeão.
     {
@@ -1918,7 +1918,7 @@ switches: 'interruptores',
     if (modo) { const v = automatica ? 'auto' : 'fixa'; if (modo.value !== v) modo.value = v; }
     // DROPDOWN DA REGIÃO: em modo AUTOMÁTICO o select MOSTRA a região recomendada
     // (`estado().regiaoRecomendada`, com `regiaoIdeal` como recurso) e fica marcado como
-    // "automática" — nunca parece que manda, mas mostra o que a automação está a usar. Escolher uma
+    // "automática" - nunca parece que manda, mas mostra o que a automação está a usar. Escolher uma
     // região aqui passa a FIXA (handler `ap-reg-id`); voltar a "auto" limpa `regionDefault`.
     const rid = $('ap-reg-id');
     const idIdeal = ler('regiaoIdeal', null);
@@ -2008,12 +2008,12 @@ switches: 'interruptores',
   });
   const lerCofreGravado = () => lerGravado(COFRE_KEY, (v) => { cofreStore = v; });
   const lerOfertasGravadas = () => lerGravado(OFERTAS_KEY, (v) => { ofertasStore = v; });
-  /** Cofre ABERTO agora no jogo (verdade viva, lida pela automação) — vazio se estiver fechado. */
+  /** Cofre ABERTO agora no jogo (verdade viva, lida pela automação) - vazio se estiver fechado. */
   const cofreAberto = () => cache('cofreLive', 3000, () =>
     (ler('lerCofreSlots', []) || []).filter((i) => i.acao === 'retirar' || i.acao === 'sacar')) || [];
   /** O que a automação tem em memória (slots abertos agora ou a última leitura que ele gravou). */
   const cofreItens = () => { const v = ler('cofreConhecido', null); return Array.isArray(v) ? v : []; };
-  /** Última leitura GRAVADA pela automação: { at, itens } — o `at` diz QUANDO foi lido. */
+  /** Última leitura GRAVADA pela automação: { at, itens } - o `at` diz QUANDO foi lido. */
   const cofreGravado = () => (cofreStore && Array.isArray(cofreStore.itens) ? cofreStore : { at: 0, itens: [] });
   /** O que se sabe que está guardado: cofre aberto -> memória da automação -> última gravação. */
   function cofreSabido() {
@@ -2024,7 +2024,7 @@ switches: 'interruptores',
     return cofreGravado().itens || [];
   }
   const porQualidade = (a, b) => (qOrd(b.qual) - qOrd(a.qual)) || ((b.refino || 0) - (a.refino || 0));
-  /** Melhor instância conhecida (maior qualidade, depois maior refino) — regra da automação. */
+  /** Melhor instância conhecida (maior qualidade, depois maior refino) - regra da automação. */
   function melhorConhecido() {
     const l = cofreSabido().slice();
     if (!l.length) return null;
@@ -2036,7 +2036,7 @@ switches: 'interruptores',
   const cofreSlot = (i, n) => String((i && (i.k || i.slot || i.slotId)) || ('#' + (n + 1)));
   const nomeCofre = (i) => (i && (i.nome || i.base)) || '?';
   const tagCofre = (i) => (i && i.qual ? '[' + i.qual + ']' : '') + (i && i.refino ? (i.qual ? ' +' : '+') + i.refino : '');
-  /** Motivos do cofre traduzidos — a automação fala em seletores, a GUI fala em sítios. */
+  /** Motivos do cofre traduzidos - a automação fala em seletores, a GUI fala em sítios. */
   function motivoCofre(m) {
     const t = String(m || '');
     if (/sem Tesoureira\/Burrinho|sem cofre aqui/i.test(t)) return 'o cofre só abre na Fonte ou na cidade (Tesoureira de Piltover / Burrinho de Carga). Você está em ' + (localTexto() || '?') + '.';
@@ -2099,7 +2099,7 @@ switches: 'interruptores',
     mapa.set(RABADON, 'Rabadon, nunca é vendido nem anunciado, nem duplicado');
     const m = MOTOR();
     // PRIORIDADE EXTREMA: a tabela é do MOTOR (automation.js:47, exposta em window.__lolidleAuto
-    // junto do resto) — nada desta lista foi escrito à mão. O critério é o item ser multiplicador
+    // junto do resto) - nada desta lista foi escrito à mão. O critério é o item ser multiplicador
     // de classe e vale em QUALQUER campeão: 3031 dá +40% no dano do acerto crítico e 3089 dá
     // +35% em todo o Poder de Habilidade (motor vivo, confirmado por conteúdo). O duplicado
     // também fica protegido: a decisão sobre ele é do jogador.
@@ -2119,7 +2119,7 @@ switches: 'interruptores',
     }
     // TRATAMENTO ESPECIAL da minha classe e PEÇAS RESERVADAS das duas builds (mobs/chefe): a
     // lista e a decisão de quais contam para ESTE campeão vem da automação (ehEspecialMeu,
-    // basesReservadas, fasesDoItem) — a GUI só desenha.
+    // basesReservadas, fasesDoItem) - a GUI só desenha.
     const esp = (m && Array.isArray(m.ITENS_ESPECIAIS)) ? m.ITENS_ESPECIAIS : [];
     for (const e of esp) {
       if (!e || e.id == null) continue;
@@ -2142,7 +2142,7 @@ switches: 'interruptores',
   });
 
   /** CARD da BUILD HUMANA (buildHumana da automação). Se a automação ainda não expõe a função, diz-se
-   *  isso em vez de ficar vazio — e a lista técnica antiga continua visível em <details>. */
+   *  isso em vez de ficar vazio - e a lista técnica antiga continua visível em <details>. */
   function renderBuildHumana() {
     const el = $('ap-it-build'); if (!el) return;
     const bh = ler('buildHumana', null);
@@ -2224,7 +2224,7 @@ switches: 'interruptores',
         '<span class="chip ' + (String(b) === RABADON ? 'lendario' : '') + '" title="' + esc(motivo) + '">' + (ITEM_IMG(b) ? '<img src="' + ITEM_IMG(b) + '" alt="">' : '') + esc(nomeItem(b)) + ' <small>🔒</small></span>').join('') + '</div>'
       + '<p class="hint tira">O que não se vende: itens de classe, especiais do campeão, lendários da build, peças da outra fase, o que está equipado em S ou SS e itens ainda em avaliação.</p>'));
 
-    // mochila: a automação lê o `#mochila` DIRECTAMENTE (o jogo mantém-no atual, aberto ou não —
+    // mochila: a automação lê o `#mochila` DIRECTAMENTE (o jogo mantém-no atual, aberto ou não -
     // jogo.js:6621), logo tenta-se uma leitura passiva antes de pedir um clique ao usuário.
     if (!bagLida) lerMochila(false, true);
     if (!bagLida) {
@@ -2248,7 +2248,7 @@ switches: 'interruptores',
         + '<div class="acoes">' + acaoD('ap-scan', '🔄 Forçar leitura da mochila', 'Lê a mochila de novo. A automação lê sozinho quando a mochila muda.') + '</div>'));
 
       // A automação exige a mochila: `planBag(bag, marketCount, marketCap)` (automation.js:338).
-      // Sem ela rebenta — e o erro é NOSSO (falta de argumento), não da automação.
+      // Sem ela rebenta - e o erro é NOSSO (falta de argumento), não da automação.
       const rp = chamar('planBag', b);
       const plano = rp.ok ? rp.v : null;
       if (plano && plano.acts) {
@@ -2288,7 +2288,7 @@ switches: 'interruptores',
 
     // O antigo cartão "Farmar itens específicos" MUDOU-SE para a aba Ganhos, onde passou a ser a
     // modalidade "Auto farm pra item" (renderFarmItens, seção 5). O div `ap-it-farmar` deixou de
-    // existir no DOM — não há nada para desenhar aqui.
+    // existir no DOM - não há nada para desenhar aqui.
     // COFRE: primeiro o que está GUARDADO (última leitura que a automação gravou); abrir/retirar
     // ficam em baixo e só aparecem ativos quando o jogo os permite.
     renderCofre();
@@ -2316,7 +2316,7 @@ switches: 'interruptores',
       // O NOME na barra do jogo vem com a DESCRIÇÃO toda colada. Mostra-se só o nome (antes do
       // travessão) e o texto inteiro fica no `title`.
       const cheio = String(h.nome || h.t || '');
-      const curto = cheio.split(/\s+[—–-]\s+/)[0].slice(0, 34);
+      const curto = cheio.split(/\s+[-–-]\s+/)[0].slice(0, 34);
       return '<span class="chip" title="' + esc(cheio) + '">' + esc(curto) + ' <small>' + (h.ready ? 'pronto' : (h.cd != null ? h.cd + 's' : 'em recarga')) + (ult ? ' · ULTIMATE' : '') + '</small></span>';
     }).join('') || '<span class="vazio">nenhuma habilidade na barra</span>';
     setHtml('ap-sk-barra', card('Barra de combate', 'as habilidades que o jogo usa sozinho',
@@ -2471,7 +2471,7 @@ switches: 'interruptores',
   // ---------------------------------------------------------------- ABA FARM
   // POR ABATE x POR MINUTO (regra da automação):
   //   bossFase: { durMs: 35616, gold: 1526, xp: 3654, kills: 1, perMin: { gold: 2570.75, xp: 6155.66 } }
-  //   O `bossFase` mede UM chefe (kills: 1) e o `perMin` é `loot / (durMs/60)` — uma TAXA sobre a
+  //   O `bossFase` mede UM chefe (kills: 1) e o `perMin` é `loot / (durMs/60)` - uma TAXA sobre a
   //   janela. O xp/min sobe quando o chefe morre mais rápido (artefato de denominador: o xp do
   //   chefe é ~fixo) e o ouro/min não acompanha porque o LOOT VARIA (1526 / 1615 / 1149 nos três
   //   chefes medidos, ~40%). Comparar chefes por `perMin` premia quem morre rápido.
@@ -2485,9 +2485,9 @@ switches: 'interruptores',
     if ((fase.kills || 0) > 0) return { gold: (fase.gold || 0) / fase.kills, xp: (fase.xp || 0) / fase.kills };
     return null;
   };
-  /** Poções de uma fase. Regra: `potions: 0` numa fase COM abates não é medição do combate —
+  /** Poções de uma fase. Regra: `potions: 0` numa fase COM abates não é medição do combate -
    *  é a automação sem agir (modo observação). Quando a fase tem abates e nenhuma poção, mostra-se
-   *  "—" em vez de 0. */
+   *  "-" em vez de 0. */
   const potTxt = (fase, porMinuto) => {
     const v = porMinuto != null ? porMinuto : (fase ? (fase.potions || 0) : null);
     if (v == null) return '-';
@@ -2611,11 +2611,11 @@ switches: 'interruptores',
 
   // ------------------------------------- FARM: DUAS MODALIDADES (aba Ganhos)
   // Duas modalidades de farm:
-  //   (a) SOZINHO  — a automação escolhe a região.
-  //   (b) POR ITEM — o usuário marca itens e a automação diz onde cada um dropa. A resposta vem da
+  //   (a) SOZINHO  - a automação escolhe a região.
+  //   (b) POR ITEM - o usuário marca itens e a automação diz onde cada um dropa. A resposta vem da
   //       função `planejar(ids)` da automação (automation.js:1537), que devolve por item e por zona:
   //       { item, nome, zona, zonaNome, faixa, mobs, chefe, chance, sobreviveMob, chefeFatal,
-  //         dropsH }. A GUI só desenha essa resposta — nenhum número é inventado aqui.
+  //         dropsH }. A GUI só desenha essa resposta - nenhum número é inventado aqui.
   const RAR_NOME = { lendario: 'Lendários', epico: 'Épicos', basico: 'Básicos (peças)' };
   const ORDEM_RAR = ['lendario', 'epico', 'basico'];
   /** Rótulo do ESPAÇO do item. Os valores são os do jogo (motor.js: `NOME_ESPACO`:
@@ -2637,7 +2637,7 @@ switches: 'interruptores',
   const ondeItemMapa = () => { const m = ler('getMeta', {}); return m && m.ondeItem && typeof m.ondeItem === 'object' ? m.ondeItem : null; };
   /** Plano de drop dos itens escolhidos, do MOTOR (`planejar`). Cache de 15 s por assinatura da
    *  escolha: `planejar` chama `agregar()` por dentro (percorre o histórico de ciclos), então não
-   *  pode ser chamado a cada desenho. Devolve `null` quando a automação não respondeu — que NÃO é o
+   *  pode ser chamado a cada desenho. Devolve `null` quando a automação não respondeu - que NÃO é o
    *  mesmo que "não dropa em zona nenhuma". */
   let planoItensCache = { sig: null, at: 0, v: null, erro: null };
   function planoItens() {
@@ -2653,7 +2653,7 @@ switches: 'interruptores',
     return v;
   }
   /** Plano de drop desenhado: uma linha por (item, zona); a 1.ª linha de cada item (maior
-   *  drops/hora) vem marcada. Itens que a automação não devolve no plano são ditos por palavras —
+   *  drops/hora) vem marcada. Itens que a automação não devolve no plano são ditos por palavras -
    *  `planejar` os pula (`if (!o) continue`) e sem isto eles sumiriam sem explicação. */
   function renderPlanoItens() {
     const ids = Array.from(selItens);
@@ -2775,7 +2775,7 @@ switches: 'interruptores',
 
   // ---------------------------------------------------------------- ABA MERCADO
   let ofertasCache = null, ornnCache = null, compraCache = null;  function renderMercado() {
-    // `mercadoSaturado()` devolve { sat, lend, total } — um
+    // `mercadoSaturado()` devolve { sat, lend, total } - um
     // OBJETO, logo era sempre verdadeiro e o cartão dizia "mercado cheio? sim" mesmo vazio.
     const sat = ler('mercadoSaturado', null);
     const cheio = sat && typeof sat === 'object' ? !!sat.sat : (sat === true);
@@ -2855,12 +2855,12 @@ switches: 'interruptores',
         : '<p class="vazio">A última vigia (há ' + fmtDur(Date.now() - w.at) + ') não achou nada que casasse.</p>';
     const wUlt = w.ultimaCompra;
     // Chips dos itens escolhidos, cada um com o SEU limite em ouro (pedido do dono 2026-10-21:
-    // "item x até x de gold, item y até y"). Vazio/0 = vale o tecto global.
+    // "item x até x de gold, item y até y"). Vazio/0 = vale o teto global.
     const wItens = Array.isArray(cfgWatch.itens) ? cfgWatch.itens : [];
     const limWatch = (cfgWatch && cfgWatch.limites) || {};
     const chipsItens = wItens.length
       ? '<div class="chips" id="ap-watch-chips">' + ordenarItens(wItens).map((b) => '<span class="chip" title="' + esc(b) + '">' + itemImgTag(b) + esc(nomeItem(b))
-        + ' <input class="wlim" data-wlim="' + esc(b) + '" type="number" min="0" step="1000" title="limite de ouro para este item (0 = tecto global)" value="' + (Number(limWatch[b]) > 0 ? Number(limWatch[b]) : '') + '" placeholder="limite">'
+        + ' <input class="wlim" data-wlim="' + esc(b) + '" type="number" min="0" step="1000" title="limite de ouro para este item (0 = teto global)" value="' + (Number(limWatch[b]) > 0 ? Number(limWatch[b]) : '') + '" placeholder="limite">'
         + ' <b data-wrem="' + esc(b) + '" style="cursor:pointer;color:#ff9a6a">×</b></span>').join('') + '</div>'
       : '<p class="vazio" id="ap-watch-chips">Nenhum item escolhido, marque nos ícones abaixo (ou vigie só um jogador).</p>';
     const vendedoresWatch = cfgWatch.vendedores || w.vendedores || [];
@@ -3299,7 +3299,7 @@ switches: 'interruptores',
     const itens = Array.isArray(w.itens) ? w.itens : [];
     const lim = w.limites || {};
     setHtml('ap-macro-mercado', card('Watch do mercado', 'itens, limites e jogadores',
-      (itens.length ? '<div class="chips">' + itens.map((b) => '<span class="chip">' + esc(nomeItem(b)) + ' <small>' + (Number(lim[b]) > 0 ? 'até ' + fmt(lim[b]) : 'tecto global') + '</small></span>').join('') + '</div>' : '<p class="vazio">Nenhum item vigiado.</p>')
+      (itens.length ? '<div class="chips">' + itens.map((b) => '<span class="chip">' + esc(nomeItem(b)) + ' <small>' + (Number(lim[b]) > 0 ? 'até ' + fmt(lim[b]) : 'teto global') + '</small></span>').join('') + '</div>' : '<p class="vazio">Nenhum item vigiado.</p>')
       + '<p class="hint">Comprar de: <b>' + (String(w.filtroVendedores || 'so') === 'qualquer' ? 'qualquer jogador' : 'só dos jogadores listados') + '</b>'
       + (Array.isArray(w.vendedores) && w.vendedores.length ? ' (' + esc(w.vendedores.join(', ')) + ')' : '') + '.</p>'
       + '<div class="acoes">' + acao('ap-goto-mercado', 'Abrir o Mercado', 'Editar itens, limites, jogadores e a compra da build.') + '</div>'));
@@ -3323,7 +3323,7 @@ switches: 'interruptores',
     recolherAcoesManuais();
   }
   /** A aba 1 é um PAINEL DE CONTROLE: junta o "agora" (o que está acontecendo) com os switches.
-   *  São dois desenhadores que escrevem em ids diferentes — juntam-se aqui em vez de reescrever
+   *  São dois desenhadores que escrevem em ids diferentes - juntam-se aqui em vez de reescrever
    *  código que já funciona. O bloco grande da build por fase NÃO entra: ele vive na aba Itens
    *  e aqui fica só o resumo de uma linha (renderBuildResumo). */
   function renderPainel() { renderPainelEstado(); renderAgora(); renderAuto(); renderBuildResumo(); }
@@ -3371,7 +3371,7 @@ switches: 'interruptores',
   };
 
   /** Liga/desliga UM switch da ÁRVORE. Escreve SEMPRE pela automação (`setConfig`), com a chave
-   *  que o própria automação declarou (`cfg`) — a GUI não conhece nem inventa chaves de configuração. */
+   *  que o própria automação declarou (`cfg`) - a GUI não conhece nem inventa chaves de configuração. */
   function alternarInterruptor(nome, chave, ligado) {
     const legivel = ARV_NOME[nome] || nome;
     // Sem chave = versão antiga: NÃO se escreve nada (não há chave para escrever) e diz-se o erro.
@@ -3395,7 +3395,7 @@ switches: 'interruptores',
   }
 
   /** LIGAR (de OBSERVAÇÃO para LIGADO). Não mexe nas capacidades: o que estava desligado nelas
-   *  continua desligado — o mestre não liga nem desliga os filhos. */
+   *  continua desligado - o mestre não liga nem desliga os filhos. */
   async function ligarAuto(btn) {
     await executar(btn, 'Ligar auto-play', async () => {
       if (estaDesligado()) chamar('religarTudo');
@@ -3427,7 +3427,7 @@ switches: 'interruptores',
       return { ok: true, msg: 'LIGADO de novo, do ponto onde parou.' + diffTexto(r.v && r.v.diff) };
     });
   }
-  /** PARAR TUDO (kill): para tudo, limpa o estado ativo e PERSISTE — sobrevive ao F5. */
+  /** PARAR TUDO (kill): para tudo, limpa o estado ativo e PERSISTE - sobrevive ao F5. */
   async function pararTudo(btn) {
     await executar(btn, 'Parar tudo', async () => {
       definirLigado(false);
@@ -3444,7 +3444,7 @@ switches: 'interruptores',
       return { ok: true, msg: 'RELIGADO, a automação volta a agir (o estado ativo foi limpo quando você parou tudo).' };
     });
   }
-  /** "Retomar tudo": usado pelo aviso "porque nada está acontecendo" — religa, liga e despausa. */
+  /** "Retomar tudo": usado pelo aviso "porque nada está acontecendo" - religa, liga e despausa. */
   async function retomarTudo(btn) {
     await executar(btn, 'Retomar tudo', async () => {
       if (estaDesligado()) chamar('religarTudo');
@@ -3604,7 +3604,7 @@ switches: 'interruptores',
       if (abriu.v && abriu.v.ok === false) return { ok: false, motivo: motivoCofre(abriu.v.motivo) };
       let n = 0;
       for (const a2 of lista) { const r = await chamarA('guardarNoCofre', a2.it.id); if (r.ok && r.v && r.v.ok) n++; }
-      // O cofre mudou: regrava o que está lá agora — SÓ com o cofre ainda aberto, para uma
+      // O cofre mudou: regrava o que está lá agora - SÓ com o cofre ainda aberto, para uma
       // leitura boa nunca ser apagada por uma lista vazia.
       cacheLimpar('cofreLive');
       if (n && cofreAberto().length) chamar('salvarCofre');
@@ -3692,7 +3692,7 @@ switches: 'interruptores',
   const rarDe = (i) => (i && i.raridade) || 'basico';
   /** Itens do catálogo que passam no filtro e na busca. Os BÁSICOS (peças/componentes) também
   /** entram: o catálogo tem 108 itens (19 básicos, 40 épicos, 49 lendários) e qualquer um deles
-  /** pode ser escolhido — quem decide é o filtro, não o código. */
+  /** pode ser escolhido - quem decide é o filtro, não o código. */
   function itensFiltrados() {
     const busca = (($('ap-item-busca') || {}).value || '').toLowerCase();
     return metaItens().filter((i) => {
@@ -3744,7 +3744,7 @@ switches: 'interruptores',
     renderChips();
   }
   /** "Farmar estes itens" (modalidade B): o plano já está à vista (renderPlanoItens); aqui só se
-   *  EXECUTA — confirma, liga o auto-play, fixa a região do melhor destino e viaja. */
+   *  EXECUTA - confirma, liga o auto-play, fixa a região do melhor destino e viaja. */
   async function planearItens(btn) {
     const ids = Array.from(selItens);
     if (!ids.length) { fbAviso('Escolha primeiro os itens que você quer farmar (botão "Escolher itens").'); return; }
@@ -4163,7 +4163,7 @@ switches: 'interruptores',
     salvarTopo({ potions: novo });
   }
 
-  // WATCH DO MERCADO (2026-10-18): a GUI nao conhece a chave — escreve sempre pela automação
+  // WATCH DO MERCADO (2026-10-18): a GUI nao conhece a chave - escreve sempre pela automação
   // (`setConfig`), e passa o objeto mercadoWatch INTEIRO porque o setConfig faz Object.assign
   // raso (automation.js:8279). Estes dois atalhos leem e fundem o objeto actual.
   const listaWatch = (s) => String(s == null ? '' : s).split(',').map((x) => x.trim()).filter(Boolean);
@@ -4171,13 +4171,13 @@ switches: 'interruptores',
   const MUDANCAS = {
     // O ÚNICO INTERRUPTOR MESTRE (cartão AUTO-PLAY, topo do Painel). Ligar/desligar = `enabled`.
     // Sair de DESLIGADO (kill persistente no navegador) religa tudo primeiro; desligar limpa o
-    // estado ativo (prazos, testes, farm forçado) — ao religar começa do zero.
+    // estado ativo (prazos, testes, farm forçado) - ao religar começa do zero.
     'ap-mestre': (el) => {
       const on = !!el.checked;
       if (on) {
         if (estaDesligado()) chamar('religarTudo');
         definirLigado(true);
-        fb('ok', 'AUTO-PLAY LIGADO: todos os switches foram ligados e a automação farma, viaja e decide sozinho.');
+        fb('ok', 'AUTO-PLAY LIGADO: a automação farma, viaja e decide sozinho. As capacidades que você desligou continuam desligadas.');
       } else {
         definirLigado(false);
         chamar('limparEstadoAtivo');
@@ -4213,12 +4213,12 @@ switches: 'interruptores',
     },
     'ap-cfg-autoAtrib': (el) => { definirCfg({ autoAtrib: el.checked }); fb('ok', 'Distribuir pontos de atributo automaticamente: ' + (el.checked ? 'ligado' : 'desligado') + '.'); },
     'ap-cfg-autoRefino': (el) => { definirCfg({ autoRefino: el.checked }); fb('ok', 'Refinar no Ornn automaticamente: ' + (el.checked ? 'ligado' : 'desligado') + '.'); },
-    // DEFEITO CORRIGIDO (2026-10-19): `ap-cfg-barraDisp` era desenhado mas NÃO tinha handler —
+    // DEFEITO CORRIGIDO (2026-10-19): `ap-cfg-barraDisp` era desenhado mas NÃO tinha handler -
     // o interruptor não fazia nada. Agora escreve a chave da automação.
     'ap-cfg-barraDisp': (el) => { definirCfg({ barraPorDisponibilidade: !!el.checked }); fb('ok', 'Barra pelas PRONTAS: ' + (el.checked ? 'ligada (usa tudo disponível, reavalia a cada 2 s)' : 'desligada (fixa nas 4 de maior dano)') + '.'); ultimoRender = 0; },
     // A ULTIMATE NÃO É INTERRUPTOR (dono, 2026-10-19, verbatim: "ultimate nas lutas dos mobs
     // nao e pra ser opcional"). A regra vive na `barraIdeal`: entra em fase DIFÍCIL ou no CHEFE,
-    // e só. O toggle e a chave `ultEmMobs` foram removidos da UI — não há handler.
+    // e só. O toggle e a chave `ultEmMobs` foram removidos da UI - não há handler.
     // Sem handlers de smart/strongest: os toggles foram removidos (decisão sempre inteligente;
     // PvP por detecção de Runeterra). Um clique antigo não existe mais no DOM.
     'ap-min-vida': (el) => guardarMin('vida', el.value),
@@ -4241,7 +4241,7 @@ switches: 'interruptores',
     'ap-watch-pct': (el) => {
       const v = Math.max(0, Math.min(100, Number(el.value) || 0));
       definirCfg({ mercadoWatch: novoWatch({ percentualOuro: v }) });
-      fb('ok', v > 0 ? 'Tecto de compra: até ' + v + '% do ouro ATUAL (escala com o ouro).' : 'Sem tecto por percentagem do ouro.');
+      fb('ok', v > 0 ? 'Tecto de compra: até ' + v + '% do ouro ATUAL (escala com o ouro).' : 'Sem teto por percentagem do ouro.');
     },
     'ap-watch-prioridade': (el) => {
       const v = ['tier', 'refino', 'preco'].indexOf(String(el.value)) >= 0 ? String(el.value) : 'tier';
@@ -4345,7 +4345,7 @@ switches: 'interruptores',
       }
       // ⚙ de um switch -> POPUP com os detalhes (pedido do dono 2026-10-21: "pode abrir um
       // popup invés de sair da página"). Antes isto fazia `setTab('macro')` e o dono perdia a
-      // aba em que estava. O bloco é MOVIDO para o popup e devolvido no fecho — assim os
+      // aba em que estava. O bloco é MOVIDO para o popup e devolvido no fecho - assim os
       // controlos continuam a ser os mesmos (IDs e delegação de eventos intactos).
       const cfgBtn = e.target.closest ? e.target.closest('[data-macro]') : null;
       if (cfgBtn && painel.contains(cfgBtn)) {
@@ -4414,7 +4414,7 @@ switches: 'interruptores',
         const atuais = Object.assign({}, (cfg().mercadoWatch || {}).limites || {});
         if (v > 0) atuais[base] = v; else delete atuais[base];
         definirCfg({ mercadoWatch: novoWatch({ limites: atuais }) });
-        fb('ok', v > 0 ? nomeItem(base) + ': compra até ' + fmt(v) + ' ouro.' : nomeItem(base) + ': volta ao tecto global.');
+        fb('ok', v > 0 ? nomeItem(base) + ': compra até ' + fmt(v) + ' ouro.' : nomeItem(base) + ': volta ao teto global.');
         return;
       }
       if (!el || !el.id) return;
@@ -4427,8 +4427,8 @@ switches: 'interruptores',
       const f = MUDANCAS[el.id];
       if (f) { try { f(el); } catch (err) { fbErro('Erro ao guardar: ' + String((err && err.message) || err)); } return; }
       // SWITCH DE CAPACIDADE DO MOTOR (cartão "Automatismos da automação"): a CHAVE vem em `data-cfg`,
-      // lida de `arvoreInterruptores()`. Cobre os interruptores sem handler próprio — vender,
-      // repor, cofre, anunciar, subir habilidades e ir à base — e a GUI não escreve o nome da
+      // lida de `arvoreInterruptores()`. Cobre os interruptores sem handler próprio - vender,
+      // repor, cofre, anunciar, subir habilidades e ir à base - e a GUI não escreve o nome da
       // chave à mão (só a automação a declara).
       if (el.dataset && el.dataset.cfg) {
         try {
@@ -4523,13 +4523,13 @@ switches: 'interruptores',
         ultimoRender = 0;
         // O render corre no arranque e nos segundos seguintes, com o painel fechado ou aberto.
         // Se dependesse de alguém abrir o painel (hover, F8), os blocos ficavam no placeholder
-        // inicial (#ap-fase="carregando…", #ap-h-*="—", #ap-build-fase=""). Renderiza uma
+        // inicial (#ap-fase="carregando…", #ap-h-*="-", #ap-build-fase=""). Renderiza uma
         // vez no arranque, sempre.
         renderTudo();
         // O arranque do content script corre ANTES de o HUD do jogo estar pintado
-        // (medido: a 1.ª render deixava #ap-h-nivel e #ap-h-ouro a "—" enquanto a
+        // (medido: a 1.ª render deixava #ap-h-nivel e #ap-h-ouro a "-" enquanto a
         // fase e o build já saíam certos). Como o `tick()` não corre com o painel
-        // fechado, esses dois campos ficavam a "—" para sempre. Re-renderiza nos
+        // fechado, esses dois campos ficavam a "-" para sempre. Re-renderiza nos
         // primeiros segundos até o HUD existir.
         for (const t of [1500, 4000, 9000, 16000]) setTimeout(() => { try { renderTudo(); } catch { /* ignore */ } }, t);
       });

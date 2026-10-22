@@ -43,9 +43,9 @@ for (const c of ctxs) {
     const v = JSON.parse(raw);
     if (v.auto !== 'undefined' || v.pulsoFix || v.folhas !== 'undefined') {
       console.log('CTX', c.id, (c.auxData && c.auxData.type) || '', JSON.stringify(v));
-      if (v.folhas === 'function' && v.clicar === 'function' && v.build === '2026-10-22-luta-final') achou = true;
+      if (v.folhas === 'function' && v.clicar === 'function' && v.build === '2026-10-22-base-paga') achou = true;
     }
   } catch (e) { /* contexto morto */ }
 }
-console.log(achou ? 'PROVA: BUILD 2026-10-22-luta-final VIVO (folhasDeReceitaFaltando + clicarIgnorarBasicos + marcador BUILD)' : 'NAO PROVADO: nenhuma versao nova visivel (pagina pode precisar de reload)');
+console.log(achou ? 'PROVA: BUILD 2026-10-22-base-paga VIVO (folhasDeReceitaFaltando + clicarIgnorarBasicos + marcador BUILD)' : 'NAO PROVADO: nenhuma versao nova visivel (pagina pode precisar de reload)');
 process.exit(achou ? 0 : 3);

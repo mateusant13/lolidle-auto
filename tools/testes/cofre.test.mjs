@@ -821,5 +821,49 @@ export const suite = {
       t.check('R4b: cofre só com A -> recusa a troca', r.ok === false && /C\/B/.test(String(r.motivo)));
       t.check('R4b: nada foi clicado no cofre', !m.estado.clicks.some((c) => String(c).indexOf('2002') >= 0));
     }
+
+    /* R5 - A VIAGEM TEM DE SE PAGAR (queixa do dono, 2026-10-22, verbatim: "voltou pra base
+     * sem motivo decente. nao precisava vender item"). Duas portas:
+     *   - `lerCofre` é INFORMAÇÃO: nunca paga uma viagem sozinha (aproveita uma ida que já ia
+     *     acontecer) — era isto que o fazia voltar à Fonte a cada ~10 min;
+     *   - `venderLixoCofre` passa pela MESMA conta do `vender`: o valor de venda do lixo tem de
+     *     cobrir `custoIdaBase().ouro` (medido ao vivo: 3845). Um básico no cofre não paga. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      const necBarato = { _lixoCofre: { itens: 1, valor: 200, custoOuro: 3845 }, _custoIda: { ouro: 3845 }, _venda: null };
+      const mv = auto.motivosDeViagem(['lerCofre', 'venderLixoCofre'], necBarato);
+      t.check('R5: lixo barato NÃO paga a viagem à base', mv.indexOf('venderLixoCofre') < 0);
+      t.check('R5: ler o cofre NUNCA paga viagem (é informação; aproveita uma ida)', mv.indexOf('lerCofre') < 0);
+      const mv2 = auto.motivosDeViagem(['venderLixoCofre'], { _lixoCofre: { itens: 12, valor: 9000 }, _custoIda: { ouro: 3845 } });
+      t.check('R5: lixo que vale mais que a ida PAGA a viagem', mv2.indexOf('venderLixoCofre') >= 0);
+      const mv3 = auto.motivosDeViagem(['cofreA'], { _lixoCofre: null });
+      t.check('R5: a oportunidade do cofre (cofreA) nunca é motivo de viagem', mv3.length === 0);
+    }
+
+    /* R6 - OPORTUNIDADE DO LENDÁRIO A (queixa de 2026-10-22, verbatim: "tinha lendario a no
+     * inventario e nao colocou no cofre"). Com FOLGA o plano normal NÃO o manda ao cofre (a
+     * regra do dono é "perto de encher"), mas se o boneco JÁ está na Fonte ele entra — sem
+     * transformar isso num motivo de viagem. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m); definirCampeao(m, 'adtest', { nivel: 30 }); auto.setConfig({ enabled: true });
+      const slots = [];
+      for (let i = 0; i < 5; i++) slots.push({ id: '1005~C', raridade: 'basico' });
+      slots.push({ id: '9500~A', raridade: 'lendario' });
+      montarMochila(m, slots, 30);                     // 6/30: SEM pressão nenhuma
+      const bag = auto.scanBag(true);
+      const normal = auto.planBag(bag).acts.filter((a) => String(a.it.id) === '9500~A');
+      t.check('R6: com folga o plano normal NÃO manda o lendário A ao cofre (regra "perto de encher")',
+        normal.every((a) => a.action !== 'GUARDAR_COFRE'));
+      const op = auto.planBag(bag, 10, 10, { cofreA: true }).acts.filter((a) => String(a.it.id) === '9500~A');
+      t.check('R6: na OPORTUNIDADE (já na base) o mesmo lendário A vai ao cofre',
+        op.length === 1 && op[0].action === 'GUARDAR_COFRE' && op[0].cofreOportunidade === true);
+      const nec = auto.necessidadesBase();
+      t.check('R6: `cofreA` existe como oportunidade e NÃO como motivo de viagem',
+        nec.cofreA === true && nec.cofre === false
+        && auto.motivosDeViagem(auto.faltandoNaBase(nec), nec).indexOf('cofreA') < 0);
+    }
   },
 };

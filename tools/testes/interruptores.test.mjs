@@ -139,14 +139,24 @@ export const suite = {
     {
       const m3 = criarMundo();
       const a3 = carregarAutomation(m3);
-      a3.setConfig({ enabled: true });                       // liga: tudo ligado
+      // CONTRATO NOVO (ordem do dono, 2026-10-22, verbatim): "essa PORRA dessa extensao ta
+      // habilitando por padrao o up de skills e atributos, sendo q eu ja desativei." O mestre
+      // só escreve `enabled`; NUNCA reescreve os filhos. Desligado, a cadeia `podeFazer()`
+      // (autoplay -> manutencao -> filho) já faz tudo parar — reescrever os filhos só os perdia.
+      a3.setConfig({ autoHab: false, autoAtrib: false, autoEquip: false });   // escolhas dele
+      const antesCiclo = a3.getConfig();
+      a3.setConfig({ enabled: false });
+      a3.setConfig({ enabled: true });                       // ciclo off->on do mestre
+      const depoisCiclo = a3.getConfig();
       const chaves = a3.chavesSwitches(false);               // sem os dois do Ornn (aposta)
-      t.check('I11: ligar o mestre liga TODOS os switches', chaves.every((k) => a3.getConfig()[k] !== false));
-      a3.setConfig({ autoEquip: false, autoHab: false });    // escolhas dele com o mestre ligado
-      a3.setConfig({ enabled: false });                      // desliga: devolve a escolha
+      t.check('I11: o ciclo desligar->ligar do mestre NAO reescreve NENHUM filho',
+        chaves.every((k) => (depoisCiclo[k] !== false) === (antesCiclo[k] !== false)));
+      t.check('I11: o autoHab/autoAtrib que o dono desligou continuam desligados depois do ciclo',
+        depoisCiclo.autoHab === false && depoisCiclo.autoAtrib === false);
+      a3.setConfig({ enabled: false });                      // desliga: NÃO mexe nos filhos
       const c3 = a3.getConfig();
-      t.check('I11: desligar o mestre devolve as escolhas dele (equipar desligado)', c3.autoEquip === false);
-      t.check('I11: desligar o mestre devolve as escolhas dele (habilidades desligadas)', c3.autoHab === false);
+      t.check('I11: desligar o mestre também não mexe nos filhos (equipar/hab ficam como ele deixou)',
+        c3.autoEquip === false && c3.autoHab === false);
       t.check('I11: desligar o mestre NAO deixa tudo ligado', c3.autoVender !== false || c3.autoEquip === false);
       // "desligar tudo": todos off; o mesmo botao religa o que ele tinha escolhido
       a3.setConfig({ enabled: true });

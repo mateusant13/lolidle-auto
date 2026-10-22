@@ -118,5 +118,13 @@ export const suite = {
       src.includes('os <b>C/B</b> saem para dar lugar a um A'));
     t.check('T9b: a linha da política respeita o modo "texto curto" (hint tira)',
       /class="hint tira">Mochila perto de encher/.test(src));
+
+    /* ================= T10 - PT-BR e SEM MDASH (ordem do dono, 2026-10-20/21) =================
+     * "retira qualquer mdash da gui. ... tira. tudo." e "nao e pra usar pt pt. e pt br".
+     * O mdash (U+2014) e o "tecto" (pt-PT) sao marcadores discriminantes: o ficheiro servido
+     * pelo Chrome nao pode voltar a te-los. */
+    t.check('T10: nenhum em-dash (U+2014) no ficheiro servido da GUI', !src.includes('\u2014'));
+    t.check('T10b: "tecto" (pt-PT) saiu; o texto usa "teto"', !src.includes('tecto') && src.includes('teto'));
+    t.check('T10c: numeros/datas em pt-BR (toLocaleString pt-BR)', src.includes("toLocaleString('pt-BR')"));
   },
 };

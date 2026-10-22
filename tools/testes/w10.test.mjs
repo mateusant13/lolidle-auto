@@ -304,7 +304,10 @@ export const suite = {
       t.check('C1: config JA migrada nao volta a migrar (one-shot)', m3.migrou.length === 0);
 
       const m4 = so({ automation: { autoRefino: false } });
-      t.check('C1: o autoRefino (a accao que nascia desligada) tambem migra para true', m4.cfg.autoRefino === true);
+      t.check('C1: o autoRefino guardado como FALSE fica FALSE (ordem de 2026-10-20: Ornn desligado por defeito)',
+        m4.cfg.autoRefino === false);
+      t.check('C1: ...e nao ha migracao de autoRefino',
+        !m4.migrou.some((x) => x.chave === 'autoRefino'));
 
       const m5 = so({ automation: {} });
       t.check('C1: chave AUSENTE nao e inventada (o DEFAULT ja a traz)', m5.migrou.length === 0);
@@ -323,7 +326,7 @@ export const suite = {
       await flush(); await flush(); await flush();
       const c = w.auto.getConfig();
       t.check('C2: ao carregar, barraPorDisponibilidade fica TRUE (a conta do dono)', c.barraPorDisponibilidade === true);
-      t.check('C2: o autoRefino fica TRUE', c.autoRefino === true);
+      t.check('C2: o autoRefino guardado como FALSE fica FALSE (Ornn desligado por defeito)', c.autoRefino === false);
       t.check('C2: a regiao escolhida pelo dono NAO e apagada', c.regionDefault === 'rio');
       t.check('C2: o champAlvo do dono NAO e apagado', c.champAlvo === 'katarina');
       t.check('C2: o auto-play continua desligado (nao se liga nada sozinho)', c.enabled === false);

@@ -634,7 +634,13 @@
     } catch { return { sat: false, lend: 0, total: 0 }; }
   }
 
-  function planBag(bag, marketCount = 10, marketCap = 10) {
+  function planBag(bag, marketCount = 10, marketCap = 10, opts = null) {
+    // `opts.cofreA` (2026-10-22): o passo do COFRE, quando o boneco JÁ está na Fonte, pede o
+    // plano com esta opção. Sem ela o lendário A só vai ao cofre com a mochila em pressão
+    // (ordem do dono de 2026-10-22) — e o dono viu-o ficar na mochila estando ele à frente do
+    // cofre. As acções criadas por esta via levam `cofreOportunidade:true`, para quem lê o plano
+    // saber que NÃO são motivo de viagem (só se aproveitam numa ida que já ia acontecer).
+    const cofreA = !!(opts && opts.cofreA);
     const acts = [];
     const itens = bag.items.filter((i) => i.kind === 'item');
     const espolios = bag.items.filter((i) => i.kind === 'espolio');
@@ -890,7 +896,7 @@
     // que NÃO é da build da fase também vai — guardado, nunca vendido.
     // A build da fase ATUAL fica na mochila de propósito: se fosse para o cofre, o `buscar`
     // puxava-a de volta no tick seguinte (ping-pong Fonte↔cofre).
-    if (pressao) {
+    if (pressao || cofreA) {
       const cofreLigado = (() => { try { return podeFazer('cofre').pode; } catch { return false; } })();
       if (cofreLigado) {
         // espaço REAL no cofre (capacidade lida na última abertura; sem leitura não se inventa tecto)
@@ -935,10 +941,16 @@
           && (a.action === 'PROTEGER' || a.action === 'ANUNCIAR_MERCADO' || a.action === 'VENDER_LOJISTA'));
         asLendA.sort((x, y) => (tierDe(y.it) - tierDe(x.it)) || ((y.it.refino || 0) - (x.it.refino || 0)));
         for (const a of asLendA) {
-          if (!mandar(a, 'LENDÁRIO A com a mochila perto de encher → cofre (ordem do dono 2026-10-22)', ['PROTEGER', 'ANUNCIAR_MERCADO', 'VENDER_LOJISTA'])) break;
+          if (!mandar(a, (pressao
+            ? 'LENDÁRIO A com a mochila perto de encher → cofre (ordem do dono 2026-10-22)'
+            : 'LENDÁRIO A fora da build da fase → cofre (aproveita a ida; não paga viagem)'),
+          ['PROTEGER', 'ANUNCIAR_MERCADO', 'VENDER_LOJISTA'])) break;
+          // Só a via OPPORTUNISTA (sem pressão) é marcada: com pressão é a R1 de sempre, que
+          // continua a ser motivo de viagem.
+          if (!pressao) a.cofreOportunidade = true;
         }
         // 1) EXCEDENTES: a melhor cópia de cada base fica na mochila; as outras vão para o cofre.
-        for (const arr of porBase.values()) {
+        if (pressao) for (const arr of porBase.values()) {
           const ord = melhores(arr);
           for (let i = 1; i < ord.length; i++) mandar(ord[i], 'excedente de item protegido → cofre (liberta a mochila; não se vende)');
         }
@@ -2178,12 +2190,14 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-22-luta-final';
+  const BUILD = '2026-10-22-base-paga';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
-    { ver: 1, chave: 'autoRefino', de: false, para: true,
-      porquê: 'a unica accao que nascia DESLIGADA era o refino; o dono mandou ligar por defeito' },
+    // ORDEM POSTERIOR (2026-10-20): o Ornn (refino E montagem) nasce DESLIGADO.
+    // A migracao antiga `autoRefino false -> true` (pedido de 2026-10-14) foi REMOVIDA:
+    // um `false` guardado e a escolha vigente e nao pode ser virada para `true` no arranque.
+    // O default atual (`DEFAULT.autoRefino`) tambem e `false`; ver `w10` C1/C2.
     { ver: 2, chave: 'champAlvo', de: 'yasuo', para: ['yasuo', 'ryze'],
       porquê: 'o dono passou a jogar de Ryze (17/10/2026); a lista de alvos passa de "so o Yasuo" para incluir o Ryze, so migra quem tinha o default antigo' },
     // ORDEM DO DONO (2026-10-21): ele não pediu o encaixe de cartas e o boneco pôs uma carta
@@ -2852,7 +2866,21 @@ const CFG_VER = 4;
   function valorDoPonto(ctx, t, r, dpsTotal, dica) {
     const ganhoDps = dpsRank(ctx, t, r + 1) - dpsRank(ctx, t, r);
     const ganhoBuff = valorBuff(ctx, t, r + 1, dpsTotal, dica) - valorBuff(ctx, t, r, dpsTotal, dica);
-    let v = ganhoDps + ganhoBuff;
+    // PvE (MOBS): as skills vêm em GRUPO, logo o ponto vale pelos ALVOS que a skill toca — o
+    // MESMO `alvos`/`espalha` do kit e o MESMO tecto da wave (`mediaWaveDe`) que a `barraIdeal`
+    // usa. Sem isto o `dpsRank` é de ALVO ÚNICO e o ponto ia para a skill que o PvE quase não
+    // usa (queixa do dono, 2026-10-22: "a skill upada foi uma q nao é usada no pve").
+    // `skillsPorFase === false` desliga o peso (é a opção do dono), e sem números do motor = 1.
+    const alvosPve = (() => {
+      try {
+        if (cfg.skillsPorFase === false) return 1;
+        const k = KAT[t] || {};
+        const a = k.alvos != null ? k.alvos : (k.espalha != null ? k.espalha : 1);
+        const wave = mediaWaveDe(META.grupoSpawn) || 1;
+        return Math.max(1, Math.min(Number(a) || 1, Number(wave) || 1));
+      } catch { return 1; }
+    })();
+    let v = ganhoDps * alvosPve + ganhoBuff;
     if (!(r > 0)) v *= MULT_DESBLOQUEIO;
     return v;
   }
@@ -4538,7 +4566,10 @@ const CFG_VER = 4;
       n._pocoes = { stock: p, min: mn };
     } catch { n.repor = true; }
     try {
-      bag = scanBag(); const pl = bag ? planBag(bag) : null; const acts = (pl && pl.acts) || [];
+      // `{cofreA:true}`: o plano aqui também mostra o lendário A que só se guarda APROVEITANDO
+      // uma ida (marcado `cofreOportunidade`), para `n.cofreA` poder disparar a rotina da base
+      // sem transformar isso em motivo de viagem.
+      bag = scanBag(); const pl = bag ? planBag(bag, 10, 10, { cofreA: true }) : null; const acts = (pl && pl.acts) || [];
       // VENDER — REGRA DE OURO (P0 ao vivo): NÃO basta haver 1 item vendável. Um item de 21 de
       // ouro nunca paga 8-20 s de viagem + os abates perdidos; o que trava o farm é a MOCHILA
       // CHEIA (deixa de entrar loot). Logo: vender só quando a mochila está quase cheia, OU
@@ -4589,7 +4620,12 @@ const CFG_VER = 4;
         espoliosTipos: espolios.length, espoliosQtd: espolioQtd, valorEspolio: espolioValor,
         motivo: mochilaQuaseCheia ? 'espaco' : (prioridade ? 'prioridade' : 'espolio'),
         mochilaQuaseCheia, used: bag && bag.used, cap: bag && bag.cap, espolios: bag && bag.espacosEspolio };
-      n.cofre = podeFazer('cofre').pode && acts.some((a) => a.action === 'GUARDAR_COFRE');
+      // `cofre` = motivo de VIAGEM (mochila em pressão). `cofreA` = OPORTUNIDADE: o lendário A
+      // que o dono quer no cofre mas que, com folga na mochila, NÃO paga uma viagem — guarda-se
+      // se o boneco já estiver na Fonte (queixa de 2026-10-22: tinha um lendário A na mochila,
+      // estava na Fonte, e ele ficou lá dentro).
+      n.cofre = podeFazer('cofre').pode && acts.some((a) => a.action === 'GUARDAR_COFRE' && !a.cofreOportunidade);
+      n.cofreA = podeFazer('cofre').pode && !n.cofre && acts.some((a) => a.action === 'GUARDAR_COFRE' && a.cofreOportunidade);
       // P0 MEDIDO (2026-10-20): `planBag` marca o lendário <A para o mercado, mas NÃO sabe
       // o que JÁ está anunciado. Resultado: `anunciarLendarios` via `minhas` e pulava o item,
       // devolvia `anunciados:0`, e o `n.anunciar` continuava `true` para sempre -> a base
@@ -4696,7 +4732,14 @@ const CFG_VER = 4;
     // É uma acção de MANUTENÇÃO (como `vender`/`cofre`/`lerCofre`): paga a ida à Fonte sozinha.
     try {
       const cadLixo = numOr(cfg.cofreCadenciaMin, 10) * 60000 * (0.85 + Math.random() * 0.30);
-      n.venderLixoCofre = podeFazer('cofre').pode && lixoDoCofreLista().length > 0
+      const lixo = podeFazer('cofre').pode ? lixoDoCofreLista() : [];
+      // VALOR do lixo pela MESMA `valorVenda` do motor (nunca um número copiado). A ida à Fonte
+      // custa `custoIdaBase().ouro` (medido ao vivo: 3845) — vender UM básico não a paga. Era
+      // este o "voltou pra base sem motivo decente" de 2026-10-22: havia 1 básico A no cofre.
+      let valorLixo = 0;
+      for (const x of lixo) { const v = valorVenda(x.base, x.qual, x.refino); valorLixo += Number(v) || 0; }
+      n._lixoCofre = { itens: lixo.length, valor: Math.round(valorLixo), custoOuro: Math.round(Number(custo && custo.ouro) || 0) };
+      n.venderLixoCofre = podeFazer('cofre').pode && lixo.length > 0
         && (!_ultimaVendaCofre || (Date.now() - _ultimaVendaCofre) > cadLixo);
     } catch { n.venderLixoCofre = false; }
     n.mercado = n.anunciar;      // só vai ao mercado se houver lendário <A p/ anunciar
@@ -4746,6 +4789,47 @@ const CFG_VER = 4;
    *  [necessidade, nome do passo, função]. Esta tabela é a ÚNICA definição da ordem:
    *  `acaoBase` e `supervisarBase` leem daqui, logo nunca podem discordar sobre o que
    *  "a base está completa" quer dizer. */
+  /** Passo do COFRE, partilhado por DOIS pedidos (2026-10-22):
+   *   - `cofre`  = mochila em pressão: paga a viagem (necessidade que vem de R1/R2);
+   *   - `cofreA` = OPORTUNIDADE: já estamos na base e há um lendário A fora da build da fase.
+   *     Não paga viagem nenhuma (`motivosDeViagem` exclui-o), mas é guardado enquanto o cofre
+   *     está aberto — foi a queixa do dono: "tinha lendario a no inventario e nao colocou no
+   *     cofre" estando ele na Fonte. */
+  const passoCofre = async () => {
+    const bag = scanBag(true); const p = bag ? planBag(bag, 10, 10, { cofreA: true }) : null;
+    const cofre = p ? (p.acts || []).filter((a) => a.action === 'GUARDAR_COFRE') : [];
+    if (!cofre.length) return { ok: true, itens: 0, trocas: 0 };
+    const abriu = await abrirCofreTesoureira();
+    if (!abriu || !abriu.ok) return { ok: false, itens: 0, trocas: 0, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
+    let guardados = 0, trocas = 0;
+    const TROCA_MAX = 4;                 // tecto por ida: nunca uma rotina longa por causa do cofre
+    try {
+      for (const a of cofre) {
+        // R3 (ordem do dono, 2026-10-22): "vai trocando o cofre b e c por a e etc."
+        // Item A+ entra TROCANDO o pior C/B do cofre — mesmo com vaga livre, para o cofre
+        // convergir para o que presta em vez de encher de B/C. Se a troca falhar (mochila
+        // sem vaga para sacar), tenta-se o depósito directo antes de desistir.
+        const q = qIdx(a.it && a.it.qual);
+        if (q >= qIdx('A') && trocas < TROCA_MAX && pioresDoCofre(1).length) {
+          const t = await trocarNoCofre(a.it);
+          if (t && t.ok) { guardados++; trocas++; continue; }
+        }
+        const r = await guardarNoCofre(a.it.id);
+        if (!r || !r.ok) {
+          // COFRE CHEIO: a única saída é trocar um C/B por este item. Sem C/B (ou sem vaga na
+          // mochila para o saque) os seguintes também falhavam — pára, como antes.
+          if (trocas < TROCA_MAX && pioresDoCofre(1).length) {
+            const t = await trocarNoCofre(a.it);
+            if (t && t.ok) { guardados++; trocas++; continue; }
+          }
+          break;
+        }
+        guardados++;
+      }
+    } finally { fecharJanelas(); }
+    return { ok: true, itens: guardados, pedidos: cofre.length, trocas };
+  };
+
   const PASSOS_BASE = [
     // PRIMEIRO: uma oferta da watch que já pode ser comprada. O dono mandou voltar à base
     // imediatamente (chefe ou não), e ao chegar é este passo que compra antes de vender/repor.
@@ -4795,40 +4879,8 @@ const CFG_VER = 4;
     // viagem sozinha (não é primária): se já estiver na Fonte, faz-se.
     ['cartas', 'cartas', () => encaixarCartas()],
     ['buscar', 'buscar no cofre', () => buscarPecasDaFase(faseAtual())],
-    ['cofre', 'cofre', async () => {
-      const bag = scanBag(true); const p = bag ? planBag(bag) : null;
-      const cofre = p ? (p.acts || []).filter((a) => a.action === 'GUARDAR_COFRE') : [];
-      if (!cofre.length) return { ok: true, itens: 0, trocas: 0 };
-      const abriu = await abrirCofreTesoureira();
-      if (!abriu || !abriu.ok) return { ok: false, itens: 0, trocas: 0, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
-      let guardados = 0, trocas = 0;
-      const TROCA_MAX = 4;                 // tecto por ida: nunca uma rotina longa por causa do cofre
-      try {
-        for (const a of cofre) {
-          // R3 (ordem do dono, 2026-10-22): "vai trocando o cofre b e c por a e etc."
-          // Item A+ entra TROCANDO o pior C/B do cofre — mesmo com vaga livre, para o cofre
-          // convergir para o que presta em vez de encher de B/C. Se a troca falhar (mochila
-          // sem vaga para sacar), tenta-se o depósito directo antes de desistir.
-          const q = qIdx(a.it && a.it.qual);
-          if (q >= qIdx('A') && trocas < TROCA_MAX && pioresDoCofre(1).length) {
-            const t = await trocarNoCofre(a.it);
-            if (t && t.ok) { guardados++; trocas++; continue; }
-          }
-          const r = await guardarNoCofre(a.it.id);
-          if (!r || !r.ok) {
-            // COFRE CHEIO: a única saída é trocar um C/B por este item. Sem C/B (ou sem vaga na
-            // mochila para o saque) os seguintes também falhavam — pára, como antes.
-            if (trocas < TROCA_MAX && pioresDoCofre(1).length) {
-              const t = await trocarNoCofre(a.it);
-              if (t && t.ok) { guardados++; trocas++; continue; }
-            }
-            break;
-          }
-          guardados++;
-        }
-      } finally { fecharJanelas(); }
-      return { ok: true, itens: guardados, pedidos: cofre.length, trocas };
-    }],
+    ['cofre', 'cofre', passoCofre],
+    ['cofreA', 'cofre', passoCofre],
     ['lerCofre', 'ler cofre', () => { const r = lerCofreBase(); if (r && r.ok) _ultimoLerCofre = Date.now(); return r; }],
     // TK-03: depois de LER o cofre (aí já se sabe o que é lixo) e antes do `mercado`. O passo de
     // DEPOSITAR (`cofre`) fica ANTES do `lerCofre` na tabela — "depois de lerCofre" é a restrição
@@ -4862,7 +4914,21 @@ const CFG_VER = 4;
     const valor = Number(venda && venda.valor) || 0;
     const valePelaConta = !custoOuro || !valor || valor >= custoOuro;
     const vendaPaga = !!venda && (!!venda.mochilaQuaseCheia || (itensVenda >= minVenda && valePelaConta));
-    return (Array.isArray(falta) ? falta : []).filter((f) => f !== 'vender' || vendaPaga);
+    // O LIXO DO COFRE passa pela MESMA conta: vender 1 básico (ou 2) não paga 3845 de ouro de
+    // farm perdido. Sem valores medidos mantém-se a regra antiga — não se inventa um custo.
+    const lixo = necess && necess._lixoCofre;
+    const valorLixo = Number(lixo && lixo.valor) || 0;
+    const lixoVale = !custoOuro || !valorLixo || valorLixo >= custoOuro;
+    return (Array.isArray(falta) ? falta : []).filter((f) => {
+      if (f === 'vender') return vendaPaga;
+      // LER O COFRE É INFORMAÇÃO: não paga uma viagem sozinha. A rotina da base corre-o na
+      // mesma quando o boneco já lá está (PASSOS_BASE), e é assim que a capacidade do cofre
+      // chega ao plano — mas sem voltar à Fonte de 10 em 10 min só para ler.
+      if (f === 'lerCofre') return false;
+      if (f === 'venderLixoCofre') return !!lixo && lixo.itens > 0 && lixoVale;
+      if (f === 'cofreA') return false;            // oportunidade: só se já estiver na base
+      return true;
+    });
   }
   function faltandoNaBase(n) {
     const x = n || necessidadesBase();
@@ -12638,20 +12704,19 @@ const CFG_VER = 4;
       // A GUI passa por AQUI para ligar/desligar o interruptor-mestre. Se o dono mexer nele antes
       // do prazo da "primeira vez", o prazo NÃO o volta a ligar sozinho (a decisão dele manda).
       if (!_pvAuto && Object.prototype.hasOwnProperty.call(patch, 'enabled')) _pvMexeu = true;
-      // MESTRE = TUDO (ordem de 2026-10-20): ligar guarda as escolhas dele e liga todos os
-      // switches; desligar devolve exatamente as escolhas que ele tinha.
-      if (Object.prototype.hasOwnProperty.call(patch, 'enabled')) {
-        const antesLigado = cfg.enabled !== false;
-        const querLigado = patch.enabled !== false;
-        if (querLigado && !antesLigado) {
-          cfg._escolhas = guardarEscolhasSwitches();
-          for (const k of chavesSwitches(false)) cfg[k] = true;
-          cfg._todosOff = false;
-        } else if (!querLigado && antesLigado) {
-          aplicarEscolhasSwitches(cfg._escolhas);
-          cfg._todosOff = false;
-        }
-      }
+      // O MESTRE SÓ ESCREVE `enabled` — NUNCA os filhos. Isto substitui o "MESTRE = TUDO"
+      // (2026-10-20), que foi exactamente o defeito que o dono reportou em 2026-10-22:
+      //   "essa PORRA dessa extensao ta habilitando por padrao o up de skills e atributos,
+      //    sendo q eu ja desativei."
+      // O que acontecia: ligar o mestre (off -> on) fazia `cfg[k] = true` em TODOS os switches
+      // de `chavesSwitches(false)` — incluindo `autoHab`/`autoAtrib`. E pior: guardava
+      // `_escolhas` ANTES de ligar, por isso o retrato do dono passava a ser o estado em que
+      // ele tinha tudo desligado. Desligar o mestre só o sabia devolver a esse retrato errado.
+      // O contrato documentado na GUI (`gui.js:3397`) sempre foi "o mestre não liga nem desliga
+      // os filhos": desligado, a cadeia `podeFazer()` (autoplay -> manutencao -> filho) já faz
+      // TUDO parar. Escrever nos filhos era só uma forma de os PERDER.
+      // `_escolhas`/`_todosOff` continuam a pertencer ao botão "Desligar tudo"
+      // (`alternarTodosSwitches`), que esse sim tem de mexer em cada switch.
       // Toda a escolha INDIVIDUAL do dono fica guardada: é isso que o mestre devolve ao desligar.
       for (const k of chavesSwitches(true)) {
         if (Object.prototype.hasOwnProperty.call(patch, k)) {
