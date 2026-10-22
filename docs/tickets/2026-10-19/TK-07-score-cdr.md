@@ -61,3 +61,19 @@ o 3003 mata 3,65 s mais rápido.
 - Harness da build devolvida: `3171+5~A,3003+5~A,3089+5~A,3100+5~A,3135+5~A` → **25,70 s**
   (`--champ=ryze --nivel=32 --alvo="Barão Nashor" --nv=32 --maxSeg=180 --seed=1`).
 - Relatório com `file:linha` e o resultado da mutação.
+
+## Tentativa falhada (2026-10-22) — não repetir sem ler isto
+
+Tentou-se a correcção mínima do ponto 1: `contextoScore()` passou a calcular
+`fracHabs = dh / (dh + daH + p.dano*p.va)` e o fixture ganhou `Dano 157` / `Vel. ataque 1.09` e um
+equipamento com Lich (tooltip sintetizado). Resultado medido:
+
+- ideal devolvido: `3003,3089,6653,3135,3171` (troca o 3100 pelo 6653);
+- harness desse conjunto: **37,30 s** (pior que os 29,35 s anteriores e que os 25,70 s do ticket);
+- B2a: **2028 ms** > 2000 ms (o beam passou do orçamento de tempo do teste);
+- B1b/B1c falham.
+
+Revertido. **Conclusão:** incluir o auto na fracção do CDR não chega. O problema é o CDR ser aplicado
+como `1/(1-cdr)` a TODA a habilidade, sem cast time nem limite de rotação; o 4629/6653 continuam a
+ganhar. A correcção tem de modelar a taxa real de conjuração (cast time/GCD) ou usar uma medida de
+luta, não apenas mudar o denominador de `fracHabs`.
