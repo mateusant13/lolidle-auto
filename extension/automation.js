@@ -60,6 +60,12 @@
    *  Espelha o motor: motor.js:47 `raridade = (i) => i.raridade || (i.lendario ? 'lendario' : 'basico')`. */
   const RAR_IDX = { basico: 0, epico: 1, lendario: 2 };
   const rarIdx = (r) => (RAR_IDX[r] != null ? RAR_IDX[r] : 0);
+  /** RARIDADES que a extensão CONHECE (motor.js:48 `raridade`). Qualquer outra é uma raridade
+   *  NOVA (o dono anunciou `mitica` em 2026-10-22) e é EXCEPÇÃO: não se vende, não se destrói,
+   *  não se move e não se altera. Só se EQUIPA quando é da classe do campeão (ou neutra).
+   *  A regra é por CONJUNTO, não por nome: uma raridade futura cai aqui sozinha. */
+  const RARIDADES_CONHECIDAS = new Set(['basico', 'epico', 'lendario']);
+  const ehRaridadeNova = (r) => !RARIDADES_CONHECIDAS.has(String(r == null ? '' : r).toLowerCase());
   /** BARRA de combate: 4 habilidades — motor.js:900 `export const BARRA = 4`. */
   const BARRA_SLOTS = 4;
   /** DESBLOQUEAR vale mais que +1 rank numa que já existe (frase do dono, verbatim):
@@ -173,6 +179,11 @@
     // -> 1.500.000 de ouro, configurável. Sem isto o anúncio era PULADO ("sem referência de
     // preço") ou caía no MÍNIMO do jogo — que é muito baixo e vendia barato.
     precoSemComparavel: 1500000,
+    // EXCEPÇÕES NOMEADAS PELO DONO (2026-10-22, verbatim): "item tier b por esse preço só faz
+    // sentido quando é rabadon. quando é gume, é 10 milhoes pra mais." A chave é o ID-BASE do
+    // catálogo (não o nome, que pode ser traduzido). `precoSemComparavel` (1,5M) continua a ser
+    // SÓ para tier A; estas duas fichas são as únicas excepções de tier B/C.
+    precoSemComparavelPorBase: { '3089': 1500000, '3031': 10000000 },
     // ===== WATCH-LIST DO MERCADO (PEDIDO DO DONO, 2026-10-18, verbatim): =====================
     //   "faz um subagent fazer auto compra no mercado, detectando em TEMPO REAL o mercado
     //    sobre os itens q eu quero dar watch. e por nome de player."
@@ -202,7 +213,12 @@
       prioridade: 'tier',
       // FILTROS de qualidade/refino (0/'' = qualquer). A ordem das qualidades vem do
       // motor (`QUAL`, motor.js:187 ORDEM_QUAL = C,B,A,S,SS) — nunca um numero inventado.
-      tierMin: null,
+      // ORDEM DO DONO (2026-10-22): "esse preço aí é só pra tier A". O piso da VIGIA passa a
+      // ser A por defeito; tier B/C só entra por excepção explícita (`excecoesTier`).
+      tierMin: 'A',
+      // EXCEPÇÕES de tier da vigia (ordem do dono, 2026-10-22): um tier B a 1,5M só faz sentido
+      // para o Rabadon. A chave é o ID-base; `precoMax` é o tecto daquela oferta.
+      excecoesTier: { '3089': { tier: 'B', precoMax: 1500000 } },
       refinoMin: 0,
       cadenciaMs: 2000,     // cadencia do poller em tempo real
       // LIMITE POR ITEM (pedido do dono 2026-10-21): "item x ate x de gold, item y ate y".
@@ -400,7 +416,11 @@
           return QUAL.includes(q) ? q : '?';
         })();
         const cls = String(s.className || '');
-        const rar = cls.includes('lendario') ? 'lendario' : cls.includes('epico') ? 'epico' : cls.includes('basico') ? 'basico' : '?';
+        // RARIDADE NOVA (`mitica`, 2026-10-22): o jogo escreve a raridade na classe do slot
+        // (jogo.js:6485 `s.className = 'slot ' + M.raridade(...)`). É lida como um valor
+        // PRÓPRIO — nunca cai no `'?'` nem é tratada como básico/épico/lendário.
+        const rar = /(?:^|\s)mitic[ao](?:\s|$)/i.test(cls) ? 'mitica'
+          : cls.includes('lendario') ? 'lendario' : cls.includes('epico') ? 'epico' : cls.includes('basico') ? 'basico' : '?';
         const dica = s.getAttribute('data-dica') || '';
         const vendaM = dica.match(/Vale\s+([\d.,]+\s*[kKmM]?)\s+de ouro no Lojista/i);
         items.push({
@@ -473,6 +493,7 @@
 
   // ------------------------------------------------------------- regras
   const isProtected = (it) => it.kind === 'item' && (
+    ehRaridadeNova(it.raridade) ||                             // raridade NOVA/desconhecida (ex.: mitica): excepção intocável
     !QUAL.includes(it.qual) ||                                  // '?' (sendo avaliado) = BLINDADO: pode virar A
     (it.raridade === 'lendario' && qIdx(it.qual) >= qIdx('A')) ||
     ehPrioridadeExtrema(it.base) ||                             // PRIORIDADE EXTREMA por classe (3031/3089): nem venda, nem mercado, NEM DUPLICADO
@@ -689,7 +710,7 @@
     const aPorBase = {};
     let totalA = 0;
     for (const it of itens) {
-      if (it.raridade === 'basico' || !QUAL.includes(it.qual) || qIdx(it.qual) !== qIdx('A')) continue;
+      if (it.raridade === 'basico' || !QUAL.includes(it.qual) || qIdx(it.qual) !== qIdx('A') || ehRaridadeNova(it.raridade)) continue;
       totalA++;
       (aPorBase[chaveA(it)] = aPorBase[chaveA(it)] || []).push(it);
     }
@@ -735,6 +756,20 @@
         acts.push(ms.sat
           ? { action: 'PROTEGER', it, why: `A em excesso (${totalA} A na mochila), a MENOS desejável para ${ident.perfil}/${ident.classe}; mercado SATURADO: fica no cofre/mochila` }
           : { action: 'ANUNCIAR_MERCADO', it, why: `A em excesso (${totalA} A na mochila): a MENOS desejável para ${ident.perfil}/${ident.classe} → mercado` });
+      }
+      // ===== RARIDADE NOVA (ex.: `mitica`, 2026-10-22) =====================================
+      // ORDEM DO DONO, verbatim: "jogo tem uma raridade nova, chamada mitica. nao podemos
+      // fazer nada com essa raridade pela extensao, ela é excecao. nao pode em nenhuma
+      // hipotese destruir os itens ou mexer neles. só equipar, quando faz sentido pra classe
+      // q estamos." -> PROTEGER sempre; a ÚNICA acção permitida é EQUIPAR, e só quando o item
+      // é da classe do campeão (ou neutro). A regra é por CONJUNTO de raridades conhecidas:
+      // uma raridade futura cai aqui sozinha, sem precisar de um `if (raridade === 'mitica')`.
+      else if (ehRaridadeNova(it.raridade)) {
+        const daClasse = ehUsavelPeloCampeao(it.base);
+        const escolhido = equiparIds.has(it.id) || equiparBases.has(String(it.base));
+        acts.push(daClasse && escolhido
+          ? { action: 'EQUIPAR', it, why: `raridade ${it.raridade} da classe (${ident.perfil}/${ident.classe}): só se equipa, nunca se vende/destrói/move` }
+          : { action: 'PROTEGER', it, why: `raridade ${it.raridade} (nova/excepção): nunca se vende, destrói ou move${daClasse ? '' : '; classe errada, nem equipa'}` });
       }
       else if (it.raridade === 'lendario' && ehLendarioDaBuild(it.base)) acts.push({ action: 'PROTEGER', it, why: `LENDÁRIO DA BUILD DA CLASSE (${ident.perfil}/${ident.classe}), nem mercado, nem Lojista` });
       else if (!QUAL.includes(it.qual)) acts.push({ action: 'PROTEGER', it, why: "qualidade '?' sendo avaliada, nunca mexer" });
@@ -859,16 +894,15 @@
       const cofreLigado = (() => { try { return podeFazer('cofre').pode; } catch { return false; } })();
       if (cofreLigado) {
         // espaço REAL no cofre (capacidade lida na última abertura; sem leitura não se inventa tecto)
-        let livres = Infinity;
-        try {
-          const usados = (cofreConhecido() || []).reduce((s, i) => s + (Number(i.qtd) || 1), 0);
-          if (_cofreCap) livres = Math.max(0, _cofreCap - usados);
-        } catch { /* ignore */ }
+        let livres = vagasCofre();                 // null = capacidade ainda desconhecida
+        const cabe = () => (livres == null ? true : livres > 0);
+        const gastar = () => { if (livres != null) livres--; };
         const fase = (() => { try { return faseAtual(); } catch { return 'mobs'; } })();
         // o que a build desta fase usa AGORA não sai da mochila (evita stash↔buscar)
         const stasheavel = (a) => {
           const it = a.it;
           if (!it || !QUAL.includes(it.qual) || it.raridade === 'basico') return false;   // '?' e básico (receita) ficam
+          if (ehRaridadeNova(it.raridade)) return false;   // raridade nova (mitica): NÃO se move, nem para o cofre
           let fs = [];
           try { fs = fasesDoItem(it.base); } catch { fs = []; }
           return fs.indexOf(fase) < 0;
@@ -881,15 +915,47 @@
         }
         const melhores = (arr) => arr.slice().sort((x, y) =>
           (tierDe(y.it) - tierDe(x.it)) || (qIdx(y.it.qual) - qIdx(x.it.qual)) || ((y.it.refino || 0) - (x.it.refino || 0)));
-        const mandar = (a, why) => {
-          if (a.action !== 'PROTEGER' || livres <= 0) return false;
-          a.action = 'GUARDAR_COFRE'; a.why = why; livres--;
+        /** Muda a acção para GUARDAR_COFRE. `soProtegido` é o caminho antigo; a política nova
+         *  (ordem do dono 2026-10-22) também converte ANUNCIAR_MERCADO/VENDER_LOJISTA. */
+        const mandar = (a, why, aceita) => {
+          if (!cabe()) return false;
+          if (aceita ? !aceita.includes(a.action) : a.action !== 'PROTEGER') return false;
+          a.action = 'GUARDAR_COFRE'; a.why = why; gastar();
           return true;
         };
+        // =====================================================================================
+        // R1 (ORDEM DO DONO, 2026-10-22, verbatim): "garanta que items, quando pertos de encher,
+        // que sao lendarios, todos os A vao para o cofre."
+        // TODAS as cópias (não só o excedente) de um LENDÁRIO de qualidade A saem da mochila para
+        // o cofre enquanto houver vaga. Inclui o que o plano ia anunciar no mercado: perto de
+        // encher, o cofre vem PRIMEIRO e o anúncio deixa de o disputar (a regra do A no mercado
+        // continua a valer quando a mochila tem folga — é aí que este bloco não corre).
+        // =====================================================================================
+        const asLendA = acts.filter((a) => a.it && a.it.raridade === 'lendario' && qIdx(a.it.qual) === qIdx('A')
+          && (a.action === 'PROTEGER' || a.action === 'ANUNCIAR_MERCADO' || a.action === 'VENDER_LOJISTA'));
+        asLendA.sort((x, y) => (tierDe(y.it) - tierDe(x.it)) || ((y.it.refino || 0) - (x.it.refino || 0)));
+        for (const a of asLendA) {
+          if (!mandar(a, 'LENDÁRIO A com a mochila perto de encher → cofre (ordem do dono 2026-10-22)', ['PROTEGER', 'ANUNCIAR_MERCADO', 'VENDER_LOJISTA'])) break;
+        }
         // 1) EXCEDENTES: a melhor cópia de cada base fica na mochila; as outras vão para o cofre.
         for (const arr of porBase.values()) {
           const ord = melhores(arr);
           for (let i = 1; i < ord.length; i++) mandar(ord[i], 'excedente de item protegido → cofre (liberta a mochila; não se vende)');
+        }
+        // =====================================================================================
+        // R2 (ORDEM DO DONO, 2026-10-22, verbatim): "quando tem muito item e nao tem pra onde ir,
+        // os b ou menos vao para o cofre."
+        // TRANSBORDO a sério (`excesso > 0`: a mochila passou da capacidade). Aqui o que ia para o
+        // Lojista por ser qualidade C/B fica GUARDADO — o espaço volta e o item não se perde por
+        // 80% do valor. B primeiro, C depois (o cofre fica com o melhor que cabe).
+        // =====================================================================================
+        if (excesso > 0 && livres != null) {
+          const baixos = acts.filter((a) => a.it && (a.action === 'VENDER_LOJISTA' || a.action === 'GUARDAR')
+            && qIdx(a.it.qual) >= 0 && qIdx(a.it.qual) <= qIdx('B'))
+            .sort((x, y) => (qIdx(y.it.qual) - qIdx(x.it.qual)) || (tierDe(y.it) - tierDe(x.it)) || (y.it.refino || 0) - (x.it.refino || 0));
+          for (const a of baixos) {
+            if (!mandar(a, 'mochila sem lugar: qualidade ' + a.it.qual + ' → cofre (ordem do dono 2026-10-22)', ['VENDER_LOJISTA', 'GUARDAR'])) break;
+          }
         }
         // 2) TRANSBORDO: ainda acima da capacidade? A cópia única de um item que NÃO é da fase
         //    também vai para o cofre (guardado; o `buscar` traz de volta quando a fase mudar).
@@ -1443,7 +1509,7 @@
       return {
         id: b.getAttribute('data-id'), base, refino: ref ? +ref : 0, qual, carta: carta || null,
         nome: dica.split('(')[0].trim(), dica, stats: parseDica(dica),
-        raridade: cls.includes('lendario') ? 'lendario' : cls.includes('epico') ? 'epico' : 'basico',
+        raridade: /(?:^|\s)mitic[ao](?:\s|$)/i.test(cls) ? 'mitica' : cls.includes('lendario') ? 'lendario' : cls.includes('epico') ? 'epico' : 'basico',
       };
     }).filter((e) => e.base);
   }
@@ -2112,7 +2178,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-21m';
+  const BUILD = '2026-10-22-luta-final';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -4012,6 +4078,14 @@ const CFG_VER = 4;
       if (id.startsWith('esp:')) continue;                       // espólio já foi em lote
       if (apenas && !forcar(id)) continue;                       // modo cofre: só os ids retirados
       const puro = id.replace(/[+~].*$/, '');                    // '3089+2~A' → '3089'
+      // RARIDADE NOVA (`mitica`, 2026-10-22): excepção ABSOLUTA. O Lojista nunca a toca —
+      // nem o item, nem um duplicado. A classe do slot é lida do jogo (jogo.js:6485) e o
+      // catálogo é a segunda fonte; qualquer uma delas que diga "raridade nova" basta.
+      const catRar = ((META.itens || []).find((x) => String(x.id) === String(puro)) || {}).raridade;
+      if ((catRar && ehRaridadeNova(catRar)) || /(?:^|\s)mitic[ao](?:\s|$)/i.test(String(s.className || ''))) {
+        regras.protegidos.push({ id, motivo: `raridade ${catRar || 'mitica'} (nova/excepção): nunca se vende` });
+        continue;
+      }
       if (ehPrioridadeExtrema(puro)) continue;                   // PRIORIDADE EXTREMA (3031/3089, automation.js:47): nunca vai ao Lojista, nem duplicado (antes só o Rabadon era poupado aqui)
       // TRATAMENTO ESPECIAL POR CAMPEÃO (ver ITENS_ESPECIAIS): o motor lê estes itens pelo
       // ID para mudar a REGRA do campeão (ex.: motor.js:515 Gume do Infinito, motor.js:522
@@ -4724,18 +4798,36 @@ const CFG_VER = 4;
     ['cofre', 'cofre', async () => {
       const bag = scanBag(true); const p = bag ? planBag(bag) : null;
       const cofre = p ? (p.acts || []).filter((a) => a.action === 'GUARDAR_COFRE') : [];
-      if (!cofre.length) return { ok: true, itens: 0 };
+      if (!cofre.length) return { ok: true, itens: 0, trocas: 0 };
       const abriu = await abrirCofreTesoureira();
-      if (!abriu || !abriu.ok) return { ok: false, itens: 0, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
-      let guardados = 0;
+      if (!abriu || !abriu.ok) return { ok: false, itens: 0, trocas: 0, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
+      let guardados = 0, trocas = 0;
+      const TROCA_MAX = 4;                 // tecto por ida: nunca uma rotina longa por causa do cofre
       try {
         for (const a of cofre) {
+          // R3 (ordem do dono, 2026-10-22): "vai trocando o cofre b e c por a e etc."
+          // Item A+ entra TROCANDO o pior C/B do cofre — mesmo com vaga livre, para o cofre
+          // convergir para o que presta em vez de encher de B/C. Se a troca falhar (mochila
+          // sem vaga para sacar), tenta-se o depósito directo antes de desistir.
+          const q = qIdx(a.it && a.it.qual);
+          if (q >= qIdx('A') && trocas < TROCA_MAX && pioresDoCofre(1).length) {
+            const t = await trocarNoCofre(a.it);
+            if (t && t.ok) { guardados++; trocas++; continue; }
+          }
           const r = await guardarNoCofre(a.it.id);
-          if (!r || !r.ok) break;          // cofre cheio/recusou: os seguintes também falhavam
+          if (!r || !r.ok) {
+            // COFRE CHEIO: a única saída é trocar um C/B por este item. Sem C/B (ou sem vaga na
+            // mochila para o saque) os seguintes também falhavam — pára, como antes.
+            if (trocas < TROCA_MAX && pioresDoCofre(1).length) {
+              const t = await trocarNoCofre(a.it);
+              if (t && t.ok) { guardados++; trocas++; continue; }
+            }
+            break;
+          }
           guardados++;
         }
       } finally { fecharJanelas(); }
-      return { ok: true, itens: guardados, pedidos: cofre.length };
+      return { ok: true, itens: guardados, pedidos: cofre.length, trocas };
     }],
     ['lerCofre', 'ler cofre', () => { const r = lerCofreBase(); if (r && r.ok) _ultimoLerCofre = Date.now(); return r; }],
     // TK-03: depois de LER o cofre (aí já se sabe o que é lixo) e antes do `mercado`. O passo de
@@ -5043,6 +5135,67 @@ const CFG_VER = 4;
   /** Nº de SLOTS de item na mochila (o `#mochila` é a lista viva; o `#mochila-qtd` pode estar
    *  congelado com a janela do cofre aberta, por isso a confirmação olha para os dois). */
   function bagCount() { try { return ((scanBag(true) || {}).items || []).length; } catch { return 0; } }
+  /** VAGAS LIVRES no cofre. `null` = capacidade ainda não lida do jogo (`_cofreCap`), e nesse
+   *  caso NÃO se inventa tecto (REGRA Nº 3): o plano decide como se houvesse espaço e o actor
+   *  confirma no DOM, recusando o que não couber. */
+  function vagasCofre() {
+    if (!_cofreCap) return null;
+    let usados = 0;
+    try { usados = (cofreConhecido() || []).reduce((s, i) => s + (Number(i.qtd) || 1), 0); } catch { usados = 0; }
+    return Math.max(0, _cofreCap - usados);
+  }
+  /** C/B do COFRE, do PIOR para o melhor: são estes que SAEM para entrar um A.
+   *  ORDEM DO DONO (2026-10-22, verbatim): "e ai vai trocando o cofre b e c por a e etc."
+   *  NUNCA entram na lista: raridade nova (`mitica` — intocável), S+, peça da build/reservada,
+   *  componente da build, especial da classe e prioridade extrema. O jogo NÃO vende do cofre,
+   *  por isso o item sai para a MOCHILA e o plano normal decide o destino dele (Lojista para
+   *  básico/épico; mercado para lendário — regra dura: lendário nunca no Lojista). */
+  function pioresDoCofre(n) {
+    let slots = [];
+    try { slots = (cofreConhecido() || []).filter((s) => s.acao === 'retirar' || s.acao === 'sacar'); } catch { slots = []; }
+    if (!slots.length) return [];
+    let ideal = new Set(), comps = new Set(), reserv = new Set();
+    try { ideal = new Set((buildIdeal() || []).map(String)); } catch { /* sem campeao */ }
+    try { comps = componentesDaBuild(); } catch { /* ignore */ }
+    try { reserv = basesReservadas(); } catch { /* ignore */ }
+    const RAR_ORD = { basico: 0, epico: 1, lendario: 2 };
+    const cand = [];
+    for (const s of slots) {
+      const base = String(s.base == null ? '' : s.base);
+      if (!base) continue;
+      const qi = qIdx(s.qual);
+      if (qi < 0 || qi > qIdx('B')) continue;                    // só C e B ("b ou menos")
+      let rar = 'basico';
+      try { rar = rarDe(base); } catch { rar = 'basico'; }
+      if (ehRaridadeNova(rar)) continue;                          // mitica: nunca se move
+      if (ehPrioridadeExtrema(base) || ehEspecialMeu(base) || ehReservado(base) || reserv.has(base)) continue;
+      if (ideal.has(base) || comps.has(base)) continue;           // peça final / componente: fica
+      cand.push(Object.assign({}, s, { _rar: rar }));
+    }
+    cand.sort((x, y) => (qIdx(x.qual) - qIdx(y.qual))
+      || ((RAR_ORD[x._rar] || 0) - (RAR_ORD[y._rar] || 0))
+      || ((x.refino || 0) - (y.refino || 0))
+      || String(x.base).localeCompare(String(y.base)));
+    return n == null ? cand : cand.slice(0, Math.max(0, n));
+  }
+  /** TROCA NO COFRE: saca o PIOR C/B para a mochila e deposita `itemEntrando` no lugar.
+   *  Usado pelo passo `cofre` quando o depósito directo falhou (cofre cheio) e quando o item é
+   *  A+ (o cofre converge para o que é bom, em vez de ficar cheio de B/C). O saque e o depósito
+   *  são CONFIRMADOS pelo DOM (`sacarSlotDoCofre`/`guardarNoCofre`); se o saque falhar nada é
+   *  movido — nunca se perde o item por um clique recusado. */
+  async function trocarNoCofre(itemEntrando) {
+    const abriu = await abrirCofreTesoureira();
+    if (!abriu || !abriu.ok) return { ok: false, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
+    const alvo = pioresDoCofre(1)[0];
+    if (!alvo) return { ok: false, motivo: 'cofre sem C/B para trocar' };
+    const saiu = await sacarSlotDoCofre({ base: alvo.base, qual: alvo.qual, refino: alvo.refino || 0 });
+    if (!saiu || !saiu.ok) return { ok: false, motivo: 'saque recusado: ' + ((saiu && saiu.motivo) || '?') };
+    const entrou = await guardarNoCofre(itemEntrando && itemEntrando.id);
+    const saiuTxt = String(alvo.base) + (alvo.qual ? '~' + alvo.qual : '') + (alvo.refino ? '+' + alvo.refino : '');
+    logEvent('cofre', { troca: { saiu: saiuTxt, entrou: itemEntrando && itemEntrando.id, ok: !!(entrou && entrou.ok) } });
+    if (!entrou || !entrou.ok) return { ok: false, motivo: 'saiu ' + saiuTxt + ' mas o depósito foi recusado', saiu: { base: alvo.base, qual: alvo.qual, refino: alvo.refino || 0 } };
+    return { ok: true, saiu: { base: alvo.base, qual: alvo.qual, refino: alvo.refino || 0 }, entrou: itemEntrando.id };
+  }
   /** Deposita no cofre (ABERTO) um item da mochila — épico S/SS não fica na mochila.
    *  O clique só conta quando o TOTAL DO COFRE cresce: com o cofre cheio o jogo recusa em
    *  silêncio e antes disto o passo dizia `itens: N` sem nada ter entrado. Confirmar pelo
@@ -6260,8 +6413,22 @@ const CFG_VER = 4;
     return p;
   }
 
+  /** Multiplicador de qualidade/refino do equipamento ACTUAL (mediana). Um id-BASE no score
+   *  representa "esta peca no tier que a conta usa", nao "esta peca em qualidade B". Sem isto,
+   *  o Liandry (dano fixo) ganhava ao Cajado do Arcanjo/Rabadon (AP multiplicativo) so porque
+   *  os ids-base valiam 1,0 e o equipamento real vale 1,84 (TK-07, medido: 37,3 s vs 25,7 s). */
+  function multTier() {
+    try {
+      const eq = readEquip() || [];
+      if (!eq.length) return 1;
+      const ms = eq.map((e) => parseSlotId(e.id || e.base).mult).filter((x) => Number.isFinite(x) && x > 0);
+      if (!ms.length) return 1;
+      ms.sort((a, b) => a - b);
+      return ms[Math.floor(ms.length / 2)];
+    } catch { return 1; }
+  }
   function statsSet(ids, opt) {
-    const qm = (opt && opt.mult) || 1;   // multiplicador de ATRIBUTO (qualidade/refino) p/ simular cenários
+    const qm = (opt && opt.mult) || multTier();   // qualidade/refino do tier actual (ou o cenario pedido)
     const itens = META.itens || [];
     let apItem = 0, adItem = 0, apPct = 0, adPct = 0, cdr = 0, pen = 0, penArmadura = 0, rvItens = 0, lich = 0, sheen = 0, chama = false, liandry = false, crit = 0, infinito = false;
     // Stats/genericos que antes eram IDs fixos. Agora saem do TEXTO de cada item.
@@ -6278,7 +6445,10 @@ const CFG_VER = 4;
       const p = parseSlotId(raw);
       const id = String(p.base);
       const it = itens.find((x) => String(x.id) === id) || {};
-      const m = p.mult * qm;   // qualidade/refino da peça × o multiplicador de cenário (`opt.mult`)
+      // Um id com `+`/`~` JA traz a sua qualidade: nao multiplicar pelo tier de novo. O tier
+      // automatico so preenche ids-BASE; `opt.mult` (cenario) continua a mandar em todos.
+      const explicito = /[+~]/.test(String(raw));
+      const m = p.mult * (explicito && !(opt && opt.mult) ? 1 : qm);
       // PASSIVAS LIDAS DO TEXTO - nenhum `if (id === ...)` daqui para baixo.
       const pv = passivasDoItem(it);
       if (pv.naoReconhecidos.length) for (const t of pv.naoReconhecidos) naoReconhecidos.push(id + ': ' + t);
@@ -6402,33 +6572,56 @@ const CFG_VER = 4;
    *
    *  A base sem itens e INVERTIDA do estado VIVO (AP/mana do painel) no conjunto EQUIPADO:
    *  assim o "ideal" e comparado com o que a conta TEM, nao com um numero inventado. */
-  function apDoSet(ids, S) {
+  function apDoSet(ids, S, curStats, pj) {
     const st = S || statsSet(ids);
-    const p = player() || {};
-    const cur = statsSet(idsEquipados());
-    const mst = (KAT.P && KAT.P.maestria) || null;
+    const p = pj || player() || {};
+    // `curStats` e' o statsSet do equipamento ACTUAL, invariante dentro do beam.
+    // Sem ele, cada estado recalculava o equipamento inteiro (2151 estados x DOM).
+    const cur = curStats || statsSet(idsEquipados());
+    // O kit do campeao PEDIDO (nao o que esta em campo): `buildIdealPara(c)` avalia outro
+    // campeao e a Maestria Arcana e dele. `kitDoCampeao` devolve o kit RAW (o `KAT` serializado
+    // perdia o objecto `maestria` no pass-through do `aplicarKit`).
+    const _ck = (typeof _champScore !== 'undefined' && _champScore) || META.champAtual;
+    const _kit = (typeof kitDoCampeao === 'function' ? kitDoCampeao(_ck) : null) || KAT;
+    const mst = (_kit && _kit.P && _kit.P.maestria) || null;
     const apPctCur = 1 + (cur.apPct || 0);
-    const apPre = (p.poder || 0) / apPctCur;                 // antes do Rabadon
-    const mana0 = Math.max(0, (p.mana || 0) - (cur.mana || 0));   // mana base + extra do passivo
-    // resolve o extra do passivo no estado ACTUAL (poucas iteracoes; a formula e monotonica)
-    let extraCur = 0, curMst = 0, curArch = 0;
-    for (let i = 0; i < 6; i++) {
-      const apPrePassive = Math.max(0, apPre - curMst - curArch);
-      const f = mst ? Math.min(mst.manaMax || 0.5, (mst.manaPor100 || 0.1) * apPrePassive / 100) : 0;
-      extraCur = mana0 * f / (1 + f);
-      curMst = mst ? (mst.poder || 0) * ((cur.mana || 0) + extraCur) : 0;
-      curArch = cur.manaToAp ? cur.manaToAp * (mana0) : 0;
+    const panelAp = p.poder || 0;
+    const panelMana = p.mana || 0;
+    const curAp = cur.apBruto || 0;
+    const curMana = cur.mana || 0;
+    const archPct = cur.manaToAp || 0;
+    const poderMst = mst ? (mst.poder || 0) : 0;
+    const fMax = mst ? (mst.manaMax || 0.5) : 0;
+    const por100 = mst ? (mst.manaPor100 || 0.1) : 0;
+    // INVERSAO EXACTA do motor (motor.js:555-563), no estado EQUIPADO:
+    //   manaMax = base + itens; extra = manaMax * f; manaMax += extra
+    //   ap = baseAP + itensAP + poder*(8*foco + manaItens + extra); 3003 -> +3% da manaMax; 3089 -> *1,35
+    // O `f` do passivo usa o AP ANTES da maestria (itens + forca), nao o AP final. O `8*foco`
+    // fica dentro de `apBase` (constante do campeao): o candidato so acrescenta o dos ITENS.
+    // Resolve-se por iteracao porque `f` depende do AP e o AP depende de `f`.
+    let apBase = Math.max(0, panelAp / apPctCur - curAp);     // base + forca (sem itens)
+    let manaBase = Math.max(0, panelMana - curMana);          // base + atributo (sem itens)
+    let extra = 0, mstAp = 0, archAp = 0;
+    for (let i = 0; i < 12; i++) {
+      const bAp = apBase + curAp;                             // AP antes da maestria (base + itens)
+      const f = mst ? Math.min(fMax, por100 * bAp / 100) : 0;
+      const manaPre = manaBase + curMana;
+      extra = manaPre * f;
+      const manaMax = manaPre + extra;
+      mstAp = poderMst * (curMana + extra);                   // parte dos ITENS (o 8*foco fica em apBase)
+      archAp = archPct * manaMax;
+      manaBase = Math.max(0, panelMana / (1 + f) - curMana);
+      apBase = Math.max(0, panelAp / apPctCur - curAp - mstAp - archAp);
     }
-    const manaBase = Math.max(0, mana0 - extraCur);
-    const apBase = Math.max(0, apPre - (cur.apBruto || 0) - curMst - curArch);
-    // ---- conjunto candidato ----
+    // `apBase` inclui a constante `poder*8*foco` (o painel tem-na; a conta acima nao a retirou).
+    // ---- conjunto candidato: a MESMA formula do motor ----
     let ap = apBase + (st.apBruto || 0);
     let mana = manaBase + (st.mana || 0);
     if (mst) {
-      const f = Math.min(mst.manaMax || 0.5, (mst.manaPor100 || 0.1) * ap / 100);
-      const extra = mana * f;
-      mana += extra;
-      ap += (mst.poder || 0) * ((st.mana || 0) + extra);
+      const f = Math.min(fMax, por100 * ap / 100);
+      const extraC = mana * f;
+      mana += extraC;
+      ap += poderMst * ((st.mana || 0) + extraC);
     }
     if (st.manaToAp) ap += st.manaToAp * mana;               // Cajado do Arcanjo (texto)
     ap *= 1 + (st.apPct || 0);                               // Rabadon (texto)
@@ -6436,12 +6629,18 @@ const CFG_VER = 4;
   }
 
   function estimarSet(ids, alvo, opt) {
-    const p = player();
-    const S = statsSet(ids, opt);
+    // CACHE DO BEAM (2026-10-22): `player()`, `readSkills()`, `statsSet` e `apDoSet`
+    // sao INVARIANTES entre candidatos. O beam avalia ~2000 estados; reler o DOM em
+    // cada um custava segundos. `opt` pode trazer `pj`, `sk`, `champ`, `curStats` e
+    // `S` ja' calculados. Chamadas antigas (sem `opt`) continuam iguais.
+    const O = opt || {};
+    const p = O.pj || player();
+    const S = O.S || statsSet(ids, O);
     const { cdr, pen, penArmadura, lich, sheen, det } = S;
-    const apInfo = apDoSet(ids, S);
+    const apInfo = apDoSet(ids, S, O.curStats, p);
     const ap = apInfo.ap;
-    const sk = readSkills();
+    const sk = O.sk || readSkills();
+    const champ = O.champ || META.champAtual || null;
     const adTotalSet = (p.dano || 0) + (S.ad || 0);
     let dps = 0; const habs = [];
     for (const h of (sk.arsenal || [])) {
@@ -6458,7 +6657,7 @@ const CFG_VER = 4;
       // todo o escalamento do Yasuo era multiplicado por zero e o dps saia ~63, cerca
       // de 10x abaixo do real (24-25 abates/min medidos). Agora `ratio` escala com o
       // tipo de dano do campeao: mago -> AP, AD -> AD total (campeao + itens).
-      const magiaEsc = !!(META.champAtual && META.champAtual.magia);
+      const magiaEsc = !!(champ && champ.magia);
       const escala = magiaEsc ? ap : adTotal;
       const fluxoMult = ((KAT.P && KAT.P.fluxo) != null || (KAT.E && KAT.E.espalha != null))
         ? 1 + (Number(k.fluxoBonus) || Number(k.fluxoExtra) || 0) : 1;
@@ -6468,7 +6667,9 @@ const CFG_VER = 4;
       // R do Ryze `ticks`, M `runas`). Antes o `estimarSet` contava 1 golpe por uso.
       const golpes = Math.max(1, Number(k.golpes) || Number(k.ticks) || Number(k.runas) || 1);
       const procLich = (magiaEsc && lich) ? lich * ap : 0;
-      const procSheen = (!magiaEsc && sheen) ? sheen * baseAdCampeao(p.nivel || 1) : 0;
+      // `adBaseCampeao` (nao `baseAdCampeao`): o nome existe em automation.js:2048. O typo
+      // fazia `ReferenceError` em qualquer campeao AD com Sheen (suite build-equipada).
+      const procSheen = (!magiaEsc && sheen) ? sheen * (adBaseCampeao(p.nivel || 1) || 0) : 0;
       const total = direto * mult * golpes + procLich + procSheen;
       const cdBase = k.rec ? k.rec(h.rank) : null;
       const cd = cdBase != null ? cdBase * (1 - cdr) : null;
@@ -6481,7 +6682,7 @@ const CFG_VER = 4;
     // TK-02-150: o ramo FÍSICO usava a pen MÁGICA (`pen`) — penetração que o motor só dá a quem bate com
     // magia. Num campeão AD isso infla o dano estimado e muda a escolha de itens: as duas pens
     // são coisas diferentes no motor (motor.js:529 vs 539) e cada uma fica no seu ramo.
-    const magiaCh = !!(META.champAtual && META.champAtual.magia);
+    const magiaCh = !!(champ && champ.magia);
     const shredMax = (S.shred && S.shred.max) || 0;
     const mit = 100 / (100 + (magiaCh ? armMagicaEfetiva(alvo?.armadura, pen) : (alvo?.armadura || 0) * (1 - penArmadura) * (1 - shredMax)));
     dps *= mit;
@@ -6495,7 +6696,7 @@ const CFG_VER = 4;
     const capVida = 3 * (cv[0] + cv[1] * (alvo?.nivel || 1) + cv[2] * (alvo?.nivel || 1) ** 2);
     if (S.burnPct && alvo?.hp) { burn = Math.min(alvo.hp, capVida) * S.burnPct.pct; dps += burn; }
     if (S.currentHpPct && alvo?.hp) dps += Math.min(alvo.hp, capVida) * S.currentHpPct.pct;
-    return { hemorragia: (typeof hemorragiaDe === 'function' ? hemorragiaDe(p && p.nivel, p && p.bonusAd, alvo) : null), dps: Math.round(dps), ap: Math.round(ap), mana: apInfo.mana, apPassiva: apInfo.passiva, cdr: +cdr.toFixed(2), pen: +pen.toFixed(2), burn: Math.round(burn), habs: habs.sort((a, b) => b.dps - a.dps).slice(0, 5), det, naoReconhecidos: S.naoReconhecidos };
+    return { hemorragia: (typeof hemorragiaDe === 'function' ? hemorragiaDe(p && p.nivel, p && p.bonusAd, alvo) : null), dps: Math.round(dps), ap: Math.round(ap), mana: apInfo.mana, apPassiva: apInfo.passiva, baseAp: apInfo.baseAp, baseMana: apInfo.baseMana, apBruto: S.apBruto, manaItens: S.mana, apPct: S.apPct, manaToAp: S.manaToAp, maestria: !!(KAT.P && KAT.P.maestria), cdr: +cdr.toFixed(2), pen: +pen.toFixed(2), burn: Math.round(burn), habs: habs.sort((a, b) => b.dps - a.dps).slice(0, 5), det, naoReconhecidos: S.naoReconhecidos };
   }
 
   /** Multiplicador médio de ATRIBUTO dos itens EQUIPADOS (refino +12%/nv, qualidade): (1+0.12·ref)·multQual. */
@@ -6864,6 +7065,97 @@ const CFG_VER = 4;
     });
   }
 
+  /** PREÇO DE ANÚNCIO de um lendário <A — PURA (testável sem UI/rede).
+   *
+   *  ORDEM DO DONO (2026-10-22, verbatim): "anunciou uma bota lendaria por 1.5kk. taria certo
+   *  se nao tivesse uma bota igual, com tier melhor, mais barata. e esse preço aí, é só pra
+   *  tier a. item tier b por esse preço só faz sentido quando é rabadon. quando é gume, é 10
+   *  milhoes pra mais."
+   *
+   *  Regras, por ordem:
+   *   1) oferta do MESMO tier -> 90% da mais barata (regra de 2026-10-21);
+   *   2) sem oferta do mesmo tier, mas com oferta de tier SUPERIOR -> 90% da mais barata do
+   *      tier superior. É o TECTO: um tier inferior não pode ser anunciado acima de um tier
+   *      melhor que já está mais barato (foi exactamente o bug da bota);
+   *   3) tier A sem referência -> `precoSemComparavel` (1,5M). SÓ tier A;
+   *   4) tier B/C sem referência -> NÃO usa 1,5M. Excepções nomeadas pelo dono, por ID-base:
+   *      Rabadon (3089) -> 1,5M; Gume (3031) -> 10M+ (piso). Sem referência e sem excepção,
+   *      devolve `preco:null` e o chamador NÃO anuncia.
+   *
+   *  Devolve `{ preco, regra, refTier, ofertasTier, ofertasBase }`. `preco:null` = não anunciar.
+   */
+  function precoDeAnuncio(it, mercado, conf) {
+    const c = conf || cfg || {};
+    const fator = typeof fatorAnuncio === 'function' ? fatorAnuncio() : 0.9;
+    const base = String((it && it.base) || '').replace(/[+~].*$/, '');
+    const qual = String((it && it.qual) || '').toUpperCase();
+    const ofertas = (mercado || []).filter((x) => x && String(x.base) === base && Number(x.preco) > 0);
+    const qDe = (x) => String(x.qual || '').toUpperCase();
+    const menorDe = (arr) => arr.length ? Math.min(...arr.map((x) => Number(x.preco))) : null;
+    const out = (preco, regra, ref, n) => ({ preco: preco == null ? null : Math.max(1, Math.round(preco)), regra, refTier: ref == null ? null : ref, ofertasTier: n || 0, ofertasBase: ofertas.length });
+    // PISO do Gume (dono, 2026-10-22): "quando é gume, é 10 milhoes pra mais." Aplica-se
+    // DEPOIS de qualquer referência (mesmo tier ou superior) — o Gume nunca é anunciado
+    // abaixo de 10M, porque o dono o trata como ficha premium, não como um tier B comum.
+    const pisoGume = base === '3031' ? Number((c.precoSemComparavelPorBase || {})['3031']) || 10000000 : 0;
+    const outP = (preco, regra, ref, n) => {
+      const p = preco == null ? null : Math.max(Number(preco) || 0, pisoGume);
+      return out(p, regra, ref, n);
+    };
+
+    const mesmoTier = ofertas.filter((x) => qDe(x) === qual);
+    const refMesmo = menorDe(mesmoTier);
+    // Tier SUPERIOR: um tier pior não pode custar mais do que um tier melhor já à venda.
+    // A regra é o MENOR entre o mesmo tier e o tier superior — o caso do dono era uma bota
+    // B a 1,5M com uma A mais barata; escolher "mesmo tier primeiro" ainda a punha acima da A.
+    const superior = ofertas.filter((x) => QUAL.includes(qDe(x)) && QUAL.includes(qual) && qIdx(qDe(x)) > qIdx(qual));
+    const refSuperior = menorDe(superior);
+    const refs = [];
+    if (refMesmo != null) refs.push({ preco: refMesmo * fator, tipo: 'mesmo', ref: refMesmo, n: mesmoTier.length });
+    if (refSuperior != null) refs.push({ preco: refSuperior * fator, tipo: 'superior', ref: refSuperior, n: superior.length });
+    if (refs.length) {
+      const best = refs.reduce((a, b) => (b.preco < a.preco ? b : a));
+      const regra = best.tipo === 'mesmo' ? '90% do menor do MESMO tier' : '90% do menor de tier SUPERIOR (tecto)';
+      return outP(best.preco, regra, best.ref, best.n);
+    }
+
+    // Excepções do dono, por ID-base (não por nome traduzido).
+    const exc = (c.precoSemComparavelPorBase || {})[base];
+    if (exc != null) {
+      const p = Number(exc) || 0;
+      return outP(p, 'excepcao por item (dono)', null, 0);
+    }
+
+    // 1,5M SÓ para tier A.
+    if (qual === 'A') return outP(numOr(c.precoSemComparavel, 1500000), 'tier A sem comparavel -> precoSemComparavel', null, 0);
+    return outP(null, `tier ${qual || '?'} sem comparavel: 1,5M e SO tier A (nao anuncia)`, null, 0);
+  }
+
+  /** REFERÊNCIA de preço de uma oferta MINHA no mercado (PURA). Usa o MESMO critério do
+   *  `precoDeAnuncio`: mesmo tier primeiro; se não houver, o tier SUPERIOR funciona como
+   *  TECTO. Devolve `{ alvo, tipo, ref, ofertasTier }` ou `null` (sem comparável). */
+  function referenciaPrecoMercado(o, mercado, conf) {
+    const c = conf || cfg || {};
+    const fator = typeof fatorAnuncio === 'function' ? fatorAnuncio() : 0.9;
+    const base = String((o && o.base) || '').replace(/[+~].*$/, '');
+    const qual = String((o && o.qual) || '').toUpperCase();
+    const ofertas = (mercado || []).filter((x) => x && String(x.base) === base && Number(x.preco) > 0);
+    const qDe = (x) => String(x.qual || '').toUpperCase();
+    const menorDe = (arr) => arr.length ? Math.min(...arr.map((x) => Number(x.preco))) : null;
+    // Gume (3031): piso de 10M também no REAJUSTE — o dono não o quer abaixo disso.
+    const pisoGume = base === '3031' ? Number((c.precoSemComparavelPorBase || {})['3031']) || 10000000 : 0;
+    const alvoDe = (ref) => Math.max(1, Math.round(Number(ref) * fator), pisoGume);
+    const mesmo = ofertas.filter((x) => qDe(x) === qual);
+    const refMesmo = menorDe(mesmo);
+    const superior = ofertas.filter((x) => QUAL.includes(qDe(x)) && QUAL.includes(qual) && qIdx(qDe(x)) > qIdx(qual));
+    const refSuperior = menorDe(superior);
+    // O MENOR entre o mesmo tier e o tier superior (a mesma regra do `precoDeAnuncio`).
+    const cands = [];
+    if (refMesmo != null) cands.push({ alvo: alvoDe(refMesmo), tipo: 'mesmo', ref: refMesmo, ofertasTier: mesmo.length });
+    if (refSuperior != null) cands.push({ alvo: alvoDe(refSuperior), tipo: 'superior', ref: refSuperior, ofertasTier: superior.length });
+    if (!cands.length) return null;
+    return cands.reduce((a, b) => (b.alvo < a.alvo ? b : a));
+  }
+
   /** Lê os preços do mercado (aba Comprar): [{ base, qual, preco, txt }]. */
   function lerMercado() {
     const m = q1('#janela-mercado'); if (!m) return null;
@@ -6906,12 +7198,30 @@ const CFG_VER = 4;
         acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, acao: 'cancelar (protegido: lendário A+/Rabadon)' });
         continue;
       }
-      const mk = mercado.find((x) => x.qual === o.qual && String(x.base) === String(o.base));
-      if (!mk || mk.preco == null || o.preco == null) { if (!mk) acoes.push({ id: o.id, nome: o.nome, qual: o.qual, acao: 'manter (sem comparativo no mercado)' }); continue; }
-      const alvo = Math.max(1, Math.round(mk.preco * fatorAnuncio()));
-      // SÓ SOBE — NUNCA abaixa o preço de uma oferta viva (o dono quer CARO; o mínimo do jogo é lixo)
-      if (o.preco < alvo * 0.95) acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, item: o.item || null, de: o.preco, para: alvo, acao: 'reanunciar (subir p/ 90% do menor)' });
-      else acoes.push({ id: o.id, nome: o.nome, qual: o.qual, acao: 'ok' });
+      const ref = referenciaPrecoMercado(o, mercado, cfg);
+      if (!ref) {
+        // SEM comparável: 1,5M só é preço de tier A. Uma oferta B/C a esse preço (sem ser
+        // Rabadon/Gume) é o bug que o dono viu — cancela para não ficar a praça com um preço
+        // inventado. O `anunciarLendarios` volta a decidir com a política nova.
+        const qual = String(o.qual || '').toUpperCase();
+        const exc = (cfg.precoSemComparavelPorBase || {})[String(o.base)];
+        const piso = Number(cfg.precoSemComparavel) || 1500000;
+        if (qual && qual !== 'A' && Number(o.preco) >= piso && exc == null) {
+          acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, item: o.item || null, de: o.preco, acao: 'cancelar (tier B/C a 1,5M sem referencia)' });
+        } else {
+          acoes.push({ id: o.id, nome: o.nome, qual: o.qual, acao: 'manter (sem comparativo no mercado)' });
+        }
+        continue;
+      }
+      const alvo = ref.alvo;
+      // MESMO tier: mantém a regra do dono "só sobe" (ele quer CARO; o mínimo do jogo é lixo).
+      // Tier SUPERIOR mais barato: aqui a regra NOVA manda DESCER — um tier pior não pode
+      // custar mais do que um tier melhor já à venda (foi o caso da bota de 1,5M).
+      if (o.preco < alvo * 0.95) {
+        acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, item: o.item || null, de: o.preco, para: alvo, refTier: ref.ref, tipoRef: ref.tipo, acao: ref.tipo === 'superior' ? 'reanunciar (subir p/ 90% do tier superior)' : 'reanunciar (subir p/ 90% do menor)' });
+      } else if (ref.tipo === 'superior' && o.preco > alvo * 1.05) {
+        acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, item: o.item || null, de: o.preco, para: alvo, refTier: ref.ref, tipoRef: ref.tipo, acao: 'reanunciar (descer p/ 90% do tier superior)' });
+      } else acoes.push({ id: o.id, nome: o.nome, qual: o.qual, acao: 'ok' });
     }
     const plano = { at: Date.now(), mercado: mercado.length, minhas: minhas.length, saturado: minhas.length >= 10, acoes, mercadoPrecos: mercado };
     logEvent('mercado', { acao: 'plano', reajustar: acoes.filter((a) => a.acao.startsWith('reanunciar')).length, n: minhas.length });
@@ -7027,12 +7337,12 @@ const CFG_VER = 4;
       exec.push({ nome: a.nome, qual: a.qual, de: a.de, para: a.para, feito: !!r.ok, motivo: r.motivo || null });
       await humano(420);
     }
-    // protegidos: só cancela
+    // protegidos e preços inválidos: só cancela (não reanuncia)
     for (const a of (plano.acoes || [])) {
-      if (a.acao !== 'cancelar (protegido: lendário A+/Rabadon)') continue;
+      if (!String(a.acao || '').startsWith('cancelar')) continue;
       mm?.querySelector('[data-aba="minhas"]')?.click(); await humano(320);
       await cancelarOferta(a.id); await humano(400);
-      exec.push({ nome: a.nome, qual: a.qual, acao: 'cancelado (protegido)', feito: true });
+      exec.push({ nome: a.nome, qual: a.qual, acao: a.acao, feito: true });
     }
     const ok = exec.filter((e) => e.feito).length;
     logEvent('mercado', { acao: 'executar', reajustados: ok, total: exec.length });
@@ -7471,22 +7781,45 @@ const CFG_VER = 4;
   function alvoDeReferencia(fase) {
     const doLocal = (l, chefe) => {
       if (!l) return null;
-      const nome = chefe ? (l.chefe && l.chefe[0]) : ((l.monstros || []).slice().sort((a, b) => b[1] - a[1])[0] || [])[0];
+      const entrada = chefe ? null : ((l.monstros || []).slice().sort((a, b) => b[1] - a[1])[0] || []);
+      const nome = chefe ? (l.chefe && l.chefe[0]) : entrada[0];
       if (!nome) return null;
       const base = l.nm || l.faixa || [1, 1];
       // motor.js:1121: o chefe nasce em max(n0+2, min(n1+2, nivel+4)) — nao no topo da faixa.
-      const nivel = chefe ? nivelChefeDe({ nm: base }) : base[0];
+      // MOB: o nivel e o do JOGADOR preso a faixa `nm` (motor.js:390-410). Usar `base[0]`
+      // pontuava contra o monstro mais FRACO da regiao e subestimava a armadura (pen valia menos).
+      const pn = (player() || {}).nivel || 0;
+      const nivel = chefe ? nivelChefeDe({ nm: base })
+        : Math.min(+base[1] || +base[0] || 1, Math.max(+base[0] || 1, pn || +base[0] || 1));
       const s = statsMonstro(nome, nivel);
       // O scoreSet precisa da ARMADURA (pen vale 0 sem ela) e do `chefe` (execute/%vida
       // são de alvo único). Devolver só `hp` fazia a build ignorar 3135/pen e escolher
       // Luden por AP bruto — medido: 40,3 s contra os 25,7 s da build com pen.
-      return s ? { nome, nivel, hp: s.hp, armadura: s.armadura, chefe: !!chefe || !!s.chefe, magico: !!s.magico } : null;
+      // `local` = id da regiao (o `estimarLuta` precisa dele) e `alvos` = quantos
+      // monstros do grupo o AoE atinge (motor.js: `areaProc`/`periodic`).
+      return s ? { nome, nivel, hp: s.hp, armadura: s.armadura, chefe: !!chefe || !!s.chefe, magico: !!s.magico, local: l.id, alvos: chefe ? 1 : (entrada[1] || 1) } : null;
     };
     try {
       const loc = (META.locais || []).find((l) => l.id === localId(readLocation().text));
       const maisDuro = (META.locais || []).filter((l) => !ehRuneterra(l)).slice().sort((a, b) => (b.tier || 0) - (a.tier || 0))[0];
-      if (fase === 'mobs') return doLocal(loc, false) || doLocal(maisDuro, false);
-      return doLocal(loc, true) || doLocal(maisDuro, true);
+      // ONDE O JOGADOR ESTA' -> onde ele CAÇA. Na Fonte/base/nexus o `loc` nao tem monstros;
+      // cair no local de MAIOR tier pontuava a build contra nv 75-77 com o dono a nv 34 — era
+      // isso que fazia a recomendacao "burra" (Luden/Liandry, sem pen, sem vida). Usa-se a
+      // regiao FIXA do dono, senao a melhor regiao de farm para o nivel dele (motor.js:448
+      // `localDaArena`: maior `faixa[0] <= nivel`). Sem nivel lido (testes), mantem-se o
+      // fallback antigo para nao mudar a fixture.
+      const farms = (META.locais || []).filter(ehRegiaoDeFarm);
+      const fixa = cfg.regionDefault ? farms.find((l) => String(l.id) === String(cfg.regionDefault)) : null;
+      const pn = (player() || {}).nivel || 0;
+      const porNivel = pn > 0 ? (farms
+        .filter((l) => l.faixa && pn >= +l.faixa[0] && pn <= +l.faixa[1])
+        .sort((a, b) => (b.tier || 0) - (a.tier || 0) || (+b.faixa[0] - +a.faixa[0]))[0]
+        || farms.filter((l) => l.faixa && pn >= +l.faixa[0])
+          .sort((a, b) => (b.tier || 0) - (a.tier || 0) || (+b.faixa[0] - +a.faixa[0]))[0]
+        || farms.slice().sort((a, b) => (+a.faixa?.[0] || 0) - (+b.faixa?.[0] || 0))[0]) : null;
+      const ref = (loc && ((loc.monstros || []).length || loc.chefe)) ? loc : (fixa || porNivel || maisDuro);
+      if (fase === 'mobs') return doLocal(ref, false) || doLocal(fixa, false) || doLocal(porNivel, false);
+      return doLocal(ref, true) || doLocal(fixa, true) || doLocal(porNivel, true);
     } catch { return null; }
   }
   /** VALOR (em pontos de stat) da passiva que ESCALA COM O ALVO — ver `PASSIVA_POR_ALVO`.
@@ -8053,7 +8386,10 @@ const CFG_VER = 4;
     const f = fase === undefined ? faseBuild() : (fase || null);
     const b = bag || (() => { try { return scanBag(); } catch { return null; } })();
     const eqAtual = readEquip();
-    const bagItens = (((b && b.items) || [])).filter((i) => i.kind === 'item');
+    const bagItens = (((b && b.items) || [])).filter((i) => i.kind === 'item')
+      // RARIDADE NOVA (mitica): só entra no pool se for da classe do campeão (ou neutra).
+      // A ordem do dono permite EQUIPAR, mas só "quando faz sentido pra classe q estamos".
+      .filter((i) => !ehRaridadeNova(i.raridade) || ehUsavelPeloCampeao(i.base));
     const cAtual = META.champAtual || {};
     const wCtx = f ? pesosItemFase(perfilDe(cAtual), f) : pesosItem(perfilDe(cAtual));
     const ctxValor = { equipados: eqAtual.map((e) => String(e.base)), fase: f, manaPeso: pesoMana(cAtual, wCtx) };
@@ -8809,25 +9145,26 @@ const CFG_VER = 4;
         if (!epi) break;                                                          // só lendárias → saturado (Lojista cuida)
         await cancelarOferta(epi.id); cancelados.push(epi.id); await humano(350);
       }
-      const mk = mercado.filter((x) => String(x.base) === String(it.base) && x.preco > 0);
-      // REFERÊNCIA DO MESMO TIER, SÓ. ORDEM DO DONO (2026-10-21, verbatim): "e 90% do mais barato
-      // do mesmo tier, tem que ser". Havia um fallback (`mesmoTier.length ? mesmoTier : mk`) que,
-      // quando não havia oferta do MESMO tier, comparava com os outros tiers — um A caía ao preço
-      // do B/C mais barato. Sem referência do mesmo tier NÃO se inventa uma: usa-se o
-      // `precoSemComparavel` (regra do dono, 2026-10-14: "1,5."), nunca o preço de outro tier.
-      const mesmoTier = mk.filter((x) => String(x.qual || '').toUpperCase() === String(it.qual || '').toUpperCase());
-      const precosTier = mesmoTier.map((x) => x.preco).filter((p) => p > 0);
-      const menor = precosTier.length ? Math.min(...precosTier) : null;
-      const preco = menor ? Math.max(1, Math.round(menor * fatorAnuncio())) : Math.max(1, Math.round(numOr(cfg.precoSemComparavel, 1500000)));
+      // PREÇO pela POLÍTICA PURA (`precoDeAnuncio`): mesmo tier -> 90%; sem mesmo tier, o
+      // tier SUPERIOR é TECTO (a bota de 1,5M com uma A mais barata foi este caso); 1,5M só
+      // tier A; tier B/C só Rabadon/Gume, por excepção nomeada. Sem referência válida NÃO se
+      // anuncia (nada de inventar 1,5M para um tier B).
+      const pr = precoDeAnuncio(it, mercado, cfg);
+      if (!(pr.preco >= 1)) {
+        logEvent('mercado', { acao: 'preco', base: it.base, id: it.id, qual: it.qual,
+          preco: null, regra: pr.regra, ofertasBase: pr.ofertasBase });
+        continue;
+      }
+      const preco = pr.preco;
       // O ID EXACTO da cópia (`it.id`) viaja ate ao clique: sem isso o anuncio podia apanhar OUTRA
       // cópia do mesmo base (ver `anunciarItemPorBase`).
       const r = await anunciarItemPorBase(it.base, preco, it.id);
       // O que o dono precisa de ver no histórico: DE ONDE veio o preço, quantas ofertas do tier
       // havia, e qual cópia foi. É a prova do "90% do mais barato do mesmo tier".
       logEvent('mercado', { acao: 'preco', base: it.base, id: it.id, qual: it.qual,
-        refTier: menor, ofertasTier: precosTier.length, ofertasBase: mk.length,
-        preco, regra: menor ? '90% do menor do MESMO tier' : 'sem comparavel do tier -> precoSemComparavel' });
-      if (r.ok) anunciados.push({ base: it.base, qual: it.qual, id: it.id, preco, refTier: menor, ofertasTier: precosTier.length }); else break;
+        refTier: pr.refTier, ofertasTier: pr.ofertasTier, ofertasBase: pr.ofertasBase,
+        preco, regra: pr.regra });
+      if (r.ok) anunciados.push({ base: it.base, qual: it.qual, id: it.id, preco, refTier: pr.refTier, ofertasTier: pr.ofertasTier }); else break;
     }
     if (Array.isArray(_ofertasCache)) for (const a of anunciados) if (a.preco) _ofertasCache.push({ id: 'novo:' + a.base + ':' + a.qual, base: a.base, qual: a.qual, raridade: 'lendario', preco: a.preco });
     logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length });
@@ -9084,10 +9421,10 @@ const CFG_VER = 4;
     try { mix('curva:' + JSON.stringify(META.curva || null)); } catch { /* sem curva */ }
     let loc = ''; try { loc = localId(readLocation().text) || ''; } catch { /* sem local */ }
     let alvo = ''; try {
-      if (fase === 'chefe' || fase == null) {
-        const a = alvoDeReferencia('chefe');
-        if (a) alvo = [a.armadura || 0, a.hp || 0, a.nivel || 0, !!a.chefe].join(':');
-      }
+      // A build de MOBS tambem depende do alvo (armadura/hp/nivel) desde que o score passou a
+      // usar `alvoDeReferencia('mobs')`; sem isto a cache ficava presa ao alvo antigo.
+      const a = alvoDeReferencia(fase === 'chefe' || fase == null ? 'chefe' : 'mobs');
+      if (a) alvo = [a.armadura || 0, a.hp || 0, a.nivel || 0, !!a.chefe].join(':');
     } catch { /* sem alvo */ }
     let kit = ''; try { kit = JSON.stringify([META.kit || null, META.kits || null]); } catch { /* sem kit */ }
     // Arsenal com TIPO e RANK: o dpsPorHabilidade le h.rank (e a passiva/ultimate mudam
@@ -9157,7 +9494,11 @@ const CFG_VER = 4;
       return hit.ids.slice();
     }
     const t0 = Date.now();
-    const alvoScore = (fase === 'chefe' || fase == null) ? alvoDeReferencia('chefe') : null;
+    // MOBS TAMBEM TEM ALVO: com `alvoScore = null` o `scoreSet` usava armadura 0 (`mit = 1`),
+    // logo pen valia ZERO e o beam escolhia Luden/Dark Flame/Lucidez sem pen. Medido contra
+    // 3 Dragões Anciãos nv34: a build sem pen matava 1 e deixava 2; a com pen (3175+3135)
+    // limpava os 3. O alvo de mobs ja existia em `alvoDeReferencia('mobs')` — so nao era usado.
+    const alvoScore = alvoDeReferencia(fase === 'chefe' || fase == null ? 'chefe' : 'mobs');
     const classe = c.magia ? 'ap' : 'ad';
     _champScore = c;                       // o scoreSet avalia a build PARA ESTE campeão
     let ids;
@@ -9198,6 +9539,8 @@ const CFG_VER = 4;
     // uma vez por build em vez de 2000x. Isto mantém o beam grande (K=12/N=40) dentro de
     // ~1 s em vez de ~8,8 s (medido ao vivo 2026-10-19).
     const ctx = contextoScore();
+    _beamInfo.fracHabs = ctx.fracHabs;
+    _beamInfo.fracAuto = ctx.fracAuto;
     const scoreDe = (ids) => scoreSet(ids.map(String), alvoScore, ctx);
     const pool = todos.filter((i) => { const cl = classeItem(i.id); return cl === 'neutro' || cl === classe; });
     const resto = pool.filter((i) => i.espaco !== 'botas');
@@ -9244,10 +9587,108 @@ const CFG_VER = 4;
     // (3) o melhor conjunto do beam já é válido por construção (≤4 não-bota, ≤1 bota).
     let best = null;
     for (const b of beam) if (!best || cmpSet(b, best) < 0) best = b;
+    // (4) POLIMENTO LOCAL (TK-07): o beam pontua os conjuntos a cada passo e pode podar uma
+    //     sinergia que só aparece no último item. Medido: o ideal `3003+3089+3100+3135`
+    //     (1143) ficava abaixo de `3003+6653+3089+3135` (1200) no passo 4; com a bota, o
+    //     ideal sobe para 1892 e o 6653 fica em 1824 — mas o beam já não o tinha. Trocar UM
+    //     item do melhor conjunto e aceitar se o score subir encontra-o sem varrer o catálogo.
+    //     Determinístico, com o MESMO tecto de estados (`BEAM_ORCAMENTO`).
+    const cabeIds = (ids) => {
+      const usados = new Set(ids.map(String));
+      if (usados.size !== ids.length) return false;
+      let nB = 0;
+      for (const id of ids) {
+        const it = candPool.find((x) => String(x.id) === id);
+        if (!it) return false;
+        if (it.espaco === 'botas') nB++;
+      }
+      return nB <= 1 && ids.length - nB <= 4;
+    };
+    let melhor = best;
+    for (let volta = 0; volta < 2 && melhor; volta++) {
+      let melhorou = false;
+      for (let i = 0; i < melhor.ids.length; i++) {
+        for (const it of candPool) {
+          if (_beamInfo.states >= BEAM_ORCAMENTO) { _beamInfo.cortou = true; break; }
+          if (melhor.ids.indexOf(String(it.id)) >= 0) continue;
+          const ids = melhor.ids.slice(); ids[i] = String(it.id);
+          if (!cabeIds(ids)) continue;
+          const s = scoreDe(ids);
+          _beamInfo.states++;
+          if (s > melhor.score) {
+            const nB = ids.filter((id) => (candPool.find((x) => String(x.id) === id) || {}).espaco === 'botas').length;
+            melhor = { ids, score: s, nBotas: nB, nNao: ids.length - nB };
+            melhorou = true;
+          }
+        }
+        if (_beamInfo.cortou) break;
+      }
+      if (!melhorou || _beamInfo.cortou) break;
+    }
+    best = melhor;
+    // ---- (3.6) ESCOLHA FINAL PELO CRITERIO DO DONO (2026-10-22) -------------------------------
+    // `scoreSet` e' um score de STATS (AP x mitigacao x CDR). Ele SOBREVALORIZA AP/pen e
+    // nao ve o modelo de HABILIDADES. Medido ao vivo (Katarina nv34, Dragao Infernal nv38):
+    // `scoreSet` preferia a build SEM CDR (2504 vs 2343), mas o harness matava em 42,75 s
+    // contra 38,95 s da build com CDR; o `estimarSet` dava 1163 vs 1373. O beam continua a
+    // PODAR por `scoreSet` (barato, e' o que segura o orcamento); a escolha entre os
+    // candidatos que sobrevivem passa a ser pelo modelo de LUTA:
+    //   sobrevive (com pocao) > mata em menos segundos > menos ouro em pocoes.
+    // Isto e' o criterio do dono, verbatim: "(sobrevive?, mata em quantos segundos?,
+    // quantas pocoes e quanto custam em ouro?)".
+    if (alvoScore) {
+      const vistos = new Set();
+      const cands = [];
+      for (const b of beam) if (b && b.ids && b.ids.length) { const k = b.ids.join(','); if (!vistos.has(k)) { vistos.add(k); cands.push(b); } }
+      if (melhor && melhor.ids && melhor.ids.length) { const k = melhor.ids.join(','); if (!vistos.has(k)) { vistos.add(k); cands.push(melhor); } }
+      const comFaseChefe = (fase === 'chefe' || fase == null);
+      let lutaBase = null;
+      if (comFaseChefe) { try { lutaBase = estimarLuta(alvoScore.local) || null; } catch { lutaBase = null; } }
+      const vidaAtual = (ctx.pj && ctx.pj.vida) || 0;
+      let escolhido = null, escolhidoInfo = null;
+      for (const b of cands) {
+        let info = null;
+        if (comFaseChefe) {
+          let luta = null;
+          try {
+            luta = sobrevivenciaSet(b.ids, alvoScore, alvoScore.local, { pj: ctx.pj, sk: ctx.sk, champ: c, curStats: ctx.curStats, luta: lutaBase });
+          } catch { luta = null; }
+          if (!luta) continue;
+          // Sobrevive COM pocao: o `estimarLuta` ja' inclui a cura da pocao no `tMorrerS`
+          // (netEfetivo = dano liquido - curaPocaoS). `tMorrerS == null` = nunca morre.
+          const tMorrerPocao = (lutaBase && lutaBase.tMorrerS != null && vidaAtual > 0)
+            ? lutaBase.tMorrerS * (luta.vida / vidaAtual)
+            : Infinity;
+          const sobrevive = luta.tKill <= tMorrerPocao;
+          const pot = sobrevive ? Math.ceil(((lutaBase && lutaBase.potS) || 0) * luta.tKill) : null;
+          info = { sobrevive, tKill: luta.tKill, tMorrer: luta.tMorrer, ouro: pot == null ? null : pot * 110, pot, score: b.score, luta };
+        } else {
+          let dps = -Infinity;
+          try { const e = estimarSet(b.ids, alvoScore, { pj: ctx.pj, sk: ctx.sk, champ: c, curStats: ctx.curStats }); dps = (e && e.dps) || -Infinity; } catch { dps = -Infinity; }
+          info = { sobrevive: true, tKill: dps > 0 ? +(alvoScore.hp / dps).toFixed(1) : Infinity, ouro: null, dps, score: b.score };
+        }
+        const ganha = (a, z) => {
+          if (!z) return true;
+          if (!!a.sobrevive !== !!z.sobrevive) return !!a.sobrevive;
+          if (Math.abs(a.tKill - z.tKill) > 1e-9) return a.tKill < z.tKill;
+          const oa = a.ouro == null ? Infinity : a.ouro;
+          const oz = z.ouro == null ? Infinity : z.ouro;
+          if (Math.abs(oa - oz) > 1e-9) return oa < oz;
+          return a.score > z.score;
+        };
+        if (ganha(info, escolhidoInfo)) { escolhido = b; escolhidoInfo = info; }
+      }
+      if (escolhido) {
+        best = escolhido;
+        _beamInfo.luta = escolhidoInfo ? { fase: comFaseChefe ? 'chefe' : 'mobs', sobrevive: escolhidoInfo.sobrevive, tKill: escolhidoInfo.tKill, ouroPocao: escolhidoInfo.ouro, dps: escolhidoInfo.dps || null } : null;
+      }
+    }
     // registo do orçamento para diagnóstico/teste (infoBeam)
     _beamInfo.ms = Date.now() - _beamInfo.t0;
     _beamInfo.execs++;
     _beamInfo.maxStates = Math.max(_beamInfo.maxStates, _beamInfo.states);
+    _beamInfo.best = best ? best.ids.slice() : [];
+    _beamInfo.bestScore = best ? best.score : null;
     return best ? best.ids.slice() : [];
   }
 
@@ -10038,6 +10479,26 @@ const CFG_VER = 4;
       return { qual: QUAL.includes(q) ? q : 'B', refino: Math.max(0, Number(p && p.refino) || 0) };
     } catch { return { qual: 'B', refino: 0 }; }
   }
+  /** A oferta passa o PISO DE TIER da vigia? (PURA). Ordem do dono (2026-10-22): o preço de
+   *  1,5M "é só pra tier A"; tier B/C só entra por `excecoesTier` (Rabadon a 1,5M).
+   *  `padrao` só é usado quando o watch não traz `tierMin` (o runtime traz 'A'; as chamadas
+   *  puras dos testes podem passar `''` para "qualquer tier"). */
+  function tierPermitidoWatch(oferta, watch, padrao) {
+    const w = watch || {};
+    const min = String(w.tierMin != null ? w.tierMin : (padrao || '')).toUpperCase();
+    if (!QUAL.includes(min)) return true;                       // '' / null explícito = sem piso
+    const qr = qualRefOferta(oferta && oferta.item);
+    if (QUAL.includes(qr.qual) && qIdx(qr.qual) >= qIdx(min)) return true;
+    const base = baseDoItemMercado(oferta && oferta.item);
+    const exc = (w.excecoesTier || {})[base];
+    if (exc) {
+      const tierExc = String(exc.tier || 'B').toUpperCase();
+      const preco = Number(oferta && oferta.preco);
+      if (QUAL.includes(qr.qual) && qIdx(qr.qual) >= qIdx(tierExc)
+        && (exc.precoMax == null || preco <= Number(exc.precoMax))) return true;
+    }
+    return false;
+  }
   /** CASA as ofertas do servidor com a watch-list. PURA (testavel sem browser/rede). */
   function casarOfertas(ofertas, watch) {
     const w = watch || {};
@@ -10066,7 +10527,7 @@ const CFG_VER = 4;
         : (casaItem || casaVendedor);
       if (!casa) continue;
       const qr = qualRefOferta(o.item);
-      if (tierIdx >= 0 && qIdx(qr.qual) < tierIdx) continue;
+      if (tierIdx >= 0 && qIdx(qr.qual) < tierIdx && !tierPermitidoWatch(o, w)) continue;
       if (qr.refino < refMin) continue;
       out.push(Object.assign({}, o, { casaItem: casaItem, casaVendedor: casaVendedor, qual: qr.qual, refino: qr.refino }));
     }
@@ -10166,6 +10627,12 @@ const CFG_VER = 4;
     const moeda = of.moeda || 'ouro';
     if (!(preco >= 1)) return { ok: false, motivo: 'sem preco' };
     if (moeda !== 'ouro') return { ok: false, motivo: 'moeda ' + moeda + ' (a auto-compra so gasta ouro)' };
+    // PISO DE TIER (ordem do dono, 2026-10-22): o preço de 1,5M é só tier A; tier B/C só
+    // Rabadon por excepção. Uma oferta sem qualidade legível é tratada como B e NÃO passa.
+    if (!tierPermitidoWatch(of, w, 'A')) {
+      const qr = qualRefOferta(of.item);
+      return { ok: false, motivo: 'tier ' + (qr.qual || '?') + ' abaixo do piso ' + String(w.tierMin || 'A') + ' (1,5M so tier A)' };
+    }
     if (Number(of.expira) > 0 && Number(of.expira) <= Date.now()) return { ok: false, motivo: 'oferta expirada' };
     const falta = faltaLiberarOferta(of);
     if (falta > 0) return { ok: false, motivo: 'travada por ' + Math.ceil(falta / 1000) + 's (lendario A/S/SS recem-anunciado)', liberaEm: Number(of.libera), faltaMs: falta };
@@ -10432,32 +10899,37 @@ const CFG_VER = 4;
   /** Fracção do dano que vem das HABILIDADES (o resto são auto-ataques). O critico e rolado no
    *  auto-ataque (motor.js:1700), logo o multiplicador so se aplica a essa parcela — a MESMA
    *  fronteira com que o CDR e separado. */
-  function fracHabs() {
+  /** Fraccoes de dano e taxa de LANCAMENTO das habilidades, lidas UMA vez.
+   *  O Lich (`h.dpsLich`) e' dano de ITEM, nao de habilidade: fica FORA das
+   *  duas fraccoes e entra no score como termo aditivo (motor.js:1803). Sem
+   *  isto o `fracHabs` contava o Lich como habilidade e o CDR valorizava-o
+   *  outra vez, que era o defeito do TK-07. */
+  function fracoesDeDano() {
+    let fracHabs = 0, fracAutoV = 0, habRate = 0;
     try {
-      const lista = (dpsPorHabilidade().habs || []);
-      const dh = lista.filter((h) => !h.auto && !h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
-      const da = lista.filter((h) => h.auto || h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
-      if (dh + da > 0) return dh / (dh + da);
+      const d = dpsPorHabilidade() || {};
+      const p = player() || {};
+      const lista = d.habs || [];
+      const semLich = (h) => Math.max(0, (h.dps || 0) - (h.dpsLich || 0));
+      const dh = lista.filter((h) => !h.auto && !h.passiva).reduce((s, h) => s + semLich(h), 0);
+      const daH = lista.filter((h) => h.auto || h.passiva).reduce((s, h) => s + semLich(h), 0);
+      const auto = (p.dano || 0) * (p.va || 0);
+      const da = daH + auto;
+      if (dh + da > 0) { fracHabs = dh / (dh + da); fracAutoV = da / (dh + da); }
+      for (const h of lista) {
+        if (h.passiva) continue;
+        const cd = Number(h.cd);
+        if (cd > 0) habRate += 1 / cd;
+      }
     } catch { /* sem arsenal */ }
-    return 0;   // sem dados de habilidades o critico NAO pontua (controlo: sem skills, sem ganho)
+    return { fracHabs, fracAuto: fracAutoV, habRate };
   }
+  function fracHabs() { return fracoesDeDano().fracHabs; }
   /** Fraccao do dano que vem de AUTO-ATAQUES — a fronteira do critico (motor.js:1700: o
    *  `Math.random() < a.critico` e rolado no ATAQUE, nao nas habilidades puras). Duas partes:
    *  (a) as habilidades de AUTO do arsenal (o ataque reforcado) e (b) o auto-ataque puro,
    *  estimado como `dano x velocidade de ataque` (a MESMA conta que o `player()` documenta). */
-  function fracAuto() {
-    try {
-      const d = dpsPorHabilidade() || {};
-      const p = player() || {};
-      const habs = d.habs || [];
-      const dh = habs.filter((h) => !h.auto && !h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
-      const daH = habs.filter((h) => h.auto || h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
-      const auto = (p.dano || 0) * (p.va || 0);
-      const da = daH + auto;
-      if (dh + da > 0) return da / (dh + da);
-    } catch { /* sem arsenal */ }
-    return 0;
-  }
+  function fracAuto() { return fracoesDeDano().fracAuto; }
   /** Chance e multiplicador de critico de um CONJUNTO: o do jogador (painel) + o que os itens
    *  do conjunto somam. O +0,4 do 3031 so entra se o jogador ainda nao o tem equipado. */
   function critDoSet(p, S) {
@@ -10475,25 +10947,38 @@ const CFG_VER = 4;
    *  entre candidatos do MESMO beam. Antes o `scoreSet` chamava `player()`, `readStats()` e
    *  `dpsPorHabilidade()` (que percorre o kit inteiro) em CADA estado - 2000 estados x DOM =
    *  ~8,8 s de main thread no jogo real. O contexto e' lido UMA vez por build. */
+  /** Velocidade de ataque FINAL de um conjunto. O painel manda quando tem o
+   *  numero (`pj.va`); sem ele (teste/stub, painel sem a linha), le-se a base
+   *  do campeao e o `va` dos itens como o motor faz (motor.js:575). */
+  function vaDoSet(champ, S, pj) {
+    if (pj && pj.va > 0) return pj.va;
+    const st = (META.kits && champ && META.kits[champ.id] && META.kits[champ.id].stats) || null;
+    if (!st || !st.attackspeed) return 0;
+    const nivel = (pj && pj.nivel) || 1;
+    const n = Math.min(nivel, 18);
+    const g = (n - 1) * (0.7025 + 0.0175 * (n - 1)) + Math.max(0, nivel - 18);
+    const base = st.attackspeed * (1 + ((st.attackspeedperlevel || 0) / 100) * g + (S.va || 0));
+    return Math.min(VEL_ATAQUE_MAX, base);
+  }
   function contextoScore() {
     const pj = player() || {};
     let fracHabs = 0;   // sem dados de habilidades o CDR N�O pontua
-    try {
-      const lista = (dpsPorHabilidade().habs || []);
-      const dh = lista.filter((h) => !h.auto && !h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
-      const da = lista.filter((h) => h.auto || h.passiva).reduce((s, h) => s + (h.dps || 0), 0);
-      if (dh + da > 0) fracHabs = dh / (dh + da);
-    } catch { /* sem arsenal */ }
+    const _f = fracoesDeDano();
+    fracHabs = _f.fracHabs;
     const stC = readStats();
-    const fracAutoV = (typeof fracAuto === 'function') ? fracAuto() : (1 - fracHabs);
-    return { pj, fracHabs, stC, fracAuto: fracAutoV };
+    const curStats = statsSet(idsEquipados());
+    // `readSkills()` le a barra de habilidades; e' invariante entre candidatos do
+    // MESMO beam. Sem cache, `estimarSet` (agora usado na escolha final) releria o
+    // DOM ~2000x.
+    const sk = readSkills();
+    return { pj, fracHabs, stC, fracAuto: _f.fracAuto, habRate: _f.habRate, curStats, sk };
   }
   /** Score de dano de um conjunto - AGORA com as passivas (Lich/Chama/Liandry), igual ao estimarSet. */
   function scoreSet(ids, alvo, ctx) {
     const C = ctx || contextoScore();
     const champ = _champScore || META.champAtual || null;
     const S = statsSet(ids);
-    const apSet = apDoSet(ids, S).ap;
+    const apSet = apDoSet(ids, S, C.curStats).ap;
     // Idem `estimarSet`: MITIGAÇÃO PELO TIPO DE DANO do campeão (motor.js:1202).
     // TK-02-150: o ramo FÍSICO usava a pen MÁGICA (`S.pen`), que o motor só dá a quem bate com
     // magia (motor.js:529). Cada pen fica no seu ramo: penArmadura no físico (motor.js:539).
@@ -10524,7 +11009,15 @@ const CFG_VER = 4;
       const _cMult = (Number.isFinite(_stC.critMult) ? _stC.critMult : 1.75) + (S.critDano || 0);
       const _fracAuto = C.fracAuto;   // H12a: a MESMA fracção que o teste le
       const fCrit = 1 + _fracAuto * (_cChance * (_cMult - 1));
-      let d = (base * mit) * fatorCdr * fCrit * (1 + (magia && S.lich ? S.lich * 0.2 : (!magia && S.sheen ? S.sheen * 0.2 : 0))); // Lich: +75%AP/skill ≈ +15% no dano total
+      let d = (base * mit) * fatorCdr * fCrit;
+      // Lich: 0.75*AP no AUTO seguinte a uma habilidade (motor.js:1803/2064).
+      // Taxa de procs = min(autos/s, habilidades/s): um proc por auto, e so ha
+      // proc se uma habilidade tiver sido lancada. Antes era `1 + 0.15` no dano
+      // total, que subvalorizava o Lich (26.339 de 82.600 no harness ideal).
+      const _vaSet = vaDoSet(champ, S, pj);
+      const _taxaProc = Math.min(Math.max(0, _vaSet || 0), Math.max(0, C.habRate || 0));
+      if (magia && S.lich) d += S.lich * apSet * _taxaProc * mit;
+      if (!magia && S.sheen) d += S.sheen * (adBaseCampeao(pj.nivel || 1) || 0) * _taxaProc * mit;
     if (S.execute) d *= 1 + S.execute.pct * (alvo?.chefe ? 0.33 : 0.17);
     if (S.danoChefe && alvo?.chefe) d *= 1 + S.danoChefe;
     const cvS = (META.curva && META.curva.hp) || [150, 100, 1];
@@ -11173,17 +11666,33 @@ const CFG_VER = 4;
       mortal: !!av.mortal, morre: !!av.morre, piorMec: av.piorMec || null,
     };
   }
-  const sobrevivenciaSet = (base, alvo, tipo) => {
-    const pl = player();
-    const vidaItens = (base || []).reduce((acc, id) => { try { const it = (META.itens || []).find((x) => String(x.id) === String(id)); return acc + ((it && it.vida) || 0); } catch { return acc; } }, 0);
-    const vida = ((pl && pl.vida) || 0) + vidaItens;
-    let luta = null; try { luta = estimarLuta(tipo) || estimarLuta(alvo); } catch { luta = null; }
+  const sobrevivenciaSet = (base, alvo, tipo, opt) => {
+    const O = opt || {};
+    const pl = O.pj || player() || {};
+    const S = O.S || statsSet(base || []);
+    const cur = O.curStats || statsSet(idsEquipados());
+    // `player().vida` JA inclui a vida dos itens EQUIPADOS; somar `S.vida` por cima
+    // contava os itens duas vezes e nunca trocava a parcela. A vida do candidato e':
+    // painel - itens actuais + itens do candidato.
+    const vida = ((pl && pl.vida) || 0) - (cur.vida || 0) + (S.vida || 0);
+    let luta = O.luta || null;
+    if (!luta) { try { luta = estimarLuta(tipo) || estimarLuta(alvo); } catch { luta = null; } }
     const dIn = (luta && luta.dpsChefe) ? luta.dpsChefe : 0;
     const tMorrer = dIn > 0 ? +(vida / dIn).toFixed(1) : Infinity;
-    const tKill = (luta && luta.tKillS) ? luta.tKillS : Infinity;
     const potS = (luta && luta.potS) || 0;
-    const nPocoes = (potS > 0 && isFinite(tMorrer)) ? Math.ceil(potS * tMorrer) : 0;
-    return { vida, tMorrer, morre: tMorrer < tKill, dps: (() => { try { const e = estimarSet(base, alvo); return (e && e.dps) || (luta && luta.meuDpsBoss) || 0; } catch { return (luta && luta.meuDpsBoss) || 0; } })(), tKill: (() => { try { const e = estimarSet(base, alvo); const d = (e && e.dps) || 0; const hp = (luta && luta.hpBoss) || 0; if (d > 0 && hp > 0) return +(hp / d).toFixed(1); } catch { /* ignore */ } return (luta && luta.tKillS) != null ? luta.tKillS : null; })(), nPocoes, ouroPocao: nPocoes * 110 };
+    let dps = 0;
+    try { const e = estimarSet(base || [], alvo, { ...O, pj: pl, S }); dps = (e && e.dps) || (luta && luta.meuDpsBoss) || 0; } catch { dps = (luta && luta.meuDpsBoss) || 0; }
+    const hp = (luta && luta.hpBoss) || 0;
+    // DEFEITO CORRIGIDO (2026-10-22): `morre` usava o `luta.tKillS` do equipamento
+    // ACTUAL, enquanto o `tKill` devolvido era recalculado com o dps do CANDIDATO.
+    // Resultado medido: `tMorrer=27,1 < tKill=33,5` e `morre:false` — o `morre` era
+    // de outra build. Agora o `tKill` e' calculado UMA vez e serve as duas contas.
+    const tKill = (dps > 0 && hp > 0) ? +(hp / dps).toFixed(1) : ((luta && luta.tKillS) != null ? luta.tKillS : Infinity);
+    const morre = tMorrer < tKill;
+    // Pocoes ate' o FIM da luta: se ganha, `tKill`; se morre, `tMorrer`.
+    const tFim = Math.min(tMorrer, tKill);
+    const nPocoes = (potS > 0 && isFinite(tFim)) ? Math.ceil(potS * tFim) : 0;
+    return { vida, tMorrer, morre, dps, tKill, nPocoes, ouroPocao: nPocoes * 110 };
   };
   /** Ranking por SOBREVIVENCIA (F5-F9): cada candidato entra no conjunto base; ordena por `tMorrer`
    *  (o que da uma ordem DIFERENTE do `rankItens`, que e so DPS - o criterio novo do dono). */
@@ -11206,7 +11715,7 @@ const CFG_VER = 4;
     const q = qual == null ? (peca ? peca.qual : 'B') : String(qual).toUpperCase();
     const r = refino == null ? (peca ? peca.refino : 0) : +refino;
     const temPeca = qual != null || refino != null || !!peca;
-    return { nome: it.nome, raridade: it.raridade, preco: it.preco,   // `preco` = BASE do catálogo
+    return { nome: it.nome, raridade: it.raridade || (it.lendario ? 'lendario' : 'basico'), preco: it.preco,   // `preco` = BASE do catálogo
       qual: q, refino: r,
       // VALOR REAL da peça com refino e qualidade (motor.js:2898 e 257). Sem peça lida fica
       // null — não se inventa valor para uma peça que ninguém viu.
@@ -12156,7 +12665,7 @@ const CFG_VER = 4;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
+  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },
@@ -12196,6 +12705,10 @@ const CFG_VER = 4;
     getMeta: () => META, getFarm: () => farm, getConfig: () => cfg,
     // Seam de teste (2026-10-21): constantes que o banco tem de conferir sem as copiar.
     PCT_CARTA, fatorAnuncio,
+    // ---- POLÍTICA DE PREÇO DO MERCADO (dono, 2026-10-22): pura, testável sem UI ----
+    precoDeAnuncio, referenciaPrecoMercado, tierPermitidoWatch,
+    // ---- RARIDADE NOVA (`mitica`, 2026-10-22): o conjunto é a regra, não o nome ----
+    ehRaridadeNova, RARIDADES_CONHECIDAS, isProtected,
     // Banco (REGRA N.o 6): o `handleLog` e o caminho REAL da frase do jogo -> ciclo/fase.
     // Expor permite provar que o ciclo NASCE e que o chefe muda a fase para 'boss' (a
     // ultimate depende disso) sem depender de um MutationObserver que o stub nao dispara.

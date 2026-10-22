@@ -325,10 +325,17 @@ export const suite = {
       montarMochila(m, slots, 30);
       const acts = auto.planBag(auto.scanBag(true)).acts;
       const do9500 = acts.filter((a) => String(a.it.id).startsWith('9500'));
-      // REGRA NOVA (dono, 2026-10-21): A em excesso vai ao MERCADO (não ao cofre).
-      t.check('K1: duplicata de lendário A+ vai ao MERCADO (o excedente)',
-        do9500.filter((a) => a.action === 'ANUNCIAR_MERCADO').length === 1);
-      t.check('K1: a melhor cópia não é anunciada', do9500.filter((a) => a.action !== 'ANUNCIAR_MERCADO').length === 1);
+      // ORDEM NOVA (dono, 2026-10-22, verbatim): "garanta que items, quando pertos de encher,
+      // que sao lendarios, todos os A vao para o cofre." -> com a mochila em pressão (30/30),
+      // TODAS as cópias lendário-A vão ao COFRE — inclusive a que o plano ia anunciar. Esta
+      // regra SUBSTITUI, sob pressão, o "A em excesso → mercado" de 2026-10-21 (que continua
+      // a valer quando a mochila tem folga; ver M1/M2 nesta mesma suite).
+      t.check('K1: mochila perto de encher -> TODAS as cópias lendário A vão ao COFRE',
+        do9500.length === 2 && do9500.every((a) => a.action === 'GUARDAR_COFRE'));
+      t.check('K1: perto de encher o COFRE ganha ao anúncio (nenhum lendário A vai ao mercado)',
+        do9500.every((a) => a.action !== 'ANUNCIAR_MERCADO'));
+      t.check('K1: o motivo diz que é a ordem do dono (cofre), não um acidente',
+        do9500.every((a) => /cofre/i.test(String(a.why))));
 
       // K1b: o cofre continua a apanhar o excedente de itens PROTEGIDOS que NÃO são A
       // (aqui S: A já tem a via do mercado; S+ é intocável para venda).
@@ -366,14 +373,16 @@ export const suite = {
      * CAMPEÃO CARREGADO — nunca uma lista do dono.
      * ===================================================================== */
     {
-      // M1: duas cópias A do mesmo base -> a pior vai ao mercado, fica 1.
+      // M1: duas cópias A do mesmo base -> a pior vai ao mercado, fica 1. Mochila COM FOLGA
+      // (5/30): é o regime em que a regra de mercado de 2026-10-21 vale. Sob pressão o cofre
+      // ganha (ordem do dono de 2026-10-22, provada em K1) — as duas regras convivem por regime.
       const m = criarMundo();
       const auto = carregarAutomation(m);
       alimentarCatalogo(m);
       definirCampeao(m, 'adtest', { nivel: 30 });
       auto.setConfig({ enabled: true });
       const slots = [];
-      for (let i = 0; i < 28; i++) slots.push({ id: '1005~C', raridade: 'basico' });
+      for (let i = 0; i < 3; i++) slots.push({ id: '1005~C', raridade: 'basico' });
       slots.push({ id: '3153~A', raridade: 'lendario' }, { id: '3153~A', raridade: 'lendario' });
       montarMochila(m, slots, 30);
       const acts = auto.planBag(auto.scanBag(true)).acts;
@@ -382,8 +391,11 @@ export const suite = {
         doA.filter((a) => a.action === 'ANUNCIAR_MERCADO').length === 1 &&
         doA.every((a) => a.action !== 'VENDER_LOJISTA'));
 
-      // M2: mochila cheia de A de classes diferentes -> o PIOR para o campeão
-      // (AP no adtest) vai ao mercado; o melhor (AD) fica.
+      // M2: mochila cheia de A de classes diferentes -> o PIOR para o campeão (AP no adtest)
+      // vai ao mercado; o melhor (AD) fica. Usa ÉPICOS A de propósito: o LENDÁRIO A sob pressão
+      // passou a ir ao COFRE (ordem do dono de 2026-10-22, provada em K1) — a regra "o menos
+      // desejável para a classe sai primeiro" continua a ser a mesma, só muda o destino por
+      // raridade. 2002 = épico AD; 2003 = épico AP.
       const m2 = criarMundo();
       const auto2 = carregarAutomation(m2);
       alimentarCatalogo(m2);
@@ -391,12 +403,12 @@ export const suite = {
       auto2.setConfig({ enabled: true });
       const s2 = [];
       for (let i = 0; i < 28; i++) s2.push({ id: '1005~C', raridade: 'basico' });
-      s2.push({ id: '3003~A', raridade: 'lendario' });   // AP: pouco desejável p/ AD
-      s2.push({ id: '3153~A', raridade: 'lendario' });   // AD: desejável
+      s2.push({ id: '2003~A', raridade: 'epico' });   // AP: pouco desejável p/ AD
+      s2.push({ id: '2002~A', raridade: 'epico' });   // AD: desejável
       montarMochila(m2, s2, 30);
       const a2 = auto2.planBag(auto2.scanBag(true)).acts;
-      const ap = a2.find((a) => String(a.it.id) === '3003~A');
-      const ad = a2.find((a) => String(a.it.id) === '3153~A');
+      const ap = a2.find((a) => String(a.it.id) === '2003~A');
+      const ad = a2.find((a) => String(a.it.id) === '2002~A');
       t.check('M2: com A enchendo, o MENOS desejável para a classe vai ao mercado',
         !!ap && ap.action === 'ANUNCIAR_MERCADO');
       t.check('M2: o mais desejável da classe NÃO é anunciado só para fazer número',

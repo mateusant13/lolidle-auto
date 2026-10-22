@@ -82,19 +82,34 @@ export const suite = {
     for (const par of [['adtest', false], ['aptest', true]]) {
       const id = par[0], magia = par[1];
       const nome = magia ? 'AP' : 'AD';
-      const { auto } = mundo(id);
+      const { auto } = mundo(id, null, [{ t: 'Q', txt: '10 / 10' }]);
+      // A suite testa a build contra o BARAO (a peca 3153 so' brilha em vida alta).
+      // `alvoDeReferencia` passou a escolher a regiao da FAIXA do jogador quando nao ha
+      // regiao fixa (2026-10-22); aqui a regiao e' FIXADA para isolar o alvo do teste.
+      auto.setConfig({ regionDefault: 'barao' });
       const champ = { id: id, magia: magia };
       const ideal = (auto.buildIdealPara(champ) || []).map(String);
       const chefe = (auto.buildIdealParaFase(champ, 'chefe') || []).map(String);
       const mobs = (auto.buildIdealParaFase(champ, 'mobs') || []).map(String);
       const pecaChefe = magia ? '3100' : '3153';
+      const alvoM = auto.alvoDeReferencia('mobs');
       // TK-01: a build e escolhida por SCORE MEDIDO (`scoreSet`). A 3153 (dano = % da vida do
       // alvo) so escala contra VIDA ALTA; num campeao AP ela pontua 0 (nao tem AP) e a peca de
       // chefe da classe passa a ser a Lich Bane (3100). O contrato medido mantem-se: IDEAL e
-      // CHEFE levam a peca de chefe da CLASSE; a de MOBS nao leva a 3153 (vida baixa, o tecto morde).
+      // CHEFE levam a peca de chefe da CLASSE.
+      //
+      // ACTUALIZADO 2026-10-22 (o `montarBuildDe` passou a dar ALVO a build de MOBS): a antiga
+      // assercao "a build de MOBS NAO leva a 3153" ficou FALSA por desenho. Contra um mob de
+      // vida alta (Criatura do Vazio, 7.475) a 3153 vale ~374/auto e nao bate no tecto; um
+      // campeao AD pode legitimamente leva-la nas duas fases. O que se prova agora e' o que
+      // importa: a build de MOBS e' pelo menos tao boa quanto a de CHEFE **contra o alvo de
+      // MOBS** (se nao fosse, a fase nao estava a escolher nada).
       t.check('B1[' + nome + ']: a build IDEAL leva a peca de chefe da classe (' + pecaChefe + ')', ideal.indexOf(pecaChefe) >= 0);
       t.check('B2[' + nome + ']: a build de CHEFE leva a peca de chefe da classe (' + pecaChefe + ')', chefe.indexOf(pecaChefe) >= 0);
-      t.check('B3[' + nome + ']: a build de MOBS NAO leva a 3153 (vida baixa: o teto morde)', mobs.indexOf('3153') < 0);
+      const scoreMobs = alvoM ? auto.scoreSet(mobs, alvoM) : 0;
+      const scoreChefeNoAlvoMobs = alvoM ? auto.scoreSet(chefe, alvoM) : 0;
+      t.check('B3[' + nome + ']: a build de MOBS nao perde para a de CHEFE contra o alvo de MOBS (' + scoreMobs.toFixed(1) + ' vs ' + scoreChefeNoAlvoMobs.toFixed(1) + ')',
+        scoreMobs + 1e-9 >= scoreChefeNoAlvoMobs);
       const espDe = (x) => ((cat.find((i) => String(i.id) === String(x)) || {}).espaco);
       const nB = chefe.filter((x) => espDe(x) === 'botas').length;
       t.check('B4[' + nome + ']: a build de CHEFE tem 5 itens e respeita os slots do motor (4 fora a bota + no maximo 1 bota)',
@@ -109,8 +124,17 @@ export const suite = {
      * ===================================================================== */
     {
       const { auto } = mundo('adtest', 29);
+      auto.setConfig({ regionDefault: 'barao' });   // fixa o alvo do teste no Barao
       const alvo = auto.alvoDeReferencia('chefe');
-      t.check('C1: ha alvo de referencia (o chefe da regiao de maior tier)', !!alvo);
+      t.check('C1: ha alvo de referencia (o chefe da regiao fixa)', !!alvo);
+      // A REGRA NOVA (2026-10-22): SEM regiao fixa, o alvo e' o da FAIXA do jogador — nao
+      // o chefe de maior tier. Isto e' o que impedia a recomendacao de ser contra nv 75-77.
+      {
+        const livre = mundo('adtest', 29).auto;
+        const alvoLivre = livre.alvoDeReferencia('chefe');
+        t.check('C0: sem regiao fixa o alvo de referencia e o da faixa do jogador (nao o chefe mais duro)',
+          !!alvoLivre && alvoLivre.local !== 'barao' && alvoLivre.nivel <= 29 + 4);
+      }
       const nivelMotor = Math.max(LOCAL_BARAO.nm[0] + 2, Math.min(LOCAL_BARAO.nm[1] + 2, 29 + 4));
       t.check('C2: o nivel do chefe segue a formula do motor.js:1134', alvo.nivel === nivelMotor);
       t.check('C3: com o jogador a 29 o Barao fica PRESO em 42 (n0+2)',

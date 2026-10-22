@@ -19,11 +19,51 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const BG = process.env.BG_WINDOW || 'I:\\!manager\\tools\\bg-window.py'
+// 2026-10-22: o bg-window.py abre `chrome --new-window` SEM --user-data-dir.
+// No PC do dono o Chrome real corre com --user-data-dir="C:\ChromeDebugProfile";
+// sem a flag o Chrome abre uma SEGUNDA instancia no perfil padrao e a extensao
+// fica instalada no browser errado (o dono viu e reclamou). O wrapper local
+// injecta a flag e deixa o bg-window.py intacto.
+const BG = process.env.BG_WINDOW || path.join(RAIZ, 'tools', 'bg-window-udd.py')
+const BG_PY = process.env.BG_WINDOW_PY || 'I:\\!manager\\tools\\bg-window.py'
 const PY = process.env.PYTHON || 'python'
 const PS = path.join(RAIZ, 'install', 'extensoes-uia.ps1')
 const DIR = process.env.EXT_DIR || path.join(RAIZ, 'extension')
 const NOME = process.env.EXT_NOME || 'LoL Idle'
+
+// Le o --user-data-dir da instancia VIVA, preferindo a que tem porta de debug
+// (a mesma regra do VOD.RIP, cookie_extension_auto_install.ps1:240-260). Sem
+// isto, `chrome --new-window` cai no perfil padrao. So devolve o caminho; nunca
+// imprime linhas de comando (privacidade, REGRA 11.1.5).
+function uddDoDono() {
+  if (process.env.EXT_UDD) return process.env.EXT_UDD
+  const ps = [
+    "$procs=@(Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction SilentlyContinue);",
+    "$fallback='';",
+    "foreach($p in $procs){",
+    "  $cl=[string]$p.CommandLine;",
+    "  if($cl -notmatch '--user-data-dir='){continue}",
+    "  $d='';",
+    "  if($cl -match '--user-data-dir=\"([^\"]+)\"'){$d=$Matches[1]}",
+    "  elseif($cl -match '--user-data-dir=([^\\s\"]+)'){$d=$Matches[1]}",
+    "  if(-not $d){continue}",
+    "  if($cl -match '--remote-debugging-port'){Write-Output $d; exit 0}",
+    "  if(-not $fallback){$fallback=$d}",
+    "}",
+    "if($fallback){Write-Output $fallback}",
+  ].join('\n')
+  try {
+    return execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8' }).trim()
+  } catch { return '' }
+}
+
+const UDD = uddDoDono()
+if (!UDD) {
+  console.log(JSON.stringify({ ok: false, fase: 'detectar-perfil', detalhe: 'Chrome real sem --user-data-dir; recusado para nao instalar no perfil padrao' }))
+  process.exit(1)
+}
+process.env.BG_UDD = UDD
+process.env.BG_WINDOW_PY = BG_PY
 
 const acao = (process.argv[2] || 'reload').toLowerCase()
 if (!['reload', 'activar', 'desactivar', 'estado'].includes(acao)) {

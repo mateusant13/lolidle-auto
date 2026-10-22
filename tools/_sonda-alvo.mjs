@@ -54,6 +54,12 @@ const MARCAR = `(function(){try{return {
   escondida: document.hidden, visib: document.visibilityState,
   pulsoFix: window.__lolidlePulsoFix === true ? true : String(window.__lolidlePulsoFix),
   painel: !!document.getElementById('lolidle-ap'),
+  // MARCADORES DO REVAMP DA GUI (2026-10-22, REGRA Nº 4): o desenho antigo NAO tinha rail de
+  // navegacao nem o grafite; sem estes tres, "painel:true" nao distingue a versao nova da velha.
+  rail: !!document.querySelector('#lolidle-ap nav#ap-tabs'),
+  navSecs: document.querySelectorAll('#lolidle-ap .nav-sec').length,
+  abas: document.querySelectorAll('#lolidle-ap .tab').length,
+  grafite: (function(){var s=document.getElementById('lolidle-ap-style');return !!(s&&String(s.textContent).indexOf('--bg:#0a0c10')>=0)})(),
   fase: (document.getElementById('ap-fase')||{}).textContent || null,
   canvas: !!document.querySelector('canvas'),
 }}catch(e){return {erro:String(e)}}})()`

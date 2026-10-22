@@ -128,14 +128,20 @@ async function lutar(o) {
   const qtd = o.qtd != null ? Number(o.qtd) : 1;
   c.inimigos = [];
   for (let i = 0; i < qtd; i++) c.inimigos.push(m.criarMonstro(alvoNome, nvAlvo));
+  // Referencias do GRUPO INICIAL: o motor pode gerar mais monstros durante a luta;
+  // `--all` mede a limpeza DESTE grupo, nao um farm infinito.
+  const iniciais = c.inimigos.slice();
 
   const dt = 0.05, maxSeg = o.maxSeg != null ? Number(o.maxSeg) : 180;
+  // `--all` (ou `--limpar`): NAO parar no 1.º abate. Farm de mobs e' AoE: o 1.º abate
+  // esconde se a build limpou o grupo ou deixou 2 vivos. Mede `tLimpar` (todos mortos).
+  const matarTodos = !!o.all || !!o.limpar;
   const ouroIni = e.ouro;
   let t = 0, picoDano = 0;
   const pocoes = {};
   const danoFonte = {};
   const eventos = {};
-  let resultado = 'tempo', tAbate = null, tMorte = null;
+  let resultado = 'tempo', tAbate = null, tMorte = null, tLimpar = null;
   const maxDano = { visto: 0, t: 0 };
   let danoRecebido = 0;
 
@@ -151,7 +157,9 @@ async function lutar(o) {
     c.eventos.length = 0;
     t += dt;
     if (c.darius.morto > 0) { tMorte = t; resultado = 'morreu'; break; }
-    if (tAbate != null) { resultado = 'matou'; break; }
+    if (matarTodos) {
+      if (iniciais.length && iniciais.every((i) => i.hp <= 0)) { tLimpar = t; resultado = 'limpou'; break; }
+    } else if (tAbate != null) { resultado = 'matou'; break; }
     if (t >= maxSeg) break;
   }
   void picoDano; void maxDano;
@@ -162,6 +170,8 @@ async function lutar(o) {
     qtd, itens: e.itens, modelo: e.modelo || null,
     barra: e.barra, ranks: e.ranks,
     resultado, mataSeg: tAbate != null ? n1(tAbate) : null, morreuSeg: tMorte != null ? n1(tMorte) : null,
+    tLimpar: tLimpar != null ? n1(tLimpar) : null,
+    abates: eventos.abate || 0,
     tempoCorrido: n1(t),
     pocoes, pocoesTotal: Object.values(pocoes).reduce((s, v) => s + v, 0),
     ouroGanho: Math.round(e.ouro - ouroIni),
@@ -172,7 +182,7 @@ async function lutar(o) {
     eventos,
     atrib: { hp: Math.round(a.vida), ad: n1(a.ad), ap: n1(a.ap), armadura: n1(a.armadura), rm: n1(a.rm),
       cdr: n1(a.reducaoRecarga || 0), penMag: n1(a.penMagica || 0), penArmadura: n1(a.penArmadura || 0), as: n1(a.velAtaque || 0) },
-    inimigosRestantes: c.inimigos.filter((i) => i.hp > 0).length,
+    inimigosRestantes: (matarTodos ? iniciais : c.inimigos).filter((i) => i.hp > 0).length,
   };
 }
 
@@ -333,6 +343,7 @@ async function main() {
         alvo: opt('--alvo'), nv: opt('--nv'), itens: opt('--itens'), local: opt('--local'),
         modelo: opt('--modelo'), pocoes: opt('--pocoes'), limiar: opt('--limiar'), barra: opt('--barra'),
         pocaoAuto: opt('--pocaoAuto'), maxSeg: opt('--maxSeg'), seed: opt('--seed'), qtd: opt('--qtd'),
+        all: flag('--all') || flag('--limpar'),
       });
       if (J) return out(res);
       const l = [

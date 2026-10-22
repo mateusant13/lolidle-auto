@@ -84,8 +84,12 @@ function extrairHabRyze() {
   });
 }
 
-/** Monta o mundo do Ryze nv32 com AP 1194 / mana 6465 (os valores do ticket). */
-async function mundoRyze() {
+/** Monta o mundo do Ryze nv32 com AP 1194 / mana 6465 (os valores do ticket).
+ *  `opt.equip` monta o equipamento ACTUAL (o mesmo caminho do DOM: #equip > button.slot[data-id])
+ *  e `opt.poder`/`opt.mana` poem no painel o AP/mana que o motor daria a esse equipamento.
+ *  Sem isso, o painel e o equipamento ficam incoerentes e a inversao do `apDoSet` parte de
+ *  uma base que nao existe (o bug que o TK-07 expôs). */
+async function mundoRyze(opt = {}) {
   const { DADOS_RYZE } = await import(DADOS_RYZE_URL);
   const KIT_RYZE = await extrairHabRyze();
   const m = criarMundo();
@@ -97,6 +101,11 @@ async function mundoRyze() {
   alimentarMeta(m, { monstros: MONS, locais: LOCAIS, nivelDif: ND, curva: CURVA });
   definirCampeao(m, 'ryze', {
     kit: KIT_RYZE,
+    // `stats` e' o que o inject.js manda em META.kits[id].stats (inject.js:479).
+    // Sem ele o `vaDoSet` nao tem a velocidade de ataque base e o Lich vale 0 no
+    // teste (o painel do stub nao tem a linha 'Vel. ataque'). E' o mesmo dado do
+    // motor (motor.js:575), nao um numero copiado.
+    stats: DADOS_RYZE.campeao.stats,
     magia: true,
     distancia: true,
     papel: { dano: 1.1, recebido: 0.85, arena: 1.1, pvp: 1.0, pvpRecebido: 0.92 },
@@ -106,10 +115,18 @@ async function mundoRyze() {
   m.montar('#st-nivel', [m.el({ label: 'st-nivel', textContent: '32' })]);
   m.montar('#hud-nivel', [m.el({ label: 'hud-nivel', textContent: '32' })]);
   m.montar('#hud-vida-txt', [m.el({ label: 'hud-vida-txt', textContent: '4476 / 4476' })]);
+  const poder = opt.poder != null ? opt.poder : 1194;
+  const mana = opt.mana != null ? opt.mana : 6465;
   m.montar('.st', [
-    m.el({ label: 'st-poder', textContent: 'Poder 1194' }),
-    m.el({ label: 'st-mana', textContent: 'Mana 6465' }),
+    m.el({ label: 'st-poder', textContent: 'Poder ' + poder }),
+    m.el({ label: 'st-mana', textContent: 'Mana ' + mana }),
   ]);
+  if (opt.equip && opt.equip.length) {
+    m.montar('#equip > button.slot[data-id]', opt.equip.map((id) => m.el({
+      tag: 'button', label: 'equip:' + id, className: 'slot lendario',
+      attrs: { 'data-id': String(id), 'data-dica': '' },
+    })));
+  }
   const habs = ['Q', 'W', 'E', 'R'].map((t) => m.el({ tag: 'div', label: 'hab-' + t, className: 'hab', dataset: { t, dica: t + ' - teste' }, textContent: '1 / 1' }));
   m.montar('#hab-ativas .hab[data-t]', habs);
   return { m, auto, DADOS_RYZE };
@@ -127,7 +144,11 @@ export const suite = {
      *     29,35 s (devolvida) vs 25,7 s (ideal). Fica como TK-07 (score CDR), nao
      *     se finge que B1 passa: aqui prova-se o beam, nao o modelo de score.
      * ===================================================================== */
-    const { auto, m } = await mundoRyze();
+    // O equipamento ACTUAL do dono (a conta do ticket) e o painel que o motor daria a ele.
+    // Sem isto o fixture era incoherente: painel 1194/6465 sem equipamento nenhum, o que
+    // fazia a inversao do `apDoSet` inventar uma base e o AP do 3003 sair errado (TK-07).
+    const EQUIP_ACTUAL = ['3089+5~A', '6653+5~A', '3135+5~A', '4629+5~A', '3171+5~A'];
+    const { auto, m } = await mundoRyze({ equip: EQUIP_ACTUAL, poder: 1220, mana: 4809 });
     const c = { id: 'ryze', magia: true, adBase: 55, adNivel: 3.3, semMana: false, adagas: false, distancia: true, papel: { dano: 1.1, recebido: 0.85 }, hemorragia: false };
     auto.invalidarCacheBuild();
     const ideal = (auto.buildIdealPara(c) || []).map(String);
@@ -136,9 +157,38 @@ export const suite = {
     t.check('B1a: a build IDEAL do Ryze tem 5 itens', ideal.length === 5);
     // O beam TEM de manter o Lich e o Cajado do Vazio (a sinergia que o greedy perdia).
     t.check('B1b: a build IDEAL contem o 3100 (Lich) e o 3135 (Cajado do Vazio, o melhor contra a armadura do Barao)', ideal.indexOf('3100') >= 0 && ideal.indexOf('3135') >= 0);
-    // Score medido com o catalogo REAL: 2538,5 (o ticket dizia 2546 com outro contexto).
-    // O limiar 2500 prende a regressao sem copiar o numero do ticket.
-    t.check('B1c: o score do ideal contra o Barao nv32 e >= 2500 (medido ' + scoreIdeal.toFixed(1) + ')', scoreIdeal >= 2500);
+    // Score medido com o catalogo REAL e o Lich ADITIVO (TK-07): 2168,5. O modelo
+    // antigo dava 1892 com o Lich como +15% do dano total; o novo da' 2168 e o
+    // beam escolhe o ideal (B1e). O limiar 2000 prende a regressao sem copiar o
+    // numero do ticket nem o valor exacto deste fixture.
+    t.check('B1c: o score do ideal contra o Barao nv32 e >= 2000 (medido ' + scoreIdeal.toFixed(1) + ')', scoreIdeal >= 2000);
+
+    /* =====================================================================
+     * B1d/B1e (TK-07): o `scoreSet` tem de preferir o ideal do ticket
+     * (3171,3003,3089,3100,3135 = 25,70 s no harness) ao conjunto devolvido
+     * (3089,3100,3135,4629,3171 = 29,35 s). O fixture TEM de ser coerente:
+     * equipamento actual montado no DOM + painel AP/mana que o motor daria a
+     * esse equipamento. Sem isso a inversao do `apDoSet` parte de uma base
+     * inventada e o AP do 3003 sai errado.
+     * ===================================================================== */
+    const autoEq = auto;
+    const alvoEq = autoEq.alvoDeReferencia('chefe');
+    // A BUILD e' escolhida com os IDs-BASE do catalogo (o equipador aplica depois a melhor
+    // qualidade/refino que o dono tem). O harness usa `+5~A` para medir a peça real; comparar
+    // o resultado do beam com IDs `+5~A` seria comparar duas coisas diferentes.
+    const IDEAL_IDS = ['3171', '3003', '3089', '3100', '3135'];
+    const DEVOLVIDO_IDS = ['3089', '3100', '3135', '4629', '3171'];
+    const lerInfo = (ids) => {
+      const e = autoEq.estimarSet(ids, alvoEq);
+      return { ap: e.ap, mana: e.mana, cdr: e.cdr, burn: e.burn, score: autoEq.scoreSet(ids, alvoEq), dps: e.dps };
+    };
+    const iIdeal = lerInfo(IDEAL_IDS), iDev = lerInfo(DEVOLVIDO_IDS);
+    t.check('B1d: scoreSet(ideal) > scoreSet(devolvido) (' + iIdeal.score.toFixed(1) + ' vs ' + iDev.score.toFixed(1) + ')', iIdeal.score > iDev.score);
+    autoEq.invalidarCacheBuild();
+    const buildEq = (autoEq.buildIdealPara(c) || []).map(String);
+    const idealComoSet = IDEAL_IDS.slice().sort().join(',');
+    const buildComoSet = buildEq.slice().sort().join(',');
+    t.check('B1e: buildIdealPara devolve o ideal do ticket (' + buildEq.join(',') + ')', buildComoSet === idealComoSet);
 
     /* =====================================================================
      * B2. CUSTO: a 1ª chamada (sem cache) tem de ficar abaixo de 2 s no stub;

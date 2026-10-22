@@ -75,6 +75,11 @@ import { suite as suiteMotorMatematica } from './motor-matematica.test.mjs';
 // QUEIXAS DE 2026-10-21: diaria pronta recebida em qualquer lugar, escala real das cartas,
 // switches opt-in + migracao ver:3, factor de anuncio 0.90 e piso de compra tier A.
 import { suite as suiteFix20261021 } from './fix-2026-10-21.test.mjs';
+// PREÇO DO MERCADO + RARIDADE NOVA (dono, 2026-10-22): 1,5M só tier A, tier superior é tecto,
+// Rabadon/Gume por excepção, e `mitica` nunca é vendida/movida.
+import { suite as suiteMercadoPreco } from './mercado-preco.test.mjs';
+// GUI (dono, 2026-10-21): texto auto-explicativo fora, contraste e popup da macro.
+import { suite as suiteGuiTexto } from './gui-texto.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -106,6 +111,8 @@ const SUITES = [
   suiteBuildBeam,
   suiteMotorMatematica,
   suiteFix20261021,
+  suiteMercadoPreco,
+  suiteGuiTexto,
 ];
 const checks = [];
 const notas = [];

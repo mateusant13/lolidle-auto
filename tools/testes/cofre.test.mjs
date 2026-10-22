@@ -653,5 +653,173 @@ export const suite = {
       const v = await auto.voltarAoCentroDaFonte();
       t.check('C16: com posicao desconhecida, voltarAoCentroDaFonte nao clica em nada', v === false);
     }
+
+    /* =====================================================================================
+     * POLÍTICA DO COFRE (ORDEM DO DONO, 2026-10-22, verbatim):
+     *   "garanta que items, quando pertos de encher, que sao lendarios, todos os A vao para o
+     *    cofre. quando tem muito item e nao tem pra onde ir, os b ou menos vao para o cofre.
+     *    e ai vai trocando o cofre b e c por a e etc."
+     *
+     * Aqui prova-se o que o PLANO faz e o que o ATOR faz, sempre contra o automation.js real.
+     * A capacidade do cofre é LIDA do jogo (`#npc-troca` "Cofre usados/cap", jogo.js:5950) e
+     * NUNCA inventada: sem leitura, `vagasCofre()` devolve null e o plano não empurra C/B.
+     * ===================================================================================== */
+
+    /* R1 - lendário A com a mochila perto de encher: TODAS as cópias ao cofre, dentro da
+     *      capacidade REAL. Com o cofre cheio nada sai (o tecto não é inventado). */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m); definirCampeao(m, 'adtest', { nivel: 30 }); auto.setConfig({ enabled: true });
+      m.montar('#npc-troca', [m.el({ tag: 'section', label: 'npc-troca', textContent: 'Cofre 39/40 Mochila 30/30' })]);
+      montarGradeCofreMotor(m, Array.from({ length: 39 }, () => ({ base: '1005', qual: 'C', nome: 'Adaga Inutil [C]' })));
+      auto.salvarCofre();
+      t.check('R1: a capacidade é LIDA do jogo (39/40 -> 1 vaga), não inventada', auto.vagasCofre() === 1);
+      const slots = [];
+      for (let i = 0; i < 28; i++) slots.push({ id: '1005~C', raridade: 'basico' });
+      slots.push({ id: '9500~A', raridade: 'lendario' }, { id: '9500~A', raridade: 'lendario' });
+      montarMochila(m, slots, 30);
+      const acts = auto.planBag(auto.scanBag(true)).acts.filter((a) => String(a.it.id).startsWith('9500'));
+      t.check('R1: perto de encher, lendário A vai ao COFRE (1.º lugar)',
+        acts.filter((a) => a.action === 'GUARDAR_COFRE').length === 1);
+      t.check('R1: a vaga é respeitada — a 2.ª cópia NÃO é empurrada para um cofre cheio',
+        acts.filter((a) => a.action === 'GUARDAR_COFRE').length === 1 && acts.length === 2);
+      t.check('R1: a cópia que não cabe continua na mochila (protegida/anunciada), nunca no Lojista',
+        acts.every((a) => a.action !== 'VENDER_LOJISTA'));
+    }
+
+    /* R1b - o cofre CHEIO (40/40): nenhum lendário A é mandado para lá. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m); definirCampeao(m, 'adtest', { nivel: 30 }); auto.setConfig({ enabled: true });
+      m.montar('#npc-troca', [m.el({ tag: 'section', label: 'npc-troca', textContent: 'Cofre 40/40 Mochila 30/30' })]);
+      montarGradeCofreMotor(m, Array.from({ length: 40 }, () => ({ base: '1005', qual: 'C', nome: 'Adaga Inutil [C]' })));
+      auto.salvarCofre();
+      t.check('R1b: cofre cheio -> 0 vagas lidas do jogo', auto.vagasCofre() === 0);
+      const slots = [];
+      for (let i = 0; i < 28; i++) slots.push({ id: '1005~C', raridade: 'basico' });
+      slots.push({ id: '9500~A', raridade: 'lendario' }, { id: '9500~A', raridade: 'lendario' });
+      montarMochila(m, slots, 30);
+      const acts = auto.planBag(auto.scanBag(true)).acts.filter((a) => String(a.it.id).startsWith('9500'));
+      t.check('R1b: com o cofre cheio NENHUM lendário A é mandado para o cofre',
+        acts.every((a) => a.action !== 'GUARDAR_COFRE'));
+      t.check('R1b: ...e os itens não se perdem (continuam na mochila, sem venda no Lojista)',
+        acts.length === 2 && acts.every((a) => a.action !== 'VENDER_LOJISTA'));
+    }
+
+    /* R2 - "quando tem muito item e nao tem pra onde ir, os b ou menos vao para o cofre":
+     *      SÓ com transbordo real (mochila > capacidade) e SÓ com a capacidade conhecida. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m); definirCampeao(m, 'adtest', { nivel: 30 }); auto.setConfig({ enabled: true });
+      m.montar('#npc-troca', [m.el({ tag: 'section', label: 'npc-troca', textContent: 'Cofre 10/40 Mochila 30/29' })]);
+      montarGradeCofreMotor(m, Array.from({ length: 10 }, () => ({ base: '1005', qual: 'C', nome: 'Adaga Inutil [C]' })));
+      auto.salvarCofre();
+      t.check('R2: 30 vagas lidas do jogo (10/40)', auto.vagasCofre() === 30);
+      const slots = [];
+      for (let i = 0; i < 30; i++) slots.push({ id: '1005~C', raridade: 'basico' });
+      montarMochila(m, slots, 29);                       // 30 itens numa mochila de 29 = TRANSBORDO
+      const c = auto.planBag(auto.scanBag(true)).acts.filter((a) => a.it.id === '1005~C');
+      t.check('R2: no transbordo o C (b ou menos) vai para o COFRE em vez do Lojista',
+        c.some((a) => a.action === 'GUARDAR_COFRE'));
+      t.check('R2: o item não desaparece do plano (todas as cópias têm acção)',
+        c.length === 30 && c.every((a) => !!a.action));
+    }
+
+    /* R2b - controlo: SEM leitura de capacidade, NADA de C/B vai para um cofre de tecto
+     *       inventado (REGRA Nº 3: número não lido não se copia). */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m); definirCampeao(m, 'adtest', { nivel: 30 }); auto.setConfig({ enabled: true });
+      t.check('R2b: sem leitura, vagasCofre() é null (não se inventa capacidade)', auto.vagasCofre() === null);
+      const slots = [];
+      for (let i = 0; i < 30; i++) slots.push({ id: '1005~C', raridade: 'basico' });
+      montarMochila(m, slots, 29);
+      const c = auto.planBag(auto.scanBag(true)).acts.filter((a) => a.it.id === '1005~C');
+      t.check('R2b: sem capacidade lida NENHUM C/B é empurrado para o cofre',
+        c.every((a) => a.action !== 'GUARDAR_COFRE'));
+    }
+
+    /* R3 - "vai trocando o cofre b e c por a": `pioresDoCofre` devolve só C/B, do PIOR para o
+     *      melhor, e exclui o que nunca se move (A/S, prioridade extrema, mitica). */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m); definirCampeao(m, 'adtest', { nivel: 30 });
+      montarGradeCofreMotor(m, [
+        { base: '9500', qual: 'B', nome: 'Lendario Fraco [B]', rar: 'lendario' },
+        { base: '1005', qual: 'C', nome: 'Adaga Inutil [C]' },
+        { base: '9500', qual: 'A', nome: 'Lendario Fraco [A]', rar: 'lendario' },
+        { base: '3031', qual: 'C', nome: 'Gume do Infinito [C]', rar: 'lendario' },  // prioridade extrema
+      ]);
+      const piores = auto.pioresDoCofre();
+      t.check('R3: o PIOR do cofre é o C (a qualidade manda, antes da raridade)',
+        piores.length >= 2 && String(piores[0].base) === '1005' && piores[0].qual === 'C');
+      t.check('R3: o B vem depois do C na fila de saída', piores.length >= 2 && String(piores[1].base) === '9500');
+      t.check('R3: lendário A do cofre NUNCA é candidato a sair', piores.every((s) => s.qual !== 'A'));
+      t.check('R3: prioridade extrema (3031) nunca é candidato a sair', piores.every((s) => String(s.base) !== '3031'));
+      t.check('R3: pioresDoCofre(1) devolve exactamente um', auto.pioresDoCofre(1).length === 1);
+    }
+
+    /* R4 - a TROCA: saca o pior C/B para a mochila e deposita o A no lugar. A ordem importa:
+     *      sem o saque primeiro, o depósito com o cofre cheio era recusado em silêncio. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m); definirCampeao(m, 'adtest', { nivel: 30 }); auto.setConfig({ enabled: true });
+      montarMochila(m, [{ id: '9500~A', raridade: 'lendario' }], 30);
+      const cofre = [{ base: '1005', qual: 'C' }, { base: '2002', qual: 'A' }];
+      const guardar = [{ base: '9500', qual: 'A' }];
+      const pinta = () => {
+        const cs = cofre.map((s, i) => {
+          const img = m.el({ tag: 'img', label: 'swap-img:' + i, attrs: { src: 'assets/img/itens/' + s.base + '.png' } });
+          const el = m.el({ tag: 'button', label: 'swap-cofre:' + s.base + '~' + s.qual, className: 'cofre-slot',
+            dataset: { k: String(i), nome: 'Item [' + s.qual + ']', cofre: 'retirar', id: s.base + '~' + s.qual }, find: { img: [img] } });
+          el.click = () => {
+            m.estado.clicks.push(el.label);
+            const idx = cofre.indexOf(s); if (idx < 0) return false;
+            cofre.splice(idx, 1);                                   // motor.js:3277-3283
+            const mo = m.estado.montados.get('#mochila')[0];
+            if (mo) mo.children.push(m.el({ tag: 'button', label: 'mochila:' + el.dataset.id, className: 'slot', attrs: { 'data-id': el.dataset.id } }));
+            pinta(); return true;
+          };
+          return el;
+        });
+        const gs = guardar.map((s, i) => {
+          const img = m.el({ tag: 'img', label: 'swap-gimg:' + i, attrs: { src: 'assets/img/itens/' + s.base + '.png' } });
+          const el = m.el({ tag: 'button', label: 'swap-guardar:' + s.base + '~' + s.qual, className: 'cofre-slot',
+            dataset: { k: s.base + '~' + s.qual, nome: 'Lendario [' + s.qual + ']', cofre: 'guardar', id: s.base + '~' + s.qual }, find: { img: [img] } });
+          el.click = () => {
+            m.estado.clicks.push(el.label);
+            cofre.push({ base: s.base, qual: s.qual });             // o cofre cresce (jogo.js:6181)
+            guardar.splice(guardar.indexOf(s), 1);
+            pinta(); return true;
+          };
+          return el;
+        });
+        m.montar('.cofre-slot[data-k]', [...cs, ...gs]);
+      };
+      pinta();
+      const r = await auto.trocarNoCofre({ id: '9500~A' });
+      t.check('R4: a troca confirmou (saiu C, entrou A)', r.ok === true && String(r.saiu.base) === '1005' && r.entrou === '9500~A');
+      const ordem = m.estado.clicks.filter((c) => c === 'swap-cofre:1005~C' || c === 'swap-guardar:9500~A');
+      t.check('R4: clicou RETIRAR no C e só DEPOIS GUARDAR no A', ordem.length === 2 && ordem[0].indexOf('1005') > 0 && ordem[1].indexOf('9500') > 0);
+      t.check('R4: o A que já estava no cofre NUNCA foi tocado', !m.estado.clicks.some((c) => String(c).indexOf('2002') >= 0));
+      t.check('R4: a troca fica registada no histórico (type cofre, troca.ok)', (auto.getFarm().log || []).some((l) => l.type === 'cofre' && l.troca && l.troca.ok === true));
+    }
+
+    /* R4b - sem C/B no cofre não há troca: nada é sacado nem depositado. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m); definirCampeao(m, 'adtest', { nivel: 30 });
+      montarGradeCofreMotor(m, [{ base: '2002', qual: 'A', nome: 'Lamina Epica [A]' }]);
+      const r = await auto.trocarNoCofre({ id: '9500~A' });
+      t.check('R4b: cofre só com A -> recusa a troca', r.ok === false && /C\/B/.test(String(r.motivo)));
+      t.check('R4b: nada foi clicado no cofre', !m.estado.clicks.some((c) => String(c).indexOf('2002') >= 0));
+    }
   },
 };

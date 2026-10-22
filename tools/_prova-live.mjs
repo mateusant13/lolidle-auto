@@ -27,6 +27,7 @@ await new Promise((r) => setTimeout(r, 1500));
 console.log('CONTEXTOS:', ctxs.length, ctxs.map((c) => ((c.auxData && c.auxData.type) || '?') + '/' + (c.name || '')).join(' | '));
 const probe = 'JSON.stringify({' +
   "auto: typeof window.__lolidleAuto," +
+  "build: (window.__lolidleAuto && window.__lolidleAuto.BUILD) || null," +
   "folhas: typeof (window.__lolidleAuto && window.__lolidleAuto.folhasDeReceitaFaltando)," +
   "clicar: typeof (window.__lolidleAuto && window.__lolidleAuto.clicarIgnorarBasicos)," +
   "pulsoFix: window.__lolidlePulsoFix," +
@@ -42,9 +43,9 @@ for (const c of ctxs) {
     const v = JSON.parse(raw);
     if (v.auto !== 'undefined' || v.pulsoFix || v.folhas !== 'undefined') {
       console.log('CTX', c.id, (c.auxData && c.auxData.type) || '', JSON.stringify(v));
-      if (v.folhas === 'function' && v.clicar === 'function') achou = true;
+      if (v.folhas === 'function' && v.clicar === 'function' && v.build === '2026-10-22-luta-final') achou = true;
     }
   } catch (e) { /* contexto morto */ }
 }
-console.log(achou ? 'PROVA: FUNCOES NOVAS VIVAS (folhasDeReceitaFaltando + clicarIgnorarBasicos sao function)' : 'NAO PROVADO: nenhuma versao nova visivel (pagina pode precisar de reload)');
+console.log(achou ? 'PROVA: BUILD 2026-10-22-luta-final VIVO (folhasDeReceitaFaltando + clicarIgnorarBasicos + marcador BUILD)' : 'NAO PROVADO: nenhuma versao nova visivel (pagina pode precisar de reload)');
 process.exit(achou ? 0 : 3);

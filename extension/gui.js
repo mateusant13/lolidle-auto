@@ -400,362 +400,352 @@ switches: 'interruptores',
   };
 
   // ============================================================ 3. CSS
+  // SISTEMA DE DESIGN v3 (revamp completo, ordem do dono 2026-10-22: "gui ta overwhelming,
+  // design pessimo, complete overhaul"). O tema antigo era sépia com DOURADO EM TUDO (título de
+  // cartão, botão, interruptor, borda) e caixas dentro de caixas — por isso "tudo parecia igual"
+  // e a vista não tinha onde descansar. Aqui a hierarquia vem de ESPAÇO e TAMANHO, não de cor:
+  // cinza-grafite neutro, UM acento (dourado) só no que está activo, títulos de cartão em
+  // maiúsculas pequenas e discretas, e um rail de navegação à esquerda em vez de 9 separadores
+  // a competir com o conteúdo.
   const CSS = [
-    // CONTRASTE (pedido do dono, 2026-10-20: "ta uma merda de ler texto da gui. faz
-    // contraste melhor"): o `--dim` antigo (#9d9280) ficava ~4.4:1 sobre o painel e era
-    // usado em texto de 9.5 px - ilegivel no ecra dele. Agora o cinza sobe para #c9bfa9
-    // (~9:1) e as linhas tambem clareiam para os cartoes nao se fundirem.
-    '#lolidle-ap{--bg:#100e0c;--pnl:#191614;--pnl2:#141110;--lin:#4a4238;--lin2:#332c24;--txt:#f4ecdd;--dim:#c9bfa9;--ouro:#ffd070;--verde:#4ce06a;--ambar:#ffb020;--verm:#ff6a4a;--azul:#7cc4ff;',
-    // LARGURA/ALTURA (queixa do dono, 2026-10-19: "o painel ta mais curto do que devia, ta
-    // truncado"): era 1020x820 e o Painel tem 18 cartões — cabia 1 coluna e scroll de 2600 px.
-    // Agora ocupa quase o ecrã e o Painel usa DUAS colunas (ver `#ap-t-painel.on` abaixo).
-    // ALTURA AUTOMATICA: o painel era `height:100vh - 20px` e ficava um bloco gigante mesmo
-    // com pouco conteudo (queixa do dono: "por que o gui ta gigante com espaco inutil?").
-    // Agora cresce com o conteudo ate ao limite do ecra; o `main` continua a rolar quando enche.
-    'position:fixed;top:10px;right:10px;z-index:2147483647;width:min(1180px,94vw);height:auto;max-height:calc(100vh - 20px);display:none;flex-direction:column;overflow:hidden;',
-    'background:var(--bg);color:var(--txt);border:1px solid var(--lin);border-radius:12px;box-shadow:0 16px 60px #000c;font:12.5px/1.5 system-ui,"Segoe UI",Roboto,sans-serif;opacity:0;visibility:hidden;transform:translateY(-6px);transition:.12s}',
+    '#lolidle-ap{--bg:#0a0c10;--pnl:#101318;--pnl2:#151922;--pnl3:#1b2029;--lin:#29303c;--lin2:#1d232c;--txt:#eef2f8;--dim:#a7b2c3;--mut:#7c8798;--ouro:#f0c24e;--verde:#3fd97f;--ambar:#ffab2e;--verm:#ff6b5b;--azul:#6fa8ff;',
+    'position:fixed;top:14px;right:14px;z-index:2147483647;width:min(1200px,95vw);height:auto;max-height:calc(100vh - 28px);display:none;flex-direction:column;overflow:hidden;',
+    'background:var(--bg);color:var(--txt);border:1px solid var(--lin);border-radius:16px;box-shadow:0 28px 90px #000e,0 1px 0 #ffffff0d inset;',
+    'font:13px/1.55 "Inter","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;opacity:0;visibility:hidden;transform:translateY(-8px);transition:opacity .14s,transform .14s}',
     '#lolidle-ap.on{opacity:1;visibility:visible;display:flex;transform:none}',
     '#lolidle-ap *{box-sizing:border-box;min-width:0}',
+    '#lolidle-ap ::-webkit-scrollbar{width:10px;height:10px}',
+    '#lolidle-ap ::-webkit-scrollbar-track{background:transparent}',
+    '#lolidle-ap ::-webkit-scrollbar-thumb{background:#2b333f;border-radius:8px;border:3px solid transparent;background-clip:content-box}',
+    '#lolidle-ap ::-webkit-scrollbar-thumb:hover{background:#3a4553;background-clip:content-box}',
     '#lolidle-ap .sp{flex:1}',
-    '#lolidle-ap header{background:linear-gradient(180deg,#1e1a17,#151211);border-bottom:1px solid var(--lin);padding:7px 10px;display:flex;flex-direction:column;gap:6px}',
-    '#lolidle-ap .hrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
-    '#lolidle-ap .logo{height:20px;width:auto}',
-    '#lolidle-ap .tit{font-weight:800;font-size:13px;letter-spacing:.2px}',
-    '#lolidle-ap .fase{color:var(--dim);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:58%}',
-    '#lolidle-ap .pill{display:inline-flex;align-items:center;gap:5px;border-radius:20px;padding:2px 9px;font-size:10.5px;font-weight:700;border:1px solid var(--lin)}',
-    '#lolidle-ap .pill i{width:8px;height:8px;border-radius:50%;background:#5a5145;display:block}',
-    '#lolidle-ap .pill.on{color:var(--verde);border-color:#2b5c33}#lolidle-ap .pill.on i{background:var(--verde);box-shadow:0 0 7px #4ce06a99}',
-    '#lolidle-ap .pill.off{color:var(--dim)}#lolidle-ap .pill.off i{background:#5a5145}',
-    '#lolidle-ap .pill.run{color:var(--ambar);border-color:#6d5520}#lolidle-ap .pill.run i{background:var(--ambar);box-shadow:0 0 7px #ffb02099}',
-    '#lolidle-ap .pill.err{color:var(--verm);border-color:#6d2a20}#lolidle-ap .pill.err i{background:var(--verm)}',
-    '#lolidle-ap .ic{background:#221d19;color:var(--txt);border:1px solid var(--lin);border-radius:6px;width:24px;height:22px;line-height:1;cursor:pointer;font-size:12px;padding:0}',
-    '#lolidle-ap .ic:hover{background:#2c2620}',
-    '#lolidle-ap .ic.ativo{background:#3a2f1e;border-color:#7a5f2a;color:var(--ouro)}',
-    '#lolidle-ap .mini{display:flex;flex-direction:column;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:3px 8px;min-width:70px}',
-    '#lolidle-ap .mini b{font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '#lolidle-ap .mini small{color:var(--dim);font-size:10.5px}',
-    '#lolidle-ap .mini.wide{min-width:150px;max-width:270px}',
-    '#lolidle-ap .ligar{display:flex;align-items:center;gap:7px;background:#1a1512;border:1px solid var(--lin);border-radius:8px;padding:4px 9px;cursor:pointer}',
-    '#lolidle-ap .ligar b{font-size:11px}',
-    '#lolidle-ap .sw{position:relative;width:38px;height:20px;flex:none;display:inline-block}',
-    '#lolidle-ap .sw::before{content:"";position:absolute;inset:0;background:#3a332a;border-radius:20px;transition:.15s}',
-    '#lolidle-ap .sw::after{content:"";position:absolute;width:14px;height:14px;left:3px;top:3px;background:#8a7f6c;border-radius:50%;transition:.15s}',
-    '#lolidle-ap input:checked+.sw::before{background:#245c2c}',
+    // ---- CABEÇALHO: marca + estado + números numa só faixa; o MOTIVO numa linha própria ----
+    '#lolidle-ap header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px 14px;padding:12px 16px 10px;background:#0d1015;border-bottom:1px solid var(--lin2)}',
+    '#lolidle-ap .brand{display:flex;align-items:center;gap:9px}',
+    '#lolidle-ap .logo{height:20px;width:auto;filter:saturate(.9)}',
+    '#lolidle-ap .tit{font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap}',
+    '#lolidle-ap .hstats{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}',
+    '#lolidle-ap .hacts{display:flex;align-items:center;gap:4px}',
+    '#lolidle-ap .mini{display:flex;align-items:baseline;gap:5px;background:#ffffff05;border:1px solid #ffffff0a;border-radius:999px;padding:3px 9px;max-width:220px}',
+    '#lolidle-ap .mini b{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#lolidle-ap .mini small{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--mut);white-space:nowrap}',
+    '#lolidle-ap .mini.wide{max-width:260px}',
+    '#lolidle-ap .fase{grid-column:1/-1;display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--dim);padding:7px 2px 0;border-top:1px solid #ffffff08;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '#lolidle-ap .fase::before{content:"";flex:none;width:5px;height:5px;border-radius:50%;background:var(--ouro)}',
+    // ---- PÍLULA DE ESTADO (liga/desliga/pausado) ----
+    '#lolidle-ap .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px 3px 8px;font-size:10px;font-weight:800;letter-spacing:.08em;border:1px solid var(--lin);white-space:nowrap}',
+    '#lolidle-ap .pill i{width:6px;height:6px;border-radius:50%;background:#525c6b;flex:none}',
+    '#lolidle-ap .pill.on{color:#8cf0b4;border-color:#1f5c3a;background:#0f2a1c}#lolidle-ap .pill.on i{background:var(--verde);box-shadow:0 0 8px #3fd97faa}',
+    '#lolidle-ap .pill.off{color:var(--dim)}#lolidle-ap .pill.off i{background:#525c6b}',
+    '#lolidle-ap .pill.run{color:#ffd79a;border-color:#6b4a14;background:#2a1d08}#lolidle-ap .pill.run i{background:var(--ambar);box-shadow:0 0 8px #ffab2eaa}',
+    '#lolidle-ap .pill.err{color:#ffb3aa;border-color:#6d2a20;background:#2a1210}#lolidle-ap .pill.err i{background:var(--verm)}',
+    '#lolidle-ap .ic{width:28px;height:26px;display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--dim);border:1px solid transparent;border-radius:8px;cursor:pointer;font:inherit;font-size:13px;line-height:1;padding:0}',
+    '#lolidle-ap .ic:hover{background:#ffffff0a;color:var(--txt);border-color:var(--lin2)}',
+    '#lolidle-ap .ic.ativo{color:var(--ouro);background:#f0c24e14;border-color:#4a3b10}',
+    // ---- INTERRUPTOR (um só desenho, tamanhos diferentes) ----
+    '#lolidle-ap .sw{position:relative;width:40px;height:22px;flex:none;display:inline-block}',
+    '#lolidle-ap .sw::before{content:"";position:absolute;inset:0;background:#2a313c;border-radius:999px;transition:.16s}',
+    '#lolidle-ap .sw::after{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#8b95a5;border-radius:50%;transition:.16s}',
+    '#lolidle-ap input:checked+.sw::before{background:#17492e}',
     '#lolidle-ap input:checked+.sw::after{transform:translateX(18px);background:var(--verde)}',
-    '#lolidle-ap .sw input{display:none}',
-    '#lolidle-ap nav{display:flex;gap:2px;padding:5px 8px 0;background:#151211;border-bottom:1px solid var(--lin);flex-wrap:wrap}',
-    '#lolidle-ap .tab{background:#1c1916;color:#c8bda8;border:1px solid var(--lin);border-bottom:0;border-radius:7px 7px 0 0;padding:6px 11px;font-size:11.5px;font-weight:700;cursor:pointer}',
-    '#lolidle-ap .tab:hover{color:var(--txt)}',
-    '#lolidle-ap .tab.ativa{background:#2b2117;color:var(--ouro);border-color:#7a5f2a}',
-    // `justify-content` tem de ser REPOSTO: o `main` do jogo tem uma regra global
-    // `main{justify-content:center}` que nos vazava para dentro do painel. Com um pane alto
-    // (~3800px) isso centrava-o na área visível e punha o topo em y negativo — o cartão
-    // AUTO-PLAY e a árvore de switches ficavam ACIMA da origem do scroll, inalcançáveis.
-    // Foi a causa medida do "painel truncado" (pane.offsetTop = -1424 com scrollTop = 0).
-    '#lolidle-ap main{flex:1;overflow:auto;padding:8px;display:flex;flex-direction:column;gap:7px;justify-content:flex-start;align-items:stretch}',
-    '#lolidle-ap .pane{display:none;flex-direction:column;gap:7px}',
+    '#lolidle-ap .tg input,#lolidle-ap .arv-tg input,#lolidle-ap .mestre-tg input{display:none}',
+    // ---- RAIL DE NAVEGAÇÃO (esquerda) + CONTEÚDO ----
+    '#lolidle-ap .shell{display:flex;flex:1;min-height:0}',
+    '#lolidle-ap nav{width:190px;flex:none;display:flex;flex-direction:column;gap:1px;padding:10px 10px 14px;background:#0b0e12;border-right:1px solid var(--lin2);overflow:auto}',
+    '#lolidle-ap .nav-sec{font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#606b7b;padding:14px 10px 5px}',
+    '#lolidle-ap .tab{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-radius:8px;background:transparent;color:var(--dim);font:inherit;font-size:12.5px;font-weight:600;text-align:left;cursor:pointer;position:relative;transition:background .1s,color .1s}',
+    '#lolidle-ap .tab i{font-style:normal;font-size:12px;width:15px;text-align:center;opacity:.65}',
+    '#lolidle-ap .tab:hover{background:#ffffff07;color:var(--txt)}',
+    '#lolidle-ap .tab.ativa{background:#f0c24e0f;color:var(--ouro)}',
+    '#lolidle-ap .tab.ativa i{opacity:1}',
+    '#lolidle-ap .tab.ativa::before{content:"";position:absolute;left:-10px;top:9px;bottom:9px;width:2px;border-radius:2px;background:var(--ouro)}',
+    // `justify-content` reposto: o `main` GLOBAL do jogo tem `justify-content:center` e vazava
+    // para dentro do painel, centrando o conteúdo alto e pondo o topo em y negativo (causa
+    // medida do "painel truncado", TK-02 §3). O rail não muda isso — a regra fica.
+    '#lolidle-ap main{flex:1;overflow:auto;padding:14px 16px 20px;display:flex;flex-direction:column;gap:10px;justify-content:flex-start;align-items:stretch;scrollbar-gutter:stable}',
+    '#lolidle-ap .pane{display:none;flex-direction:column;gap:10px}',
     '#lolidle-ap .pane.on{display:flex}',
-    '#lolidle-ap .intro{color:var(--dim);font-size:11px;background:#151211;border:1px solid var(--lin2);border-left:3px solid #33505f;border-radius:0 7px 7px 0;padding:5px 9px}',
-    // ---- ÁRVORE DE INTERRUPTORES (aba Auto-play): pais e filhos INDENTADOS ----
-    // A ARVORE VIVE DENTRO DO CARTAO MESTRE (pedido do dono: os switches tem de estar no
-    // auto-play, nao num cartao separado). Duas colunas quando cabe: a lista tem 17 nos e
-    // em coluna unica fazia um painel altissimo com espaco vazio ao lado.
-    '#lolidle-ap .mestre-arvore{margin-top:9px;padding-top:8px;border-top:1px solid var(--lin)}',
-    '#lolidle-ap .mestre-sub{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:0 0 6px}',
-    '#lolidle-ap .mestre-sub b{font-size:12px;color:var(--ouro)}',
-    '#lolidle-ap .mestre-sub span{font-size:10.5px;color:var(--dim)}',
-    '#lolidle-ap .arv{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:5px 12px;align-items:start}',
-    '#lolidle-ap .arv-filhos{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:5px 10px;margin:3px 0 0 7px;padding-left:9px;border-left:2px solid #4a4238}',
-    '#lolidle-ap .arv-item{display:flex;flex-direction:column;gap:2px;min-width:0}',
-    '#lolidle-ap .arv-no{display:flex;align-items:center;gap:7px;flex-wrap:wrap;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:4px 8px}',
-    '#lolidle-ap .arv-no>b{font-size:12px}',
-    '#lolidle-ap .arv-no .arv-dot{width:9px;height:9px;border-radius:50%;background:#6a6154;flex:none}',
-    '#lolidle-ap .arv-no .arv-est{font-size:10.5px;color:var(--dim)}',
-    '#lolidle-ap .arv-no.on{border-color:#2b5c33}',
-    '#lolidle-ap .arv-no.on .arv-dot{background:var(--verde);box-shadow:0 0 6px #4ce06a99}',
-    '#lolidle-ap .arv-no.on .arv-est{color:var(--verde)}',
-    '#lolidle-ap .arv-no.bloq{opacity:.7;border-style:dashed}',
-    '#lolidle-ap .arv-no.bloq .arv-est{color:#bdb29d}',
-    '#lolidle-ap .arv-no.skip{border-color:#7a5f2a;background:#1d1710}',
-    '#lolidle-ap .arv-no.skip .arv-dot{background:var(--ambar);box-shadow:0 0 6px #ffb02099}',
+    '@media (max-width:860px){#lolidle-ap nav{width:56px;padding:10px 6px}#lolidle-ap .nav-sec,#lolidle-ap .tab span{display:none}#lolidle-ap .tab{justify-content:center;padding:9px 0}#lolidle-ap .tab i{width:auto;font-size:15px}}',
+    // ---- CARTÃO: o único contentor. Sem moldura dentro de moldura ----
+    '#lolidle-ap .card{background:var(--pnl);border:1px solid var(--lin2);border-radius:14px;padding:14px 16px}',
+    '#lolidle-ap .card>h3{margin:0 0 10px;font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#8a95a6;display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+    '#lolidle-ap .card>h3 .obs{font-size:11px;font-weight:500;letter-spacing:.01em;text-transform:none;color:var(--mut);margin-left:auto}',
+    '#lolidle-ap .card .corpo{display:flex;flex-direction:column;gap:8px}',
+    '#lolidle-ap .card.min{padding:10px 14px}',
+    '#lolidle-ap .card.min .corpo{display:none}',
+    '#lolidle-ap .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}',
+    '#lolidle-ap .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}',
+    '@media (max-width:900px){#lolidle-ap .grid2,#lolidle-ap .grid3{grid-template-columns:1fr}}',
+    // ---- CARTÃO MESTRE (o interruptor do auto-play) ----
+    '#lolidle-ap .card.mestre{border-color:#26303d;background:linear-gradient(180deg,#141922,#0f1319)}',
+    '#lolidle-ap .card.mestre.on{border-color:#1f5c3a;background:linear-gradient(180deg,#10231a,#0d1512)}',
+    '#lolidle-ap .card.mestre.run{border-color:#6b4a14;background:linear-gradient(180deg,#231a0a,#12100c)}',
+    '#lolidle-ap .card.mestre.err{border-color:#6d2a20;background:linear-gradient(180deg,#241110,#131010)}',
+    '#lolidle-ap .mestre-l{display:flex;align-items:center;gap:14px;flex-wrap:wrap}',
+    '#lolidle-ap .mestre-tg{display:flex;align-items:center;gap:12px;background:#0000003d;border:1px solid var(--lin);border-radius:12px;padding:8px 14px;cursor:pointer}',
+    '#lolidle-ap .mestre-tg .sw{width:54px;height:30px}',
+    '#lolidle-ap .mestre-tg .sw::after{width:22px;height:22px;left:4px;top:4px}',
+    '#lolidle-ap .mestre-tg input:checked+.sw::after{transform:translateX(24px)}',
+    '#lolidle-ap .mestre-est{font-size:15px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}',
+    '#lolidle-ap .mestre-est.on{color:var(--verde)}#lolidle-ap .mestre-est.off{color:var(--dim)}',
+    '#lolidle-ap .mestre-est.run{color:var(--ambar)}#lolidle-ap .mestre-est.err{color:var(--verm)}',
+    '#lolidle-ap .mestre-txt{color:var(--mut);font-size:11.5px;flex:1;min-width:200px}',
+    '#lolidle-ap .mestre-arvore{margin-top:12px;padding-top:12px;border-top:1px solid var(--lin2)}',
+    '#lolidle-ap .mestre-sub{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:0 0 8px}',
+    '#lolidle-ap .mestre-sub b{font-size:12px;color:var(--txt)}',
+    '#lolidle-ap .mestre-sub span{font-size:11px;color:var(--mut)}',
+    // ---- ÁRVORE DE INTERRUPTORES ----
+    '#lolidle-ap .arv{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:6px 14px;align-items:start}',
+    '#lolidle-ap .arv-filhos{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:5px 12px;margin:4px 0 0 8px;padding-left:10px;border-left:1px solid var(--lin)}',
+    '#lolidle-ap .arv-item{display:flex;flex-direction:column;gap:3px;min-width:0}',
+    '#lolidle-ap .arv-no{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--pnl2);border:1px solid var(--lin2);border-radius:9px;padding:5px 9px}',
+    '#lolidle-ap .arv-no>b{font-size:12px;font-weight:600}',
+    '#lolidle-ap .arv-no .arv-dot{width:7px;height:7px;border-radius:50%;background:#5a6474;flex:none}',
+    '#lolidle-ap .arv-no .arv-est{font-size:10.5px;color:var(--mut)}',
+    '#lolidle-ap .arv-no.on .arv-dot{background:var(--verde);box-shadow:0 0 6px #3fd97f99}',
+    '#lolidle-ap .arv-no.on .arv-est{color:#8cf0b4}',
+    '#lolidle-ap .arv-no.bloq{opacity:.72}',
+    '#lolidle-ap .arv-no.bloq .arv-est{color:var(--mut)}',
+    '#lolidle-ap .arv-no.skip{border-color:#6b4a14}',
+    '#lolidle-ap .arv-no.skip .arv-dot{background:var(--ambar);box-shadow:0 0 6px #ffab2e99}',
     '#lolidle-ap .arv-no .arv-motivo{font-size:10.5px;color:var(--ambar)}',
     '#lolidle-ap .arv-no .arv-motivo b{color:var(--txt)}',
-    '#lolidle-ap .arv-no .arv-cfg{font-size:10px;color:#c0b5a0;background:#0d0b0a;border:1px solid var(--lin2);border-radius:4px;padding:0 4px;white-space:nowrap}',
-    '#lolidle-ap .arv-no .arv-exc{border-color:#7a5f2a;color:var(--ambar);background:#241c0d}',
-    '#lolidle-ap .arv-no.mestre{border-color:#7a5f2a;background:#1d1710}',
-    '#lolidle-ap .arv-no.mestre>b{font-size:12.5px;color:var(--ouro)}',
-    // linha do que cada switch COBRE: verde = ligado, vermelho = desligado
-    '#lolidle-ap .arv-cobre{margin:0 0 2px;font-size:10.5px;line-height:1.4;padding:2px 8px;border-left:2px solid #4a4238}',
-    '#lolidle-ap .arv-cobre.on{color:#8fe6a4}',
-    '#lolidle-ap .arv-cobre.off{color:#ff9a8a}',
-    // ---- switch da árvore (pequeno, sem a moldura do .tg) ----
-    '#lolidle-ap .arv-tg{display:flex;align-items:center;flex:none;cursor:pointer;margin-right:1px}',
-    '#lolidle-ap .arv-tg input{display:none}',
-    '#lolidle-ap .arv-tg .sw{width:32px;height:18px}',
-    '#lolidle-ap .arv-tg .sw::after{width:12px;height:12px;left:3px;top:3px}',
-    '#lolidle-ap .arv-tg input:checked+.sw::after{transform:translateX(14px)}',
-    // ---- BUILD POR FASE (mobs x chefe) — agora DENTRO da aba Itens ----
-    // Este bloco vive DENTRO da aba Itens. Fora de todos os `.pane` ele aparecia por cima de
-    // TODAS as abas (o CSS dos separadores só esconde `.pane`) e nada o escondia. Agora tem
-    // botão de minimizar a sério.
-    '#lolidle-ap #ap-build-fase{flex:none}',
-    '#lolidle-ap .bf>h3{align-items:center}',
-    '#lolidle-ap .bf-min{flex:none;width:26px;height:22px;font-size:11px}',
-    '#lolidle-ap .card.min{padding:6px 10px}',
-    '#lolidle-ap .card.min .corpo{display:none}',
-    // ---- ESTADO DO AUTO-PLAY (aba Painel) ----
-    '#lolidle-ap .est{margin:0;font-size:11.5px;padding:6px 9px;border-radius:7px;border:1px solid var(--lin2);background:var(--pnl2)}',
-    '#lolidle-ap .est b{font-size:12.5px}',
-    '#lolidle-ap .est.on{color:#bdf0c8;border-color:#2b5c33;background:#152218}',
-    '#lolidle-ap .est.off{color:#c8bda8;border-color:var(--lin);background:#151211}',
-    '#lolidle-ap .est.run{color:#ffdca8;border-color:#6d5520;background:#241c0d}',
-    '#lolidle-ap .est.err{color:#ffc6ba;border-color:#6d2a20;background:#251310}',
-    '#lolidle-ap .sec-acoes{display:grid;grid-template-columns:1fr 1fr;gap:7px}',
-    // ---- ACOES MANUAIS: bloco despromovido (diagnostico) ----
-    // O clique manual continua a existir (nada foi apagado da automação), mas sempre no fim do
-    // cartao, tracejado e rotulado como manutencao manual.
-    '#lolidle-ap .diag-t{margin:7px 0 4px;padding-top:6px;border-top:1px dashed var(--lin2);font-size:10.5px;color:#bdb29d;text-transform:uppercase;letter-spacing:.4px}',
-    '#lolidle-ap .diag-t + .acoes .acao{background:#121010;border-style:dashed}',
-    '#lolidle-ap .diag-t + .acoes .btn{font-size:10.5px;padding:4px 8px;font-weight:600}',
-    '#lolidle-ap .tagd{display:inline-block;font-size:9.5px;color:#bdb29d;border:1px solid var(--lin2);border-radius:4px;padding:0 3px;margin-left:5px}',
-    // ---- DUAS MODALIDADES DE FARM (aba Ganhos) ----
-    '#lolidle-ap .modos{display:grid;grid-template-columns:1fr 1fr;gap:7px}',
-    '#lolidle-ap .modo{display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:7px 9px;color:var(--txt);cursor:pointer;font:inherit}',
-    '#lolidle-ap .modo:hover{border-color:#4a4030}',
-    '#lolidle-ap .modo b{font-size:11.5px}',
-    '#lolidle-ap .modo small{color:var(--dim);font-size:10.5px;line-height:1.4}',
-    '#lolidle-ap .modo.ativa{border-color:#7a5f2a;background:#241c0d;box-shadow:inset 0 0 0 1px #7a5f2a}',
-    '#lolidle-ap .modo.ativa b{color:var(--ouro)}',
-    '#lolidle-ap .bf-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}',
-    '#lolidle-ap .bf-col{background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:6px 8px}',
-    '#lolidle-ap .bf-col.em-uso{border-color:#7a5f2a;box-shadow:inset 0 0 0 1px #7a5f2a}',
-    '#lolidle-ap .bf-col h4{margin:0 0 3px;font-size:11.5px;color:var(--ouro);display:flex;gap:6px;align-items:center;flex-wrap:wrap}',
-    '#lolidle-ap .bf-col h4 .tag{font-size:9.5px;background:#3a2f1e;color:var(--ouro);border:1px solid #7a5f2a;border-radius:20px;padding:0 6px;font-weight:700}',
-    '#lolidle-ap .bf-col h4 .tag.ok{background:#1d3a24;color:var(--verde);border-color:#2b5c33}',
-    '#lolidle-ap .bf-dica{margin:0 0 4px;color:var(--dim);font-size:10px}',
-    '#lolidle-ap .bf-itens{display:flex;gap:5px;flex-wrap:wrap}',
-    // O chip tem 82px de largura para o NOME do item: sem espaço só se via a qualidade
-    // ("A +2 equipado"), sem saber que peça era.
-    '#lolidle-ap .bf-item{position:relative;width:82px;height:54px;border:2px solid #332c24;border-radius:6px;background:#191614;display:block;overflow:hidden}',
-    '#lolidle-ap .bf-item img{width:100%;height:100%;object-fit:cover;display:block}',
-    '#lolidle-ap .bf-item .q{position:absolute;top:0;right:1px;font-size:9px;color:var(--ouro);text-shadow:0 0 3px #000}',
-    '#lolidle-ap .bf-item small{position:absolute;left:0;right:0;bottom:0;font-size:9.5px;text-align:center;background:#000c;color:#e4dac6;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '#lolidle-ap .bf-item small .bf-nome{font-weight:700;color:#e8dcc4}',
-    '#lolidle-ap .bf-item.equipado{border-color:#4ce06a}',
-    '#lolidle-ap .bf-item.cofre{border-color:#7cc4ff}',
-    '#lolidle-ap .bf-item.mercado{border-color:#ffd070}',
-    '#lolidle-ap .bf-item.falta{border-color:#7a1f14;opacity:.6}',
-    '#lolidle-ap .bf-item.falta small{color:#ffb0a0}',
-    '#lolidle-ap .card{background:var(--pnl);border:1px solid var(--lin2);border-radius:8px;padding:8px 10px}',
-    '#lolidle-ap .card>h3{margin:0 0 6px;font-size:12px;font-weight:800;color:var(--ouro);display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}',
-    '#lolidle-ap .card>h3 .obs{color:var(--dim);font-weight:400;font-size:11px;margin-left:auto}',
-    '#lolidle-ap .card .corpo{display:flex;flex-direction:column;gap:5px}',
-    '#lolidle-ap .grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}',
-    '#lolidle-ap .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}',
-    '#lolidle-ap .kvs{display:flex;flex-wrap:wrap;gap:5px}',
-    '#lolidle-ap .inimigos{display:flex;flex-direction:column;gap:3px;margin-top:2px}',
-    '#lolidle-ap .inimigos .ini{display:flex;align-items:center;gap:6px;font-size:11px;background:var(--pnl2);border:1px solid var(--lin2);border-radius:6px;padding:3px 6px}',
-    '#lolidle-ap .inimigos .ini.nome{flex:1;min-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-    '#lolidle-ap .inimigos .ini i{display:block;height:4px;border-radius:3px;flex:0 0 64px;background:#2a2a2a;position:relative;overflow:hidden}',
-    '#lolidle-ap .inimigos .ini i b{position:absolute;inset:0 auto 0 0;display:block;border-radius:3px}',
-    '#lolidle-ap .inimigos .ini em{font-style:normal;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}',
-    '#lolidle-ap .kv2{display:flex;flex-direction:column;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:3px 8px;min-width:88px;flex:1}',
-    '#lolidle-ap .kv2 span{color:var(--dim);font-size:10.5px}',
-    '#lolidle-ap .kv2 b{font-size:13px;font-variant-numeric:tabular-nums}',
-    '#lolidle-ap .kv2 small{color:var(--dim);font-size:10px}',
-    '#lolidle-ap .ctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 0;border-bottom:1px solid #1e1a16}',
-    '#lolidle-ap .ctl:last-child{border-bottom:0}',
-    '#lolidle-ap .ctl-l{display:flex;flex-direction:column;flex:1;min-width:200px}',
-    '#lolidle-ap .ctl-l b{font-size:11.5px}',
-    '#lolidle-ap .ctl-l small{color:var(--dim);font-size:10px}',
-    '#lolidle-ap .ctl-c{display:flex;align-items:center;gap:6px;flex-wrap:wrap}',
-    '#lolidle-ap .acoes{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:7px}',
-    /* REGRA DO DONO (2026-10-20): acao de JOGO manual so existe na aba Manual. O JS move-as
-       para #ap-manual-dinamicas; esta regra cobre o instante entre o render e a recolha. */
-    '#lolidle-ap .pane:not(#ap-t-manual) .acao:has(.tagd){display:none}',
-    '#lolidle-ap #ap-manual-dinamicas .mgrupo{margin-top:6px}',
-    '#lolidle-ap #ap-manual-dinamicas .acoes{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:7px}',
-    '#lolidle-ap .acao{display:flex;flex-direction:column;gap:3px;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:6px 7px}',
-    '#lolidle-ap .acao small{color:var(--dim);font-size:10.5px;line-height:1.4}',
-    '#lolidle-ap .btn{background:#2f6b38;color:#eafff0;border:0;border-radius:6px;padding:6px 9px;font-weight:700;cursor:pointer;font-size:11.5px;font-family:inherit}',
-    '#lolidle-ap .btn:hover{filter:brightness(1.15)}',
-    '#lolidle-ap .btn.sec{background:#22303a;color:#cfe8ff;border:1px solid #33505f}',
-    '#lolidle-ap .btn.warn{background:#4a3410;color:var(--ouro);border:1px solid #7a5f2a}',
-    '#lolidle-ap .btn.danger{background:#7a1f14;color:#ffd9d2;border:1px solid #a33a28}',
-    '#lolidle-ap .btn.big{padding:7px 13px;font-size:12.5px}',
-    '#lolidle-ap .btn:disabled{opacity:.45;cursor:not-allowed}',
-    '#lolidle-ap .btn.busy{opacity:.8;cursor:progress}',
-    '#lolidle-ap input[type=number],#lolidle-ap input[type=text],#lolidle-ap input[type=search],#lolidle-ap select{background:#0d0b0a;color:var(--txt);border:1px solid var(--lin);border-radius:6px;padding:4px 6px;font:inherit}',
-    '#lolidle-ap input[type=number]{width:72px}',
-    '#lolidle-ap .tg{display:flex;align-items:flex-start;gap:8px;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:6px 8px;cursor:pointer}',
-    '#lolidle-ap .tg input{display:none}',
-    '#lolidle-ap .tg-t{display:flex;flex-direction:column}',
-    '#lolidle-ap .tg-t b{font-size:11.5px}',
-    '#lolidle-ap .tg-t small{color:var(--dim);font-size:10.5px}',
-    '#lolidle-ap .scroll{max-height:250px;overflow:auto;border:1px solid var(--lin2);border-radius:7px}',
-    '#lolidle-ap table.tbl{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}',
-    '#lolidle-ap table.tbl th{color:var(--dim);font-weight:600;text-align:right;padding:3px 5px;border-bottom:1px solid var(--lin);position:sticky;top:0;background:var(--pnl);white-space:nowrap}',
-    '#lolidle-ap table.tbl th:first-child,#lolidle-ap table.tbl td:first-child{text-align:left}',
-    '#lolidle-ap table.tbl td:first-child{white-space:normal;min-width:90px}',
-    '#lolidle-ap table.tbl td{padding:3px 5px;text-align:right;border-bottom:1px solid #2a241d;color:#e2d8c4;white-space:nowrap}',
-    '#lolidle-ap table.tbl td:first-child{color:var(--txt)}',
-    '#lolidle-ap table.tbl tr.melhor td{background:#1d2417}',
-    '#lolidle-ap table.tbl td img{width:16px;height:16px;image-rendering:pixelated;vertical-align:-3px;margin-right:4px}',
-    '#lolidle-ap .vazio{color:var(--dim);font-size:11.5px;margin:2px 0}',
-    '#lolidle-ap .aviso{margin:3px 0;font-size:11.5px;padding:5px 8px;border-radius:6px;border:1px solid var(--lin2);background:var(--pnl2)}',
-    '#lolidle-ap .aviso.ok{color:#bdf0c8;border-color:#2b5c33;background:#152218}',
-    '#lolidle-ap .aviso.warn{color:#ffdca8;border-color:#6d5520;background:#241c0d}',
-    '#lolidle-ap .aviso.err{color:#ffc6ba;border-color:#6d2a20;background:#251310}',
-    '#lolidle-ap .lista{display:flex;flex-direction:column;gap:2px}',
-    '#lolidle-ap .ln{display:flex;align-items:center;gap:7px;font-size:11.5px;padding:3px 6px;border-bottom:1px solid #2a241d;flex-wrap:wrap}',
-    '#lolidle-ap .ln:last-child{border-bottom:0}',
-    '#lolidle-ap .ln time{color:#b0a591;flex:none;font-variant-numeric:tabular-nums}',
-    '#lolidle-ap .ln b{color:var(--txt)}',
-    '#lolidle-ap .ln .d{color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis}',
-    '#lolidle-ap .ln.proteg{border-left:3px solid var(--ouro)}',
-    '#lolidle-ap .ln.guard{border-left:3px solid #6a6256}',
-    '#lolidle-ap .ln.mkt{border-left:3px solid var(--azul)}',
-    '#lolidle-ap .ln.loj{border-left:3px solid var(--verm)}',
-    '#lolidle-ap .frames{display:flex;gap:5px;flex-wrap:wrap}',
-    '#lolidle-ap .iframe{position:relative;width:44px;height:44px;background:#0d0b0a;border:2px solid var(--lin);border-radius:6px;overflow:hidden;display:inline-block}',
-    '#lolidle-ap .iframe img{width:100%;height:100%;object-fit:cover;display:block}',
-    '#lolidle-ap .iframe .q{position:absolute;right:1px;bottom:1px;font-size:8px;background:#000c;border-radius:3px;padding:0 3px;color:#fff}',
-    '#lolidle-ap .iframe.lendario{border-color:#b07a20}#lolidle-ap .iframe.epico{border-color:#7a4fbf}',
-    '#lolidle-ap .iframe.falta{border-style:dashed;opacity:.75;filter:grayscale(.6)}',
-    '#lolidle-ap .chips{display:flex;flex-wrap:wrap;gap:4px}',
-    '#lolidle-ap .chip{display:inline-flex;align-items:center;gap:5px;background:var(--pnl2);border:1px solid var(--lin);border-radius:6px;padding:2px 6px;font-size:11.5px}',
-    '#lolidle-ap .chip img{width:18px;height:18px;image-rendering:pixelated}',
-    '#lolidle-ap .chip.lendario{border-color:#b07a20}#lolidle-ap .chip.epico{border-color:#7a4fbf}',
-    '#lolidle-ap .chip small{color:var(--dim)}',
-    '#lolidle-ap .chip .wlim{width:78px;padding:1px 3px;font-size:10px;background:var(--pnl);border:1px solid var(--lin2);border-radius:4px;color:var(--txt)}',
-    '#lolidle-ap .arv-cfg{margin-left:4px;padding:0 5px;font-size:11px;line-height:16px;border:1px solid var(--lin2);border-radius:4px;background:var(--pnl2);color:var(--ouro);cursor:pointer}',
-    '#lolidle-ap .arv-cfg:hover{background:var(--pnl)}',
-    '#lolidle-ap .bar{height:14px;border-radius:7px;background:#241f19;overflow:hidden;position:relative;border:1px solid var(--lin)}',
-    '#lolidle-ap .bar>i{display:block;height:100%;background:linear-gradient(90deg,#2f6b38,#4ce06a);transition:width .25s}',
-    '#lolidle-ap .bar>i.low{background:linear-gradient(90deg,#7a3a10,#ff9a5a)}',
-    '#lolidle-ap .bar>i.crit{background:linear-gradient(90deg,#7a1010,#ff4040)}',
-    '#lolidle-ap .bar>u{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#fff;text-shadow:0 1px 2px #000;text-decoration:none}',
-    '#lolidle-ap .pots{display:flex;gap:6px;flex-wrap:wrap}',
-    '#lolidle-ap .pot{flex:1;min-width:120px;display:flex;align-items:center;gap:6px;background:var(--pnl2);border:1px solid var(--lin2);border-radius:7px;padding:4px 7px}',
-    '#lolidle-ap .pot img{width:24px;height:24px;image-rendering:pixelated}',
-    '#lolidle-ap .pot .q{font-weight:800;font-size:14px;font-variant-numeric:tabular-nums;color:var(--verde)}',
-    '#lolidle-ap .pot small{color:var(--dim);font-size:10.5px;display:block}',
-    '#lolidle-ap .pot.baixo{border-color:#7a3a10;background:#1c1108}#lolidle-ap .pot.baixo .q{color:#ff9a5a}',
-    '#lolidle-ap .tag{display:inline-block;background:#1d2733;border:1px solid #33505f;color:#cfe8ff;border-radius:5px;padding:1px 6px;font-size:10px;margin:1px 2px 1px 0}',
-    '#lolidle-ap footer{display:flex;align-items:center;gap:9px;padding:6px 10px;background:#151211;border-top:1px solid var(--lin)}',
-    '#lolidle-ap .fb{font-size:11px;color:var(--dim);flex:1;min-width:0}',
-    '#lolidle-ap .fb.ok{color:var(--verde)}#lolidle-ap .fb.err{color:var(--verm)}#lolidle-ap .fb.warn{color:var(--ambar)}#lolidle-ap .fb.run{color:var(--azul)}',
-    '#lolidle-ap .spin{display:inline-block;width:9px;height:9px;border:2px solid #7cc4ff;border-top-color:transparent;border-radius:50%;animation:lolidle-spin .7s linear infinite;vertical-align:-1px;margin-right:5px}',
-    '@keyframes lolidle-spin{to{transform:rotate(360deg)}}',
-    '#lolidle-ap .muted{color:var(--dim)}',
-    '#lolidle-ap .hint{color:var(--dim);font-size:11px;line-height:1.45}',
-    // TEXTO CORTO (ordem do dono, 2026-10-21): parágrafos que só EXPLICAVAM o óbvio ficam fora da
-    // vista. O que é estado/medida (Falta:, Pendente agora, Região em uso) continua visível.
-    '#lolidle-ap .hint.tira{display:none}',
-    '#lolidle-ap .pend{color:var(--verm)}',
-    /* botão flutuante para abrir o painel */
-    '#lolidle-ap-launch{position:fixed;right:8px;bottom:8px;z-index:2147483646;background:#1b1815;color:#ffd070;border:1px solid #3a3126;border-radius:8px;padding:5px 9px;font:700 11px/1.2 system-ui,sans-serif;cursor:pointer;opacity:.45;transition:.15s}',
-    '#lolidle-ap-launch:hover{opacity:1}',
-    /* hover no nome do jogador */
-    '#st-nome{position:relative;cursor:pointer}',
-    '#st-nome::before{content:"";position:absolute;inset:-7px -14px;border-radius:6px}',
-    '#st-nome:hover::before{background:rgba(216,180,90,.12)}',
-    /* modais */
-    '#lolidle-ap-modal,#lolidle-ap-testes,#lolidle-ap-confirma,#lolidle-ap-ajuda,#lolidle-ap-macro{position:fixed;inset:0;z-index:2147483647;background:#000b;display:none;align-items:center;justify-content:center;font:12px/1.45 system-ui,"Segoe UI",sans-serif;color:#e9e0cf}',
-    '#lolidle-ap-modal.on,#lolidle-ap-testes.on,#lolidle-ap-confirma.on,#lolidle-ap-ajuda.on,#lolidle-ap-macro.on{display:flex}',
-    '#lolidle-ap-modal .box,#lolidle-ap-testes .box,#lolidle-ap-ajuda .box,#lolidle-ap-macro .box{background:#100e0c;border:1px solid #3a3126;border-radius:11px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 16px 60px #000c}',
-    '#lolidle-ap-modal .box{width:min(880px,94vw);height:min(700px,90vh)}',
-    // ⚙ dos switches: POPUP com os detalhes, sem sair da página/aba em que o dono está.
-    '#lolidle-ap-macro .box{width:min(780px,94vw);height:auto;max-height:min(84vh,760px)}',
-    '#lolidle-ap-macro .corpo{padding:10px 12px 14px;overflow:auto}',
-    '#lolidle-ap-macro .corpo>.card{margin:0}',
-    '#lolidle-ap-testes .box{width:min(960px,94vw);height:min(720px,90vh)}',
-    '#lolidle-ap-ajuda .box{width:min(780px,94vw);height:min(700px,90vh)}',
-    '.lolidle-box header{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#1c1916;border-bottom:1px solid #332c24;flex-wrap:wrap}',
-    '.lolidle-box header b{font-size:13px;color:#ffd070}',
-    '.lolidle-box .corpo{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:7px}',
-    '.lolidle-box footer{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#141210;border-top:1px solid #332c24;flex-wrap:wrap}',
-    '.lolidle-box button{background:#2f6b38;color:#eafff0;border:0;border-radius:6px;padding:6px 11px;font-weight:700;cursor:pointer;font:inherit;font-weight:700}',
-    '.lolidle-box button.sec{background:#22303a;color:#cfe8ff;border:1px solid #33505f}',
-    '.lolidle-box button.danger{background:#7a1f14;color:#ffd9d2;border:1px solid #a33a28}',
-    '.lolidle-box input,.lolidle-box select{background:#0d0b0a;color:#e9e0cf;border:1px solid #3a3126;border-radius:6px;padding:4px 6px;font:inherit}',
-    '.lolidle-box .muted{color:#9d9280;font-size:10.5px}',
-    '#lolidle-ap-modal .filtros{display:flex;align-items:center;gap:6px;padding:7px 12px;border-bottom:1px solid #231e19;flex-wrap:wrap}',
-    '#lolidle-ap-modal .grade{flex:1;overflow:auto;padding:9px;display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:7px;align-content:start}',
-    '#lolidle-ap-modal .frame{position:relative;aspect-ratio:1;background:#191614;border:2px solid #332c24;border-radius:7px;cursor:pointer;overflow:hidden;padding:0}',
-    '#lolidle-ap-modal .frame img{width:100%;height:100%;object-fit:cover;display:block}',
-    '#lolidle-ap-modal .frame span{position:absolute;left:0;right:0;bottom:0;font-size:8px;background:#000c;padding:1px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '#lolidle-ap-modal .frame.epico{border-color:#7a4fbf}#lolidle-ap-modal .frame.lendario{border-color:#b07a20}',
-    '#lolidle-ap-modal .frame.sel{border-color:#ffd070;box-shadow:0 0 0 1px #ffd070,0 0 12px #ffd07070}',
-    '#lolidle-ap-modal .if{background:#1c1916;color:#c8bda8;border:1px solid #332c24;border-radius:6px;padding:3px 10px;font-size:10.5px;cursor:pointer;font:inherit}',
-    '#lolidle-ap-modal .if.ativa{background:#3a2f1e;color:#ffd070;border-color:#7a5f2a}',
-    '#lolidle-ap-testes .set{display:grid;grid-template-columns:150px repeat(4,1fr) 120px 28px;gap:5px;align-items:center;background:#191614;border:1px solid #231e19;border-radius:7px;padding:5px 7px}',
-    '#lolidle-ap-testes .fixo{color:#9d9280;font-size:10px;display:flex;align-items:center;gap:4px}',
-    '#lolidle-ap-testes .res{font-size:10.5px;color:#c8bda8;border-top:1px solid #231e19;padding-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}',
-    '#lolidle-ap-testes .res b{color:#ffd070}',
-    '#lolidle-ap-confirma .box{width:min(520px,92vw);background:#100e0c;border:1px solid #3a3126;border-radius:11px;padding:14px 16px;box-shadow:0 16px 60px #000c}',
-    '#lolidle-ap-confirma h3{margin:0 0 8px;font-size:14px;color:#ffd070}',
-    '#lolidle-ap-confirma ul{margin:0 0 12px;padding-left:18px;color:#c8bda8;font-size:11.5px}',
-    '#lolidle-ap-confirma li{margin:3px 0}',
-    '#lolidle-ap-confirma .botoes{display:flex;gap:8px;justify-content:flex-end}',
-    '#lolidle-ap-ajuda h4{margin:8px 0 3px;color:#ffd070;font-size:12px}',
-    '#lolidle-ap-ajuda p,#lolidle-ap-ajuda li{color:#c8bda8;font-size:11.5px;margin:3px 0}',
-    '#lolidle-ap-ajuda dl{margin:0}#lolidle-ap-ajuda dt{color:#ffd070;font-weight:700;font-size:11.5px;margin-top:6px}',
-    '#lolidle-ap-ajuda dd{margin:1px 0 0;color:#c8bda8;font-size:11px}',
-    '#lolidle-ap-ajuda .macro{background:#191614;border-left:3px solid #33505f;border-radius:0 7px 7px 0;padding:6px 9px;margin:4px 0}',
-    '#lolidle-ap-ajuda .macro b{color:#ffd070}',
-    '#lolidle-ap .bf-item{display:inline-flex;flex-direction:column;align-items:center;gap:1px;background:var(--pnl2);border:1px solid var(--lin);border-radius:6px;padding:3px 5px;min-width:60px;text-align:center}',
-    '#lolidle-ap .bf-item img{width:22px;height:22px;image-rendering:pixelated}',
-    '#lolidle-ap .bf-item .q{font-size:9px;color:var(--ouro)}',
-    '#lolidle-ap .bf-item .bf-nome{font-size:8.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70px}',
-    '#lolidle-ap .watch-picker{border:1px solid var(--lin);border-radius:7px;padding:6px;margin:4px 0;background:var(--pnl2)}',
-    '#lolidle-ap .watch-picker[hidden]{display:none}',
-    '#lolidle-ap .wrow{display:flex;align-items:center;gap:6px;width:100%;background:none;border:1px solid var(--lin2);border-radius:5px;padding:3px 6px;color:var(--txt);font-size:11px;cursor:pointer;text-align:left;margin:1px 0}',
-    '#lolidle-ap .wrow:hover{background:var(--pnl2)}',
-    '#lolidle-ap .wrow.sel{border-color:#ffd070;background:#2a2118}',
-    '#lolidle-ap .wrow img{width:20px;height:20px;image-rendering:pixelated}',
-    '#lolidle-ap .wrow span{flex:1}',
-    '#lolidle-ap .campo{display:flex;flex-direction:column;gap:2px;margin:4px 0;font-size:10.5px;color:var(--dim)}',
-    '#lolidle-ap .campo input{margin-top:1px}',
-    '#lolidle-ap .item-na{display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;background:#221d19;border:1px solid var(--lin);border-radius:4px;color:var(--dim);font-size:10px}',
-    // ---- MESTRE (TK-02 §1): o cartão AUTO-PLAY, no topo do Painel. UM interruptor grande e o
-    //      estado em letras que se lêem de longe (LIGADO/DESLIGADO/PAUSADO), sem abrir aba. ----
-    '#lolidle-ap .card.mestre{border-color:#4a4030;background:linear-gradient(180deg,#221b12,#191614)}',
-    '#lolidle-ap .card.mestre.on{border-color:#2b5c33;background:linear-gradient(180deg,#16241a,#141b16)}',
-    '#lolidle-ap .card.mestre.run{border-color:#6d5520;background:linear-gradient(180deg,#241c0d,#1b1610)}',
-    '#lolidle-ap .card.mestre.err{border-color:#6d2a20;background:linear-gradient(180deg,#251310,#1b1310)}',
-    '#lolidle-ap .card.mestre>h3{margin-bottom:7px}',
-    '#lolidle-ap .mestre-l{display:flex;align-items:center;gap:12px;flex-wrap:wrap}',
-    '#lolidle-ap .mestre-tg{display:flex;align-items:center;gap:10px;cursor:pointer;background:#0f0d0b;border:1px solid var(--lin);border-radius:10px;padding:6px 12px}',
-    '#lolidle-ap .mestre-tg .sw{width:52px;height:28px}',
-    '#lolidle-ap .mestre-tg .sw::after{width:20px;height:20px;left:4px;top:4px}',
-    '#lolidle-ap .mestre-tg input:checked+.sw::after{transform:translateX(24px)}',
-    '#lolidle-ap .mestre-est{font-size:16px;font-weight:800;letter-spacing:.6px}',
-    '#lolidle-ap .mestre-est.on{color:var(--verde)}',
-    '#lolidle-ap .mestre-est.off{color:var(--dim)}',
-    '#lolidle-ap .mestre-est.run{color:var(--ambar)}',
-    '#lolidle-ap .mestre-est.err{color:var(--verm)}',
-    '#lolidle-ap .mestre-txt{color:var(--dim);font-size:11px}',
-    // ---- ERRO (TK-02 §2): nó da árvore SEM chave na automação = versão antiga. Mostra-se o ERRO, nunca
-    //      o badge "implícito" que fingia que o switch existia. ----
+    '#lolidle-ap .arv-no .arv-motivo.err{color:#ffb3aa}',
+    '#lolidle-ap .arv-no .arv-cfg,#lolidle-ap .arv-cfg{font-size:10px;color:var(--dim);background:#0c0f14;border:1px solid var(--lin2);border-radius:6px;padding:1px 6px;white-space:nowrap;cursor:pointer}',
+    '#lolidle-ap .arv-cfg:hover{color:var(--ouro);border-color:#4a3b10}',
+    '#lolidle-ap .arv-no .arv-exc{border-color:#6b4a14;color:var(--ambar);background:#241c0d}',
+    '#lolidle-ap .arv-no.mestre{border-color:#3a4a5f;background:#141a23}',
+    '#lolidle-ap .arv-no.mestre>b{color:var(--txt)}',
     '#lolidle-ap .arv-no.erro{border-color:#6d2a20;background:#1d1210}',
     '#lolidle-ap .arv-no.erro .arv-dot{background:var(--verm)}',
     '#lolidle-ap .arv-no.erro .arv-est{color:var(--verm)}',
-    '#lolidle-ap .arv-motivo.err{color:#ffc6ba}',
-    '#lolidle-ap .arv-erro{font-size:9.5px;color:#ffc6ba;background:#241310;border:1px solid #6d2a20;border-radius:4px;padding:1px 6px;white-space:nowrap}',
-    '#lolidle-ap .erro-motor{background:#241310;border:1px solid #6d2a20;border-radius:7px;padding:6px 9px;font-size:11px;color:#ffc6ba}',
+    '#lolidle-ap .arv-erro{font-size:9.5px;color:#ffb3aa;background:#241310;border:1px solid #6d2a20;border-radius:5px;padding:1px 6px;white-space:nowrap}',
+    '#lolidle-ap .arv-cobre{margin:0 0 2px;font-size:10.5px;line-height:1.45;padding:1px 9px;border-left:1px solid var(--lin2);color:var(--mut)}',
+    '#lolidle-ap .arv-cobre.on{color:#8cf0b4}',
+    '#lolidle-ap .arv-cobre.off{color:#ff9a8a}',
+    '#lolidle-ap .arv-tg{display:flex;align-items:center;flex:none;cursor:pointer}',
+    '#lolidle-ap .arv-tg .sw{width:32px;height:18px}',
+    '#lolidle-ap .arv-tg .sw::after{width:12px;height:12px;left:3px;top:3px}',
+    '#lolidle-ap .arv-tg input:checked+.sw::after{transform:translateX(14px)}',
+    // ---- MÉTRICAS / LISTAS DE ESTADO ----
+    '#lolidle-ap .kvs{display:flex;flex-wrap:wrap;gap:6px}',
+    '#lolidle-ap .kv2{display:flex;flex-direction:column;background:var(--pnl2);border:1px solid var(--lin2);border-radius:10px;padding:6px 10px;min-width:92px;flex:1}',
+    '#lolidle-ap .kv2 span{color:var(--mut);font-size:10px;letter-spacing:.05em;text-transform:uppercase}',
+    '#lolidle-ap .kv2 b{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}',
+    '#lolidle-ap .kv2 small{color:var(--mut);font-size:10px}',
+    '#lolidle-ap .est{margin:0;font-size:11.5px;padding:8px 10px;border-radius:10px;border:1px solid var(--lin2);background:var(--pnl2)}',
+    '#lolidle-ap .est b{font-size:12.5px}',
+    '#lolidle-ap .est.on{color:#bdf0c8;border-color:#1f5c3a;background:#0f2318}',
+    '#lolidle-ap .est.off{color:var(--dim);border-color:var(--lin);background:#101318}',
+    '#lolidle-ap .est.run{color:#ffdca8;border-color:#6b4a14;background:#22190b}',
+    '#lolidle-ap .est.err{color:#ffc6ba;border-color:#6d2a20;background:#241310}',
+    '#lolidle-ap .inimigos{display:flex;flex-direction:column;gap:4px;margin-top:2px}',
+    '#lolidle-ap .inimigos .ini{display:flex;align-items:center;gap:8px;font-size:11px;background:var(--pnl2);border:1px solid var(--lin2);border-radius:8px;padding:4px 8px}',
+    '#lolidle-ap .inimigos .ini.nome{flex:1;min-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '#lolidle-ap .inimigos .ini i{display:block;height:4px;border-radius:3px;flex:0 0 64px;background:#252c37;position:relative;overflow:hidden}',
+    '#lolidle-ap .inimigos .ini i b{position:absolute;inset:0 auto 0 0;display:block;border-radius:3px}',
+    '#lolidle-ap .inimigos .ini em{font-style:normal;color:var(--mut);font-variant-numeric:tabular-nums;white-space:nowrap}',
+    // ---- CONTROLES (linha rótulo + controlo) ----
+    '#lolidle-ap .ctl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid #ffffff06}',
+    '#lolidle-ap .ctl:last-child{border-bottom:0}',
+    '#lolidle-ap .ctl-l{display:flex;flex-direction:column;flex:1;min-width:200px}',
+    '#lolidle-ap .ctl-l b{font-size:12px;font-weight:600}',
+    '#lolidle-ap .ctl-l small{color:var(--mut);font-size:10.5px}',
+    '#lolidle-ap .ctl-c{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+    '#lolidle-ap .tg{display:flex;align-items:flex-start;gap:10px;background:var(--pnl2);border:1px solid var(--lin2);border-radius:10px;padding:8px 10px;cursor:pointer}',
+    '#lolidle-ap .tg:hover{border-color:var(--lin)}',
+    '#lolidle-ap .tg-t{display:flex;flex-direction:column}',
+    '#lolidle-ap .tg-t b{font-size:12px;font-weight:600}',
+    '#lolidle-ap .tg-t small{color:var(--mut);font-size:10.5px}',
+    // ---- BOTÕES ----
+    '#lolidle-ap .btn{background:var(--pnl3);color:var(--txt);border:1px solid var(--lin);border-radius:9px;padding:7px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:background .1s,border-color .1s}',
+    '#lolidle-ap .btn:hover{background:#222b37;border-color:#3a4658}',
+    '#lolidle-ap .btn.sec{background:transparent;color:var(--dim)}',
+    '#lolidle-ap .btn.sec:hover{color:var(--txt);background:#ffffff08}',
+    '#lolidle-ap .btn.warn{background:#2a1d08;color:var(--ambar);border-color:#6b4a14}',
+    '#lolidle-ap .btn.danger{background:#3a1512;color:#ffbcb3;border-color:#7a2a22}',
+    '#lolidle-ap .btn.big{padding:9px 16px;font-size:13px}',
+    '#lolidle-ap .btn:disabled{opacity:.42;cursor:not-allowed}',
+    '#lolidle-ap .btn.busy{opacity:.8;cursor:progress}',
+    '#lolidle-ap .acoes{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}',
+    '#lolidle-ap .acao{display:flex;flex-direction:column;gap:4px;background:var(--pnl2);border:1px solid var(--lin2);border-radius:10px;padding:8px}',
+    '#lolidle-ap .acao small{color:var(--mut);font-size:10.5px;line-height:1.45}',
+    '#lolidle-ap .sec-acoes{display:grid;grid-template-columns:1fr 1fr;gap:8px}',
+    '#lolidle-ap .diag-t{margin:8px 0 5px;padding-top:8px;border-top:1px dashed var(--lin);font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.1em}',
+    '#lolidle-ap .diag-t + .acoes .acao{background:transparent;border-style:dashed}',
+    '#lolidle-ap .diag-t + .acoes .btn{font-size:11px;padding:5px 9px;font-weight:600}',
+    '#lolidle-ap .tagd{display:inline-block;font-size:9px;color:var(--mut);border:1px solid var(--lin2);border-radius:5px;padding:0 4px;margin-left:6px;letter-spacing:.06em;text-transform:uppercase}',
+    '#lolidle-ap input[type=number],#lolidle-ap input[type=text],#lolidle-ap input[type=search],#lolidle-ap select{background:#0b0e13;color:var(--txt);border:1px solid var(--lin);border-radius:8px;padding:5px 8px;font:inherit;font-size:12px}',
+    '#lolidle-ap input[type=number]{width:76px}',
+    '#lolidle-ap input:focus,#lolidle-ap select:focus{outline:none;border-color:#4a5a72;box-shadow:0 0 0 2px #4a5a7233}',
+    '#lolidle-ap select.auto{border-color:#2c4a6b;background:#0d1620;color:#a9cdff}',
+    // ---- TABELAS E LISTAS ----
+    '#lolidle-ap .scroll{max-height:260px;overflow:auto;border:1px solid var(--lin2);border-radius:10px}',
+    '#lolidle-ap table.tbl{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}',
+    '#lolidle-ap table.tbl th{color:var(--mut);font-weight:600;font-size:10px;letter-spacing:.07em;text-transform:uppercase;text-align:right;padding:6px 8px;border-bottom:1px solid var(--lin);position:sticky;top:0;background:var(--pnl);white-space:nowrap}',
+    '#lolidle-ap table.tbl th:first-child,#lolidle-ap table.tbl td:first-child{text-align:left}',
+    '#lolidle-ap table.tbl td:first-child{white-space:normal;min-width:90px}',
+    '#lolidle-ap table.tbl td{padding:5px 8px;text-align:right;border-bottom:1px solid #ffffff06;color:#d8dfea;white-space:nowrap}',
+    '#lolidle-ap table.tbl tr:last-child td{border-bottom:0}',
+    '#lolidle-ap table.tbl tbody tr:hover td{background:#ffffff04}',
+    '#lolidle-ap table.tbl td:first-child{color:var(--txt)}',
+    '#lolidle-ap table.tbl tr.melhor td{background:#12241a}',
+    '#lolidle-ap table.tbl td img{width:16px;height:16px;image-rendering:pixelated;vertical-align:-3px;margin-right:5px}',
+    '#lolidle-ap .lista{display:flex;flex-direction:column;gap:1px}',
+    '#lolidle-ap .ln{display:flex;align-items:center;gap:8px;font-size:11.5px;padding:5px 8px;border-bottom:1px solid #ffffff06;flex-wrap:wrap}',
+    '#lolidle-ap .ln:last-child{border-bottom:0}',
+    '#lolidle-ap .ln time{color:var(--mut);flex:none;font-variant-numeric:tabular-nums}',
+    '#lolidle-ap .ln b{color:var(--txt);font-weight:600}',
+    '#lolidle-ap .ln .d{color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis}',
+    '#lolidle-ap .ln.proteg{border-left:2px solid var(--ouro)}',
+    '#lolidle-ap .ln.guard{border-left:2px solid #5a6474}',
+    '#lolidle-ap .ln.mkt{border-left:2px solid var(--azul)}',
+    '#lolidle-ap .ln.loj{border-left:2px solid var(--verm)}',
+    '#lolidle-ap .vazio{color:var(--mut);font-size:11.5px;margin:4px 0}',
+    '#lolidle-ap .aviso{margin:2px 0;font-size:11.5px;padding:7px 10px;border-radius:9px;border:1px solid var(--lin2);background:var(--pnl2)}',
+    '#lolidle-ap .aviso.ok{color:#bdf0c8;border-color:#1f5c3a;background:#0f2318}',
+    '#lolidle-ap .aviso.warn{color:#ffdca8;border-color:#6b4a14;background:#22190b}',
+    '#lolidle-ap .aviso.err{color:#ffc6ba;border-color:#6d2a20;background:#241310}',
+    '#lolidle-ap .grp{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin:8px 0 3px}',
+    '#lolidle-ap .grp small{font-weight:600;letter-spacing:0;color:var(--mut)}',
+    // ---- ITENS (chips, frames, build) ----
+    '#lolidle-ap .frames{display:flex;gap:6px;flex-wrap:wrap}',
+    '#lolidle-ap .iframe{position:relative;width:46px;height:46px;background:#0b0e13;border:1px solid var(--lin);border-radius:9px;overflow:hidden;display:inline-block}',
+    '#lolidle-ap .iframe img{width:100%;height:100%;object-fit:cover;display:block}',
+    '#lolidle-ap .iframe .q{position:absolute;right:2px;bottom:1px;font-size:9px;font-weight:700;background:#000c;border-radius:4px;padding:0 3px;color:#fff}',
+    '#lolidle-ap .iframe.lendario{border-color:#b07a20}#lolidle-ap .iframe.epico{border-color:#7a4fbf}',
+    '#lolidle-ap .iframe.falta{border-style:dashed;opacity:.7;filter:grayscale(.65)}',
+    '#lolidle-ap .chips{display:flex;flex-wrap:wrap;gap:5px}',
+    '#lolidle-ap .chip{display:inline-flex;align-items:center;gap:6px;background:var(--pnl2);border:1px solid var(--lin2);border-radius:8px;padding:3px 8px;font-size:11.5px}',
+    '#lolidle-ap .chip img{width:18px;height:18px;image-rendering:pixelated}',
+    '#lolidle-ap .chip.lendario{border-color:#5a4315}#lolidle-ap .chip.epico{border-color:#3f2f66}',
+    '#lolidle-ap .chip small{color:var(--mut)}',
+    '#lolidle-ap .chip .wlim{width:80px;padding:1px 4px;font-size:10px;background:#0b0e13;border:1px solid var(--lin2);border-radius:5px;color:var(--txt)}',
+    '#lolidle-ap .bf>h3{align-items:center}',
+    '#lolidle-ap .bf-min{flex:none;width:26px;height:22px;font-size:11px}',
+    '#lolidle-ap .bf-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}',
+    '@media (max-width:900px){#lolidle-ap .bf-grid{grid-template-columns:1fr}}',
+    '#lolidle-ap .bf-col{background:var(--pnl2);border:1px solid var(--lin2);border-radius:10px;padding:8px 10px}',
+    '#lolidle-ap .bf-col.em-uso{border-color:#4a3b10;box-shadow:inset 0 0 0 1px #4a3b10}',
+    '#lolidle-ap .bf-col h4{margin:0 0 4px;font-size:12px;color:var(--txt);display:flex;gap:6px;align-items:center;flex-wrap:wrap}',
+    '#lolidle-ap .bf-col h4 .tag{font-size:9px;background:#2a2110;color:var(--ouro);border:1px solid #4a3b10;border-radius:999px;padding:0 7px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}',
+    '#lolidle-ap .bf-col h4 .tag.ok{background:#0f2318;color:var(--verde);border-color:#1f5c3a}',
+    '#lolidle-ap .bf-dica{margin:0 0 6px;color:var(--mut);font-size:10px}',
+    '#lolidle-ap .bf-itens{display:flex;gap:6px;flex-wrap:wrap}',
+    '#lolidle-ap .bf-item{position:relative;width:84px;height:56px;border:2px solid var(--lin2);border-radius:9px;background:#0b0e13;display:block;overflow:hidden}',
+    '#lolidle-ap .bf-item img{width:100%;height:100%;object-fit:cover;display:block}',
+    '#lolidle-ap .bf-item .q{position:absolute;top:0;right:2px;font-size:9px;font-weight:700;color:var(--ouro);text-shadow:0 0 3px #000}',
+    '#lolidle-ap .bf-item small{position:absolute;left:0;right:0;bottom:0;font-size:9.5px;text-align:center;background:#000c;color:#dbe3ee;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#lolidle-ap .bf-item small .bf-nome{font-weight:700;color:#f2f6fb}',
+    '#lolidle-ap .bf-item.equipado{border-color:var(--verde)}',
+    '#lolidle-ap .bf-item.cofre{border-color:var(--azul)}',
+    '#lolidle-ap .bf-item.mercado{border-color:var(--ouro)}',
+    '#lolidle-ap .bf-item.falta{border-color:#6d2a20;opacity:.65}',
+    '#lolidle-ap .bf-item.falta small{color:#ffb0a0}',
+    // ---- BARRAS E POÇÕES ----
+    '#lolidle-ap .bar{height:14px;border-radius:7px;background:#242b36;overflow:hidden;position:relative;border:1px solid var(--lin2)}',
+    '#lolidle-ap .bar>i{display:block;height:100%;background:linear-gradient(90deg,#1f7a45,#3fd97f);transition:width .25s}',
+    '#lolidle-ap .bar>i.low{background:linear-gradient(90deg,#7a4a10,#ffab2e)}',
+    '#lolidle-ap .bar>i.crit{background:linear-gradient(90deg,#7a1a12,#ff6b5b)}',
+    '#lolidle-ap .bar>u{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#fff;text-shadow:0 1px 2px #000;text-decoration:none}',
+    '#lolidle-ap .pots{display:flex;gap:8px;flex-wrap:wrap}',
+    '#lolidle-ap .pot{flex:1;min-width:130px;display:flex;align-items:center;gap:8px;background:var(--pnl2);border:1px solid var(--lin2);border-radius:10px;padding:6px 9px}',
+    '#lolidle-ap .pot img{width:24px;height:24px;image-rendering:pixelated}',
+    '#lolidle-ap .pot .q{font-weight:800;font-size:14px;font-variant-numeric:tabular-nums;color:var(--verde)}',
+    '#lolidle-ap .pot small{color:var(--mut);font-size:10.5px;display:block}',
+    '#lolidle-ap .pot.baixo{border-color:#6b4a14;background:#1c1408}#lolidle-ap .pot.baixo .q{color:var(--ambar)}',
+    // ---- DUAS MODALIDADES DE FARM ----
+    '#lolidle-ap .modos{display:grid;grid-template-columns:1fr 1fr;gap:8px}',
+    '#lolidle-ap .modo{display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--pnl2);border:1px solid var(--lin2);border-radius:10px;padding:9px 11px;color:var(--txt);cursor:pointer;font:inherit}',
+    '#lolidle-ap .modo:hover{border-color:var(--lin)}',
+    '#lolidle-ap .modo b{font-size:12px}',
+    '#lolidle-ap .modo small{color:var(--mut);font-size:10.5px;line-height:1.45}',
+    '#lolidle-ap .modo.ativa{border-color:#4a3b10;background:#1c1708;box-shadow:inset 0 0 0 1px #4a3b10}',
+    '#lolidle-ap .modo.ativa b{color:var(--ouro)}',
+    // ---- VIGIA DO MERCADO ----
+    '#lolidle-ap .watch-picker{border:1px solid var(--lin);border-radius:10px;padding:8px;margin:5px 0;background:var(--pnl2)}',
+    '#lolidle-ap .watch-picker[hidden]{display:none}',
+    '#lolidle-ap .wrow{display:flex;align-items:center;gap:7px;width:100%;background:none;border:1px solid var(--lin2);border-radius:7px;padding:4px 7px;color:var(--txt);font-size:11px;cursor:pointer;text-align:left;margin:1px 0}',
+    '#lolidle-ap .wrow:hover{background:#ffffff07}',
+    '#lolidle-ap .wrow.sel{border-color:var(--ouro);background:#221a0c}',
+    '#lolidle-ap .wrow img{width:20px;height:20px;image-rendering:pixelated}',
+    '#lolidle-ap .wrow span{flex:1}',
+    '#lolidle-ap .campo{display:flex;flex-direction:column;gap:2px;margin:5px 0;font-size:10.5px;color:var(--mut)}',
+    '#lolidle-ap .campo input{margin-top:1px}',
+    '#lolidle-ap .item-na{display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;background:#1b2029;border:1px solid var(--lin2);border-radius:5px;color:var(--mut);font-size:10px}',
+    '#lolidle-ap .tag{display:inline-block;background:#0e1a28;border:1px solid #24405c;color:#a9cdff;border-radius:6px;padding:1px 7px;font-size:10px;margin:1px 2px 1px 0}',
+    // ---- RODAPÉ ----
+    '#lolidle-ap footer{display:flex;align-items:center;gap:12px;padding:8px 16px;background:#0b0e12;border-top:1px solid var(--lin2);font-size:11px;color:var(--mut)}',
+    '#lolidle-ap .fb{flex:1;min-width:0;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '#lolidle-ap .fb.ok{color:var(--verde)}#lolidle-ap .fb.err{color:var(--verm)}#lolidle-ap .fb.warn{color:var(--ambar)}#lolidle-ap .fb.run{color:var(--azul)}',
+    '#lolidle-ap .spin{display:inline-block;width:9px;height:9px;border:2px solid var(--azul);border-top-color:transparent;border-radius:50%;animation:lolidle-spin .7s linear infinite;vertical-align:-1px;margin-right:6px}',
+    '@keyframes lolidle-spin{to{transform:rotate(360deg)}}',
+    // ---- TEXTO: o "hint" é a nota de rodapé de um bloco, não um parágrafo explicativo ----
+    '#lolidle-ap .muted{color:var(--mut)}',
+    '#lolidle-ap .hint{color:var(--mut);font-size:11px;line-height:1.5;margin:2px 0}',
+    '#lolidle-ap .hint.tira{display:none}',
+    '#lolidle-ap .pend{color:var(--verm)}',
+    '#lolidle-ap .erro-motor{background:#241310;border:1px solid #6d2a20;border-radius:9px;padding:8px 10px;font-size:11px;color:#ffc6ba}',
     '#lolidle-ap .erro-motor b{color:var(--txt)}',
-    // ---- SELECT DA REGIÃO em modo AUTOMÁTICO (TK-02 §4): mostra a recomendada da automação, com
-    //      aspeto de "isto é a automação a decidir" (azul), sem parecer que você é que escolheu. ----
-    '#lolidle-ap select.auto{border-color:#33505f;background:#101820;color:#cfe8ff}',
-    // ---- PAINEL EM DUAS COLUNAS (TK-02 §3): cabe o dobro sem cortar. Os cartões que valem a
-    //      largura toda (mestre, intro, árvore, campeões, blocos de combate/parado) ocupam as duas.
-    '#lolidle-ap #ap-t-painel.on{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}',
-    '#lolidle-ap #ap-t-painel.on>*{break-inside:avoid;page-break-inside:avoid}',
-    '#lolidle-ap #ap-t-painel.on>#ap-painel-estado,#lolidle-ap #ap-t-painel.on>.intro,#lolidle-ap #ap-t-painel.on>.grid2,#lolidle-ap #ap-t-painel.on>#ap-now-combate,#lolidle-ap #ap-t-painel.on>#ap-now-parado,#lolidle-ap #ap-t-painel.on>#ap-auto-arvore,#lolidle-ap #ap-t-painel.on>#ap-auto-champ,#lolidle-ap #ap-t-painel.on>#ap-fm-itens,#lolidle-ap #ap-t-painel.on>#ap-now-jogo{grid-column:1/-1}',
+    // ---- DUAS COLUNAS NA ABA PAINEL (cartões largos ocupam as duas) ----
+    '#lolidle-ap #ap-t-painel.on{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}',
+    '#lolidle-ap #ap-t-painel.on>.grid2,#lolidle-ap #ap-t-painel.on>#ap-painel-estado,#lolidle-ap #ap-t-painel.on>#ap-fm-itens,#lolidle-ap #ap-t-painel.on>#ap-now-combate,#lolidle-ap #ap-t-painel.on>#ap-now-parado,#lolidle-ap #ap-t-painel.on>#ap-auto-champ,#lolidle-ap #ap-t-painel.on>#ap-now-jogo{grid-column:1/-1}',
     '@media (max-width:900px){#lolidle-ap #ap-t-painel.on{grid-template-columns:1fr}}',
+    // ---- BOTÃO FLUTUANTE ----
+    '#lolidle-ap-launch{position:fixed;right:10px;bottom:10px;z-index:2147483646;background:#11151c;color:var(--ouro);border:1px solid #2a3341;border-radius:10px;padding:6px 11px;font:800 10px/1.2 "Inter","Segoe UI",system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;opacity:.4;transition:.15s}',
+    '#lolidle-ap-launch:hover{opacity:1;border-color:#4a3b10}',
+    // ---- HOVER NO NOME DO JOGADOR ----
+    '#st-nome{position:relative;cursor:pointer}',
+    '#st-nome::before{content:"";position:absolute;inset:-7px -14px;border-radius:7px}',
+    '#st-nome:hover::before{background:rgba(240,194,78,.12)}',
+    // ===================== MODAIS (fora de #lolidle-ap) =====================
+    '#lolidle-ap-modal,#lolidle-ap-testes,#lolidle-ap-confirma,#lolidle-ap-ajuda,#lolidle-ap-macro{position:fixed;inset:0;z-index:2147483647;background:#04060ab8;backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;font:13px/1.5 "Inter","Segoe UI",system-ui,sans-serif;color:#eef2f8}',
+    '#lolidle-ap-modal.on,#lolidle-ap-testes.on,#lolidle-ap-confirma.on,#lolidle-ap-ajuda.on,#lolidle-ap-macro.on{display:flex}',
+    '#lolidle-ap-modal .box,#lolidle-ap-testes .box,#lolidle-ap-ajuda .box,#lolidle-ap-macro .box{background:#0c0f14;border:1px solid #29303c;border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 28px 90px #000e}',
+    '#lolidle-ap-modal .box{width:min(880px,94vw);height:min(700px,90vh)}',
+    '#lolidle-ap-macro .box{width:min(820px,94vw);height:auto;max-height:min(84vh,760px)}',
+    '#lolidle-ap-macro .corpo{padding:12px 14px 16px;overflow:auto}',
+    '#lolidle-ap-macro .corpo>.card{margin:0}',
+    '#lolidle-ap-testes .box{width:min(980px,94vw);height:min(720px,90vh)}',
+    '#lolidle-ap-ajuda .box{width:min(820px,94vw);height:min(700px,90vh)}',
+    '.lolidle-box header{display:flex;align-items:center;gap:10px;padding:12px 16px;background:#11151c;border-bottom:1px solid #29303c;flex-wrap:wrap}',
+    '.lolidle-box header b{font-size:13px;font-weight:700;color:#eef2f8}',
+    '.lolidle-box .corpo{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:8px}',
+    '.lolidle-box footer{display:flex;align-items:center;gap:8px;padding:10px 16px;background:#0a0d11;border-top:1px solid #29303c;flex-wrap:wrap}',
+    '.lolidle-box button{background:#1b2029;color:#eef2f8;border:1px solid #29303c;border-radius:9px;padding:7px 13px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}',
+    '.lolidle-box button:hover{background:#222b37;border-color:#3a4658}',
+    '.lolidle-box button.sec{background:transparent;color:#a7b2c3}',
+    '.lolidle-box button.danger{background:#3a1512;color:#ffbcb3;border-color:#7a2a22}',
+    '.lolidle-box input,.lolidle-box select{background:#0a0d11;color:#eef2f8;border:1px solid #29303c;border-radius:8px;padding:5px 8px;font:inherit;font-size:12px}',
+    '.lolidle-box .muted{color:#7c8798;font-size:10.5px}',
+    '#lolidle-ap-modal .filtros{display:flex;align-items:center;gap:6px;padding:9px 16px;border-bottom:1px solid #1d232c;flex-wrap:wrap}',
+    '#lolidle-ap-modal .grade{flex:1;overflow:auto;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:8px;align-content:start}',
+    '#lolidle-ap-modal .frame{position:relative;aspect-ratio:1;background:#11151c;border:2px solid #29303c;border-radius:9px;cursor:pointer;overflow:hidden;padding:0}',
+    '#lolidle-ap-modal .frame img{width:100%;height:100%;object-fit:cover;display:block}',
+    '#lolidle-ap-modal .frame span{position:absolute;left:0;right:0;bottom:0;font-size:8px;background:#000c;padding:1px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#lolidle-ap-modal .frame.epico{border-color:#7a4fbf}#lolidle-ap-modal .frame.lendario{border-color:#b07a20}',
+    '#lolidle-ap-modal .frame.sel{border-color:#f0c24e;box-shadow:0 0 0 1px #f0c24e,0 0 14px #f0c24e66}',
+    '#lolidle-ap-modal .if{background:transparent;color:#a7b2c3;border:1px solid #29303c;border-radius:8px;padding:4px 11px;font:inherit;font-size:11px;cursor:pointer}',
+    '#lolidle-ap-modal .if.ativa{background:#221a0c;color:#f0c24e;border-color:#4a3b10}',
+    '#lolidle-ap-testes .set{display:grid;grid-template-columns:150px repeat(4,1fr) 120px 28px;gap:6px;align-items:center;background:#11151c;border:1px solid #1d232c;border-radius:9px;padding:6px 9px}',
+    '#lolidle-ap-testes .fixo{color:#7c8798;font-size:10px;display:flex;align-items:center;gap:4px}',
+    '#lolidle-ap-testes .res{font-size:10.5px;color:#a7b2c3;border-top:1px solid #1d232c;padding-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}',
+    '#lolidle-ap-testes .res b{color:#f0c24e}',
+    '#lolidle-ap-confirma .box{width:min(540px,92vw);background:#0c0f14;border:1px solid #29303c;border-radius:16px;padding:18px 20px;box-shadow:0 28px 90px #000e}',
+    '#lolidle-ap-confirma h3{margin:0 0 10px;font-size:15px;color:#eef2f8}',
+    '#lolidle-ap-confirma ul{margin:0 0 14px;padding-left:20px;color:#a7b2c3;font-size:12px}',
+    '#lolidle-ap-confirma li{margin:4px 0}',
+    '#lolidle-ap-confirma .botoes{display:flex;gap:8px;justify-content:flex-end}',
+    '#lolidle-ap-confirma .botoes button{background:#1b2029;color:#eef2f8;border:1px solid #29303c;border-radius:9px;padding:8px 15px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}',
+    '#lolidle-ap-confirma .botoes button#ap-cf-ok{background:#2a2110;color:#f0c24e;border-color:#4a3b10}',
+    '#lolidle-ap-confirma .botoes button#ap-cf-ok.danger{background:#3a1512;color:#ffbcb3;border-color:#7a2a22}',
+    '#lolidle-ap-ajuda h4{margin:12px 0 4px;color:#f0c24e;font-size:12px}',
+    '#lolidle-ap-ajuda p,#lolidle-ap-ajuda li{color:#a7b2c3;font-size:12px;margin:4px 0}',
+    '#lolidle-ap-ajuda dl{margin:0}#lolidle-ap-ajuda dt{color:#eef2f8;font-weight:700;font-size:12px;margin-top:8px}',
+    '#lolidle-ap-ajuda dd{margin:2px 0 0;color:#a7b2c3;font-size:11.5px}',
+    '#lolidle-ap-ajuda .macro{background:#11151c;border-left:2px solid #24405c;border-radius:0 9px 9px 0;padding:8px 11px;margin:5px 0}',
+    '#lolidle-ap-ajuda .macro b{color:#f0c24e}',
   ].join('\n');
-
   function injectCss() {
     const velho = $('lolidle-ap-style');
     if (velho && velho.textContent === CSS) return;
@@ -766,90 +756,81 @@ switches: 'interruptores',
   }
 
   // ============================================================ 4. ESTRUTURA (DOM)
+  // A CASCA mudou por completo (revamp 2026-10-22): rail de navegação à esquerda com os nove
+  // destinos agrupados por ASSUNTO (Operar / Ajustar / Acompanhar / Sistema), cabeçalho de uma
+  // faixa e conteúdo num só cartão por assunto. Os IDS dos contentores NÃO mudaram — os
+  // desenhadores e os handlers continuam a encontrar tudo; o que mudou foi o desenho à volta.
   function build() {
     if ($('lolidle-ap')) return;
     const p = document.createElement('div');
     p.id = 'lolidle-ap';
     p.innerHTML = ''
       + '<header>'
-      + '  <div class="hrow">'
+      + '  <div class="brand">'
       + '    <img class="logo" src="' + LOGO + '" alt="LoL Idle">'
       + '    <span class="tit">Auto-play</span>'
       + '    <span class="pill off" id="ap-estado"><i></i><b>, </b></span>'
-      + '    <span class="fase" id="ap-fase">carregando…</span>'
-      + '    <span class="sp"></span>'
-      + '    <button class="ic" id="ap-pin" title="Fixar aberto (mantém o painel visível)">📌</button>'
-      + '    <button class="ic" id="ap-help" title="Ajuda: como usar, glossário e a ordem do auto-play">?</button>'
-      + '    <button class="ic" id="ap-close" title="Fechar (Esc)">✕</button>'
       + '  </div>'
-      + '  <div class="hrow">'
+      + '  <div class="hstats">'
       + '    <span class="mini"><b id="ap-h-nivel">, </b><small>nível</small></span>'
       + '    <span class="mini"><b id="ap-h-ouro">, </b><small>ouro</small></span>'
       + '    <span class="mini"><b id="ap-h-hp">, </b><small>vida</small></span>'
-      + '    <span class="mini wide"><b id="ap-h-local">, </b><small>onde você está</small></span>'
-      + '    <span class="mini wide"><b id="ap-h-regiao">, </b><small>melhor região agora</small></span>'
-      // O CABEÇALHO MOSTRA O ESTADO, NÃO O CONTROLA (pedido do dono, TK-02): o interruptor
-      // mestre é UM só e vive no cartão grande AUTO-PLAY, no topo do Painel. Antes havia aqui
-      // um switch (`ap-on`) E um botão grande (`ap-panic`) a fazer o mesmo que o cartão — três
-      // controlos para a mesma coisa. O estado lê-se na pílula (`ap-estado`) e o motivo na
-      // linha de fase (`ap-fase`), sem abrir nenhuma aba.
-      + '    <span class="sp"></span>'
+      + '    <span class="mini wide"><b id="ap-h-local">, </b><small>onde</small></span>'
+      + '    <span class="mini wide"><b id="ap-h-regiao">, </b><small>melhor região</small></span>'
       + '  </div>'
+      + '  <div class="hacts">'
+      + '    <button class="ic" id="ap-pin" title="Fixar aberto (mantém o painel visível)">📌</button>'
+      + '    <button class="ic" id="ap-help" title="Ajuda e glossário">?</button>'
+      + '    <button class="ic" id="ap-close" title="Fechar (Esc)">✕</button>'
+      + '  </div>'
+      + '  <div class="fase" id="ap-fase">carregando…</div>'
       + '</header>'
-      // ABAS agrupadas por ASSUNTO: Painel = estado + switches (controle); Itens = mochila +
-      // build por fase + cofre; MERCADO = ofertas, compra da build, Ornn e vigia de itens/
-      // jogadores; Personagem = habilidades + atributos; Ganhos = farm/ganhos + histórico.
-      // Os ids dos elementos NÃO mudaram (os handlers continuam a encontrar tudo); só mudou a
-      // `<section class="pane">` onde cada um vive.
+      + '<div class="shell">'
       + '<nav id="ap-tabs">'
-      + '  <button class="tab ativa" data-tab="painel">Painel</button>'
-      + '  <button class="tab" data-tab="macro">Macro</button>'
-      + '  <button class="tab" data-tab="itens">Itens</button>'
-      + '  <button class="tab" data-tab="mercado">Mercado</button>'
-      + '  <button class="tab" data-tab="personagem">Personagem</button>'
-      + '  <button class="tab" data-tab="ganhos">Ganhos</button>'
-      + '  <button class="tab" data-tab="historico">Histórico</button>'
-      + '  <button class="tab" data-tab="pocao">Poção</button>'
-      + '  <button class="tab" data-tab="manual">Manual</button>'
+      + '  <span class="nav-sec">Operar</span>'
+      + '  <button class="tab ativa" data-tab="painel"><i>◈</i><span>Painel</span></button>'
+      + '  <button class="tab" data-tab="itens"><i>▤</i><span>Itens</span></button>'
+      + '  <button class="tab" data-tab="mercado"><i>⇄</i><span>Mercado</span></button>'
+      + '  <span class="nav-sec">Ajustar</span>'
+      + '  <button class="tab" data-tab="macro"><i>⚙</i><span>Macro</span></button>'
+      + '  <button class="tab" data-tab="personagem"><i>✦</i><span>Personagem</span></button>'
+      + '  <span class="nav-sec">Acompanhar</span>'
+      + '  <button class="tab" data-tab="ganhos"><i>▲</i><span>Ganhos</span></button>'
+      + '  <button class="tab" data-tab="historico"><i>✳</i><span>Histórico</span></button>'
+      + '  <span class="nav-sec">Sistema</span>'
+      + '  <button class="tab" data-tab="pocao"><i>✚</i><span>Poção</span></button>'
+      + '  <button class="tab" data-tab="manual"><i>⌘</i><span>Manual</span></button>'
       + '</nav>'
       + '<main>'
+      // ---------------- PAINEL: o retrato de agora + o interruptor mestre ----------------
       + '  <section class="pane on" id="ap-t-painel">'
-      + '    <p class="intro">O que está a acontecer agora e os switches que mandam no auto-play.</p>'
-      // AUTO FARM NO PAINEL (pedido do dono 2026-10-21): modalidade + objetivo + alvos, ANTES do
-      // cartão mestre (que traz a árvore toda e é comprido). É a primeira coisa que se vê.
+      // AUTO FARM PRIMEIRO (pedido do dono 2026-10-21): modalidade + objetivo + alvos antes do
+      // cartão mestre. É o que se quer ver ao abrir.
       + '    <div class="grid2"><div id="ap-fm-modo"></div><div id="ap-fm-objetivo"></div></div>'
       + '    <div id="ap-fm-itens"></div>'
-      // ESTADO + CONTROLE: o interruptor mestre e a árvore dos switches.
+      // ESTADO + CONTROLE: o interruptor mestre e a árvore dos switches pendurada nele.
       + '    <div id="ap-painel-estado"></div>'
-      + '    <div class="grid2">'
-      + '      <div id="ap-now-estado"></div>'
-      + '      <div id="ap-now-fase"></div>'
-      + '    </div>'
+      + '    <div class="grid2"><div id="ap-now-estado"></div><div id="ap-now-fase"></div></div>'
       + '    <div id="ap-now-combate"></div>'
-      // RESUMO DE 1 LINHA da build por fase: o bloco grande mudou para a aba Itens (era ele
-      // que aparecia preso em todas as abas). Aqui fica só o estado, para não perder a leitura.
+      // RESUMO de 1 linha da build por fase (o bloco grande vive na aba Itens).
       + '    <div id="ap-painel-build"></div>'
       + '    <div id="ap-now-parado"></div>'
-      // A ÁRVORE DE INTERRUPTORES NÃO TEM MAIS CARTÃO PRÓPRIO: ela é desenhada DENTRO do
-      // cartão AUTO-PLAY (`renderPainelEstado` cria o `#ap-auto-arvore`). Um cartão separado
-      // abaixo do mestre era a queixa do dono ("tudo tem que estar dentro do auto play").
+      // A árvore de interruptores é desenhada DENTRO do cartão AUTO-PLAY (#ap-auto-arvore).
       + '    <div id="ap-auto-champ"></div>'
       + '    <div class="grid2"><div id="ap-auto-regiao"></div><div id="ap-auto-falta"></div></div>'
       + '    <div id="ap-now-jogo"></div>'
       + '    <div id="ap-auto-tarefa"></div>'
       + '  </section>'
-      // MACRO (pedido do dono 2026-10-21): os DETALHES de cada rotina, um bloco por assunto.
-      // O ⚙ de cada switch na árvore leva aqui. Nada de ações manuais: é configuração.
+      // ---------------- MACRO: configuração de cada rotina ----------------
       + '  <section class="pane" id="ap-t-macro">'
-      + '    <p class="intro">Os detalhes de cada rotina, um bloco por assunto.</p>'
       + '    <div id="ap-macro-farm"></div>'
       + '    <div id="ap-macro-cartas"></div>'
       + '    <div id="ap-macro-mercado"></div>'
       + '    <div id="ap-auto-base"></div>'
       + '    <div id="ap-build-fase"></div>'
       + '  </section>'
+      // ---------------- ITENS: mochila, build, DPS e cofre ----------------
       + '  <section class="pane" id="ap-t-itens">'
-      + '    <p class="intro">A build por fase, o que está equipado, a mochila e o cofre.</p>'
       + '    <div id="ap-it-build"></div>'
       + '    <div id="ap-it-proteg"></div>'
       + '    <div id="ap-it-mochila"></div>'
@@ -857,35 +838,31 @@ switches: 'interruptores',
       + '    <div id="ap-it-dps"></div>'
       + '    <div id="ap-it-cofre"></div>'
       + '  </section>'
-      // MERCADO — aba própria (pedido do dono). Os ids `ap-mk-*` mudaram de sítio mas NÃO
-      // mudaram de nome: os handlers/ACOES continuam a encontrá-los sem alteração.
+      // ---------------- MERCADO ----------------
       + '  <section class="pane" id="ap-t-mercado">'
-      + '    <p class="intro">A vigia que compra sozinha, as suas ofertas e a bancada do Ornn.</p>'
       + '    <div id="ap-mk-watch"></div>'
       + '    <div id="ap-mk-ofertas"></div>'
       + '    <div id="ap-mk-plano"></div>'
       + '    <div id="ap-mk-ornn"></div>'
       + '    <div id="ap-mk-compra"></div>'
       + '  </section>'
+      // ---------------- PERSONAGEM ----------------
       + '  <section class="pane" id="ap-t-personagem">'
-      + '    <p class="intro">Habilidades e atributos: os pontos que faltam gastar e o botão para gastar.</p>'
       + '    <div class="grid2"><div id="ap-sk-barra"></div><div id="ap-sk-pontos"></div></div>'
       + '    <div id="ap-sk-acoes"></div>'
       + '    <div class="grid2"><div id="ap-at-pontos"></div><div id="ap-at-stats"></div></div>'
       + '    <div id="ap-at-acoes"></div>'
       + '  </section>'
+      // ---------------- GANHOS ----------------
       + '  <section class="pane" id="ap-t-ganhos">'
-      + '    <p class="intro">O que você está a ganhar por minuto e por região.</p>'
       + '    <div id="ap-fm-agora"></div>'
       + '    <div id="ap-fm-previsor"></div>'
       + '    <div id="ap-fm-regioes"></div>'
       + '    <div id="ap-fm-rank"></div>'
       + '    <div id="ap-fm-ciclos"></div>'
       + '  </section>'
-      // HISTÓRICO (48 h) — separado de Ganhos: aqui é o REGISTO do que aconteceu, não a
-      // previsão. O dono pediu "o que vendeu, o que obteve, o que gastou, onde e o que caiu".
+      // ---------------- HISTÓRICO ----------------
       + '  <section class="pane" id="ap-t-historico">'
-      + '    <p class="intro">O que você vendeu, ganhou, gastou e onde estava nas últimas 48 horas.</p>'
       + '    <div id="ap-hi-48h-resumo"></div>'
       + '    <div id="ap-hi-48h"></div>'
       + '    <div id="ap-hi-mortes"></div>'
@@ -893,28 +870,25 @@ switches: 'interruptores',
       + '    <div id="ap-hi-eventos"></div>'
       + '    <div id="ap-hi-problemas"></div>'
       + '  </section>'
-      // POÇÃO: a auto-poção tem a sua própria aba. A decisão inteligente TEM interruptor
-      // (`pocaoSmart`); fora do PvE do mapa, a automação usa o limiar de vida.
+      // ---------------- POÇÃO ----------------
       + '  <section class="pane" id="ap-t-pocao">'
-      + '    <p class="intro">Quando usar cada poção e quantas você tem.</p>'
       + '    <div id="ap-pc-resumo"></div>'
       + '    <div id="ap-now-pocoes"></div>'
       + '  </section>'
-      // MANUAL — tudo o que é clique humano, fora do caminho automático.
+      // ---------------- MANUAL ----------------
       + '  <section class="pane" id="ap-t-manual">'
-      + '    <p class="intro">Forçar um passo ou medir. O auto-play não precisa disto.</p>'
       + '    <div id="ap-manual-info"></div>'
       + '    <div id="ap-manual-dinamicas"></div>'
       + '    <div id="ap-auto-acoes"></div>'
       + '  </section>'
       + '</main>'
-      + '<footer><span class="fb" id="ap-fb">Pronto. Passa o mouse sobre cada botão para ver o que faz.</span>'
-      + '<span class="hint" id="ap-hint">F8 ou o seu nome abre · 📌 fixa aberto · Esc ou ✕ fecha</span></footer>';
+      + '</div>'
+      + '<footer><span class="fb" id="ap-fb">Pronto.</span>'
+      + '<span class="muted">F8 abre · 📌 fixa · Esc fecha</span></footer>';
     (document.body || document.documentElement).appendChild(p);
     buildModais();
     bind();
   }
-
   function buildModais() {
     const corpo = document.body || document.documentElement;
     // ---- escolher itens -------------------------------------------------------
@@ -922,7 +896,7 @@ switches: 'interruptores',
       const m = document.createElement('div');
       m.id = 'lolidle-ap-modal'; m.hidden = true;
       m.innerHTML = '<div class="box lolidle-box">'
-        + '<header><b>Escolher itens para farmar</b><span class="muted">o auto-play calcula em que região cada item dropa e leva você até lá</span><span class="sp"></span>'
+        + '<header><b>Escolher itens para farmar</b><span class="muted">o auto-play leva você à região de cada um</span><span class="sp"></span>'
         + '<input id="ap-item-busca" type="search" placeholder="procurar item…"><button id="ap-modal-x" class="sec">Fechar</button></header>'
         // 108 itens no catálogo (19 básicos, 40 épicos, 49 lendários). Qualquer um deles pode
         // ser escolhido, por isso os básicos (peças) têm filtro próprio em vez de ficarem
@@ -939,7 +913,7 @@ switches: 'interruptores',
       const m = document.createElement('div');
       m.id = 'lolidle-ap-testes'; m.hidden = true;
       m.innerHTML = '<div class="box lolidle-box">'
-        + '<header><b>Testar conjuntos de itens</b><span class="muted">monte até 4 conjuntos e a automação roda cada um (mobs + chefe) e mede ouro/xp/dano reais. Rabadon é fixo em todos.</span>'
+        + '<header><b>Testar conjuntos</b><span class="muted">até 4 conjuntos, medidos em mobs e chefe</span>'
         + '<span class="sp"></span><button id="ap-tx-x" class="sec">Fechar</button></header>'
         + '<div class="corpo" id="ap-tx-lista"></div>'
         + '<footer><button id="ap-tx-add" class="sec">+ conjunto</button><button id="ap-tx-base" class="sec">Usar o que está equipado</button>'
@@ -991,7 +965,7 @@ switches: 'interruptores',
     if ($('lolidle-ap-launch')) return;
     const b = document.createElement('button');
     b.id = 'lolidle-ap-launch';
-    b.textContent = '⚙ Auto-play';
+    b.textContent = 'Auto-play';
     b.title = 'Abrir/fechar o painel do auto-play (F8)';
     b.addEventListener('click', () => (aberto ? fechar() : abrir()));
     (document.body || document.documentElement).appendChild(b);
@@ -2091,6 +2065,9 @@ switches: 'interruptores',
       : '<p class="vazio">Ainda não há leitura do cofre, não sei o que está guardado.</p>'
         + '<p class="hint tira">A automação lê o cofre sozinho quando passa pela Fonte e <b>grava</b> o que lá está. A partir daí esta lista aparece aqui sempre que você quiser, onde você estiver.</p>';
     const corpo = lista
+      // POLÍTICA DO COFRE (ordem do dono, 2026-10-22), numa linha e escondida pelo modo "texto
+      // curto" (`.hint.tira`): quem quiser o detalhe vê, quem não quiser não tem mais um bloco.
+      + '<p class="hint tira">Mochila perto de encher: lendário <b>A</b> vai para o cofre. Cofre cheio: os <b>C/B</b> saem para dar lugar a um A (troca na mesma passagem).</p>'
       + (pode ? '' : '<p class="hint">O cofre só abre na Fonte ou na cidade (Tesoureira de Piltover / Burrinho de Carga), você está em <b>' + esc(local) + '</b>. A lista acima é a última leitura gravada.</p>')
       + diag('Cofre: forçar leitura e ações manuais (manutenção manual)')
       + '<div class="acoes">'
