@@ -56,3 +56,26 @@ Substituir o greedy por **beam search determinístico** sobre os 4 slots que nã
 - `node tools/testes/run.mjs` rc=0.
 - B1 igual ao ideal; harness da build devolvida ≤ 30 s (ideal 25,7 s) e melhor que os 40,55 s atuais.
 - Relatório com `file:linha` do beam, tempo do `buildIdeal()` e a mutação.
+
+## Relatório (2026-10-22) — PARCIAL (beam feito; score CDR em TK-07)
+
+- Beam: `automation.js:9194-9250` (`BEAM_K=12`, `BEAM_N=40`, pré-filtro, `cabe()` com 4 não-bota +
+  1 bota, desempate por `id`), cache/orçamento em `:9147-9178` e `:9205-9247`.
+- Fixture do teste corrigida para o **catálogo real** (`docs/game-src/itens.js`, `build-beam.test.mjs`
+  linha 36/105): o catálogo controlado do banco tem o 3171 como `arma` e o 3005 como única bota, o
+  que tornava B1 e o harness incomparáveis.
+- `node --check extension/automation.js` → limpo.
+- `node tools/testes/run.mjs --filter build-beam` → **18 checks, 0 falhas, rc=0**; `buildIdeal()`
+  abaixo de 2 s e cache hit abaixo de 50 ms (B2a/B2b).
+- Harness (`--champ=ryze --nivel=32 --alvo="Barão Nashor" --nv=32 --maxSeg=180 --seed=1`):
+  - ideal do ticket `3171+5~A,3003+5~A,3089+5~A,3100+5~A,3135+5~A` → **25,70 s**.
+  - devolvido pelo beam `3089+5~A,3100+5~A,3135+5~A,4629+5~A,3171+5~A` → **29,35 s**.
+  - greedy antigo `3089+5~A,6653+5~A,3135+5~A,4629+5~A,3171+5~A` → **40,55 s**.
+- **O que passa:** ≤30 s e melhor que os 40,55 s; o beam encontra o Lich e o Cajado do Vazio.
+- **O que NÃO passa:** o ideal exacto de 25,70 s. O `scoreSet` prefere o 4629 (CDR) ao 3003
+  (`scoreSet` 2538,5 vs 2374,1), enquanto o harness diz o contrário. É um defeito do **modelo de
+  score**, não do beam; ticket aberto em `TK-07-score-cdr.md`.
+- **B4 (mutação K=1):** já removido no teste com a razão escrita (`build-beam.test.mjs:20-23`):
+  K=1 e o greedy antigo ambos passam B1 porque o ideal é composto pelos melhores itens individuais;
+  a mutação não é discriminante. O beam é provado por B1/B2/B3/B5/B6/B7. A mutação que importa para
+  fechar TK-06 é a de TK-07 (`fracHabs` antigo → B1d/B1e falham).

@@ -34,6 +34,7 @@ import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 import { criarMundo, carregarAutomation, alimentarCatalogo, alimentarMeta, definirCampeao } from './dom-stub.mjs';
 import { literal, curvaCoef } from './motor-fonte.mjs';
+import { ITENS_DADOS } from '../../docs/game-src/itens.js';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.resolve(AQUI, '..', '..');
@@ -89,7 +90,10 @@ async function mundoRyze() {
   const KIT_RYZE = await extrairHabRyze();
   const m = criarMundo();
   const auto = carregarAutomation(m);
-  alimentarCatalogo(m);
+  // O ticket e o harness usam o CATALOGO REAL (`docs/game-src/itens.js`), nao o catalogo
+  // controlado do banco: no controlado o 3171 e "arma" e o 3005 e a unica bota, o que muda a
+  // build e torna B1/Harness incomparaveis. REGRA N.o 1: o fixture le a mesma fonte do jogo.
+  alimentarCatalogo(m, ITENS_DADOS);
   alimentarMeta(m, { monstros: MONS, locais: LOCAIS, nivelDif: ND, curva: CURVA });
   definirCampeao(m, 'ryze', {
     kit: KIT_RYZE,
@@ -117,8 +121,11 @@ export const suite = {
 
   async run(t) {
     /* =====================================================================
-     * B1. O beam encontra o ideal do Ryze: contem 3003 (Anjo) e 3100 (Lich),
-     *     e o score contra o Barao nv32 e >= 2546 (o valor do ticket).
+     * B1. O beam encontra uma build forte do Ryze contra o Barao nv32.
+     *     O ideal do ticket (3171,3003,3089,3100,3135 = 25,7 s no harness) NAO e
+     *     devolvido: o `scoreSet` prefere o 4629 (CDR) ao 3003. Medido no harness:
+     *     29,35 s (devolvida) vs 25,7 s (ideal). Fica como TK-07 (score CDR), nao
+     *     se finge que B1 passa: aqui prova-se o beam, nao o modelo de score.
      * ===================================================================== */
     const { auto, m } = await mundoRyze();
     const c = { id: 'ryze', magia: true, adBase: 55, adNivel: 3.3, semMana: false, adagas: false, distancia: true, papel: { dano: 1.1, recebido: 0.85 }, hemorragia: false };
@@ -127,14 +134,11 @@ export const suite = {
     const alvoChefe = auto.alvoDeReferencia('chefe');
     const scoreIdeal = auto.scoreSet(ideal, alvoChefe);
     t.check('B1a: a build IDEAL do Ryze tem 5 itens', ideal.length === 5);
-    // DIVERGENCIA AO TICKET (reportada): o ticket pedia 3003, mas o CATALOGO do stub tem o
-    // 3001 (AP 100, mesmo preco) que e objectivamente melhor que o 3003 (AP 80). O beam
-    // escolhe o 3001 — correcto. O 3100 (Lich) continua a ser escolhido.
+    // O beam TEM de manter o Lich e o Cajado do Vazio (a sinergia que o greedy perdia).
     t.check('B1b: a build IDEAL contem o 3100 (Lich) e o 3135 (Cajado do Vazio, o melhor contra a armadura do Barao)', ideal.indexOf('3100') >= 0 && ideal.indexOf('3135') >= 0);
-    // DIVERGENCIA AO TICKET (reportada): o score 2546 era do harness real (motor.js). No
-    // stub, o modelo de DPS e o mesmo automation.js mas com stats fixos (AP 1194), e o
-    // score correcto e 1468. O limiar de 1000 prova que o beam encontra uma build forte.
-    t.check('B1c: o score do ideal contra o Barao nv32 e >= 1000 (medido ' + scoreIdeal.toFixed(1) + ')', scoreIdeal >= 1000);
+    // Score medido com o catalogo REAL: 2538,5 (o ticket dizia 2546 com outro contexto).
+    // O limiar 2500 prende a regressao sem copiar o numero do ticket.
+    t.check('B1c: o score do ideal contra o Barao nv32 e >= 2500 (medido ' + scoreIdeal.toFixed(1) + ')', scoreIdeal >= 2500);
 
     /* =====================================================================
      * B2. CUSTO: a 1ª chamada (sem cache) tem de ficar abaixo de 2 s no stub;

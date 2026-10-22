@@ -53,3 +53,21 @@ não voltou).
 - `node tools/testes/run.mjs` rc=0, suite `mercado-servidor` com os novos checks.
 - Nenhuma leitura abre `#janela-mercado`; abrir só acontece no ramo de cancelamento.
 - Relatório com `file:linha` do código novo e o resultado da mutação.
+
+## Relatório (2026-10-22) — FECHADO
+
+- Código: `automation.js:6737-6746`.
+  - `:6738` — sem `#janela-mercado` montada devolve
+    `{ ok:false, de:'mercado', motivo:'mercado-nao-montado', tentou:o.id }`; não há `press('j')`
+    porque `mercadoEl(true)` devolve `null` antes de qualquer tecla.
+  - `:6742-6744` — `cancelou = cancelarOferta(o.id) === true`; o `finally` fecha a janela.
+  - `:6745` — `if (!cancelou)` devolve `ok:false, motivo:'cancelamento-nao-confirmado'`.
+  - `:6746` — só aqui devolve `ok:true, de:'mercado'`.
+- Testes: `mercado-servidor.test.mjs:35-86` (M1a/M1b/M1c), com contagem de keydowns e clique de
+  fecho. `node tools/testes/run.mjs --filter mercado-servidor` → **27 checks, 0 falhas, rc=0**.
+- `node --check extension/automation.js` → limpo.
+- **Mutação corrida:** apagada a linha `:6745` (`if (!cancelou) ...`), a suite deu **2 falhas**
+  (`M1c: sem botao de cancelar -> ok:false`, `M1c: motivo = cancelamento-nao-confirmado`) e
+  **rc=1**. Linha restaurada; suite voltou a **27/0, rc=0**. O teste é discriminante.
+- Nenhuma leitura abre `#janela-mercado`: M1a/M3/M7/M8 continuam com zero keydown; a abertura só
+  acontece no ramo de cancelamento (M1b/M1c, 1 keydown `j`).
