@@ -104,9 +104,27 @@ export const suite = {
     /* ================= T8 - NENHUMA aba/ID se perdeu no revamp ================= */
     // A casca foi reescrita; os contentores NAO podem ter mudado, ou os desenhadores
     // (`renderTudo`) e os handlers (`ACOES`) deixam de encontrar o que desenham.
-    const abas = ['painel', 'itens', 'mercado', 'macro', 'personagem', 'ganhos', 'historico', 'pocao', 'manual'];
-    t.check('T8: as nove abas existem (botao do rail + painel)',
+    const abas = ['painel', 'farm', 'itens', 'mercado', 'macro', 'personagem', 'ganhos', 'historico', 'pocao', 'manual'];
+    t.check('T8: as dez abas existem (botao do rail + painel)',
       abas.every((a) => src.includes('data-tab="' + a + '"') && src.includes('id="ap-t-' + a + '"')));
+    // O FARM é aba PRÓPRIA (ordem do dono, 2026-10-22): deixou de ser um alias de "ganhos".
+    t.check('T8d: a aba FARM deixou de ser alias de ganhos',
+      /farm:\s*'farm'/.test(src));
+    // O pin saiu e o rodapé não o anuncia.
+    t.check('T8e: o botão de fixar (📌) saiu do cabeçalho',
+      !src.includes('id="ap-pin"') && !/📌 fixa/.test(src));
+    // A frase que o dono nunca mais quer ver: "Sem tarefa ativa. Fala com o Capitão..."
+    t.check('T8f: a frase "Sem tarefa ativa" saiu da GUI',
+      !src.includes('Sem tarefa ativa'));
+    // A checklist da base é descartável: vive na aba Manual, não no ecrã principal.
+    t.check('T8g: a checklist da base vive dentro da aba Manual',
+      /id="ap-t-manual"[\s\S]*ap-auto-falta[\s\S]*id="ap-t-historico"|ap-auto-falta[\s\S]*id="ap-auto-acoes"/.test(src));
+    // Agrupamento por conveniência declarado pelo MOTOR (não pela GUI).
+    const AUTO = fs.readFileSync(path.join(RAIZ, 'extension', 'automation.js'), 'utf8');
+    t.check('T8h: o motor declara grupo+ordem nos switches (jogo/gastos)',
+      AUTO.includes("grupo: 'jogo'") && AUTO.includes("grupo: 'gastos'") && AUTO.includes('ordem:'));
+    t.check('T8i: a GUI desenha os dois grupos de conveniência',
+      src.includes("'No dia a dia'") && src.includes("'Gastos e extras'"));
     t.check('T8b: o cabecalho mantem os IDs que o renderCabecalho escreve',
       ['ap-estado', 'ap-h-nivel', 'ap-h-ouro', 'ap-h-hp', 'ap-h-local', 'ap-h-regiao'].every((i) => src.includes('id="' + i + '"')));
     t.check('T8c: os contentores que os desenhadores procuram continuam la',

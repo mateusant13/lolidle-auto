@@ -80,6 +80,9 @@ import { suite as suiteFix20261021 } from './fix-2026-10-21.test.mjs';
 import { suite as suiteMercadoPreco } from './mercado-preco.test.mjs';
 // GUI (dono, 2026-10-21): texto auto-explicativo fora, contraste e popup da macro.
 import { suite as suiteGuiTexto } from './gui-texto.test.mjs';
+// ORDENS DE 2026-10-22 (dono): sempre em missão, skills que o PvE não ativa fora da rotação e
+// chefe-fatal sem inviabilizar o farm (fuga na deteção).
+import { suite as suitePveSempre } from './pve-sempre.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -113,6 +116,7 @@ const SUITES = [
   suiteFix20261021,
   suiteMercadoPreco,
   suiteGuiTexto,
+  suitePveSempre,
 ];
 const checks = [];
 const notas = [];

@@ -154,7 +154,7 @@ switches: 'interruptores',
   let cofreStore = null;  // espelho de COFRE_KEY: { at, itens }, última leitura GRAVADA do cofre
   let ofertasStore = null;// espelho de OFERTAS_KEY: { at, ofertas }, última leitura do mercado
   let estadoStore = null; // espelho de ESTADO_KEY: estado COMPLETO do jogo (motor grava a cada 20 s)
-  let aberto = false, fixado = false, saveTimer = null, tabAtiva = 'painel', ultimoRender = 0, cacheAgora = { at: 0, v: null };
+  let aberto = false, saveTimer = null, tabAtiva = 'painel', ultimoRender = 0, cacheAgora = { at: 0, v: null };
   // Espelho de GUI_KEY (preferências da GUI, não da automação). `bfAberto`: o bloco da build por
   // fase está aberto? `farmModo`: 'sozinho' (a automação escolhe a região) ou 'item' (escolhe-se
   // o que dropar). Lido no boot e reescrito a cada clique - sobrevive ao F5.
@@ -609,7 +609,9 @@ switches: 'interruptores',
     '#lolidle-ap .grp{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin:8px 0 3px}',
     '#lolidle-ap .grp small{font-weight:600;letter-spacing:0;color:var(--mut)}',
     // ---- ITENS (chips, frames, build) ----
-    '#lolidle-ap .frames{display:flex;gap:6px;flex-wrap:wrap}',
+    // FILA HORIZONTAL, não pilha (queixa do dono, 2026-10-22: "os ícones estão horríveis, verticais").
+    // A build rola na horizontal e cada peça é um bloco deitado: ícone à esquerda, nome à direita.
+    '#lolidle-ap .frames{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:3px}',
     '#lolidle-ap .iframe{position:relative;width:46px;height:46px;background:#0b0e13;border:1px solid var(--lin);border-radius:9px;overflow:hidden;display:inline-block}',
     '#lolidle-ap .iframe img{width:100%;height:100%;object-fit:cover;display:block}',
     '#lolidle-ap .iframe .q{position:absolute;right:2px;bottom:1px;font-size:9px;font-weight:700;background:#000c;border-radius:4px;padding:0 3px;color:#fff}',
@@ -631,11 +633,11 @@ switches: 'interruptores',
     '#lolidle-ap .bf-col h4 .tag{font-size:9px;background:#2a2110;color:var(--ouro);border:1px solid #4a3b10;border-radius:999px;padding:0 7px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}',
     '#lolidle-ap .bf-col h4 .tag.ok{background:#0f2318;color:var(--verde);border-color:#1f5c3a}',
     '#lolidle-ap .bf-dica{margin:0 0 6px;color:var(--mut);font-size:10px}',
-    '#lolidle-ap .bf-itens{display:flex;gap:6px;flex-wrap:wrap}',
-    '#lolidle-ap .bf-item{position:relative;width:84px;height:56px;border:2px solid var(--lin2);border-radius:9px;background:#0b0e13;display:block;overflow:hidden}',
-    '#lolidle-ap .bf-item img{width:100%;height:100%;object-fit:cover;display:block}',
+    '#lolidle-ap .bf-itens{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:3px}',
+    '#lolidle-ap .bf-item{position:relative;width:auto;height:46px;border:2px solid var(--lin2);border-radius:9px;background:#0b0e13;display:inline-flex;align-items:center;gap:6px;overflow:hidden;padding-right:8px;flex:0 0 auto}',
+    '#lolidle-ap .bf-item img{width:42px;height:42px;object-fit:cover;display:block;flex:0 0 auto}',
     '#lolidle-ap .bf-item .q{position:absolute;top:0;right:2px;font-size:9px;font-weight:700;color:var(--ouro);text-shadow:0 0 3px #000}',
-    '#lolidle-ap .bf-item small{position:absolute;left:0;right:0;bottom:0;font-size:9.5px;text-align:center;background:#000c;color:#dbe3ee;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#lolidle-ap .bf-item small{position:static;font-size:11px;text-align:left;background:none;color:#dbe3ee;line-height:1.3;white-space:nowrap}',
     '#lolidle-ap .bf-item small .bf-nome{font-weight:700;color:#f2f6fb}',
     '#lolidle-ap .bf-item.equipado{border-color:var(--verde)}',
     '#lolidle-ap .bf-item.cofre{border-color:var(--azul)}',
@@ -779,7 +781,6 @@ switches: 'interruptores',
       + '    <span class="mini wide"><b id="ap-h-regiao">, </b><small>melhor região</small></span>'
       + '  </div>'
       + '  <div class="hacts">'
-      + '    <button class="ic" id="ap-pin" title="Fixar aberto (mantém o painel visível)">📌</button>'
       + '    <button class="ic" id="ap-help" title="Ajuda e glossário">?</button>'
       + '    <button class="ic" id="ap-close" title="Fechar (Esc)">✕</button>'
       + '  </div>'
@@ -788,12 +789,13 @@ switches: 'interruptores',
       + '<div class="shell">'
       + '<nav id="ap-tabs">'
       + '  <span class="nav-sec">Operar</span>'
-      + '  <button class="tab ativa" data-tab="painel"><i>◈</i><span>Painel</span></button>'
+      + '  <button class="tab ativa" data-tab="painel"><i>◈</i><span>Auto-play</span></button>'
+      + '  <button class="tab" data-tab="farm"><i>◎</i><span>Farm</span></button>'
       + '  <button class="tab" data-tab="itens"><i>▤</i><span>Itens</span></button>'
       + '  <button class="tab" data-tab="mercado"><i>⇄</i><span>Mercado</span></button>'
       + '  <span class="nav-sec">Ajustar</span>'
-      + '  <button class="tab" data-tab="macro"><i>⚙</i><span>Macro</span></button>'
       + '  <button class="tab" data-tab="personagem"><i>✦</i><span>Personagem</span></button>'
+      + '  <button class="tab" data-tab="macro"><i>⚙</i><span>Macro</span></button>'
       + '  <span class="nav-sec">Acompanhar</span>'
       + '  <button class="tab" data-tab="ganhos"><i>▲</i><span>Ganhos</span></button>'
       + '  <button class="tab" data-tab="historico"><i>✳</i><span>Histórico</span></button>'
@@ -802,24 +804,26 @@ switches: 'interruptores',
       + '  <button class="tab" data-tab="manual"><i>⌘</i><span>Manual</span></button>'
       + '</nav>'
       + '<main>'
-      // ---------------- PAINEL: o retrato de agora + o interruptor mestre ----------------
+      // ---------------- AUTO-PLAY: o primeiro ecrã é o que ele faz sozinho ----------------
       + '  <section class="pane on" id="ap-t-painel">'
-      // AUTO FARM PRIMEIRO (pedido do dono 2026-10-21): modalidade + objetivo + alvos antes do
-      // cartão mestre. É o que se quer ver ao abrir.
-      + '    <div class="grid2"><div id="ap-fm-modo"></div><div id="ap-fm-objetivo"></div></div>'
-      + '    <div id="ap-fm-itens"></div>'
-      // ESTADO + CONTROLE: o interruptor mestre e a árvore dos switches pendurada nele.
+      // 1) O MESTRE e os switches (é o que se liga/desliga).
       + '    <div id="ap-painel-estado"></div>'
+      // 2) O QUE ESTÁ A ACONTECER AGORA.
       + '    <div class="grid2"><div id="ap-now-estado"></div><div id="ap-now-fase"></div></div>'
       + '    <div id="ap-now-combate"></div>'
-      // RESUMO de 1 linha da build por fase (o bloco grande vive na aba Itens).
-      + '    <div id="ap-painel-build"></div>'
-      + '    <div id="ap-now-parado"></div>'
-      // A árvore de interruptores é desenhada DENTRO do cartão AUTO-PLAY (#ap-auto-arvore).
+      // 3) A MISSÃO (sempre em missão) e a região em uso.
+      + '    <div class="grid2"><div id="ap-auto-regiao"></div><div id="ap-auto-tarefa"></div></div>'
       + '    <div id="ap-auto-champ"></div>'
-      + '    <div class="grid2"><div id="ap-auto-regiao"></div><div id="ap-auto-falta"></div></div>'
       + '    <div id="ap-now-jogo"></div>'
-      + '    <div id="ap-auto-tarefa"></div>'
+      + '  </section>'
+      // ---------------- FARM: modalidade, objetivo, itens, regiões e ciclos ----------------
+      + '  <section class="pane" id="ap-t-farm">'
+      + '    <div class="grid2"><div id="ap-fm-modo"></div><div id="ap-fm-objetivo"></div></div>'
+      + '    <div id="ap-fm-itens"></div>'
+      + '    <div id="ap-fm-previsor"></div>'
+      + '    <div id="ap-fm-regioes"></div>'
+      + '    <div id="ap-fm-rank"></div>'
+      + '    <div id="ap-fm-ciclos"></div>'
       + '  </section>'
       // ---------------- MACRO: configuração de cada rotina ----------------
       + '  <section class="pane" id="ap-t-macro">'
@@ -832,6 +836,7 @@ switches: 'interruptores',
       // ---------------- ITENS: mochila, build, DPS e cofre ----------------
       + '  <section class="pane" id="ap-t-itens">'
       + '    <div id="ap-it-build"></div>'
+      + '    <div id="ap-painel-build"></div>'
       + '    <div id="ap-it-proteg"></div>'
       + '    <div id="ap-it-mochila"></div>'
       + '    <div id="ap-it-plano"></div>'
@@ -853,13 +858,10 @@ switches: 'interruptores',
       + '    <div class="grid2"><div id="ap-at-pontos"></div><div id="ap-at-stats"></div></div>'
       + '    <div id="ap-at-acoes"></div>'
       + '  </section>'
-      // ---------------- GANHOS ----------------
+      // ---------------- GANHOS: só CHEFES e CORRIDAS (sem ganhos de mob) ----------------
       + '  <section class="pane" id="ap-t-ganhos">'
       + '    <div id="ap-fm-agora"></div>'
-      + '    <div id="ap-fm-previsor"></div>'
-      + '    <div id="ap-fm-regioes"></div>'
-      + '    <div id="ap-fm-rank"></div>'
-      + '    <div id="ap-fm-ciclos"></div>'
+      + '    <div id="ap-fm-chefes"></div>'
       + '  </section>'
       // ---------------- HISTÓRICO ----------------
       + '  <section class="pane" id="ap-t-historico">'
@@ -875,8 +877,9 @@ switches: 'interruptores',
       + '    <div id="ap-pc-resumo"></div>'
       + '    <div id="ap-now-pocoes"></div>'
       + '  </section>'
-      // ---------------- MANUAL ----------------
+      // ---------------- MANUAL: o que é descartável (base pendente, bloqueios, ajuda) ----------------
       + '  <section class="pane" id="ap-t-manual">'
+      + '    <div class="grid2"><div id="ap-auto-falta"></div><div id="ap-now-parado"></div></div>'
       + '    <div id="ap-manual-info"></div>'
       + '    <div id="ap-manual-dinamicas"></div>'
       + '    <div id="ap-auto-acoes"></div>'
@@ -884,7 +887,7 @@ switches: 'interruptores',
       + '</main>'
       + '</div>'
       + '<footer><span class="fb" id="ap-fb">Pronto.</span>'
-      + '<span class="muted">F8 abre · 📌 fixa · Esc fecha</span></footer>';
+      + '<span class="muted">F8 abre · Esc fecha</span></footer>';
     (document.body || document.documentElement).appendChild(p);
     buildModais();
     bind();
@@ -974,7 +977,7 @@ switches: 'interruptores',
   /** Nomes das abas ANTIGAS -> as de agora. Um chamador antigo (script de manutenção, teste)
    *  não pode ficar com o painel em branco: o alias leva à aba certa. `mercado` deixou de ser
    *  alias de `itens`: passou a ser aba própria (pedido do dono). */
-  const TAB_ALIAS = { agora: 'painel', auto: 'painel', skills: 'personagem', atrib: 'personagem', farm: 'ganhos', hist: 'historico', historico: 'historico', pocao: 'pocao', poções: 'pocao', pocoes: 'pocao', manual: 'manual' };
+  const TAB_ALIAS = { agora: 'painel', auto: 'painel', skills: 'personagem', atrib: 'personagem', farm: 'farm', hist: 'historico', historico: 'historico', pocao: 'pocao', poções: 'pocao', pocoes: 'pocao', manual: 'manual' };
   function setTab(nome) {
     tabAtiva = TAB_ALIAS[nome] || nome;
     // BUG MEDIDO (2026-10-19): o alias era aplicado ao `tabAtiva` mas a classe usava o nome
@@ -1196,11 +1199,6 @@ switches: 'interruptores',
     set('ap-h-hp', a.hp ? fmt(a.hp.cur) + ' / ' + fmt(a.hp.max) : '-');
     set('ap-h-local', a.local);
     set('ap-h-regiao', a.regiao || '-');
-    // O CABEÇALHO NÃO TEM CONTROLO do auto-play: mostra só o ESTADO (a pílula `ap-estado`, agora
-    // LIGADO/DESLIGADO/PAUSADO) e o MOTIVO (a linha `ap-fase`). O único interruptor mestre está no
-    // cartão AUTO-PLAY, no topo do Painel - deixar um switch e um botão aqui seria a duplicação
-    // que o dono mandou remover. Quem tiver o Painel aberto vê o switch do cartão actualizado.
-    const pin = $('ap-pin'); if (pin) pin.classList.toggle('ativo', fixado);
   }
 
 
@@ -1391,9 +1389,9 @@ switches: 'interruptores',
         + (esp.length ? '<p class="aviso warn">Aguardando: ' + esc(esp.map(traduzTrava).join(' · ')) + '</p>' : '')
         + '<p class="hint tira">Quando nenhuma destas travas estiver ativa, a automação viaja sozinho para ' + esc(a.regiao || 'a melhor região') + '.</p>';
     } else {
-      bloqueio = '<p class="aviso ok">Nada a travar: a automação está a jogar.</p>';
+      bloqueio = '<p class="aviso ok">Sem impedimentos: a automação está a jogar.</p>';
     }
-    setHtml('ap-now-parado', card('O que está a travar agora', 'a automação diz, em português, o que o impede de agir', bloqueio));
+    setHtml('ap-now-parado', card('O que a impede agora', 'em português, o que a impede de agir', bloqueio));
 
     // 4) combate ao vivo
     const L = live();
@@ -1757,13 +1755,31 @@ switches: 'interruptores',
         + esc(semChave.map((x) => ARV_NOME[x.nome] || x.nome).join(', '))
         + '). A automação desta página é ANTIGO: recarregue (F5) para os interruptores reais aparecerem.</p>'
       : '';
-    // O nó `autoplay` NÃO se desenha outra vez: o interruptor mestre já está dois dedos acima,
-    // no cartão. Aqui desenham-se os FILHOS dele (manutenção + build por fase), o que dá a
-    // hierarquia real sem dois controlos para a mesma coisa.
-    const bases = [];
-    for (const x of (ramos.autoplay || [])) bases.push(x);
-    for (const x of raizes) if (x.nome !== 'autoplay') bases.push(x);
-    if (!bases.length) bases.push(...raizes);
+    // AGRUPAMENTO POR CONVENIÊNCIA (ordem do dono, 2026-10-22): dois grupos planos, em vez da
+    // árvore de pais/filhos. "No dia a dia" começa no vender/repor/poção e acaba no anunciar;
+    // "Gastos e extras" leva o que ele só mexe de vez em quando (habilidades, atributos, Ornn,
+    // cartas). A ordem E o grupo vêm do motor (`arvoreInterruptores`), a GUI só desenha.
+    const temGrupo = lista.some((x) => x && x.grupo);
+    let corpoArv;
+    if (temGrupo) {
+      const g = { jogo: [], gastos: [] };
+      for (const x of lista) {
+        if (x.nome === 'autoplay') continue;                    // o mestre já está no cartão acima
+        (g[x.grupo === 'gastos' ? 'gastos' : 'jogo']).push(x);
+      }
+      for (const k of Object.keys(g)) g[k].sort((a, b) => (a.ordem || 99) - (b.ordem || 99));
+      const bloco = (titulo, arr) => (arr.length
+        ? '<div class="mestre-sub"><b>' + esc(titulo) + '</b><span>' + String(arr.length) + '</span></div>'
+          + '<div class="arv">' + arr.map((x) => arvNo(x, {}, 0)).join('') + '</div>'
+        : '');
+      corpoArv = bloco('No dia a dia', g.jogo) + bloco('Gastos e extras', g.gastos);
+    } else {
+      const bases = [];
+      for (const x of (ramos.autoplay || [])) bases.push(x);
+      for (const x of raizes) if (x.nome !== 'autoplay') bases.push(x);
+      if (!bases.length) bases.push(...raizes);
+      corpoArv = '<div class="arv">' + bases.map((x) => arvNo(x, ramos, 0)).join('') + '</div>';
+    }
     // BOTÃO "DESLIGAR TUDO" (ordem de 2026-10-20): um clique desliga todos os switches
     // filhos; o mesmo botão, agora "Religar o que estava", devolve o conjunto que o dono
     // tinha escolhido. O retrato é do MOTOR (`estadoSwitches`), não da GUI.
@@ -1781,7 +1797,7 @@ switches: 'interruptores',
       + btnTudo
       + '<p class="hint"><b>' + String(agindo) + ' ligadas</b> · ' + String(desligados) + ' desligadas · '
       + String(inerte.length) + ' inertes (o pai está desligado).</p>'
-      + '<div class="arv">' + bases.map((x) => arvNo(x, ramos, 0)).join('') + '</div>');
+      + corpoArv);
   }
 
 
@@ -1937,15 +1953,27 @@ switches: 'interruptores',
     setChk('ap-cfg-autoEquip', c.autoEquip); setChk('ap-cfg-trocaItens', c.trocaItens);
     setChk('ap-cfg-autoAtrib', c.autoAtrib); setChk('ap-cfg-autoRefino', c.autoRefino);
     setChk('ap-cfg-barraDisp', c.barraPorDisponibilidade !== false);
-    // o que falta fazer na base (checklist viva)
+    // o que falta fazer na base (checklist viva) - vive na aba MANUAL (é descartável)
     const fb3 = faltasBase();
     if (fb3) {
+      // UM SWITCH DESLIGADO NÃO É "FEITO". Era a queixa do dono: ele desligava coisas e a lista
+      // aparecia com ✔ como se estivessem concluídas. Aqui cada necessidade sabe se o switch dela
+      // está desligado e diz isso, em vez de mentir um ✔.
+      const arv = ler('arvoreInterruptores', []) || [];
+      const porNome = new Map(arv.map((x) => [x.nome, x]));
       const chaves = Object.keys(fb3.n).filter((k) => NECESSIDADE_NOME[k]);
-      setHtml('ap-auto-falta', card('O que falta fazer na base', 'lista da automação, só o que é preciso',
-        '<div class="chips">' + chaves.map((k) => '<span class="chip" style="border-color:' + (fb3.n[k] ? '#7a5f2a' : '#2b5c33') + '">'
-          + (fb3.n[k] ? '⏳ ' : '✔ ') + esc(NECESSIDADE_NOME[k]) + '</span>').join('') + '</div>'
-        + '<p class="hint">' + (fb3.faltam.length
-          ? 'Pendente agora: <b>' + esc(fb3.faltam.map((k) => NECESSIDADE_NOME[k] || k).join(' · ')) + '</b>.'
+      const chip = (k) => {
+        const sw = porNome.get(k);
+        const desligado = sw && sw.cfg != null && sw.pode === false && cfg()[sw.cfg] === false;
+        if (desligado) return '<span class="chip" style="border-color:#3a3f4a;color:#8b93a3">· ' + esc(NECESSIDADE_NOME[k]) + ' (desligado)</span>';
+        if (fb3.n[k]) return '<span class="chip" style="border-color:#7a5f2a">⏳ ' + esc(NECESSIDADE_NOME[k]) + '</span>';
+        return '<span class="chip" style="border-color:#2b5c33">✔ ' + esc(NECESSIDADE_NOME[k]) + '</span>';
+      };
+      const pend = chaves.filter((k) => fb3.n[k]);
+      setHtml('ap-auto-falta', card('O que falta fazer na base', 'só o que a automação vai fazer',
+        '<div class="chips">' + chaves.map(chip).join('') + '</div>'
+        + '<p class="hint">' + (pend.length
+          ? 'Pendente agora: <b>' + esc(pend.map((k) => NECESSIDADE_NOME[k] || k).join(' · ')) + '</b>.'
           : 'Nada pendente: a base está completa.') + '</p>'
         + (naBase() ? '' : '<p class="hint">Você não está na Fonte, esta lista só se executa lá.</p>')));
     } else {
@@ -1974,8 +2002,12 @@ switches: 'interruptores',
     if (te) {
       const st = ler('tarefaEstado', {}) || {};
       te.innerHTML = st.tem
-        ? '<p class="aviso ' + (st.pronta ? 'ok' : '') + '">Tarefa atual: ' + esc(st.texto || '-') + (st.pronta ? ', <b>PRONTA para entregar</b>' : '') + '</p>'
-        : '<p class="vazio">Sem tarefa ativa. Fala com o Capitão da Legião na Fonte.</p>';
+        ? '<p class="aviso ' + (st.pronta ? 'ok' : '') + '">Missão: ' + esc(st.texto || '-') + (st.pronta ? ', <b>PRONTA para entregar</b>' : '') + '</p>'
+        // A frase antiga mandava o dono falar com o Capitão - e a automação é que tem de ir lá.
+        // Com a necessidade `tarefa` sempre ligada (automation.js `necessidadesBase`), o estado
+        // honesto é "a rotina de base vai buscar uma", não "não há nada".
+        : '<p class="aviso warn">Sem missão agora: a rotina de base aceita uma na próxima ida à Fonte.</p>'
+        + '<p class="hint tira">O switch <b>Manutenção</b> é quem manda nisto. Com ele desligado, ninguém vai ao Capitão.</p>';
     }
     // leitura do que trava
     const dg = diagBase();
@@ -2239,9 +2271,11 @@ switches: 'interruptores',
       const b = bagLida;
       setHtml('ap-it-mochila', card('Mochila', bagAuto ? 'lida diretamente do jogo' : 'lida há ' + fmtDur(Date.now() - bagLidaEm),
         '<div class="kvs">' + kv('ocupação', fmt(b.used) + ' / ' + fmt(b.cap)) + kv('espólio', String(b.espacosEspolio)) + kv('ouro', fmt(ler('readGold', null))) + '</div>'
-        + '<div class="chips">' + (((b.items || []).slice().sort((x, y) => ((x.kind === 'espolio' ? 1 : 0) - (y.kind === 'espolio' ? 1 : 0)) || ordemItemGui(x, y))).map((i) => i.kind === 'espolio'
-          ? '<span class="chip" title="espólio ×' + esc(i.qty) + '">📦 ×' + fmt(i.qty) + '</span>'
-          : '<span class="chip ' + esc(i.raridade || '') + '" title="' + esc(nomeItem(i.base) + ' · qualidade ' + i.qual + (i.refino ? ' · refino +' + i.refino : '')) + '">'
+        // SÓ ITENS COM ÍCONE (ordem do dono, 2026-10-22): o espólio (`📦 ×N`) e qualquer item sem
+        // imagem não são desenhados. Um cartão de texto no meio dos ícones era o "lixo visual".
+        + '<div class="chips">' + (((b.items || []).filter((i) => i.kind !== 'espolio' && ITEM_IMG(i.base))
+          .slice().sort(ordemItemGui)).map((i) =>
+          '<span class="chip ' + esc(i.raridade || '') + '" title="' + esc(nomeItem(i.base) + ' · qualidade ' + i.qual + (i.refino ? ' · refino +' + i.refino : '')) + '">'
             + itemImgTag(i.base, i.refino, nomeItem(i.base)) + esc(nomeItem(i.base)) + ' <small>' + esc(i.qual || '') + (i.refino ? '+' + i.refino : '') + '</small></span>').join('') || '<span class="vazio">mochila vazia</span>')
         + '</div>'
         + diag('Leitura da mochila (manutenção manual)')
@@ -2509,32 +2543,6 @@ switches: 'interruptores',
   }
   function renderFarm() {
     const f = farm();
-    const cur = f.current;
-    if (cur) {
-      const fase = cur.fase === 'boss' ? cur.bossFase : cur.mobFase;
-      const ms = Date.now() - ((fase && fase.startedAt) || cur.startedAt || Date.now());
-      const pm = (v) => porMin(v, ms);
-      const boss = cur.fase === 'boss';
-      const pk = boss ? porAbate(fase) : null;
-      const kvs = boss
-        ? '<div class="kvs">'
-          + kv('ouro por chefe', pk ? fmt(pk.gold) : '-') + kv('xp por chefe', pk ? fmt(pk.xp) : '-')
-          + kv('tempo do chefe', fmtDur(ms)) + kv('poções usadas', potTxt(fase, pm(fase && fase.potions)))
-          + '</div>'
-          + '<p class="hint tira">A fase do chefe mede <b>um</b> chefe, então os números são <b>por chefe</b> (loot ÷ abates), com o tempo ao lado como custo. '
-          + 'Por minuto aqui não compara chefes: o xp do chefe é quase fixo e o loot varia, dividir pelo tempo só premia quem morre rápido.</p>'
-        : '<div class="kvs">'
-          + kv('ouro por minuto', fmt(pm(fase && fase.gold))) + kv('xp por minuto', fmt(pm(fase && fase.xp)))
-          + kv('poções por minuto', potTxt(fase, pm(fase && fase.potions))) + kv('abates por minuto', fmt(pm(fase && fase.kills)))
-          + kv('dano causado', fmt(pm(fase && fase.dmg))) + kv('cura', fmt(pm(fase && fase.heal)))
-          + '</div>'
-          + '<p class="hint tira">Fase de mobs: muitos abates numa janela longa, então aqui a taxa <b>por minuto</b> é a leitura certa.</p>';
-      setHtml('ap-fm-agora', card('Ganhos AGORA', 'medido neste ciclo (' + (boss ? 'fase do chefe' : 'fase de mobs') + ')',
-        kvs
-        + '<p class="hint">Região: <b>' + esc(limparNivel(cur.region)) + '</b> · ciclo começou há ' + fmtDur(Date.now() - (cur.startedAt || Date.now())) + (cur.deaths ? ' · mortes neste ciclo: ' + cur.deaths : '') + '</p>'));
-    } else {
-      setHtml('ap-fm-agora', card('Ganhos AGORA', '', '<p class="vazio">Sem ciclo ativo. Os números se enchem sozinhos quando você estiver no mapa.</p>'));
-    }
 
     // previsor: real vs teórico para a build equipada
     const eqBases = (ler('readEquip', []) || []).map((e) => String(e.base));
@@ -2606,6 +2614,56 @@ switches: 'interruptores',
       + '<p class="hint tira">Nas colunas do <b>chefe</b> o número é <b>por abate</b> (loot ÷ abates), não por minuto: comparar chefes pela taxa da janela premia quem morre rápido. '
       + 'Nas colunas de <b>mobs</b> a taxa é <b>por minuto</b>, que é o que faz sentido com muitos abates.</p>'
       + '<p class="hint tira">Poções aparece como <b>, </b> quando a fase teve abates e nenhuma poção foi usada: 0/min não é medição de combate, é a automação sem agir (modo observação) ou sem precisar de poção.</p>'));
+  }
+
+  /* ============================== GANHOS: SÓ CHEFES E CORRIDAS ==============================
+   * Ordem do dono (2026-10-22): o painel de ganhos NÃO mostra ganho de mob. Ganho de mob é
+   * ruído: com o boneco a tomar um tapa e morrer, "xp/min de mobs" enchia o ecrã com números que
+   * ele nunca via. O que interessa é (a) a corrida/farm session em curso, em TOTAIS, e (b) os
+   * chefes, por abate. As taxas de mob continuam medidas e visíveis na aba FARM, que é onde se
+   * decide onde farmar. */
+  function renderChefes() {
+    const f = farm();
+    const cur = f.current;
+    if (cur) {
+      const boss = cur.fase === 'boss';
+      const fase = boss ? cur.bossFase : cur.mobFase;
+      const ms = Date.now() - (cur.startedAt || Date.now());
+      const pk = boss ? porAbate(fase) : null;
+      const tot = (v) => fmt(v || 0);
+      const corpo = boss
+        ? '<div class="kvs">'
+          + kv('ouro por chefe', pk ? fmt(pk.gold) : '-')
+          + kv('xp por chefe', pk ? fmt(pk.xp) : '-')
+          + kv('tempo do chefe', fmtDur(Date.now() - ((fase && fase.startedAt) || Date.now())))
+          + kv('poções nesta luta', fmt((fase && fase.potions) || 0))
+          + '</div>'
+        : '<div class="kvs">'
+          + kv('ouro na corrida', tot(fase && fase.gold))
+          + kv('xp na corrida', tot(fase && fase.xp))
+          + kv('abates', tot(fase && fase.kills))
+          + kv('poções usadas', tot(fase && fase.potions))
+          + '</div>';
+      setHtml('ap-fm-agora', card(boss ? 'Chefe agora' : 'Corrida agora',
+        esc(limparNivel(cur.region)) + ' · há ' + fmtDur(ms) + (cur.deaths ? ' · mortes: ' + cur.deaths : ''),
+        corpo
+        + '<p class="hint">Totais da corrida, não taxas por minuto.</p>'));
+    } else {
+      setHtml('ap-fm-agora', card('Corrida agora', '',
+        '<p class="vazio">Sem corrida ativa. Os números se enchem sozinhos quando você estiver no mapa.</p>'));
+    }
+
+    // CHEFES: um por abate (loot ÷ abates). Sem colunas de mob.
+    const ciclos = (f.cycles || []).filter((c2) => c2 && c2.boss).slice(0, 30);
+    setHtml('ap-fm-chefes', card('Chefes abatidos', 'loot por abate, com o tempo ao lado',
+      tabela(['hora', 'região', 'chefe', 'ouro/abate', 'xp/abate', 'tempo', 'poções'], ciclos.map((c2) => {
+        const pk2 = porAbate(c2.bossFase);
+        return '<tr><td>' + hora(c2.endedAt || c2.startedAt) + '</td><td>' + esc(limparNivel(c2.region))
+          + '</td><td>' + esc(limparNivel(c2.boss)) + '</td><td>' + (pk2 ? fmt(pk2.gold) : '-')
+          + '</td><td>' + (pk2 ? fmt(pk2.xp) : '-') + '</td><td>' + (c2.bossDurMs ? fmtDur(c2.bossDurMs) : '-')
+          + '</td><td>' + fmt((c2.bossFase && c2.bossFase.potions) || 0) + '</td></tr>';
+      }), 'ainda sem chefes abatidos')
+      + '<p class="hint tira">Dividir o loot do chefe pelo tempo premia quem morre rápido; por abate é a comparação honesta.</p>'));
   }
 
 
@@ -3311,12 +3369,14 @@ switches: 'interruptores',
     // inicial até alguém abrir o painel. O gate de cadência vive só no `tick()` (que continua
     // a não fazer nada com o painel fechado).
     renderCabecalho();
-    if (tabAtiva === 'painel') { renderPainel(); renderFarmModo(); renderFarmItens(); renderFarmObjetivo(); }
+    renderAgora();                                       // "agora" alimenta Painel e Manual
+    if (tabAtiva === 'painel') renderPainel();
+    else if (tabAtiva === 'farm') { renderFarmModo(); renderFarmItens(); renderFarmObjetivo(); renderFarm(); }
     else if (tabAtiva === 'macro') renderMacro();
     else if (tabAtiva === 'itens') { renderBuildFase(); renderItens(); }
     else if (tabAtiva === 'mercado') renderMercado();
     else if (tabAtiva === 'personagem') { renderSkills(); renderAtrib(); }
-    else if (tabAtiva === 'ganhos') { renderFarm(); renderHist(); }
+    else if (tabAtiva === 'ganhos') { renderFarm(); renderChefes(); }
     else if (tabAtiva === 'historico') renderHistorico();
     else if (tabAtiva === 'pocao') renderPocao();
     else if (tabAtiva === 'manual') renderManual();
@@ -3326,11 +3386,11 @@ switches: 'interruptores',
    *  São dois desenhadores que escrevem em ids diferentes - juntam-se aqui em vez de reescrever
    *  código que já funciona. O bloco grande da build por fase NÃO entra: ele vive na aba Itens
    *  e aqui fica só o resumo de uma linha (renderBuildResumo). */
-  function renderPainel() { renderPainelEstado(); renderAgora(); renderAuto(); renderBuildResumo(); }
+  function renderPainel() { renderPainelEstado(); renderAuto(); }
   // Cadência por aba: a do Painel acompanha o HUD (o content.js publica a vida a cada 1 s e
   // `estadoAgora()` tem cache de 2 s; o resto do painel lê caches de 10 s/15 s da automação). As abas
   // de relatório são mais lentas porque recalculam listas grandes.
-  const CADENCIA = { painel: 1500, macro: 5000, itens: 8000, mercado: 5000, personagem: 3000, ganhos: 8000, historico: 15000, pocao: 3000, manual: 15000 };
+  const CADENCIA = { painel: 1500, farm: 6000, macro: 5000, itens: 8000, mercado: 5000, personagem: 3000, ganhos: 8000, historico: 15000, pocao: 3000, manual: 15000 };
   function tick() {
     if (!aberto) return;
     renderCabecalho();                                   // o cabeçalho é sempre o primeiro a saber
@@ -3835,8 +3895,8 @@ switches: 'interruptores',
     'ap-goto-itens': () => setTab('itens'),
     'ap-goto-mercado': () => setTab('mercado'),
     'ap-goto-personagem': () => setTab('personagem'),
-    'ap-pin': (btn) => { fixado = !fixado; btn.classList.toggle('ativo', fixado); fb('info', fixado ? 'Painel FIXO: só fecha com o ✕ ou Esc.' : 'Painel solto: fica aberto até você fechar.'); },
     'ap-help': () => { renderAjuda(); const m = $('lolidle-ap-ajuda'); m.hidden = false; m.classList.add('on'); },
+    'ap-macro-pop-x': () => fecharMacroPopup(),
     'ap-aj-x': () => { const m = $('lolidle-ap-ajuda'); m.hidden = true; m.classList.remove('on'); },
     // CONTROLES DO AUTO-PLAY (4 estados). `ap-panic` é o botão principal: o handler decide pelo
     // estado de agora e o rótulo (renderCabecalho) diz o que vai mudar.
@@ -4384,8 +4444,12 @@ switches: 'interruptores',
         return;
       }
       const b = e.target.closest ? e.target.closest('button[id]') : null;
-      if (!b || !painel.contains(b)) return;
+      if (!b) return;
+      // BOTÕES FORA DO `painel` (o FECHAR do popup da macro vive em `#lolidle-ap`, ao lado do
+      // painel): antes caíam em "este botão ainda não faz nada", que o dono viu com o id
+      // `ap-macro-pop-x`. Se o id tem handler declarado, é para executar.
       const f = ACOES[b.id];
+      if (!painel.contains(b) && !f) return;
       if (!f) { fbAviso('Este botão ainda não faz nada (reporta: ' + b.id + ').'); return; }
       try { f(b); } catch (err) { fbErro('Erro inesperado em ' + b.id + ': ' + String((err && err.message) || err)); }
     });

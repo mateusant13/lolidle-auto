@@ -30,6 +30,11 @@ const probe = 'JSON.stringify({' +
   "build: (window.__lolidleAuto && window.__lolidleAuto.BUILD) || null," +
   "folhas: typeof (window.__lolidleAuto && window.__lolidleAuto.folhasDeReceitaFaltando)," +
   "clicar: typeof (window.__lolidleAuto && window.__lolidleAuto.clicarIgnorarBasicos)," +
+  // MARCADORES DA RONDA DE 2026-10-23: `habilidadeAtivaNoPve` (skills que o PvE não ativa) e o
+  // agrupamento por conveniência (`grupo`) só existem no código novo.
+  "pve: typeof (window.__lolidleAuto && window.__lolidleAuto.habilidadeAtivaNoPve)," +
+  "bInativa: (() => { try { return window.__lolidleAuto.habilidadeAtivaNoPve('B'); } catch (e) { return 'erro'; } })()," +
+  "grupo: (() => { try { const a = window.__lolidleAuto.arvoreInterruptores(); return a && a[0] ? a[0].grupo : null; } catch (e) { return 'erro'; } })()," +
   "pulsoFix: window.__lolidlePulsoFix," +
   "hp: (window.__lolidleLive && window.__lolidleLive.hp) || null," +
   "painel: !!document.querySelector('[id^=lolidle], [class^=lolidle]')," +
@@ -43,9 +48,12 @@ for (const c of ctxs) {
     const v = JSON.parse(raw);
     if (v.auto !== 'undefined' || v.pulsoFix || v.folhas !== 'undefined') {
       console.log('CTX', c.id, (c.auxData && c.auxData.type) || '', JSON.stringify(v));
-      if (v.folhas === 'function' && v.clicar === 'function' && v.build === '2026-10-22-base-paga') achou = true;
+      if (v.folhas === 'function' && v.clicar === 'function' && v.pve === 'function'
+        && v.grupo === 'jogo' && v.build === '2026-10-23-pve-sempre') achou = true;
     }
   } catch (e) { /* contexto morto */ }
 }
-console.log(achou ? 'PROVA: BUILD 2026-10-22-base-paga VIVO (folhasDeReceitaFaltando + clicarIgnorarBasicos + marcador BUILD)' : 'NAO PROVADO: nenhuma versao nova visivel (pagina pode precisar de reload)');
+console.log(achou
+  ? 'PROVA: BUILD 2026-10-23-pve-sempre VIVO (habilidadeAtivaNoPve + arvoreInterruptores[0].grupo + marcador BUILD)'
+  : 'NAO PROVADO: nenhuma versao nova visivel (pagina pode precisar de reload)');
 process.exit(achou ? 0 : 3);
