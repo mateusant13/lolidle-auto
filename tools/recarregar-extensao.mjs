@@ -11,12 +11,27 @@
 //
 // Uso:
 //   node tools/recarregar-extensao.mjs reload      (por omissao: reload)
+//   node tools/recarregar-extensao.mjs reload --sem-janela   (nem tenta a janela)
 //   node tools/recarregar-extensao.mjs activar | desactivar | estado
 //
-// Env: BG_WINDOW (default I:\!manager\tools\bg-window.py), EXT_DIR, EXT_NOME.
-import { execFileSync } from 'node:child_process'
+// CAMINHO SEM JANELA (2026-10-23, REGRA 11.3). Com o Chrome do dono ABERTO nao ha janela nova
+// para o UIA: `chrome --new-window --user-data-dir=<perfil>` sai com 21 (PROCESS_NOTIFIED) e a
+// instancia viva NAO cria janela nenhuma (medido, AGENTS.md §13.4). Nesse caso o `reload` cai
+// sozinho no canal do proprio service worker:
+//
+//   relay 9224 (attach-only) -> mundo isolado -> chrome.runtime.sendMessage({type:'lolidle:reload'})
+//   -> background.js chama chrome.runtime.reload() -> Page.reload -> BUILD do disco == BUILD vivo
+//
+// E a VERIFICACAO e' o que conta (REGRA Nº 4): o comando so' diz `ok:true` se o `BUILD` do
+// `automation.js` em disco aparecer no mundo isolado da extensao. `activar`/`desactivar` continuam
+// a precisar de janela (nao ha caminho sem UI para ligar/desligar uma extensao).
+//
+// Env: BG_WINDOW (default I:\!manager\tools\bg-window.py), EXT_DIR, EXT_NOME, RELAY_HTTP.
+import { execFileSync, spawn } from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { abrirJogo, estadoRelay } from './_relay.mjs'
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // 2026-10-22: o bg-window.py abre `chrome --new-window` SEM --user-data-dir.
@@ -81,6 +96,78 @@ function ultimoJson(txt) {
 }
 const suave = (bin, args) => { try { return ultimoJson(run(bin, args)) } catch { return {} } }
 
+const dorme = (ms) => new Promise((r) => setTimeout(r, ms))
+const BUILD_LOCAL = (() => {
+  try {
+    const m = /const BUILD = '([^']+)'/.exec(fs.readFileSync(path.join(DIR, 'automation.js'), 'utf8'))
+    return m ? m[1] : null
+  } catch { return null }
+})()
+
+/** O relay e' infra local: se estiver em baixo, sobe-se (REGRA 16). Nunca se pede ao dono. */
+async function garantirRelay() {
+  let est = await estadoRelay()
+  if (est.ok) return est
+  try {
+    spawn('omp', ['browser-relay', 'serve', '-p', '9224', '-v'], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+  } catch { /* sem `omp` no PATH: reporta-se abaixo */ }
+  for (let i = 0; i < 12; i++) {
+    await dorme(700)
+    est = await estadoRelay()
+    if (est.ok) return { ...est, subido_agora: true }
+  }
+  return est
+}
+
+/** Reload sem janela, pelo service worker, com prova no fim (BUILD do disco == BUILD vivo). */
+async function recarregarSemJanela() {
+  const relay = await garantirRelay()
+  if (!relay.ok) {
+    return { ok: false, via: 'sem-janela', fase: 'relay', detalhe: relay, dica: 'prelude do relay desligado ou servidor em baixo (REGRA 16)' }
+  }
+  let s
+  try { s = await abrirJogo() } catch (e) { return { ok: false, via: 'sem-janela', fase: 'alvo', detalhe: String(e.message || e) } }
+  try {
+    const ctx = await s.contextoDaExtensao()
+    if (!ctx) return { ok: false, via: 'sem-janela', fase: 'mundo-da-extensao', detalhe: 'sem contexto isolado (extensao desligada, ou pagina sem o content script)' }
+    const pedido = await s.avaliar(
+      `(async () => { try { const r = await chrome.runtime.sendMessage({ type: 'lolidle:reload' }); return 'ok'; } catch (e) { return 'erro: ' + e; } })()`,
+      ctx)
+    // `chrome.runtime.reload()` mata o canal ANTES de a resposta chegar: o sendMessage rejeita com
+    // "message channel closed before a response was received" (ou "Extension context invalidated").
+    // Isso NAO e' falha — e' a prova de que o worker reiniciou. Quem decide e' o BUILD no fim.
+    const pedidoOk = pedido === 'ok'
+      || /channel closed|port closed|context invalidated|receiving end does not exist|worker/i.test(String(pedido))
+    if (!pedidoOk) return { ok: false, via: 'sem-janela', fase: 'pedir-reload', detalhe: String(pedido) }
+    // o content script novo so' entra numa NAVEGACAO: o reload da extensao nao reinjeta no documento vivo
+    await s.dorme(2500)
+    await s.send('Page.reload', { ignoreCache: true }, s.sessionId)
+    await s.dorme(6000)
+    const ctx2 = await s.contextoDaExtensao(20, 900)
+    const vivo = ctx2 ? await s.avaliar('(window.__lolidleAuto && window.__lolidleAuto.BUILD) || null', ctx2) : null
+    const ok = !!vivo && !!BUILD_LOCAL && vivo === BUILD_LOCAL
+    return {
+      ok,
+      via: 'sem-janela',
+      acao: 'reload',
+      relay: { browser: relay.browser || null, subido_agora: !!relay.subido_agora },
+      pagina_recarregada: true,
+      mundo_da_extensao: !!ctx2,
+      build_disco: BUILD_LOCAL,
+      build_vivo: vivo,
+      janela_aberta: false,
+      foco_roubado: 0,
+    }
+  } finally { s.fechar() }
+}
+
+const semJanela = process.argv.slice(3).some((a) => /^--sem-janela$/i.test(a))
+if (acao === 'reload' && semJanela) {
+  const r = await recarregarSemJanela()
+  console.log(JSON.stringify(r))
+  process.exit(r.ok ? 0 : 1)
+}
+
 // 1) A TUA janela, antes de tudo (e' o que o guardiao ha-de repor).
 const fg = suave(PY, [BG, 'fg'])
 const dono = Number(fg.foreground || 0)
@@ -88,7 +175,17 @@ if (!dono) { console.log(JSON.stringify({ ok: false, fase: 'ler-foreground', det
 
 // 2) janela invisivel
 const aberta = suave(PY, [BG, 'open', '--url', 'about:blank', '--label', 'ext-' + acao, '--uia'])
-if (!aberta.ok) { console.log(JSON.stringify({ ok: false, fase: 'abrir-janela', detalhe: aberta })); process.exit(1) }
+if (!aberta.ok) {
+  // Com o browser do dono aberto isto e' o normal (AGENTS.md §13.4). O reload tem caminho
+  // sem janela; activar/desactivar nao tem (precisa do cartao da extensao).
+  if (acao === 'reload') {
+    const r = await recarregarSemJanela()
+    console.log(JSON.stringify({ ...r, janela: { aberta: false, motivo: aberta.err || aberta } }))
+    process.exit(r.ok ? 0 : 1)
+  }
+  console.log(JSON.stringify({ ok: false, fase: 'abrir-janela', detalhe: aberta, dica: 'activar/desactivar precisam do cartao da extensao; nao ha caminho sem janela' }))
+  process.exit(1)
+}
 
 let res = { ok: false, error: 'nao correu' }
 try {
@@ -113,5 +210,17 @@ try {
   }
 }
 
+// Se o UIA correu mas nao conseguiu, o reload ainda pode acontecer sem janela. A prova (BUILD)
+// e' a mesma, portanto o resultado honesto e' o do caminho que verificou.
+if (!res.ok && acao === 'reload') {
+  const r = await recarregarSemJanela()
+  if (r.ok) {
+    res = { ...r, uia: { ok: false, erro: res.error || null } }
+  } else {
+    res.fallback_sem_janela = r
+  }
+}
+
 console.log(JSON.stringify(res))
 process.exit(res.ok ? 0 : 1)
+

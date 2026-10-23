@@ -854,8 +854,14 @@ switches: 'interruptores',
       // ---------------- PERSONAGEM ----------------
       + '  <section class="pane" id="ap-t-personagem">'
       + '    <div class="grid2"><div id="ap-sk-barra"></div><div id="ap-sk-pontos"></div></div>'
+      // `ap-sk-ideal` e `ap-sk-dps` ja' eram ESCRITOS pelo renderSkills mas nao tinham contentor:
+      // `setHtml` num id ausente e' um no-op silencioso (o cartao da barra ideal e o dano por
+      // habilidade simplesmente nao apareciam). Encontrado ao vivo 2026-10-23.
+      + '    <div class="grid2"><div id="ap-sk-ideal"></div><div id="ap-sk-dps"></div></div>'
+      + '    <div id="ap-sk-ordem"></div>'
       + '    <div id="ap-sk-acoes"></div>'
-      + '    <div class="grid2"><div id="ap-at-pontos"></div><div id="ap-at-stats"></div></div>'
+      + '    <div class="grid2"><div id="ap-at-pontos"></div><div id="ap-at-lista"></div></div>'
+      + '    <div id="ap-at-stats"></div>'
       + '    <div id="ap-at-acoes"></div>'
       + '  </section>'
       // ---------------- GANHOS: só CHEFES e CORRIDAS (sem ganhos de mob) ----------------

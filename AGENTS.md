@@ -776,20 +776,34 @@ perfil real e o resultado **é a prova**:
 
 O canal da 13.1 parte de `chrome --new-window --user-data-dir=<perfil do dono>`. Com o browser
 **já a correr**, esse processo sai com código **21** (`RESULT_CODE_NORMAL_EXIT_PROCESS_NOTIFIED`):
-a linha de comandos foi **entregue à instância viva** e o processo novo saiu — mas a instância
+a linha de comandos foi **entregue à instância viva** e o processo novo saiu, mas a instância
 **não cria janela nova** (o *hand-off* do *singleton* leva o URL, não o `--new-window`). Consequência:
-`bg-window.py open` devolve `{"ok":false,"err":"new chrome window not found"}` e
-`node tools/recarregar-extensao.mjs reload` morre em `fase:"abrir-janela"` — **sem** tocar no
-perfil, sem roubar foco, e sem nada para o UIA clicar.
+`bg-window.py open` devolve `{"ok":false,"err":"new chrome window not found"}`: não há hwnd nenhum
+para o UIA clicar.
 
 Verificado também que a causa **não** é elevação (`explorer.exe` como lançador de nível médio dá o
 mesmo 21) nem caminho errado do perfil (`Win32_Process` mostra `--user-data-dir="C:\ChromeDebugProfile"`
 e esse perfil está vivo: `Local State` escrito no minuto da medição, 50 extensões).
 
-**Portanto o reload deixa de ter caminho de janela e passa a exigir a 11.3** — `chrome.storage.onChanged`
-no `background.js` (ou um alarme de 30 s, como o VOD.RIP) que faça `chrome.runtime.reload()` sozinho.
-Enquanto isso não existir, um reload que falhe em `abrir-janela` **não é bug do script** e não se
-"resolve" insistindo: é a arquitetura que falta.
+**RESOLVIDO (2026-10-23): o reload acontece sem janela e prova-se.** `node tools/recarregar-extensao.mjs reload`
+tenta a janela e, quando ela não nasce, cai sozinho no canal da 11.3, que **já existe** no `background.js`:
+
+```
+relay 9224 (attach-only) -> mundo isolado -> chrome.runtime.sendMessage({type:'lolidle:reload'})
+  -> chrome.runtime.reload() -> Page.reload -> compara BUILD do disco com o BUILD vivo
+```
+
+`--sem-janela` força esse caminho. O `ok:true` do comando **é** a prova: `build_disco` tem de ser
+igual a `build_vivo` (REGRA Nº 4). Medido ao vivo:
+`{"ok":true,"via":"sem-janela","build_disco":"2026-10-23-gui-completa","build_vivo":"2026-10-23-gui-completa",
+"janela_aberta":false,"foco_roubado":0}`. Duas armadilhas que o caminho já trata: (a) `chrome.runtime.reload()`
+**mata o canal** antes da resposta, logo o `sendMessage` rejeita com "message channel closed" — isso é o
+worker a reiniciar, não falha; (b) o content script novo só entra numa **navegação**, por isso o `Page.reload`
+faz parte do comando, não é passo manual.
+
+**O que continua a precisar de janela:** `activar` e `desactivar` (não há caminho sem UI para ligar/desligar
+uma extensão). Nesse caso o comando diz `fase:"abrir-janela"` com a dica, e isso **não** se resolve
+insistindo enquanto o browser estiver aberto.
 
 ---
 

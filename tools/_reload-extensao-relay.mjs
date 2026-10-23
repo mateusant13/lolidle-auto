@@ -1,6 +1,10 @@
 // _reload-extensao-relay.mjs — pede o reload ao background da extensão pelo relay.
 // Attach-only; nunca imprime /json/list. Depois é preciso recarregar a página para
 // os content scripts novos correrem.
+//
+// SUPERSEDIDO (2026-10-23) por: `node tools/recarregar-extensao.mjs reload --sem-janela`
+// — faz o mesmo, faz também o Page.reload e PROVA que o BUILD do disco ficou vivo. Ficou aqui
+// como sonda mínima do canal (um único sendMessage), para isolar o relay do reload completo.
 const ws = new WebSocket('ws://127.0.0.1:9224/cdp');
 await new Promise((r, j) => { ws.addEventListener('open', r, { once: true }); ws.addEventListener('error', j, { once: true }); });
 let id = 0; const pend = new Map(); const ctxs = [];

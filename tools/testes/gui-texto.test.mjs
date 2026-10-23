@@ -129,6 +129,14 @@ export const suite = {
       ['ap-estado', 'ap-h-nivel', 'ap-h-ouro', 'ap-h-hp', 'ap-h-local', 'ap-h-regiao'].every((i) => src.includes('id="' + i + '"')));
     t.check('T8c: os contentores que os desenhadores procuram continuam la',
       ['ap-painel-estado', 'ap-it-cofre', 'ap-mk-watch', 'ap-fb'].every((i) => src.includes('id="' + i + '"')));
+    // T8j (2026-10-23, encontrado AO VIVO): `setHtml('ap-x', ...)` num id que nao existe e' um
+    // no-op SILENCIOSO - o cartao simplesmente nao aparece e nenhum teste falha. Quatro cartoes
+    // da aba Personagem (barra ideal, ordem de subida, dano por habilidade, distribuicao) estavam
+    // assim. Este check fecha a classe inteira: todo o id literal escrito tem de ter contentor.
+    const escritos = Array.from(new Set(Array.from(src.matchAll(/setHtml\('(ap-[a-z0-9-]+)'/g)).map((m) => m[1])));
+    const semContentor = escritos.filter((i) => !src.includes('id="' + i + '"'));
+    t.check('T8j: todo o id escrito por setHtml tem contentor no HTML (' + escritos.length + ' ids)',
+      semContentor.length === 0, 'sem contentor: ' + semContentor.join(', '));
 
     /* ================= T9 - a política do cofre aparece na GUI (1 linha, sem palestra) ================= */
     t.check('T9: o cartão do cofre diz a política nova numa linha (A -> cofre; C/B -> troca)',

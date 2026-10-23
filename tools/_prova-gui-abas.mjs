@@ -73,6 +73,9 @@ const medidas = await ev(`JSON.stringify((()=>{
     linhas: new Set([...f.children].map((c)=>Math.round(c.getBoundingClientRect().top))).size,
   }));
   const chips=qa('#ap-it-mochila .chip');
+  // Um contentor que um desenhador escreve e que continua VAZIO e' a assinatura do bug do
+  // \`setHtml\` sem alvo (2026-10-23): o cartao nao aparece e nada falha. Aqui a lista e' visivel.
+  const vazios = pane ? [...pane.children].filter((n)=>!n.textContent.trim() && !n.querySelector('img')).map((n)=>n.id||n.className) : [];
   return {
     aba: '${ABA}',
     desenhou: !!pane && Math.round(pane.getBoundingClientRect().height) > 0,
@@ -82,6 +85,7 @@ const medidas = await ev(`JSON.stringify((()=>{
     chipsMochila: chips.length,
     chipsSemIcone: chips.filter((c)=>!c.querySelector('img')).length,
     imgsQuebradas: qa('.frames img').filter((i)=>i.complete && i.naturalWidth===0).length,
+    contenedoresVazios: vazios,
     fraseTarefa: /Sem tarefa ativa/.test(document.documentElement.innerHTML),
     pin: !!document.querySelector('#lolidle-ap #ap-pin'),
   };

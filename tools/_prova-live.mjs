@@ -1,6 +1,16 @@
 // _prova-live.mjs — prova ao vivo da extensão pelo relay (CDP em 127.0.0.1:9224/cdp).
 // Marcador DISCRIMINANTE: folhasDeReceitaFaltando / clicarIgnorarBasicos só existem no
 // código NOVO (port w3-barra). Se aparecerem no mundo da extensão, a versão nova está viva.
+//
+// 2026-10-23: o `BUILD` deixou de estar escrito a mao aqui. Ele e' LIDO do `automation.js` em
+// disco e comparado com o que esta' vivo (REGRA Nº 3: numero lido, nunca copiado). Assim um
+// bump de BUILD nao deixa esta prova a mentir.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const BUILD_DISCO = (/const BUILD = '([^']+)'/.exec(fs.readFileSync(path.join(RAIZ, 'extension', 'automation.js'), 'utf8')) || [])[1] || null;
 const BASE = 'http://127.0.0.1:9224';
 const list = await (await fetch(BASE + '/json/list')).json();
 const alvo = list.find((t) => t.type === 'page' && /lolidle\.com/.test(t.url || ''));
@@ -49,11 +59,11 @@ for (const c of ctxs) {
     if (v.auto !== 'undefined' || v.pulsoFix || v.folhas !== 'undefined') {
       console.log('CTX', c.id, (c.auxData && c.auxData.type) || '', JSON.stringify(v));
       if (v.folhas === 'function' && v.clicar === 'function' && v.pve === 'function'
-        && v.grupo === 'jogo' && v.build === '2026-10-23-pve-sempre') achou = true;
+        && v.grupo === 'jogo' && v.build === BUILD_DISCO) achou = true;
     }
   } catch (e) { /* contexto morto */ }
 }
 console.log(achou
-  ? 'PROVA: BUILD 2026-10-23-pve-sempre VIVO (habilidadeAtivaNoPve + arvoreInterruptores[0].grupo + marcador BUILD)'
-  : 'NAO PROVADO: nenhuma versao nova visivel (pagina pode precisar de reload)');
+  ? 'PROVA: BUILD ' + BUILD_DISCO + ' VIVO (habilidadeAtivaNoPve + arvoreInterruptores[0].grupo + marcador BUILD)'
+  : 'NAO PROVADO: nenhuma versao nova visivel (disco=' + BUILD_DISCO + '; a pagina pode precisar de reload)');
 process.exit(achou ? 0 : 3);
