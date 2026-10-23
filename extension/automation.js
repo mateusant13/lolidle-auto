@@ -2398,7 +2398,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-base-na-fonte-normalizada';
+  const BUILD = '2026-10-23-anuncio-diagnostico';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -7880,14 +7880,26 @@ const CFG_VER = 4;
     });
     if (!slots.length) return { ok: false, motivo: 'sem ' + base + ' na mochila' };
     let b = null, escolhido = null;
+    const vistos = [];
     for (const s of slots) {
       s.click(); await humano(240);
       // o id da cópia seleccionada (pode demorar um render a aparecer)
       let chave = '';
       for (let i = 0; i < 6 && !chave; i++) { chave = String(q1('#mj-minimo')?.dataset?.chave || '').split('|')[0] || ''; if (!chave) await esperar(120); }
+      vistos.push(chave || '(sem chave)');
       if (iguais(chave, alvo)) { b = s; escolhido = chave || null; break; }
     }
-    if (!b) return { ok: false, motivo: 'a copia pedida nao esta na mochila (nao se anuncia outra)', alvo: alvo || null, candidatos: slots.length };
+    // DIAGNOSTICABILIDADE (2026-10-23): se nenhuma cópia casar, o log passa a dizer o que o
+    // JOGO escreveu (`#mj-minimo[data-chave]`, jogo.js:2700) ao lado do que se pedia — sem isto
+    // um desencontro de formato bloqueava TODOS os anúncios em silêncio (medido: 6 candidatos,
+    // `anunciados: 0`, e nenhuma razão no histórico).
+    // E se a mochila tem UMA só cópia deste base não há ambiguidade nenhuma: anunciar essa é
+    // exactamente o que foi pedido (o `alvo` só protege contra escolher OUTRA cópia).
+    if (!b && slots.length === 1 && alvo) {
+      b = slots[0]; slots[0].click(); await humano(240); escolhido = vistos[0] || null;
+      logEvent('mercado', { acao: 'alvo-nao-casou', base, alvo, vistos, via: 'unica copia do base' });
+    }
+    if (!b) return { ok: false, motivo: 'a copia pedida nao esta na mochila (nao se anuncia outra)', alvo: alvo || null, candidatos: slots.length, vistos };
     // PORTEIRO: A/S/SS nunca vão ao mercado.
     const q = parseSlotId(escolhido || alvo || '').qual;
     if (QUAL.includes(q) && qIdx(q) >= qIdx('A')) return { ok: false, motivo: `tier ${q}: A+ nunca vai ao mercado`, tier: q, id: escolhido || alvo || null };
@@ -9855,8 +9867,8 @@ const CFG_VER = 4;
       else { falhas.push({ base: it.base, motivo: r.motivo || 'falhou' }); registrarFalhaAnuncio(it.base, r.motivo || 'falhou'); }
     }
     if (Array.isArray(_ofertasCache)) for (const a of anunciados) if (a.preco) _ofertasCache.push({ id: 'novo:' + a.base + ':' + a.qual, base: a.base, qual: a.qual, raridade: 'lendario', preco: a.preco });
-    logEvent('mercado', { acao: 'slots', limite, usados: minhas.length, livres: Math.max(0, limite - minhas.length), candidatos: escolhidos.length, anunciados: anunciados.length, falhas: falhas.length });
-    logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length, falhas: falhas.length });
+    logEvent('mercado', { acao: 'slots', limite, usados: minhas.length, livres: Math.max(0, limite - minhas.length), candidatos: escolhidos.length, anunciados: anunciados.length, falhas: falhas.length, falhasDetalhe: falhas.slice(0, 4) });
+    logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length, falhas: falhas.length, falhasDetalhe: falhas.slice(0, 4) });
     // FALHA AUTO-DIAGNOSTICADA: havia candidato que o actor NÃO resolveu (não anunciado, ou uma
     // cópia melhor que a oferta ainda não substituiu). Devolver `ok:true` fazia a necessidade ficar
     // `true` para sempre e a rotina repetir `mercado` em cada passagem (P0 medido 2026-10-21:
