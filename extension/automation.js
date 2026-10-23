@@ -196,6 +196,13 @@
     // catálogo (não o nome, que pode ser traduzido). `precoSemComparavel` (1,5M) continua a ser
     // SÓ para tier A; estas duas fichas são as únicas excepções de tier B/C.
     precoSemComparavelPorBase: { '3089': 1500000, '3031': 10000000 },
+    // ===== ANÚNCIO NO MERCADO: agora CONFIGURÁVEL (ordem do dono, 2026-10-23: "anunciar lendarios
+    // no mercado nao tem configuracao decente"). Antes o desconto era um 0,90 cravado em
+    // `fatorAnuncio()` e o tecto de qualidade era o literal `'A'` dentro do filtro de candidatos —
+    // dois números que a GUI não podia tocar. Passam a chaves, com os MESMOS valores por omissão
+    // (nada muda para quem não mexer).
+    anuncioDesconto: 0.90,      // fração do menor preço comparável (0,90 = 90%)
+    anuncioQualMax: 'A',        // anuncia o que for ESTRITAMENTE abaixo desta qualidade (A = B/C)
     // ===== WATCH-LIST DO MERCADO (PEDIDO DO DONO, 2026-10-18, verbatim): =====================
     //   "faz um subagent fazer auto compra no mercado, detectando em TEMPO REAL o mercado
     //    sobre os itens q eu quero dar watch. e por nome de player."
@@ -2514,7 +2521,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-medicao-manda';
+  const BUILD = '2026-10-23-config-real';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -4215,7 +4222,10 @@ const CFG_VER = 4;
   // mandou e não havia como provar de onde veio. Fixo em 0,90 (o jitter de ±2% não comprava
   // camuflagem nenhuma e tornava o número irreprodutível). O tier de referência é responsabilidade
   // do chamador (`anunciarLendarios`/`planejarMercado`), que só compara com a MESMA qualidade.
-  const fatorAnuncio = () => 0.90;
+  const fatorAnuncio = () => {
+    const v = Number(cfg.anuncioDesconto);
+    return (Number.isFinite(v) && v > 0 && v <= 1) ? v : 0.90;
+  };
 
   /** Pede ao JOGO para falar com o NPC pelo NOME.
    *  O jogo tem um listener único em `#npcs` (`jogo.js:5546`) que faz
@@ -4909,11 +4919,13 @@ const CFG_VER = 4;
     // A TROCA DA BARRA E RECURSO BASE, NAO FARMAR (correccao do Lead, 2026-10-14).
     skillsPorFase:{ pai: 'manutencao', cfg: 'skillsPorFase', grupo: 'gastos', ordem: 8 },
     rotacao:      { pai: 'manutencao', cfg: 'rotacaoSkills', grupo: 'gastos', ordem: 9 },
-    // WATCH-LIST DO MERCADO. NÃO tem liga/desliga próprio: o dono foi explícito
-    // (2026-10-20): "vigia ativa = compra ... mesmo ativa ou desativada, a vigia funciona".
-    // A lista (itens/jogadores) É o interruptor: vazia = não vigia nada; com algo = vigia
-    // e compra. Só herda a MANUTENÇÃO para o auto-play global poder parar tudo.
-    vigiarMercado: { pai: 'manutencao', cfg: 'autoVigiarMercado', ignorarCfg: true, grupo: 'gastos', ordem: 11 },
+    // WATCH-LIST DO MERCADO — UM SÓ SWITCH COM A COMPRA (ordem do dono, 2026-10-23, verbatim:
+    // "por que vigiar o mercado e comprar e 'comprar item no mercado' sao dois diferentes? faz
+    // merge"). O `vigiarMercado` era um nó SEPARADO com `ignorarCfg: true` — não tinha chave
+    // própria, logo a lista de switches mostrava duas coisas para a mesma compra. A watch (itens e
+    // jogadores) é CONFIGURAÇÃO da compra, não um interruptor paralelo: vive na aba Mercado e é
+    // lida por `comprarOfertaWatch`, que agora pergunta por `comprar`.
+    // (O `cfg.autoVigiarMercado` fica só como marca antiga do storage; já não é interruptor.)
     // POÇÃO INTELIGENTE: só no PvE do mapa. Desligada, a poção volta ao limiar de vida.
     // Em PvP/Arena/Runeterra/dungeon o limiar já é o modo certo e este switch não muda nada.
     pocaoSmart:   { pai: 'manutencao', cfg: 'pocaoSmart', grupo: 'jogo', ordem: 3 },
@@ -5295,7 +5307,7 @@ const CFG_VER = 4;
     // lutando contra chefe e um item desejado aparece na loja e dá pra comprar, volta pra
     // base imediatamente, com chefe ou não." O poller roda a cada 2 s e atualiza
     // `_watchAchados`; aqui só se pergunta se há alguma pronta e paga.
-    try { n.comprarWatch = podeFazer('vigiarMercado').pode && !!ofertaWatchPronta(); } catch { n.comprarWatch = false; }
+    try { n.comprarWatch = podeFazer('comprar').pode && !!ofertaWatchPronta(); } catch { n.comprarWatch = false; }
     // ---- REGRA DE OURO: OPORTUNIDADES não pagam uma viagem sozinhas ----
     // Se NENHUMA necessidade primária está aberta, as oportunidades (mercado/comprar/refino/
     // montar) são DESLIGADAS nesta passagem: ele fica a farmar em vez de andar para trás e para
@@ -10020,7 +10032,7 @@ const CFG_VER = 4;
       const pb = planBag(bag);
       aprovados = new Set(((pb && pb.acts) || []).filter((a) => a.action === 'ANUNCIAR_MERCADO').map((a) => String(a.it.id)));
     } catch { aprovados = null; }
-    const cand = (bag.items || []).filter((i) => i.kind === 'item' && i.raridade === 'lendario' && QUAL.includes(i.qual) && qIdx(i.qual) < qIdx('A') && !ehPrioridadeExtrema(i.base) && !ehLendarioDaBuild(i.base) && (!aprovados || aprovados.has(String(i.id))));
+    const cand = (bag.items || []).filter((i) => i.kind === 'item' && i.raridade === 'lendario' && QUAL.includes(i.qual) && qIdx(i.qual) < qIdx(String(cfg.anuncioQualMax || 'A').toUpperCase()) && !ehPrioridadeExtrema(i.base) && !ehLendarioDaBuild(i.base) && (!aprovados || aprovados.has(String(i.id))));
     if (!cand.length) return { ok: true, anunciados: [], motivo: 'sem lendário <A (ou todos são da build da classe)' };
     cand.sort((a, b) => qIdx(a.qual) - qIdx(b.qual) || (a.refino || 0) - (b.refino || 0));   // menor tier primeiro
     // TK-01: LEITURA do servidor (GET /api/mercado) — o comparativo de preços e as minhas
@@ -11659,7 +11671,7 @@ const CFG_VER = 4;
     const opt = opcoes || {};
     if (!oferta) return { ok: false, motivo: 'sem oferta' };
 
-    if (!podeFazer('vigiarMercado').pode) return { ok: false, motivo: 'bloqueado pela hierarquia' };
+    if (!podeFazer('comprar').pode) return { ok: false, motivo: 'bloqueado pela hierarquia' };
     if (!naBase()) return { ok: false, motivo: 'so no Mercador (base)' };
     // A rotina da base chama este passo com `{interno:true}` — ela própria já está com o
     // mutex `baseLock` na mão. Sem esta exceção, a compra era SEMPRE recusada quando o

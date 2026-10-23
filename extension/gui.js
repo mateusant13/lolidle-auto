@@ -844,7 +844,6 @@ switches: 'interruptores',
       // 3) A MISSÃO (sempre em missão) e a região em uso.
       + '    <div class="grid2"><div id="ap-auto-regiao"></div><div id="ap-auto-tarefa"></div></div>'
       + '    <div id="ap-auto-champ"></div>'
-      + '    <div id="ap-now-jogo"></div>'
       + '  </section>'
       // ---------------- FARM: modalidade, objetivo, itens, regiões e ciclos ----------------
       + '  <section class="pane" id="ap-t-farm">'
@@ -862,6 +861,10 @@ switches: 'interruptores',
       + '    <div id="ap-macro-cartas"></div>'
       + '    <div id="ap-macro-mercado"></div>'
       + '    <div id="ap-auto-base"></div>'
+      + '    <div id="ap-cfg-base"></div>'
+      + '    <div id="ap-cfg-repor"></div>'
+      + '    <div id="ap-cfg-anunciar"></div>'
+      + '    <div id="ap-cfg-comprar"></div>'
       + '    <div id="ap-build-fase"></div>'
       + '  </section>'
       // ---------------- ITENS: mochila, build, DPS e cofre ----------------
@@ -916,6 +919,7 @@ switches: 'interruptores',
       + '    <div class="grid2"><div id="ap-auto-falta"></div><div id="ap-now-parado"></div></div>'
       + '    <div id="ap-manual-info"></div>'
       + '    <div id="ap-manual-dinamicas"></div>'
+      + '    <div id="ap-now-jogo"></div>'
       + '    <div id="ap-auto-acoes"></div>'
       + '  </section>'
       + '</main>'
@@ -1150,7 +1154,7 @@ switches: 'interruptores',
     const ligadoAgora = !!cfg().enabled;                 // o switch mostra o que o auto-play tem
     setHtml('ap-painel-estado',
       '<section class="card mestre ' + info.cls + '">'
-      + '<h3>AUTO-PLAY <span class="obs">um interruptor manda em tudo</span></h3>'
+      + '<h3>AUTO-PLAY</h3>'
       + '<div class="mestre-l">'
       + '<label class="mestre-tg" title="Liga ou desliga o auto-play. Desligado, só observa e mede.">'
       + '<input type="checkbox" id="ap-mestre"' + (ligadoAgora ? ' checked' : '') + '><span class="sw"></span>'
@@ -1541,7 +1545,9 @@ switches: 'interruptores',
         + kv('poções', ORDER.map((k) => POCAO_NOME[k] + ' ' + fmt(pot[k] || 0)).join(' · '))
         + '</div>'
         + '<p class="hint">' + (prox && prox.sobrevive === true
-          ? 'Próximo passo por omissão: farmar <b>' + esc(limparNivel(prox.regiao)) + '</b>, ' + fmt(prox.ouroLiquidoMin) + ' ouro limpo/min · ' + fmt(prox.xpMin) + ' xp/min.'
+          ? 'Próximo passo por omissão: farmar <b>' + esc(limparNivel(prox.regiao)) + '</b>, '
+            + (prox.ouroLiquidoMin != null ? fmt(prox.ouroLiquidoMin) + ' ouro limpo/min' : 'ouro limpo sem medição')
+            + ' · ' + fmt(prox.xpMin) + ' xp/min.'
           : 'Nenhuma região com segurança provada ainda, a automação decide após medir as regiões.') + '</p>'));
     }
   }
@@ -1557,7 +1563,7 @@ switches: 'interruptores',
     irBase: 'Ir à base (Fonte)',
     vender: 'Vender o lixo ao lojista',
     repor: 'Repor poções',
-    comprar: 'Comprar item no mercado',
+    comprar: 'Comprar no mercado (build e vigia)',
     refino: 'Refinar no Ornn',
     montar: 'Montar item no Ornn',
     cofre: 'Cofre (guardar e retirar)',
@@ -1569,37 +1575,36 @@ switches: 'interruptores',
     buildPorFase: 'Trocar a build conforme a luta',
     skillsPorFase: 'Trocar as habilidades conforme a luta',
     rotacao: 'Repor a rotação na barra',
-    vigiarMercado: 'Vigiar o mercado (itens e jogadores) e comprar',
     farm: 'Auto farm (viajar e farmar)',
     cartasAbrir: 'Abrir cartas misteriosas',
     cartasEncaixar: 'Encaixar cartas nos itens (Ornn)',
-    tarefa: 'Aceitar e entregar tarefas',
+    tarefa: 'Equipar a melhor peça de cada slot',
   };
   /** Switch -> bloco da aba MACRO onde os detalhes daquele switch se configuram. O ⚙ da
    *  árvore leva lá (pedido do dono 2026-10-21). Chave = `cfg` do switch. */
   const MACRO_ALVO = {
     autoFarm: 'ap-macro-farm',
-    // ATENÇÃO aos IDs: os blocos reais da aba Macro são `ap-auto-base` e `ap-build-fase`
-    // (gui.js:844-845). `ap-macro-base`/`ap-macro-build` NÃO existiam - o ⚙ desses switches
-    // abria a aba e rolava para o vazio (defeito encontrado 2026-10-21 ao fazer o popup).
-    autoVender: 'ap-auto-base',
-    autoRepor: 'ap-auto-base',
-    autoCofre: 'ap-auto-base',
-    autoComprar: 'ap-macro-mercado',
-    autoRefino: 'ap-auto-base',
-    autoMontar: 'ap-auto-base',
-    autoAnunciar: 'ap-macro-mercado',
-    autoVigiarMercado: 'ap-macro-mercado',
+    // Os detalhes de cada interruptor são PÁGINAS DE CONFIGURAÇÃO (ordem do dono, 2026-10-23:
+    // "o pop up de cada switch... tem que ser a mesma pagina de configuracao daquele switch.
+    // nao só uma info"). Antes, vender/repor/cofre/equipar/tarefa caíam todos em `ap-auto-base`,
+    // que era um parágrafo a dizer "não há nada para clicar aqui" - vazio por desenho.
+    autoVender: 'ap-cfg-base',
+    autoRepor: 'ap-cfg-repor',
+    autoCofre: 'ap-cfg-base',
+    autoComprar: 'ap-cfg-comprar',
+    autoRefino: 'ap-cfg-base',
+    autoMontar: 'ap-cfg-base',
+    autoAnunciar: 'ap-cfg-anunciar',
     cartasAbrir: 'ap-macro-cartas',
     cartasEncaixar: 'ap-macro-cartas',
     buildPorFase: 'ap-build-fase',
     skillsPorFase: 'ap-build-fase',
     rotacaoSkills: 'ap-build-fase',
     autoHab: 'ap-t-personagem',
-    autoAtrib: 'ap-t-personagem',
+    autoAtrib: 'ap-cfg-base',
     pocaoSmart: 'ap-t-pocao',
-    autoEquip: 'ap-macro-base',
-    autoTarefa: 'ap-macro-base',
+    autoEquip: 'ap-cfg-base',
+    autoTarefa: 'ap-cfg-base',
   };
   const ARV_AJUDA = {
     manutencao: 'recurso base (vender, equipar, mercado, pontos, cofre), funciona em qualquer campeão',
@@ -1607,7 +1612,7 @@ switches: 'interruptores',
     irBase: 'voltar à Fonte para tratar de tudo o que é da base',
     vender: 'vende ao lojista só o que o plano da mochila diz que é lixo',
     repor: 'compra poções no Lojista até o mínimo que você escolheu',
-    comprar: 'compra no mercado o item da build ideal que falta',
+    comprar: 'compra no mercado o item da build ideal que falta E as ofertas da sua vigia (itens e jogadores)',
     refino: 'gasta ouro refinando seus lendários tier A+ até o teto',
     montar: 'tenta montar no Ornn a receita mais barata que serve a build (é uma aposta)',
     cofre: 'guarda no cofre e vai buscar o que está lá',
@@ -1619,7 +1624,6 @@ switches: 'interruptores',
     buildPorFase: 'em mobs veste a build de limpeza; no chefe a de alvo único',
     skillsPorFase: 'em mobs prefere as habilidades de área; no chefe as de alvo único',
     rotacao: 'põe na barra as 4 habilidades prontas que dão mais dano',
-    vigiarMercado: 'lê o mercado dos jogadores em tempo real e compra as ofertas que casam com a sua watch (itens e/ou nomes de jogador), só gasta ouro e nunca abaixo da reserva',
   };
   /** O QUE CADA SWITCH COBRE - é a linha colorida ao lado dele: VERDE quando está ligado (o que
    *  passa a acontecer) e VERMELHA quando está desligado (o que deixa de acontecer). O texto fala
@@ -1634,7 +1638,7 @@ switches: 'interruptores',
     irBase: { on: 'Volta à Fonte quando alguma pendência paga a viagem.', off: 'Não volta à Fonte: nenhuma ação de base acontece.' },
     vender: { on: 'Vende no Lojista o básico, o épico e o duplicado (tier S+ nunca).', off: 'Nada é vendido, a mochila enche e você perde loot.' },
     repor: { on: 'Compra poções no Lojista até o mínimo que você escolheu.', off: 'As poções acabam e faltam curas no meio da luta.' },
-    comprar: { on: 'Compra no mercado o item da build ideal que falta.', off: 'A build só completa com o que cair no chão.' },
+    comprar: { on: 'Compra no mercado o item da build ideal que falta e as ofertas da vigia (itens e jogadores).', off: 'Nenhuma compra: a build só completa com o que cair no chão e a vigia não compra.' },
     refino: { on: 'Refina no Ornn os lendários tier A+ até o teto.', off: 'Os itens ficam no refino em que estão.' },
     montar: { on: 'Tenta montar no Ornn a receita mais barata que serve a build.', off: 'Nenhuma tentativa de montagem: nenhum item novo sai das peças.' },
     cofre: { on: 'Lê o cofre na Fonte e guarda o que deve ficar guardado.', off: 'O cofre nunca é lido, o painel fica sem saber o que está guardado.' },
@@ -1646,7 +1650,6 @@ switches: 'interruptores',
     buildPorFase: { on: 'Troca a build entre mobs e chefe conforme a luta.', off: 'Uma build só: as peças da outra fase não são reservadas.' },
     skillsPorFase: { on: 'Prefere habilidades de área em mobs e de alvo único no chefe.', off: 'A barra não muda com o contexto da luta.' },
     rotacao: { on: 'Mantém na barra as melhores habilidades, com a ultimate.', off: 'A barra fica como está, pode ficar sem a ultimate.' },
-    vigiarMercado: { on: 'Detecta em tempo real as ofertas dos itens que você vigia e dos jogadores da lista, e compra-as sozinho pelo mercado (no Mercador).', off: 'O mercado deixa de ser vigiado: nenhuma oferta da watch é comprada.' },
   };
   /** Marca dos switches com EXCEÇÃO. A automação já manda o texto (`excecaoTxt` em
    *  `arvoreInterruptores()`, automation.js:2293); este mapa é só o recurso para um versão antiga. */
@@ -1933,13 +1936,14 @@ switches: 'interruptores',
 
       // ESTADO, não ação: quem decide é o switch. Os botões para forçar cada passo vivem no
       // cartão de manutenção manual, no fim do Painel - a GUI é para o que é automático.
-      setHtml('ap-auto-base', card('Ações de base, quem decide', 'a automação executa sozinho quando vai à Fonte',
-        '<p class="hint tira">Ir à Fonte, vender, repor poções, cofre, mercado, atributos e tarefas são decididos pelos <b>switches</b> da lista acima. Quando o switch está ligado e alguma pendência paga a viagem, a automação vai e faz, não há nada para clicar aqui.</p>'
-        + '<p class="hint tira">Para forçar um passo agora, use <b>Manutenção manual</b>, no fim deste painel.</p>'));
+      // O cartão "Ações de base, quem decide" era um parágrafo a dizer "não há nada para clicar
+      // aqui" (queixa do dono, 2026-10-23: o popup do switch tem de ser a página de configuração,
+      // não uma info). Substituído pelos cartões reais: ap-cfg-base/repor/anunciar/comprar.
+      setHtml('ap-auto-base', '');
 
-      setHtml('ap-auto-tarefa', card('Tarefas e recompensas', 'Capitão da Legião, na Fonte',
+      setHtml('ap-auto-tarefa', card('Equipar a melhor peça de cada slot', 'a missão do Capitão, na Fonte',
         '<div id="ap-tarefa-estado"></div>'
-        + '<p class="hint tira">Aceitar a tarefa, entregar quando fica pronta e pegar as diárias são feitos sozinhos na rotina de base (com o switch <b>Manutenção</b> ligado).</p>'));
+        + '<p class="hint tira">Aceitar a missão, cumpri-la e entregá-la é feito sozinho na rotina de base. A missão pede equipar a melhor peça em cada slot: quem equipa é o switch <b>Equipar a melhor peça de cada slot</b>, na rotina de base.</p>'));
 
     }
     // A ÁRVORE DE INTERRUPTORES redesenha SEMPRE (o estado dela muda com a config, com o campeão
@@ -2588,7 +2592,10 @@ switches: 'interruptores',
     return fmt1(v);
   };
   function renderFarmObjetivo() {
-    // OBJETIVO DO FARM: o critério que escolhe a região (xp, ouro ou runas). Vive no PAINEL.
+    // OBJETIVO DO FARM: só faz sentido no "Auto farm sozinho" (é ele que escolhe a região pelo
+    // objetivo). No "Auto farm pra item" a região vem do DROP, logo o objetivo não manda nada;
+    // mostrar o cartão ali era ruído (queixa do dono, 2026-10-23).
+    if (farmModo() !== 'sozinho') { setHtml('ap-fm-objetivo', ''); return; }
     const c0 = cfg();
     const objAtual = String(c0.objetivo || 'xp');
     setHtml('ap-fm-objetivo', card('O que você quer ganhar', 'o objetivo muda a região escolhida',
@@ -2629,7 +2636,7 @@ switches: 'interruptores',
     const rec = recomendacao();
     setHtml('ap-fm-regioes', card('Regiões, o que foi medido', 'ouro/xp reais por minuto, com mobs e chefe separados',
       agg.length
-        ? tabela(['região', 'chefe', 'ouro/min', 'xp/min', 'abates/min', 'mortes', 'mobs', 'chefe', 'poções (ouro/min)'],
+        ? tabela(['região', 'chefe', 'ouro/min', 'xp/min', 'abates/min', 'mortes', 'mobs', 'chefe', 'poções/min · ouro/min'],
           agg.map((r) => {
             const z = r.risco;
             const melhor = rec && rec.regiao === r.region;
@@ -2642,7 +2649,7 @@ switches: 'interruptores',
             const chefe = z ? (z.mortal ? '💀 mata' : (z.morre ? '⚠ ' + fmt1(z.tMorrer) + 's' : '✔ sobrevive')) : '-';
             return '<tr class="' + (melhor ? 'melhor' : '') + '"><td>' + (melhor ? '⭐ ' : '') + esc(limparNivel(r.region)) + '</td><td>' + esc(limparNivel(r.boss || '-'))
               + '</td><td>' + fmt(r.goldMin) + '</td><td>' + fmt(r.xpMin) + '</td><td>' + fmt1(r.killsMin) + '</td><td>' + (r.deaths || 0)
-              + '</td><td>' + mobs + '</td><td>' + chefe + '</td><td>' + fmt(r.goldPotionMin) + '</td></tr>';
+              + '</td><td>' + mobs + '</td><td>' + chefe + '</td><td>' + fmt1(r.potMin) + ' · ' + fmt(r.goldPotionMin) + '</td></tr>';
           }), 'Ainda não há ciclos medidos')
         : '<p class="vazio">Ainda não há ciclos medidos. Farmar um pouco numa região já cria histórico.</p>'
         + (rec ? '<p class="aviso ok">Recomendação agora: <b>' + esc(limparNivel(rec.regiao)) + '</b>, ' + fmt(rec.ouroLiquidoMin) + ' ouro limpo/min (' + (rec.sobrevive ? 'você sobrevive ao chefe' : 'só mobs: o chefe mata') + ').</p>' : '')));
@@ -2875,8 +2882,8 @@ switches: 'interruptores',
     const minModo = guiPrefs.fmModoMin === true;
     setHtml('ap-fm-modo', cardMin(null, 'Como você quer farmar', 'duas modalidades, escolha uma',
       '<div class="modos">'
-      + '<button class="modo' + (modo === 'sozinho' ? ' ativa' : '') + '" id="ap-fm-modo-sozinho"><b>🤖 Auto farm sozinho</b><small>a automação escolhe a região, muda quando compensa e não pergunta nada</small></button>'
-      + '<button class="modo' + (modo === 'item' ? ' ativa' : '') + '" id="ap-fm-modo-item"><b>🎯 Auto farm pra item</b><small>você escolhe os itens que quer dropar e a automação vai à região que os dropa</small></button>'
+      + '<button class="modo' + (modo === 'sozinho' ? ' ativa' : '') + '" id="ap-fm-modo-sozinho"><b>Auto farm sozinho</b></button>'
+      + '<button class="modo' + (modo === 'item' ? ' ativa' : '') + '" id="ap-fm-modo-item"><b>Auto farm pra item</b></button>'
       + '</div>'
       + (modo === 'item' ? corpoItem : corpoSozinho), minModo, 'ap-fm-min-modo', !minModo));
   }
@@ -3502,6 +3509,73 @@ switches: 'interruptores',
       + '<p class="hint">Comprar de: <b>' + (String(w.filtroVendedores || 'so') === 'qualquer' ? 'qualquer jogador' : 'só dos jogadores listados') + '</b>'
       + (Array.isArray(w.vendedores) && w.vendedores.length ? ' (' + esc(w.vendedores.join(', ')) + ')' : '') + '.</p>'
       + '<div class="acoes">' + acao('ap-goto-mercado', 'Abrir o Mercado', 'Editar itens, limites, jogadores e a compra da build.') + '</div>'));
+
+    // ---------- CONFIGURAÇÃO REAL DE CADA SWITCH (ordem do dono, 2026-10-23) ----------
+    // Queixa, verbatim: *"o pop up de cada switch ao clicar no botao dele tem que ser a mesma
+    // pagina de configuracao daquele switch. nao só uma info."* Os cartões abaixo são páginas de
+    // CONFIGURAÇÃO (escrevem `cfg` pela automação), não resumos. O ⚙ da árvore abre-os no popup.
+    renderCfgBase();
+    renderCfgRepor();
+    renderCfgAnunciar();
+    renderCfgComprar();
+  }
+
+  /** Entrada numérica compacta para os cartões de configuração. */
+  const inpNum = (id, valor, passo) =>
+    '<input class="num" type="number" id="' + id + '" value="' + esc(valor == null ? '' : valor) + '" min="0" step="' + (passo || 1) + '">';
+  const inpSel = (id, opcoes, valor) =>
+    '<select id="' + id + '">' + opcoes.map((o) => '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(valor) ? ' selected' : '') + '>' + esc(o[1]) + '</option>').join('') + '</select>';
+
+  /** ROTINA DE BASE: os interruptores que a rotina usa + os dois limiares que ela lê. */
+  function renderCfgBase() {
+    const c = cfg();
+    setHtml('ap-cfg-base', card('Rotina de base', 'o que a automação faz sozinho quando vai à Fonte',
+      tgCfg('ap-cbase-equip', 'autoEquip', 'Equipar a melhor peça de cada slot', '', c.autoEquip !== false)
+      + tgCfg('ap-cbase-refino', 'autoRefino', 'Refinar no Ornn', '', !!c.autoRefino)
+      + tgCfg('ap-cbase-montar', 'autoMontar', 'Montar item no Ornn', '', !!c.autoMontar)
+      + tgCfg('ap-cbase-atrib', 'autoAtrib', 'Distribuir pontos de atributo', '', !!c.autoAtrib)
+      + linha('vender ao lojista até ao nível', '', inpNum('ap-cbase-inicio', c.inicioJogoAteNivel, 1))
+      + linha('voltar à Fonte para curar abaixo de', '', inpSel('ap-cbase-cura', [['0.35', '35%'], ['0.45', '45%'], ['0.6', '60%'], ['0.75', '75%']], String(c.curaAbaixo == null ? 0.45 : c.curaAbaixo)))
+      + '<p class="hint">Acima do nível de venda o Lojista só serve para DESPEJO (lixo), não é receita. A cura na Soraka só vale a viagem abaixo deste limiar.</p>'));
+  }
+
+  /** REPOR POÇÕES: mínimo por tipo e quanto comprar. As duas chaves já existiam na automação
+   *  (`minPotion`/`buyPotion`) e a GUI não as escrevia por um cartão próprio - o dono não tinha onde. */
+  function renderCfgRepor() {
+    const c = cfg(); const mp = c.minPotion || {}; const bp = c.buyPotion || {};
+    setHtml('ap-cfg-repor', card('Repor poções', 'quantas manter na mochila e quanto comprar no Lojista',
+      '<p class="hint tira"><b>Mínimo</b> = quando a base vai repor. <b>Comprar até</b> = quanto fica na mochila depois de repor.</p>'
+      + linha('mínimo · vida', '', inpNum('ap-min-vida', mp.vida, 50))
+      + linha('mínimo · forte', '', inpNum('ap-min-vidaF', mp.vidaF, 50))
+      + linha('mínimo · suprema', '', inpNum('ap-min-vidaS', mp.vidaS, 10))
+      + linha('comprar até · vida', '', inpNum('ap-buy-vida', bp.vida, 50))
+      + linha('comprar até · forte', '', inpNum('ap-buy-vidaF', bp.vidaF, 50))
+      + linha('comprar até · suprema', '', inpNum('ap-buy-vidaS', bp.vidaS, 10))
+      + '<p class="hint">A poção de mana não se repõe: não há poção de mana no Lojista.</p>'));
+  }
+
+  /** ANUNCIAR NO MERCADO: o desconto e o teto de qualidade passam a ser escolha do dono
+   *  (eram um 0,90 e um `'A'` cravados no código). */
+  function renderCfgAnunciar() {
+    const c = cfg();
+    setHtml('ap-cfg-anunciar', card('Anunciar no mercado', 'o que vai à venda e por quanto',
+      linha('desconto sobre o menor preço', '', inpSel('ap-anun-desc', [['0.80', '80%'], ['0.85', '85%'], ['0.90', '90%'], ['0.95', '95%']], String(c.anuncioDesconto == null ? 0.90 : c.anuncioDesconto)))
+      + linha('anunciar qualidade abaixo de', '', inpSel('ap-anun-qual', [['B', 'B (só C)'], ['A', 'A (B e C)'], ['S', 'S (A, B e C)'], ['SS', 'SS (todos menos SS)']], String(c.anuncioQualMax || 'A')))
+      + linha('preço sem comparável (tier A)', '', inpNum('ap-anun-piso', c.precoSemComparavel, 100000))
+      + linha('piso do Gume do Infinito', '', inpNum('ap-anun-gume', (c.precoSemComparavelPorBase || {})['3031'], 100000))
+      + '<p class="hint">Tier S+ e os lendários da build NUNCA são anunciados, nem duplicados. O preço compara sempre com a MESMA qualidade primeiro.</p>'));
+  }
+
+  /** COMPRAR NO MERCADO = um switch só (build + vigia). Aqui ficam os limites de gasto, que é o
+   *  que o dono configurava à mão no JSON. */
+  function renderCfgComprar() {
+    const c = cfg(); const w = c.mercadoWatch || {};
+    setHtml('ap-cfg-comprar', card('Comprar no mercado', 'build e vigia: um switch e os limites de gasto',
+      linha('qualidade mínima da build', '', inpSel('ap-cbuy-tier', [['A', 'A (ou melhor)'], ['S', 'S (ou melhor)']], String(c.compraMinTier || 'A')))
+      + linha('qualidade mínima da vigia', '', inpSel('ap-cbuy-wtier', [['A', 'A (ou melhor)'], ['S', 'S (ou melhor)'], ['SS', 'só SS']], String(w.tierMin || 'A')))
+      + linha('gastar até (% do ouro)', '', inpNum('ap-cbuy-pct', w.percentualOuro, 5))
+      + linha('teto por oferta (ouro)', '', inpNum('ap-cbuy-max', w.precoMax, 10000))
+      + '<p class="hint">Itens e jogadores da vigia configuram-se na aba <b>Mercado</b>. O Gume do Infinito e o que você marcou como "nunca comprar" ficam de fora.</p>'));
   }
 
   function renderTudo() {
@@ -4398,6 +4472,12 @@ switches: 'interruptores',
     definirCfg({ minPotion: novo });
     fb('ok', 'Mínimo de ' + POCAO_NOME[k] + ' para repor: ' + novo[k] + '.');
   }
+  function guardarBuy(k, valor) {
+    const cur = (cfg().buyPotion) || { vida: 3000, vidaF: 1500, vidaS: 700 };
+    const novo = Object.assign({}, cur); novo[k] = Math.max(0, Number(valor) || 0);
+    definirCfg({ buyPotion: novo });
+    fb('ok', 'Comprar até ' + novo[k] + ' de ' + POCAO_NOME[k] + '.');
+  }
   function guardarPocao(k, patch) {
     const cur = (config && config.potions) || {};
     const atual = Object.assign({ enabled: true, mode: 'pct', value: k === 'vidaS' ? 60 : k === 'vidaF' ? 43 : 21 }, cur[k] || {});
@@ -4501,6 +4581,29 @@ switches: 'interruptores',
       fb('ok', v ? 'Refino mínimo: +' + v + '.' : 'Refino mínimo: qualquer.');
     },
     'ap-watch-cad': (el) => { const s = Math.max(2, Number(el.value) || 5); definirCfg({ mercadoWatch: novoWatch({ cadenciaMs: s * 1000 }) }); fb('ok', 'Cadência da vigia: ' + s + ' s.'); },
+
+    // ---------- CARTÕES DE CONFIGURAÇÃO DOS SWITCHES (2026-10-23) ----------
+    'ap-cbase-inicio': (el) => { definirCfg({ inicioJogoAteNivel: Math.max(1, Number(el.value) || 1) }); fb('ok', 'Venda ao Lojista como receita até ao nível ' + (Number(el.value) || 1) + ': acima disso é só despejo.'); },
+    'ap-cbase-cura': (el) => { definirCfg({ curaAbaixo: Number(el.value) }); fb('ok', 'Voltar à Fonte para curar abaixo de ' + Math.round(Number(el.value) * 100) + '% da vida.'); },
+    'ap-min-vida': (el) => guardarMin('vida', el.value),
+    'ap-min-vidaF': (el) => guardarMin('vidaF', el.value),
+    'ap-min-vidaS': (el) => guardarMin('vidaS', el.value),
+    'ap-buy-vida': (el) => guardarBuy('vida', el.value),
+    'ap-buy-vidaF': (el) => guardarBuy('vidaF', el.value),
+    'ap-buy-vidaS': (el) => guardarBuy('vidaS', el.value),
+    'ap-anun-desc': (el) => { definirCfg({ anuncioDesconto: Number(el.value) }); fb('ok', 'Anúncio a ' + Math.round(Number(el.value) * 100) + '% do menor preço da mesma qualidade.'); },
+    'ap-anun-qual': (el) => { definirCfg({ anuncioQualMax: String(el.value).toUpperCase() }); fb('ok', 'Só se anuncia abaixo de ' + String(el.value).toUpperCase() + '.'); },
+    'ap-anun-piso': (el) => { definirCfg({ precoSemComparavel: Math.max(0, Number(el.value) || 0) }); fb('ok', 'Preço sem comparável (tier A): ' + fmt(Number(el.value) || 0) + '.'); },
+    'ap-anun-gume': (el) => {
+      const cur = Object.assign({}, (cfg().precoSemComparavelPorBase || {}));
+      cur['3031'] = Math.max(0, Number(el.value) || 0);
+      definirCfg({ precoSemComparavelPorBase: cur });
+      fb('ok', 'Piso do Gume do Infinito: ' + fmt(Number(el.value) || 0) + '.');
+    },
+    'ap-cbuy-tier': (el) => { definirCfg({ compraMinTier: String(el.value).toUpperCase() }); fb('ok', 'A build só gasta ouro em ' + String(el.value).toUpperCase() + ' ou melhor.'); },
+    'ap-cbuy-wtier': (el) => { definirCfg({ mercadoWatch: novoWatch({ tierMin: String(el.value).toUpperCase() }) }); fb('ok', 'A vigia só compra ' + String(el.value).toUpperCase() + ' ou melhor.'); },
+    'ap-cbuy-pct': (el) => { const v = Math.max(1, Math.min(100, Number(el.value) || 90)); definirCfg({ mercadoWatch: novoWatch({ percentualOuro: v }) }); fb('ok', 'A compra pode gastar até ' + v + '% do ouro.'); },
+    'ap-cbuy-max': (el) => { const v = Math.max(0, Number(el.value) || 0); definirCfg({ mercadoWatch: novoWatch({ precoMax: v || null }) }); fb('ok', v ? 'Tecto por oferta: ' + fmt(v) + '.' : 'Sem teto absoluto por oferta.'); },
   };
 
   // ============================================================ 6c. POPUP DOS DETALHES (⚙)
@@ -4511,7 +4614,10 @@ switches: 'interruptores',
     'ap-macro-farm': 'Rota de farm',
     'ap-macro-cartas': 'Cartas',
     'ap-macro-mercado': 'Mercado e watch',
-    'ap-auto-base': 'Rotina de base',
+    'ap-cfg-base': 'Rotina de base',
+    'ap-cfg-repor': 'Repor poções',
+    'ap-cfg-anunciar': 'Anunciar no mercado',
+    'ap-cfg-comprar': 'Comprar no mercado',
     'ap-build-fase': 'Build por fase',
   };
   let _macroPop = null, _macroPopVoltar = null;
@@ -4540,7 +4646,10 @@ switches: 'interruptores',
     try {
       if (alvo.indexOf('ap-macro-') === 0) renderMacro();
       else if (alvo === 'ap-build-fase') renderBuildFase();
-      else if (alvo === 'ap-auto-base') renderAuto();
+      else if (alvo === 'ap-cfg-base') renderCfgBase();
+      else if (alvo === 'ap-cfg-repor') renderCfgRepor();
+      else if (alvo === 'ap-cfg-anunciar') renderCfgAnunciar();
+      else if (alvo === 'ap-cfg-comprar') renderCfgComprar();
     } catch { /* sem dados ainda: o bloco mostra o placeholder */ }
     const el = document.getElementById(alvo);
     if (!el) { fbErro('Este bloco de detalhes ainda não existe nesta versão. Recarregue (F5).'); return false; }

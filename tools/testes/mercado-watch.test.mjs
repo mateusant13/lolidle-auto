@@ -156,14 +156,17 @@ export const suite = {
     t.check('W7: no modo QUALQUER a compra normal pode comprar o item', auto.baseReservadaWatch('3031') === false);
 
     /* W8 - o interruptor e a config persistente. */
-    t.check('W8: vigiarMercado pende da manutencao', auto.INTERRUPTORES.vigiarMercado && auto.INTERRUPTORES.vigiarMercado.pai === 'manutencao');
+    // MERGE (ordem do dono, 2026-10-23): "por que vigiar o mercado e comprar e 'comprar item no
+    // mercado' sao dois diferentes? faz merge". O no separado `vigiarMercado` (que era `ignorarCfg`,
+    // logo nem chave tinha) foi REMOVIDO: a watch e CONFIGURACAO da compra e a compra e o switch.
+    t.check('W8: a compra no mercado (build + vigia) pende da base', auto.INTERRUPTORES.comprar && auto.INTERRUPTORES.comprar.pai === 'irBase');
     // Dono 2026-10-20: "vigia ativa = compra ... mesmo ativa ou desativada, a vigia funciona".
     // Nao ha chave propria; a LISTA e o interruptor. So a manutencao/auto-play para tudo.
-    t.check('W8: vigiarMercado tem chave (contrato I10) mas IGNORA o valor', !!auto.INTERRUPTORES.vigiarMercado.cfg && auto.INTERRUPTORES.vigiarMercado.ignorarCfg === true);
+    t.check('W8: o merge apagou o switch separado da vigia', !auto.INTERRUPTORES.vigiarMercado);
     auto.setConfig({ enabled: true });
-    t.check('W8: por defeito pode (fail-open)', auto.podeFazer('vigiarMercado').pode === true);
+    t.check('W8: por defeito pode', auto.podeFazer('comprar').pode === true);
     auto.setConfig({ autoVigiarMercado: false });
-    t.check('W8: a chave antiga desligada NAO impede a vigia', auto.podeFazer('vigiarMercado').pode === true);
+    t.check('W8: a chave antiga autoVigiarMercado e inerte (ja nao ha switch para ela)', auto.podeFazer('comprar').pode === true);
     auto.setConfig({ autoVigiarMercado: true, mercadoWatch: { itens: ['3031'], vendedores: ['srdog'], precoMax: 200000, tetoCompra: 500000, cadenciaMs: 5000 } });
     const est = auto.mercadoWatchEstado();
     t.check('W8: a watch persiste e e legivel (itens)', (est.itens || []).join(',') === '3031');

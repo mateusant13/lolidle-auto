@@ -52,6 +52,16 @@ export const suite = {
       [{ base: '3006', qual: 'B', preco: 1000000 }], CONF);
     t.check('P1: oferta do MESMO tier -> 90% do menor', r.preco === 900000 && /MESMO tier/i.test(r.regra));
 
+    /* ============ P1b - O DESCONTO É CONFIGURÁVEL (ordem do dono, 2026-10-23) ============
+     * Queixa, verbatim: "anunciar lendarios no mercado nao tem configuracao decente". O 0,90 era
+     * um literal dentro de `fatorAnuncio()`; passa a ler `cfg.anuncioDesconto`. */
+    auto.setConfig({ anuncioDesconto: 0.5 });
+    r = auto.precoDeAnuncio({ base: '3006', qual: 'B' }, [{ base: '3006', qual: 'B', preco: 1000000 }], CONF);
+    t.check('P1b: anuncioDesconto=0,50 -> metade do menor do mesmo tier', r.preco === 500000);
+    auto.setConfig({ anuncioDesconto: 0.9 });
+    r = auto.precoDeAnuncio({ base: '3006', qual: 'B' }, [{ base: '3006', qual: 'B', preco: 1000000 }], CONF);
+    t.check('P1c: a voltar a 0,90 o preço volta a 900k (a chave manda, não um literal)', r.preco === 900000);
+
     /* ================= P2 - tier superior é FALLBACK ================= */
     // O caso exacto do dono: B a 1,5M, mas existe uma bota A mais barata (1M).
     r = auto.precoDeAnuncio(

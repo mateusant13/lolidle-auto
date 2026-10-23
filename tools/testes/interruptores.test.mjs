@@ -170,7 +170,9 @@ export const suite = {
       t.check('I11: e a escolha individual volta igual (equipar desligado)', a3.getConfig().autoEquip === false);
       // a vigia do mercado nao depende de switch nenhum (ordem do dono: vigia mesmo com tudo off)
       a3.setConfig({ enabled: false, manutencao: false });
-      t.check('I11: a vigia do mercado age mesmo com os switches desligados', a3.podeFazer('vigiarMercado').pode === true);
+      // MERGE (ordem do dono, 2026-10-23): a vigia deixou de ser um switch paralelo; comprar no
+      // mercado (build + vigia) e UM switch. Com tudo desligado, a compra tambem para.
+      t.check('I11: com tudo desligado a compra no mercado (build + vigia) fica bloqueada', a3.podeFazer('comprar').pode === false);
     }
   },
 };
