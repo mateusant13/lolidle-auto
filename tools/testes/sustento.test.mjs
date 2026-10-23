@@ -186,6 +186,58 @@ export const suite = {
         comDps && comDps.curaGiro > 0 && (semDps.curaGiro || 0) === 0);
     }
 
+    /* ============ S12/S13: A MARGEM MEDIDA AVISA, NÃO CONDENA ============ */
+    {
+      // Queixa do dono (2026-10-23), verbatim: "se eu nunca morro por que ele da base na hora de
+      // enfrentar o barao?" — duas lutas medidas desceram a 61% e a margem (0,70) punha
+      // `chefeMatam: true`; o `supervisarFuga` recordava assim que o chefe aparecia, apesar de a
+      // conta dizer que nunca morre e de 0 mortes medidas.
+      // S12: margem abaixo do limite + conta COM sustento (`liquido <= 0`) -> AVISO, não condenação.
+      // S13: a mesma margem + uma MORTE medida causada pelo chefe -> continua a condenar.
+      const montar = () => {
+        const m = criarMundo();
+        const auto = carregarAutomation(m);
+        alimentarCatalogo(m);
+        definirCampeao(m, 'adtest', {
+          nivel: 40,
+          stats: { hp: 5000, hpperlevel: 100, hpregen: 10, hpregenperlevel: 0.5, armor: 5000, spellblock: 5000 },
+        });
+        const MONSTROS_FRACOS = {
+          lobo: { hp: 1.0, ad: 1.0, as: 1.0, armadura: 1.0, xp: 1.0, ouro: 1.0 },
+          // chefe que a CONTA cobre (ad baixo): o objecto do teste e' a margem, nao a luta.
+          barao: { hp: 6.0, ad: 0.05, as: 0.7, armadura: 1.8, xp: 6.0, ouro: 6.0, chefe: true },
+        };
+        alimentarMeta(m, {
+          locais: [{ id: 'barao', nome: 'Covil do Barao', nm: [40, 48], faixa: [40, 48], tier: 7,
+            monstros: [['lobo', 1]], chefe: ['barao', 0.05] }],
+          monstros: MONSTROS_FRACOS,
+        });
+        m.montar('#hud-vida-txt', [m.el({ label: 'hud-vida-txt', textContent: '5000 / 5000' })]);
+        m.montar('.st', [
+          m.el({ label: 'st-dano', textContent: 'Dano 300' }),
+          m.el({ label: 'st-arm', textContent: 'Armadura 5000' }),
+          m.el({ label: 'st-rm', textContent: 'Res. mágica 5000' }),
+          m.el({ label: 'st-va', textContent: 'Vel. ataque 1' }),
+        ]);
+        const farm = auto.getFarm();
+        farm.lutas = [{ region: 'Covil do Barao', boss: 'barao', hpMinPct: 61 }];
+        return { m, auto, farm };
+      };
+
+      const a = montar();
+      const eA = a.auto.estimarRegiao('barao');
+      t.check('S12a: margem 61% e a conta a cobrir a luta -> NAO condena (chefeMatam false)',
+        eA && eA.curaCobreChefe === true && eA.chefeMatam === false);
+      t.check('S12b: mas o aperto fica REGISTADO (chefeApertado + a margem medida)',
+        eA && eA.chefeApertado === true && Math.abs(eA.margemChefeMedida - 0.61) < 1e-9);
+
+      const b = montar();
+      b.farm.deaths = [{ region: 'Covil do Barao', by: 'barao', at: Date.now() }];
+      const eB = b.auto.estimarRegiao('barao');
+      t.check('S13: mortes MEDIDAS pelo chefe continuam a condenar (a margem nao desligou a seguranca)',
+        eB && eB.chefeMatam === true);
+    }
+
     /* ============ S5/S6: O VEREDICTO DA REGIAO PASSA A VER O SUSTENTO ============ */    {
       const { auto } = mundo({ nivel: 30, rv: 20 });
       const p = auto.player();
@@ -200,3 +252,5 @@ export const suite = {
     }
   },
 };
+
+

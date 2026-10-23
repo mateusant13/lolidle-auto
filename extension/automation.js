@@ -1927,6 +1927,9 @@
     // campos nao se distingue "a conta viu o roubo de vida" de "a conta esqueceu-se dele" — e foi
     // exactamente essa cegueira que fez o modelo dizer "morre" onde o dono ganha a luta.
     let dpsSaida = 0, curaRvMax = 0, curaRegenMax = 0, curaGiroMax = 0;
+    // MARGEM MEDIDA NA LUTA DE CHEFE (2026-10-23): separada do veredicto. Uma luta que DESCEU a
+    // 61% e foi GANHA nao e uma morte; e uma luta apertada. Ver o bloco que a le.
+    let chefeApertado = false, margemChefeMedida = null, curaCobreChefe = null;
     // DOIS RISCOS SEPARADOS (queixa do dono, 2026-10-22): "se eu morro pro chefe mas
     // sobrevivo pros mobs, eu devo ir farmar". Um chefe que mata NÃO invalida os mobs; só
     // quando os MOBS matam é que não há farm nenhum. Antes os dois caíam no mesmo `morte`.
@@ -1983,6 +1986,9 @@
             if (Number.isFinite(avc.tMorrer)) riscoTMorrer = Math.min(riscoTMorrer == null ? Infinity : riscoTMorrer, +avc.tMorrer.toFixed(1));
             curaRvMax = Math.max(curaRvMax, Number(avc.curaRv) || 0);
             curaRegenMax = Math.max(curaRegenMax, Number(avc.curaRegen) || 0);
+            // A conta PROVA sustento suficiente? (`liquido <= 0` = a cura cobre o dano recebido,
+            // logo a luta nao acaba em morte). Usado pela margem medida, mais abaixo.
+            curaCobreChefe = Number.isFinite(avc.liquido) ? (avc.liquido <= 0) : null;
             // o chefe aguenta muito mais que um mob: morrer ANTES de o matar é o critério.
             //  (a) insta-kill: o pior golpe do rodízio passa da vida (`mortal`);
             //  (b) com DPS conhecido: morre em menos de 1,5x o tempo que leva a matá-lo;
@@ -2031,9 +2037,20 @@
           }
         }
         // MARGEM MEDIDA NA LUTA DE CHEFE: a teoria pode dizer "ganha" e a luta real descer abaixo
-        // da margem de segurança do dono. Medido no Barão: a teoria diz `tMorrer: null` (nunca
-        // morre) e as duas lutas reais desceram a 61% de vida; o dono CONFIRMA que morre. A
-        // margem é `cfg.margemChefe` (default 0,70). É dado medido, não nome de zona.
+        // da margem de segurança do dono.
+        //
+        // DEFEITO CORRIGIDO (queixa do dono, 2026-10-23, verbatim): *"se eu nunca morro por que ele
+        // da base na hora de enfrentar o barao?"* — a margem era usada como SENTENÇA DE MORTE: as
+        // duas lutas medidas no Barão desceram a 61% e, com `cfg.margemChefe` 0,70, o
+        // `chefeMatam` virava `true`; o `supervisarFuga` faz `morre = mobsMatam || (chefeMatam &&
+        // bosAgora)` e recordava ASSIM QUE O BARÃO APARECIA. Ao vivo (2026-10-23): 0 mortes
+        // medidas, `estimarLuta('barao').ganha === true`, `riscoTMorrer: null` (a conta diz que
+        // nunca morre) — e ele fugia na mesma.
+        //
+        // REGRA NOVA: a margem é um AVISO (`chefeApertado`), não uma condenação. Só passa a
+        // `chefeMatam` quando a conta NÃO prova sustento (`curaCobreChefe !== true`), isto é,
+        // quando o dano recebido é maior do que a cura que ele tem — aí não há prova de que a
+        // luta se ganha e vale o fail-closed. Morte MEDIDA (acima) continua a condenar sempre.
         const lutas = (farm.lutas || []).filter((l) => mesmaRegiao(l) && l && l.boss);
         if (lutas.length) {
           const margemC = Number(cfg.margemChefe != null ? cfg.margemChefe : 0.70);
@@ -2041,8 +2058,12 @@
             let hp = Number(l.hpMinPct);
             if (!Number.isFinite(hp)) continue;
             if (hp > 1) hp /= 100;                                     // a medida vem em %
-            if (hp < margemC) { chefeMatam = true; break; }
+            if (hp < margemC) {
+              chefeApertado = true;
+              margemChefeMedida = margemChefeMedida == null ? hp : Math.min(margemChefeMedida, hp);
+            }
           }
+          if (chefeApertado && curaCobreChefe !== true) chefeMatam = true;
         }
       } catch { /* ignore */ }
       // FAIL-CLOSED (regra do dono: "NAO E PRA MORRER, NUNCA, COM ESSE SCRIPT"): sem prova de
@@ -2080,7 +2101,7 @@
       const rr2 = (agregar() || []).find((x) => x.region && String(x.region).startsWith(String(loc.nome)));
       if (rr2 && rr2.goldPotionMin != null) goldPotionMin = Math.round(rr2.goldPotionMin);
     } catch { /* ignore */ }
-    return { killsMinTeorico: (killsMin > 0 ? killsMin : 1), kAbates: (cfg.kAbates != null ? cfg.kAbates : 1), id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: +L.toFixed(1), fatorXp: fx, noite: mm.noite, multXp: +mm.xp.toFixed(3), multOuro: +mm.ouro.toFixed(3), mobHp: Math.round(hpAvg), mobsPerWave, minhaDps: myDps || null, modo, kXp: kx, kOuro: ko, xpKill: +(xpK * kx).toFixed(2), goldKill: +(goldK * ko).toFixed(2), killsMin: +killsMin.toFixed(1), xpMin: Math.round(xpK * kx * killsMin), goldMin: Math.round(goldK * ko * killsMin), xpMinReal: xpReal, goldMinReal: goldReal, goldLiqMin: Math.max(0, goldReal - goldPotionMin), goldPotionMin, mobsMatam, chefeMatam, chefeFatal: chefeMatam, mobsSeguros: !mobsMatam, runasKill: +runasKill.toFixed(5), runasMin: +(runasKill * killsMin).toFixed(2), runasChefe: +runasChefe.toFixed(2), runasH: Math.round(runasKill * killsMin * 60), morte, riscoMob, riscoDps, riscoTMorrer, dpsSaida, curaRv: +curaRvMax.toFixed(2), curaRegen: +curaRegenMax.toFixed(2), curaGiro: +curaGiroMax.toFixed(2) };
+    return { killsMinTeorico: (killsMin > 0 ? killsMin : 1), kAbates: (cfg.kAbates != null ? cfg.kAbates : 1), id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: +L.toFixed(1), fatorXp: fx, noite: mm.noite, multXp: +mm.xp.toFixed(3), multOuro: +mm.ouro.toFixed(3), mobHp: Math.round(hpAvg), mobsPerWave, minhaDps: myDps || null, modo, kXp: kx, kOuro: ko, xpKill: +(xpK * kx).toFixed(2), goldKill: +(goldK * ko).toFixed(2), killsMin: +killsMin.toFixed(1), xpMin: Math.round(xpK * kx * killsMin), goldMin: Math.round(goldK * ko * killsMin), xpMinReal: xpReal, goldMinReal: goldReal, goldLiqMin: Math.max(0, goldReal - goldPotionMin), goldPotionMin, mobsMatam, chefeMatam, chefeFatal: chefeMatam, mobsSeguros: !mobsMatam, runasKill: +runasKill.toFixed(5), runasMin: +(runasKill * killsMin).toFixed(2), runasChefe: +runasChefe.toFixed(2), runasH: Math.round(runasKill * killsMin * 60), morte, riscoMob, riscoDps, riscoTMorrer, dpsSaida, curaRv: +curaRvMax.toFixed(2), curaRegen: +curaRegenMax.toFixed(2), curaGiro: +curaGiroMax.toFixed(2), chefeApertado, margemChefeMedida: margemChefeMedida == null ? null : +margemChefeMedida.toFixed(3), curaCobreChefe };
   }
 
   /** Calibra o fator de conta (k) comparando o estimado com o MEDIDO.
@@ -2482,7 +2503,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-sustento-luta2';
+  const BUILD = '2026-10-23-margem-avisa';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
