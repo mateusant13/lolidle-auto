@@ -2398,7 +2398,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-preco-mesmo-tier-excedente-recupera';
+  const BUILD = '2026-10-23-preco-quarentena-por-falha';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -5302,6 +5302,19 @@ const CFG_VER = 4;
     const falhasContam = (Array.isArray(falhas) ? falhas : []).filter(passoDa);
     return { pendente, falhasContam, ok: pendente.length === 0 && falhasContam.length === 0 };
   }
+  /** NECESSIDADES a QUARENTENAR depois de uma rotina da base (PURA).
+   *
+   *  `res.falhas` são NOMES DE PASSO; o silêncio (`marcarIndisponivel`) é por NECESSIDADE. E um
+   *  passo pode servir DUAS necessidades — `cofre` e `cofreA` partilham o passo 'cofre': se o
+   *  passo falhou, as DUAS descansam, senão a segunda reabre o mesmo passo no tick seguinte
+   *  (medido ao vivo 2026-10-23: o passo do cofre corria a cada 20 s na Fonte, andava até à
+   *  Tesoureira e abortava com "saiu da Fonte durante a rotina").
+   */
+  function quarentenaBase(falhas) {
+    const out = new Set();
+    for (const nome of (Array.isArray(falhas) ? falhas : [])) for (const par of PASSOS_BASE) if (par[1] === nome) out.add(par[0]);
+    return out;
+  }
 
   /** ROTINA DA BASE — REPETE até não faltar nada.
    *
@@ -5415,15 +5428,20 @@ const CFG_VER = 4;
       // O que NÃO fechou fica indisponível por INDISPONIVEL_MS (deixa de ser pedido); o que
       // fechou volta a ser pedível quando aparecer outra vez. Sem isto, qualquer coisa que a
       // loja não vende (ex.: Poção Suprema abaixo do nível 30) vira ping-pong eterno.
-      // Só se quarentena o que PAGA viagem: uma oportunidade (`lerCofre`, `cofreA`) e um lote
-      // que não paga a ida (`vender`, `venderLixoCofre`) não são falhanços — se fossem
-      // marcados 45 min, o cofre deixava de ser lido e o lixo acumulava sem ninguém saber.
+      //
+      // QUARENTENA = SÓ O QUE FALHOU (2026-10-23, medido ao vivo): quarentenar as
+      // OPORTUNIDADES por estarem `true` escondia o cofre 45 min; NÃO as quarentenar por terem
+      // FALHADO fazia o passo do cofre correr em cada visita (a cada 20 s na Fonte, a andar até
+      // à Tesoureira e a abortar com "saiu da Fonte durante a rotina"). A regra certa é esta:
+      // um passo que FALHOU descansa 45 min; uma necessidade que só não PAGA viagem não é falha
+      // e não é quarentenada (é o `veredictoBase` que decide, não esta lista).
       const aindaAbertas = new Set(res.restou);
       // `comprarWatch` NUNCA fica 45 min indisponível: a oferta pode ter sido vendida
       // nesse instante e o poller (2 s) já traz outra. Marcar aqui mataria a vigia toda.
       // `tarefa` idem, mas por outro motivo: ficar SEM MISSÃO é proibido pelo dono; o travão
       // dela é o backoff curto de 60 s, não a quarentena de 45 min.
-      for (const k of res.pendente) {
+      const passosFalhados = quarentenaBase(res.falhas);
+      for (const k of passosFalhados) {
         if (k === 'comprarWatch') continue;
         if (k === 'tarefa') { _tarefaProx = Date.now() + TAREFA_BACKOFF_MS; continue; }
         marcarIndisponivel(k, 'a base não conseguiu fechar esta necessidade' + (res.falhasContam.length ? ' (passos: ' + res.falhasContam.join(',') + ')' : ''));
@@ -13429,7 +13447,7 @@ const CFG_VER = 4;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, veredictoBase, motivosDeViagem, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
+  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, veredictoBase, quarentenaBase, motivosDeViagem, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },

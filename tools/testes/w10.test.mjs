@@ -323,6 +323,16 @@ export const suite = {
       // CONTROLO: sem nada aberto e sem falhas, ok.
       v = w.auto.veredictoBase([], null, []);
       t.check('L7: nada aberto -> ok', v.ok === true);
+      // QUARENTENA (2026-10-23): um passo que FALHOU descansa 45 min — e o passo 'cofre'
+      // serve DUAS necessidades (`cofre` e `cofreA`). Sem mapear as duas, a segunda reabria o
+      // mesmo passo no tick seguinte (o cofre corria a cada 20 s na Fonte e abortava ao andar).
+      const q1 = w.auto.quarentenaBase(['cofre']);
+      t.check('L7: falha do passo cofre quarentena `cofre` E `cofreA`',
+        q1.has('cofre') && q1.has('cofreA'));
+      const q2 = w.auto.quarentenaBase(['ler cofre']);
+      t.check('L7: falha de "ler cofre" quarentena `lerCofre`', q2.has('lerCofre') && q2.size === 1);
+      t.check('L7: falha de passo desconhecido não quarentena nada', w.auto.quarentenaBase(['passo-que-nao-existe']).size === 0);
+      t.check('L7: sem falhas, quarentena vazia', w.auto.quarentenaBase([]).size === 0);
     }
 
     /* ============ L8 - HISTORICO: a vigia nao expulsa `base`/`morte` do ring ==============

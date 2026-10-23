@@ -153,6 +153,42 @@ export const suite = {
       m.documento.hidden = false;
     }
 
+    /* ============ W4c - QUARENTENA: só o que FALHOU descansa (2026-10-23) ============
+     * Medido ao vivo: na Fonte, o `lerCofre` falhava (sem cofre à mão) e o passo voltava a
+     * correr em cada visita — de 20 em 20 s, a andar até à Tesoureira e a abortar com "saiu da
+     * Fonte durante a rotina". Ao mesmo tempo, a rotina dizia `ok:false` e o boneco NUNCA saía
+     * para farmar. As duas metades da correcção:
+     *   (a) `ok` = só o que PAGA viagem (oportunidade não segura);
+     *   (b) o passo que FALHOU fica quarentenado — mesmo sendo oportunidade.
+     */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarMeta(m);
+      montarLocal(m, 'Fonte');
+      auto.setConfig({ enabled: true, manutencao: true, champAlvo: 'adtest' });
+      t.check('W4c: CONTROLO - a estreia do cofre pede `lerCofre`', auto.necessidadesBase().lerCofre === true);
+      const r = await auto.acaoBase();
+      // A OPORTUNIDADE fica em `restou` (é a verdade) mas NUNCA em `pendente` (que é o que
+      // decide a viagem) nem em `falhasContam` (que é o que trava a saída).
+      t.check('W4c: lerCofre está em `restou` mas NÃO em `pendente`',
+        !!r && (r.restou || []).indexOf('lerCofre') >= 0 && (r.pendente || []).indexOf('lerCofre') < 0);
+      t.check('W4c: falha do `ler cofre` não conta para travar a saída',
+        !!r && (r.falhas || []).indexOf('ler cofre') >= 0 && (r.falhasContam || []).indexOf('ler cofre') < 0);
+      // E o `ok` é exactamente a regra (nada que pague viagem + nenhuma falha que conte) —
+      // neste mundo `repor`/`tarefa` ainda pagam, logo `ok` é false e NÃO é por causa do cofre.
+      t.check('W4c: ok = (pendente vazio E falhasContam vazio)',
+        !!r && r.ok === ((r.pendente || []).length === 0 && (r.falhasContam || []).length === 0));
+      t.check('W4c: o passo que falhou (`ler cofre`) fica QUARENTENADO',
+        auto.estaIndisponivel('lerCofre') === true);
+      t.check('W4c: ...e a necessidade desaparece sozinha',
+        auto.necessidadesBase().lerCofre === false);
+      // Uma necessidade que só NÃO PAGA viagem nunca é quarentenada (não é falha).
+      t.check('W4c: `cofreA` não foi quarentenado', auto.estaIndisponivel('cofreA') === false);
+    }
+
     /* ============ W5 - TK-01-13: regiaoIdeal() null passa a dizer PORQUE ============ */
     {
       const m = criarMundo();
