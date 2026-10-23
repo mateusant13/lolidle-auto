@@ -88,6 +88,10 @@ import { suite as suiteAbandono } from './abandono.test.mjs';
 // matematica diz que eu morro mas na realidade eu ganho" — regeneracao (motor.js:576/1464),
 // roubo de vida no veredicto da regiao e vidas extra dos itens (motor.js:2999-3004).
 import { suite as suiteSustento } from './sustento.test.mjs';
+// ABA ESCONDIDA (dono, 2026-10-23): "a extensao nao faz auto farm mais. fica parada na fonte" —
+// o jogo CORRE com a aba oculta (pulso.js por Worker, medido: 14 -> 28 abates em 30 s) e quem
+// desistia era o supervisarBase. Agora escondida+base+pendencia = sair a farmar.
+import { suite as suiteOculta } from './oculta.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -124,6 +128,7 @@ const SUITES = [
   suitePveSempre,
   suiteAbandono,
   suiteSustento,
+  suiteOculta,
 ];
 const checks = [];
 const notas = [];

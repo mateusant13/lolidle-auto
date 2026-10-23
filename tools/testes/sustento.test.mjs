@@ -238,6 +238,63 @@ export const suite = {
         eB && eB.chefeMatam === true);
     }
 
+    /* ===== S14/S15/S16: A MEDIÇÃO MANDA; A TEORIA SÓ CONDENA QUEM NUNCA LUTOU ===== */
+    {
+      // Queixa do dono (2026-10-23): "se eu nunca morro por que ele da base na hora de enfrentar
+      // o barao?" — ao vivo, `estimarRegiao('barao')` dava `morte:true` por causa da TEORIA
+      // ("morre em 21,2 s antes de matar em 61 s") com ZERO mortes medidas e duas lutas ganhas.
+      // A regra nova é de ORDEM: o que já foi medido vale mais do que o modelo.
+      const montar = (opts = {}) => {
+        const m = criarMundo();
+        const auto = carregarAutomation(m);
+        alimentarCatalogo(m);
+        definirCampeao(m, 'adtest', {
+          nivel: 40,
+          // armadura baixa: a TEORIA condena (dano recebido > cura), que é o caso a sobrepor.
+          stats: { hp: 5000, hpperlevel: 100, hpregen: 10, hpregenperlevel: 0.5, armor: 100, spellblock: 80 },
+        });
+        alimentarMeta(m, {
+          locais: [{ id: 'barao', nome: 'Covil do Barao', nm: [40, 48], faixa: [40, 48], tier: 7,
+            monstros: [['lobo', 1]], chefe: ['barao', 0.05] }],
+          monstros: {
+            lobo: { hp: 1.0, ad: 1.0, as: 1.0, armadura: 1.0, xp: 1.0, ouro: 1.0 },
+            barao: { hp: 6.0, ad: 2.2, as: 0.7, armadura: 1.8, xp: 6.0, ouro: 6.0, chefe: true },
+          },
+        });
+        m.montar('#hud-vida-txt', [m.el({ label: 'hud-vida-txt', textContent: '5000 / 5000' })]);
+        m.montar('.st', [
+          m.el({ label: 'st-dano', textContent: 'Dano 300' }),
+          m.el({ label: 'st-arm', textContent: 'Armadura 100' }),
+          m.el({ label: 'st-rm', textContent: 'Res. mágica 80' }),
+          m.el({ label: 'st-va', textContent: 'Vel. ataque 1' }),
+        ]);
+        const farm = auto.getFarm();
+        farm.lutas = opts.lutas || [];
+        farm.deaths = opts.deaths || [];
+        return { m, auto, farm };
+      };
+
+      const sem = montar();
+      const eSem = sem.auto.estimarRegiao('barao');
+      t.check('S16: SEM medição a teoria continua a condenar (fail-closed intacto)',
+        eSem && eSem.chefeMatam === true && eSem.lutasMedidas === 0);
+
+      const com = montar({ lutas: [{ region: 'Covil do Barao', boss: 'barao', hpMinPct: 61 }] });
+      const eCom = com.auto.estimarRegiao('barao');
+      t.check('S14a: com luta medida e ZERO mortes a teoria NAO condena (chefeMatam false)',
+        eCom && eCom.chefeMatam === false && eCom.teoriaVale === false);
+      t.check('S14b: e a medição continua visível (0 mortes do chefe, 1 luta, 61% de vida mínima)',
+        eCom && eCom.mortesChefe === 0 && eCom.lutasMedidas === 1 && Math.abs(eCom.hpMinMedido - 0.61) < 1e-9);
+
+      const morreu = montar({
+        lutas: [{ region: 'Covil do Barao', boss: 'barao', hpMinPct: 61 }],
+        deaths: [{ region: 'Covil do Barao', by: 'barao', at: Date.now() }],
+      });
+      const eMorreu = morreu.auto.estimarRegiao('barao');
+      t.check('S15: com morte MEDIDA pelo chefe a região volta a condenar (a medição manda para os dois lados)',
+        eMorreu && eMorreu.chefeMatam === true && eMorreu.mortesChefe === 1);
+    }
+
     /* ============ S5/S6: O VEREDICTO DA REGIAO PASSA A VER O SUSTENTO ============ */    {
       const { auto } = mundo({ nivel: 30, rv: 20 });
       const p = auto.player();

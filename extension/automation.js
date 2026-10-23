@@ -1934,6 +1934,38 @@
     // sobrevivo pros mobs, eu devo ir farmar". Um chefe que mata NÃO invalida os mobs; só
     // quando os MOBS matam é que não há farm nenhum. Antes os dois caíam no mesmo `morte`.
     let mobsMatam = false, chefeMatam = false;
+    // ---- (0) O QUE JÁ FOI MEDIDO NESTA REGIÃO, ANTES DA TEORIA -----------------------------
+    // ORDEM DE CONFIANÇA (pedido do dono, 2026-10-23: "a matemática não faz nada com nada entre
+    // si"). Aqui a medição é calculada UMA vez e a teoria passa a ser CONDICIONAL a ela — antes
+    // havia três critérios a competir no mesmo booleano e o mais pessimista ganhava. Resultado
+    // medido: `estimarRegiao('barao')` dizia `morte:true` (teoria: morre em 21,2 s antes de
+    // matar em 61 s) com ZERO mortes medidas e duas lutas ganhas — e o boneco fugia do Barão.
+    // Regra: quem JÁ LUTOU ali e não morreu não pode ser condenado por um modelo.
+    const normN = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const nomeRegiao = normN(loc.nome);
+    const nomeChefe = normN(loc.chefe && loc.chefe[0]);
+    const mesmaRegiao = (r) => r && r.region && normN(r.region).indexOf(nomeRegiao) === 0;
+    let rr = null; try { rr = (agregar() || []).find(mesmaRegiao) || null; } catch { /* ignore */ }
+    let lutasMedidas = 0, mortesChefe = 0, mortesMob = 0, hpMinMedido = null;
+    try {
+      for (const d of (farm.deaths || [])) {
+        if (!mesmaRegiao(d)) continue;
+        const por = normN(d.by);
+        if (por && nomeChefe && (por === nomeChefe || por.indexOf(nomeChefe) >= 0 || nomeChefe.indexOf(por) >= 0)) mortesChefe++;
+        else mortesMob++;
+      }
+      const LS = (farm.lutas || []).filter((l) => mesmaRegiao(l) && l && l.boss);
+      lutasMedidas = LS.length;
+      for (const l of LS) {
+        let hp = Number(l.hpMinPct);
+        if (!Number.isFinite(hp)) continue;
+        if (hp > 1) hp /= 100;                                     // a medida vem em %
+        hpMinMedido = hpMinMedido == null ? hp : Math.min(hpMinMedido, hp);
+      }
+    } catch { /* ignore */ }
+    // A TEORIA SÓ CONDENA QUEM NÃO TEM MEDIÇÃO CONTRÁRIA. Morte medida (abaixo) manda sempre.
+    const teoriaVale = !(lutasMedidas > 0 && mortesChefe === 0);
+    const teoriaMobsVale = !(rr && rr.mobHpMinRel != null && mortesMob === 0);
     try {
       const curaMob = { skill: 0, pocao: curaPocaoMax() * 0.6 };
       // O DPS DE SAIDA entra no veredicto (5.o argumento do `avaliar`): sem ele `curaRv` fica 0
@@ -1962,7 +1994,7 @@
         //       o farm todo (é a diferença entre uma medida e um chute).
         const usaTempo = (myDps || 0) > 0 && a.hp && Number.isFinite(a.tMorrer);
         const segMatar = usaTempo ? a.hp / Math.max(1, (myDps || 0) * (a.fJ || 1)) : null;
-        if (a.mortal || (usaTempo && a.tMorrer < segMatar * 1.5)) { mobsMatam = true; riscoMob = par[0]; }
+        if (teoriaMobsVale && (a.mortal || (usaTempo && a.tMorrer < segMatar * 1.5))) { mobsMatam = true; riscoMob = par[0]; }
         if (Number.isFinite(a.dpsTomado)) riscoDps = Math.max(riscoDps || 0, Math.round(a.dpsTomado));
         if (Number.isFinite(a.tMorrer)) riscoTMorrer = Math.min(riscoTMorrer == null ? Infinity : riscoTMorrer, +a.tMorrer.toFixed(1));
         curaRvMax = Math.max(curaRvMax, Number(a.curaRv) || 0);
@@ -1996,7 +2028,7 @@
             //      (`liquido > 0`), não há prova de que a luta se ganha — fail-closed.
             const usaTempoC = (myDps || 0) > 0 && avc.hp && Number.isFinite(avc.tMorrer);
             const segMatarC = usaTempoC ? avc.hp / Math.max(1, (myDps || 0) * (avc.fJ || 1)) : null;
-            if (avc.mortal || (usaTempoC && avc.tMorrer < segMatarC * 1.5) || (!usaTempoC && avc.liquido > 0)) {
+            if (teoriaVale && (avc.mortal || (usaTempoC && avc.tMorrer < segMatarC * 1.5) || (!usaTempoC && avc.liquido > 0))) {
               chefeMatam = true; if (!riscoMob) riscoMob = loc.chefe[0];
             }
           }
@@ -2014,28 +2046,16 @@
       // pelo nome de quem matou (`farm.deaths[].by`); a vida mínima MEDIDA dos mobs ->
       // `mobsMatam` só abaixo da margem do dono (`cfg.mobHpMinRel`).
       try {
-        const normN = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-        const nomeRegiao = normN(loc.nome);
-        const nomeChefe = normN(loc.chefe && loc.chefe[0]);
-        const mesmaRegiao = (r) => r && r.region && normN(r.region).indexOf(nomeRegiao) === 0;
-        const rr = (agregar() || []).find(mesmaRegiao);
         if (rr) {
           if (rr.risco && rr.risco.morre) chefeMatam = true;            // luta de CHEFE, não mobs
           const margem = Number(cfg.mobHpMinRel != null ? cfg.mobHpMinRel : 0.15);
           if (rr.mobHpMinRel != null && Number(rr.mobHpMinRel) < margem) mobsMatam = true;
         }
-        // MORTES MEDIDAS: o `by` diz quem matou. Se foi o chefe, é o chefe que mata; se foi um
-        // mob (ou nome desconhecido), são os mobs. Sem esta atribuição, a primeira morte no
-        // Barão condenava a região inteira e o boneco nunca podia voltar a farmar os mobs.
-        for (const d of (farm.deaths || [])) {
-          if (!mesmaRegiao(d)) continue;
-          const por = normN(d.by);
-          if (por && nomeChefe && (por === nomeChefe || por.indexOf(nomeChefe) >= 0 || nomeChefe.indexOf(por) >= 0)) {
-            chefeMatam = true;
-          } else {
-            mobsMatam = true;
-          }
-        }
+        // MORTES MEDIDAS (contadas no bloco (0), com o `by` a atribuir quem matou): chefe -> chefe,
+        // mob (ou nome desconhecido) -> mobs. Sem esta atribuição, a primeira morte no Barão
+        // condenava a região inteira e o boneco nunca podia voltar a farmar os mobs.
+        if (mortesChefe > 0) chefeMatam = true;
+        if (mortesMob > 0) mobsMatam = true;
         // MARGEM MEDIDA NA LUTA DE CHEFE: a teoria pode dizer "ganha" e a luta real descer abaixo
         // da margem de segurança do dono.
         //
@@ -2043,27 +2063,18 @@
         // da base na hora de enfrentar o barao?"* — a margem era usada como SENTENÇA DE MORTE: as
         // duas lutas medidas no Barão desceram a 61% e, com `cfg.margemChefe` 0,70, o
         // `chefeMatam` virava `true`; o `supervisarFuga` faz `morre = mobsMatam || (chefeMatam &&
-        // bosAgora)` e recordava ASSIM QUE O BARÃO APARECIA. Ao vivo (2026-10-23): 0 mortes
-        // medidas, `estimarLuta('barao').ganha === true`, `riscoTMorrer: null` (a conta diz que
-        // nunca morre) — e ele fugia na mesma.
+        // bosAgora)` e recordava ASSIM QUE O BARÃO APARECIA.
         //
         // REGRA NOVA: a margem é um AVISO (`chefeApertado`), não uma condenação. Só passa a
-        // `chefeMatam` quando a conta NÃO prova sustento (`curaCobreChefe !== true`), isto é,
-        // quando o dano recebido é maior do que a cura que ele tem — aí não há prova de que a
-        // luta se ganha e vale o fail-closed. Morte MEDIDA (acima) continua a condenar sempre.
-        const lutas = (farm.lutas || []).filter((l) => mesmaRegiao(l) && l && l.boss);
-        if (lutas.length) {
+        // `chefeMatam` quando a conta NÃO prova sustento (`curaCobreChefe !== true`).
+        if (lutasMedidas > 0) {
           const margemC = Number(cfg.margemChefe != null ? cfg.margemChefe : 0.70);
-          for (const l of lutas.slice(0, 5)) {
-            let hp = Number(l.hpMinPct);
-            if (!Number.isFinite(hp)) continue;
-            if (hp > 1) hp /= 100;                                     // a medida vem em %
-            if (hp < margemC) {
-              chefeApertado = true;
-              margemChefeMedida = margemChefeMedida == null ? hp : Math.min(margemChefeMedida, hp);
-            }
+          if (hpMinMedido != null && hpMinMedido < margemC) {
+            chefeApertado = true;
+            margemChefeMedida = hpMinMedido;
           }
-          if (chefeApertado && curaCobreChefe !== true) chefeMatam = true;
+          // A CONTA SÓ CONDENA QUEM NÃO TEM MEDIÇÃO CONTRÁRIA (a mesma ordem do bloco (0)).
+          if (teoriaVale && chefeApertado && curaCobreChefe !== true) chefeMatam = true;
         }
       } catch { /* ignore */ }
       // FAIL-CLOSED (regra do dono: "NAO E PRA MORRER, NUNCA, COM ESSE SCRIPT"): sem prova de
@@ -2101,7 +2112,7 @@
       const rr2 = (agregar() || []).find((x) => x.region && String(x.region).startsWith(String(loc.nome)));
       if (rr2 && rr2.goldPotionMin != null) goldPotionMin = Math.round(rr2.goldPotionMin);
     } catch { /* ignore */ }
-    return { killsMinTeorico: (killsMin > 0 ? killsMin : 1), kAbates: (cfg.kAbates != null ? cfg.kAbates : 1), id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: +L.toFixed(1), fatorXp: fx, noite: mm.noite, multXp: +mm.xp.toFixed(3), multOuro: +mm.ouro.toFixed(3), mobHp: Math.round(hpAvg), mobsPerWave, minhaDps: myDps || null, modo, kXp: kx, kOuro: ko, xpKill: +(xpK * kx).toFixed(2), goldKill: +(goldK * ko).toFixed(2), killsMin: +killsMin.toFixed(1), xpMin: Math.round(xpK * kx * killsMin), goldMin: Math.round(goldK * ko * killsMin), xpMinReal: xpReal, goldMinReal: goldReal, goldLiqMin: Math.max(0, goldReal - goldPotionMin), goldPotionMin, mobsMatam, chefeMatam, chefeFatal: chefeMatam, mobsSeguros: !mobsMatam, runasKill: +runasKill.toFixed(5), runasMin: +(runasKill * killsMin).toFixed(2), runasChefe: +runasChefe.toFixed(2), runasH: Math.round(runasKill * killsMin * 60), morte, riscoMob, riscoDps, riscoTMorrer, dpsSaida, curaRv: +curaRvMax.toFixed(2), curaRegen: +curaRegenMax.toFixed(2), curaGiro: +curaGiroMax.toFixed(2), chefeApertado, margemChefeMedida: margemChefeMedida == null ? null : +margemChefeMedida.toFixed(3), curaCobreChefe };
+    return { killsMinTeorico: (killsMin > 0 ? killsMin : 1), kAbates: (cfg.kAbates != null ? cfg.kAbates : 1), id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: +L.toFixed(1), fatorXp: fx, noite: mm.noite, multXp: +mm.xp.toFixed(3), multOuro: +mm.ouro.toFixed(3), mobHp: Math.round(hpAvg), mobsPerWave, minhaDps: myDps || null, modo, kXp: kx, kOuro: ko, xpKill: +(xpK * kx).toFixed(2), goldKill: +(goldK * ko).toFixed(2), killsMin: +killsMin.toFixed(1), xpMin: Math.round(xpK * kx * killsMin), goldMin: Math.round(goldK * ko * killsMin), xpMinReal: xpReal, goldMinReal: goldReal, goldLiqMin: Math.max(0, goldReal - goldPotionMin), goldPotionMin, mobsMatam, chefeMatam, chefeFatal: chefeMatam, mobsSeguros: !mobsMatam, runasKill: +runasKill.toFixed(5), runasMin: +(runasKill * killsMin).toFixed(2), runasChefe: +runasChefe.toFixed(2), runasH: Math.round(runasKill * killsMin * 60), morte, riscoMob, riscoDps, riscoTMorrer, dpsSaida, curaRv: +curaRvMax.toFixed(2), curaRegen: +curaRegenMax.toFixed(2), curaGiro: +curaGiroMax.toFixed(2), chefeApertado, margemChefeMedida: margemChefeMedida == null ? null : +margemChefeMedida.toFixed(3), curaCobreChefe, teoriaVale, teoriaMobsVale, lutasMedidas, mortesChefe, mortesMob, hpMinMedido: hpMinMedido == null ? null : +hpMinMedido.toFixed(3) };
   }
 
   /** Calibra o fator de conta (k) comparando o estimado com o MEDIDO.
@@ -2503,7 +2514,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-margem-avisa';
+  const BUILD = '2026-10-23-medicao-manda';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -3606,7 +3617,15 @@ const CFG_VER = 4;
     const rank = (typeof rankRegioes === 'function' ? rankRegioes() : []).filter((r) => r.sobrevive === true);
     if (rank.length) {
       const m = rank[0];
-      return { regiao: m.id, ouroLiquidoMin: null, xpMin: m.xpMin || 0, chefe: m.chefe || null, sobrevive: true, mix: null, sinalUlt: valeUlt(), ritmo: ritmoMobs() };
+      // OURO LÍQUIDO **NUNCA** É `null` (defeito medido 2026-10-23: o painel mostrava
+      // "0 ouro limpo/min" para o Covil do Barão porque `fmt(null)` imprime 0 — o número existia:
+      // 6.345 - 113 de poções = 6.232). A mesma conta do ramo de cima, aqui.
+      const liq = (r) => {
+        const g = Number(r.goldMin) || 0;
+        const p = Number(r.goldPotionMin) || 0;
+        return g - p;
+      };
+      return { regiao: m.id, ouroLiquidoMin: liq(m), goldMin: Number(m.goldMin) || 0, goldPotionMin: Number(m.goldPotionMin) || 0, xpMin: m.xpMin || 0, chefe: m.chefe || null, sobrevive: true, mix: null, sinalUlt: valeUlt(), ritmo: ritmoMobs() };
     }
     return null;
   }
@@ -13110,6 +13129,8 @@ const CFG_VER = 4;
 
   /** Se ficou parado na base além de `cfg.idleBaseMs` (3 min), volta a farmar sozinho. */
   let _ultimaVenda = 0, _baseBusy = false, _ultimaBase = 0, _ultimaCompra = 0, _baseFalhas = 0;
+  // "aba oculta + na base" -> sair a farmar (ver o bloco em `supervisarBase`). Throttle próprio.
+  let _hiddenSaidaAt = 0;
   /** MODO FARM FORÇADO: 3 visitas seguidas à base SEM fechar NENHUMA necessidade = a base não
    *  tem o que ele precisa. Em vez de continuar a andar para trás e para a frente (a queixa
    *  do dono), ignora-se a base por `FARM_FORCADO_MS` e farma-se — com o motivo no log. */
@@ -13241,11 +13262,6 @@ const CFG_VER = 4;
 
   function supervisarBase() {
     if (!podeFazer('manutencao').pode || pausado) return;   // base = manutencao (vender/cofre/repor)
-    // ABA EM SEGUNDO PLANO: o jogo usa requestAnimationFrame, logo com a aba oculta o loop para
-    // e os NPCs abertos por clique no canvas caem no vazio. Correr a rotina aqui NÃO é só inútil:
-    // marca as necessidades como indisponíveis 45 min por uma falha que não existe. P0 medido
-    // 2026-10-21 (lab): `venda` -> `sem lojista` numa aba oculta. Não se faz nada até voltar.
-    if (typeof document !== 'undefined' && document.hidden) return;
     talvezReajustarMercado();   // preços errados de ofertas ANTIGAS (ver a doc acima)
     // Avalia a NECESSIDADE (vale na base E no campo): mochila cheia, tarefa pronta, lixo, sem tarefa
     let motivo = null, motivoViagem = null, info = {}, falta = [], faltaViagem = [], necess = null;
@@ -13258,6 +13274,34 @@ const CFG_VER = 4;
       try { necess = necessidadesBase(); falta = faltandoNaBase(necess); } catch { falta = []; }
       info = { used: bag && bag.used, cap: bag && bag.cap, falta, venda: necess && necess._venda, custoIda: necess && necess._custoIda, pocoes: necess && necess._pocoes };
       motivo = falta.length ? ('base: ' + falta.join(',')) : null;
+      // ABA EM SEGUNDO PLANO — O JOGO **CORRE** (medido ao vivo 2026-10-23, `document.hidden:
+      // true`): o `js/pulso.js` do jogo chama `avancar(false)` por um Worker e o relógio do motor
+      // avança 1:1 com o tempo real; em 30 s o boneco fez 14 -> 28 abates. A crença antiga ("aba
+      // oculta = jogo parado") era FALSA e custou a queixa do dono, verbatim: *"por algum motivo,
+      // talvez por eu nao ter a pagina carregada, a extensao nao faz auto farm mais. fica parada
+      // na fonte."* — com o guarda antigo (`return` seco) o boneco ficava na Fonte para SEMPRE.
+      //
+      // O que é verdade: os DIÁLOGOS da base (Lojista/cofre/mercado) dependem de passos
+      // encadeados por timer e o Chrome atrasa-os numa aba oculta — por isso a rotina continua a
+      // não correr aqui (`acaoBase` mantém a guarda, para não marcar indisponível 45 min por uma
+      // falha que não existe).
+      //
+      // REGRA NOVA: escondida + na base + algo pendente = SAIR A FARMAR (farmar não precisa de
+      // UI nenhuma). A base espera a aba voltar; o que nunca acontece é ficar parado na Fonte.
+      if (typeof document !== 'undefined' && document.hidden) {
+        if (!naBase() || !falta.length) return;
+        if (ocupado || _baseBusy || baseLock) return;
+        if (Date.now() - _hiddenSaidaAt < 45000) return;         // não martelar a viagem
+        if (!podeFazer('farm').pode) return;
+        const regH = regiaoIdeal();
+        if (!regH) return;
+        _hiddenSaidaAt = Date.now();
+        logEvent('base', { escondida: true, farmar: 'FORCADO (aba oculta: a base espera, o jogo nao)', regiao: regH, falta });
+        marcarAtiva();
+        viajarPara(regH);
+        return;
+      }
+      _hiddenSaidaAt = 0;
       // MOTIVO DE VIAGEM ≠ MOTIVO DE BASE (pedido do dono, 2026-10-20): estar NA base com
       // 3 itens para vender é bom (vende-se e sai); mas SAIR do campo e pagar a viagem por
       // 3 itens de ~1680 ouro NÃO paga o custo. A venda só paga a viagem quando a mochila
