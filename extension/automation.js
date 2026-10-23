@@ -2398,7 +2398,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-preco-quarentena-por-falha';
+  const BUILD = '2026-10-23-base-na-fonte-normalizada';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -5337,7 +5337,7 @@ const CFG_VER = 4;
    *  no log da GUI). */
   const BASE_MAX_PASSAGENS = 3;
   async function acaoBase() {
-    if ((readLocation().text || '') !== 'Fonte') return { ok: false, motivo: 'nao esta na base' };
+    if (!naBase()) return { ok: false, motivo: 'nao esta na base' };
     // Defesa em profundidade (o supervisor já não chama com a aba oculta): com o jogo parado
     // nada aqui funciona, e um `ok:false` marcaria a necessidade como indisponível 45 min.
     if (typeof document !== 'undefined' && document.hidden) return { ok: false, motivo: 'aba em segundo plano: o jogo nao corre' };
@@ -5389,8 +5389,13 @@ const CFG_VER = 4;
         await humano(250, 650);
         // SAIU DA FONTE (uma caminhada/tarefa levou o boneco): parar já. Continuar aqui é o
         // que produzia os 6 `mercado` com "so na Fonte" no log.
-        if ((readLocation().text || '') !== 'Fonte') {
-          res.saiu = p; res.ok = false; res.motivo = 'saiu da Fonte durante a rotina (passagem ' + p + ')';
+        // FONTE ÚNICA (2026-10-23): esta guarda comparava o texto CRU com 'Fonte' e a rotina
+        // abortava em passos legítimos que mexem no HUD ("saiu da Fonte durante a rotina (passo
+        // cofre)" de 20 em 20 s, ao vivo). O resto do ficheiro usa `naBase()` (`/fonte/i`,
+        // motor.js:386 `{id:'fonte', nome:'Fonte'}`) — é essa a pergunta certa.
+        if (!naBase()) {
+          res.saiu = p; res.ok = false;
+          res.motivo = 'saiu da Fonte durante a rotina (passagem ' + p + '): ' + (readLocation().text || '?');
           logEvent('base', res); marcarAtiva(); return res;
         }
         const n = necessidadesBase();          // RE-AVALIADO a cada passagem (CAUSA 1)
@@ -5407,8 +5412,9 @@ const CFG_VER = 4;
             res.motivo = 'aba escondida a meio de ' + x[1] + ' (o jogo para; a base retoma quando a aba estiver à frente)';
             logEvent('base', res); marcarAtiva(); return res;
           }
-          if ((readLocation().text || '') !== 'Fonte') {
-            res.saiu = p; res.ok = false; res.motivo = 'saiu da Fonte durante a rotina (passo ' + x[1] + ')';
+          if (!naBase()) {
+            res.saiu = p; res.ok = false;
+            res.motivo = 'saiu da Fonte durante a rotina (passo ' + x[1] + '): ' + (readLocation().text || '?');
             logEvent('base', res); marcarAtiva(); return res;
           }
         }
@@ -11814,7 +11820,7 @@ const CFG_VER = 4;
   let _giroVoltas = 0;   // tecto do retry "volta à Fonte" (bug: reagendava-se SEM LIMITE a cada 9 s)
   function proximoGiro() {
     if (!giro || giro.i >= giro.lista.length) { logEvent('giro-fim', { feito: giro ? giro.i : 0 }); giro = null; salvarGiro(); return; }
-    if ((readLocation().text || '') !== 'Fonte') {
+    if (!naBase()) {
       if (_giroVoltas >= 5) {
         logEvent('giro', { desistiu: 'nao chegou a Fonte', tentativas: _giroVoltas });
         _giroVoltas = 0; giro = null; salvarGiro(); return;

@@ -189,6 +189,24 @@ export const suite = {
       t.check('W4c: `cofreA` não foi quarentenado', auto.estaIndisponivel('cofreA') === false);
     }
 
+    /* ============ W4d - "Fonte (núcleo)" é a FONTE (guarda da rotina) ====================
+     * Medido ao vivo (2026-10-23): a rotina abortava de 20 em 20 s com "saiu da Fonte durante a
+     * rotina (passo cofre)". A guarda comparava o texto CRU com 'Fonte'; o resto do ficheiro usa
+     * `naBase()` (`/fonte/i`, motor.js:386 `{id:'fonte', nome:'Fonte', base:true}`). Um passo
+     * legítimo que mexa no HUD (o cofre anda com o boneco pela praça) abortava a rotina toda. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarMeta(m);
+      montarLocal(m, 'Fonte (núcleo)');
+      auto.setConfig({ enabled: true, manutencao: true, champAlvo: 'adtest' });
+      const r = await auto.acaoBase();
+      t.check('W4d: "Fonte (núcleo)" NÃO é "nao esta na base"', !!r && r.motivo !== 'nao esta na base');
+      t.check('W4d: ...e a rotina não aborta por "saiu da Fonte"', !!r && !/saiu da Fonte/.test(String(r.motivo || '')));
+    }
+
     /* ============ W5 - TK-01-13: regiaoIdeal() null passa a dizer PORQUE ============ */
     {
       const m = criarMundo();
