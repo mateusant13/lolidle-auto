@@ -181,6 +181,13 @@ export const suite = {
       t.check('C2: o planejador NAO oferece a zona do Freljord (fora do Rift)',
         (plano || []).every((x) => x.zona !== 'fj'));
       t.check('C2: e mantem a zona do Rift (barao)', (plano || []).some((x) => x.zona === 'barao'));
+      // A ROTA QUE O DONO PEDIU: Rabadon (3089) no Covil do Barao. O chefe mata (medido), os
+      // mobs nao -> a zona TEM de ficar na rota e o resto e a fuga quando ele aparece.
+      auto.importar({ farm: { deaths: [] } });
+      const rota3089 = auto.planejarRota(['3089']) || [];
+      t.check('C2b: so o CHEFE matar nao tira a zona da rota (Rabadon no Barao)',
+        rota3089.some((p) => p.regiao === 'barao'));
+      t.check('C2c: e a rota nao ganha passos fora do Rift', rota3089.every((p) => p.regiao !== 'fj'));
     }
 
     /* ================= 4) LOG: A ROTACAO NAO AFUNDA O HISTORICO ================= */

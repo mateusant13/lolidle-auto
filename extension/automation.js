@@ -2306,7 +2306,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-chefe-margem-mitico';
+  const BUILD = '2026-10-23-rota-chefe-nao-exclui';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -9062,7 +9062,16 @@ const CFG_VER = 4;
     try { plano = ids.length ? (planejar(ids) || []) : []; } catch { plano = []; }
     for (const p of plano) {
       const k = String(p.zona || '');
-      if (!k || vistos.has(k) || p.chefeFatal === true) continue;
+      if (!k || vistos.has(k)) continue;
+      // O CHEFE QUE MATA NAO INVALIDA A ZONA (ordem do dono, 2026-10-23: "farmar o Rabadon no
+      // Covil do Barao sem morrer pro Barao"). Antes o filtro era `p.chefeFatal === true` e o
+      // Barao caia fora — a rota do Rabadon saia VAZIA. A regra certa: a zona so fica fora se
+      // forem os MOBS a matar (medido em `estimarRegiao`); o chefe resolve-se a FUGIR quando
+      // aparece (`checarChefeFatal`), que e o que a automacao ja faz.
+      let est = null;
+      try { est = estimarRegiao(k); } catch { est = null; }
+      if (est) { if (est.mobsMatam === true) continue; }
+      else if (p.sobreviveMob === false) continue;   // sem medida: cai no teorico do `planejar`
       vistos.add(k);
       passos.push({ regiao: k, nome: p.zonaNome || k, tipo: 'item',
         alvos: plano.filter((x) => String(x.zona) === k).map((x) => ({ item: String(x.item), nome: x.nome, dropsH: x.dropsH })),
@@ -9071,7 +9080,16 @@ const CFG_VER = 4;
     if (querCartas) {
       let reg = null;
       try {
-        const agg = (agregar() || []).filter((r) => r && Number(r.killsMin) > 0 && (!r.risco || !r.risco.morte))
+        // MESMA REGRA DA ROTA DE ITEM: os mobs mandam. `risco.morte` nao existe no agregado
+        // (e `risco.morre`, e e o risco do CHEFE) — ler o campo errado deixava passar zonas cujos
+        // mobs matam. Aqui a medida e por regiao, a mesma de `estimarRegiao`.
+        const agg = (agregar() || [])
+          .filter((r) => {
+            if (!r || !(Number(r.killsMin) > 0)) return false;
+            const idR = localId(r.region);
+            const e = idR ? estimarRegiao(idR) : null;
+            return !e || e.mobsMatam !== true;
+          })
           .sort((a, b) => Number(b.killsMin) - Number(a.killsMin))[0];
         if (agg) reg = { regiao: localId(agg.region) || agg.region, nome: agg.region, killsMin: Number(agg.killsMin) };
       } catch { /* sem agregado */ }
