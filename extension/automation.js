@@ -2398,7 +2398,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-preco-mesmo-tier-base-completa';
+  const BUILD = '2026-10-23-preco-mesmo-tier-excedente';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -7725,6 +7725,24 @@ const CFG_VER = 4;
     });
   }
 
+  /** CÓPIAS EM CASA de um base: equipado + mochila. O que está ANUNCIADO não conta (é a peça
+   *  que se está a avaliar). PURA o suficiente para o plano (lê o DOM, não o mercado). */
+  function copiasEmCasa(base) {
+    const b = String(base == null ? '' : base).replace(/[+~].*$/, '');
+    let n = 0;
+    try { for (const e of readEquip()) if (String(e.base) === b) n++; } catch { /* sem DOM */ }
+    try { for (const i of ((scanBag() || {}).items || [])) if (i.kind === 'item' && String(i.base) === b) n++; } catch { /* sem DOM */ }
+    return n;
+  }
+  /** Uma oferta MINHA é o EXCEDENTE de um item especial? (o campeão já tem em casa as cópias que
+   *  USA). Sem isto o `planejarMercado` cancelava tudo o que é "protegido" — incluindo o
+   *  excedente que o `planBag` acabou de mandar ao mercado — e o actor anunciava, o plano
+   *  cancelava, e a praça ficava a meio (queixa do dono: "meu mercado ta com 5 slots de 10"). */
+  function ofertaExcedenteDeEspecial(base) {
+    if (!ehEspecialMeu(base)) return false;
+    let fs = []; try { fs = fasesDoItem(base) || []; } catch { fs = []; }
+    return copiasEmCasa(base) >= Math.max(1, fs.length);
+  }
   /** PLANEJA o reajuste: compara minhas ofertas com o menor do mercado do MESMO item+qualidade.
    *  TK-01: TUDO lido do servidor (GET /api/mercado) — o planejamento nunca abre o mercado. */
   async function planejarMercado() {
@@ -7734,9 +7752,14 @@ const CFG_VER = 4;
     const minhas = mk.minhas || [];
     const acoes = [];
     for (const o of minhas) {
+      // PROTEGIDO -> cancela, MENOS quando a oferta é o EXCEDENTE de um item especial: nesse
+      // caso o `planBag` manda-o ao mercado e a oferta é a execução dessa ordem. Cancelá-la
+      // aqui seria o actor a desfazer o próprio plano no ciclo seguinte.
       if (isProtected({ kind: 'item', base: o.base, raridade: (infoItem(o.base) || {}).raridade, qual: o.qual })) {
-        acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, acao: 'cancelar (protegido: lendário A+/Rabadon)' });
-        continue;
+        if (!ofertaExcedenteDeEspecial(o.base)) {
+          acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, acao: 'cancelar (protegido: lendário A+/Rabadon)' });
+          continue;
+        }
       }
       const ref = referenciaPrecoMercado(o, mercado, cfg);
       if (!ref) {

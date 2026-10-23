@@ -141,6 +141,35 @@ export const suite = {
     t.check('P5c: tier A único é CANCELADO (nunca reanunciado por 1,5M)',
       !!aA && /cancelar/i.test(aA.acao) && /protegido/i.test(aA.acao));
 
+    // P5d/P5e — EXCEDENTE DE ESPECIAL: o `planBag` manda-o ao mercado; o plano não pode
+    // cancelá-lo no ciclo seguinte (foi o vaivém que deixava a praça a meio: "meu mercado ta
+    // com 5 slots de 10"). Cancelar só quando o campeão NÃO tem em casa as cópias que usa.
+    {
+      const mS = criarMundo();
+      const aS = carregarAutomation(mS);
+      alimentarCatalogo(mS);
+      definirCampeao(mS, 'aptest');
+      aS.setConfig({ enabled: true });
+      mS.sandbox.fetch = async () => ({
+        ok: true, status: 200,
+        json: async () => ({ ofertas: [OF('oEx', '3100~C', 100, { minha: true })] }),
+      });
+      const pSem = await aS.planejarMercado();
+      const exSem = (pSem.acoes || []).find((x) => x.id === 'oEx');
+      t.check('P5d: especial SEM cópia em casa -> cancelar (o campeão precisa dela)',
+        !!exSem && /cancelar/i.test(exSem.acao) && /protegido/i.test(exSem.acao));
+      // Agora com UMA cópia EQUIPADA (o campeão usa 1): a oferta é excedente -> NÃO cancelar.
+      mS.montar('#equip > button.slot[data-id]', [mS.el({
+        tag: 'button', label: 'equip:3100', className: 'slot lendario',
+        attrs: { 'data-id': '3100~C', 'data-dica': 'Perdicao de Lich (lendario)' },
+      })]);
+      const pCom = await aS.planejarMercado();
+      const exCom = (pCom.acoes || []).find((x) => x.id === 'oEx');
+      t.check('P5e: especial com a cópia em casa -> excedente, NÃO é cancelado',
+        !!exCom && !/cancelar/i.test(exCom.acao));
+      t.check('P5f: CONTROLO - 3100 é mesmo especial deste campeão', aS.ehEspecialMeu('3100') === true);
+    }
+
     /* ================= P6 - piso de tier da vigia ================= */
     t.check('P6: tier B NÃO passa no piso A por defeito',
       auto.tierPermitidoWatch(OF('x', '3006~B', 1000000), {}, 'A') === false);
