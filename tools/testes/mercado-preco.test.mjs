@@ -168,6 +168,23 @@ export const suite = {
       t.check('P5e: especial com a cópia em casa -> excedente, NÃO é cancelado',
         !!exCom && !/cancelar/i.test(exCom.acao));
       t.check('P5f: CONTROLO - 3100 é mesmo especial deste campeão', aS.ehEspecialMeu('3100') === true);
+      // P5g — DUAS ofertas do mesmo especial, ZERO cópias em casa, o campeão usa 1: só UMA
+      // volta (a que ele está a usar); a outra é excedente e fica anunciada. Sem isto o plano
+      // esvaziava a praça do excedente que ele próprio tinha anunciado.
+      const mZ = criarMundo();
+      const aZ = carregarAutomation(mZ);
+      alimentarCatalogo(mZ);
+      definirCampeao(mZ, 'aptest');
+      aZ.setConfig({ enabled: true });
+      mZ.sandbox.fetch = async () => ({
+        ok: true, status: 200,
+        json: async () => ({ ofertas: [OF('o1', '3100~C', 100, { minha: true }), OF('o2', '3100~C', 100, { minha: true })] }),
+      });
+      const pDois = await aZ.planejarMercado();
+      const doDois = (pDois.acoes || []).filter((x) => x.id === 'o1' || x.id === 'o2');
+      t.check('P5g: 2 ofertas do especial, 1 em uso -> UMA cancela, a outra fica',
+        doDois.filter((x) => /cancelar/i.test(x.acao)).length === 1
+          && doDois.filter((x) => !/cancelar/i.test(x.acao)).length === 1);
     }
 
     /* ================= P6 - piso de tier da vigia ================= */

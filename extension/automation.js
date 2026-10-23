@@ -2398,7 +2398,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-preco-mesmo-tier-excedente';
+  const BUILD = '2026-10-23-preco-mesmo-tier-excedente-recupera';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -7738,10 +7738,9 @@ const CFG_VER = 4;
    *  USA). Sem isto o `planejarMercado` cancelava tudo o que é "protegido" — incluindo o
    *  excedente que o `planBag` acabou de mandar ao mercado — e o actor anunciava, o plano
    *  cancelava, e a praça ficava a meio (queixa do dono: "meu mercado ta com 5 slots de 10"). */
-  function ofertaExcedenteDeEspecial(base) {
-    if (!ehEspecialMeu(base)) return false;
+  function necessidadeEspecial(base) {
     let fs = []; try { fs = fasesDoItem(base) || []; } catch { fs = []; }
-    return copiasEmCasa(base) >= Math.max(1, fs.length);
+    return Math.max(1, fs.length);
   }
   /** PLANEJA o reajuste: compara minhas ofertas com o menor do mercado do MESMO item+qualidade.
    *  TK-01: TUDO lido do servidor (GET /api/mercado) — o planejamento nunca abre o mercado. */
@@ -7751,12 +7750,22 @@ const CFG_VER = 4;
     const mercado = mk.mercado;
     const minhas = mk.minhas || [];
     const acoes = [];
+    // Ofertas MINHAS por base especial ainda a RECUPERAR: se o campeão usa 1 cópia e não tem
+    // nenhuma em casa, das duas que estão anunciadas só UMA volta; a outra é excedente.
+    const aRecuperar = {};
     for (const o of minhas) {
       // PROTEGIDO -> cancela, MENOS quando a oferta é o EXCEDENTE de um item especial: nesse
       // caso o `planBag` manda-o ao mercado e a oferta é a execução dessa ordem. Cancelá-la
       // aqui seria o actor a desfazer o próprio plano no ciclo seguinte.
       if (isProtected({ kind: 'item', base: o.base, raridade: (infoItem(o.base) || {}).raridade, qual: o.qual })) {
-        if (!ofertaExcedenteDeEspecial(o.base)) {
+        const base = String(o.base == null ? '' : o.base).replace(/[+~].*$/, '');
+        let cancelar = true;
+        if (ehEspecialMeu(base)) {
+          if (aRecuperar[base] == null) aRecuperar[base] = Math.max(0, necessidadeEspecial(base) - copiasEmCasa(base));
+          if (aRecuperar[base] > 0) aRecuperar[base]--;      // esta volta: o campeão está sem ela
+          else cancelar = false;                              // excedente: fica anunciada
+        }
+        if (cancelar) {
           acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, acao: 'cancelar (protegido: lendário A+/Rabadon)' });
           continue;
         }
