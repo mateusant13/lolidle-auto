@@ -10,7 +10,7 @@
 
 import {
   criarMundo, carregarAutomation, CATALOGO, alimentarCatalogo, alimentarMeta, definirCampeao,
-  montarMochila, montarLojista, saturarMercado,
+  montarMochila, montarLojista, saturarMercado, montarMercado, ofertasLendarias, stubFetchMercado,
 } from './dom-stub.mjs';
 
 const STORAGE_KEY = 'lolidleAutoPotion';
@@ -202,6 +202,39 @@ export const suite = {
       t.check('L4: o lendario NAO recebeu clique nenhum', clicados.indexOf('9500~C') < 0);
       t.check('L4: o lendario nao esta em epicosVendidos', res.epicosVendidos.indexOf('9500~C') < 0);
       t.check('L4: o lendario esta em regras.protegidos', res.protegidos.some((p) => p.id === '9500~C'));
+    }
+
+    /* ============ L5 - ANUNCIOS: o que ja esta no mercado nao se re-anuncia ============
+     * DEFEITO MEDIDO 2026-10-23 (queixa do dono: "por que os meus itens nao tao sendo anunciados?"):
+     * o plano prometia anunciar copias que ja estavam no mercado em tier igual/melhor, a necessidade
+     * `anunciar` nunca fechava e o boneco fazia viagens a Fonte sem nada para anunciar. */
+    {
+      const w = novoMundo();
+      alimentarCatalogo(w.m);
+      definirCampeao(w.m, 'adtest');
+      await saturarMercado(w.auto, w.m);      // cache: ofertas do base 9500 em tier S
+      const acts = w.auto.planBag(mochila(w.m, w.auto, [slot('9500~C', 'lendario')])).acts;
+      t.check('L5: lendario <A com oferta igual/melhor no mercado -> PROTEGER (nao re-anuncia)',
+        acaoDe(acts, '9500~C') === 'PROTEGER' && eAnunciado(acts, '9500~C') === false);
+      t.check('L5: ...e continua NUNCA a ir ao Lojista', eVendido(acts, '9500~C') === false);
+      // MERCADO NÃO SATURADO (1 oferta): é aqui que se prova a regra nova e não a saturação.
+      const w2 = novoMundo();
+      alimentarCatalogo(w2.m);
+      definirCampeao(w2.m, 'adtest');
+      const uma = ofertasLendarias(1);
+      montarMercado(w2.m, uma); stubFetchMercado(w2.m, uma);
+      await w2.auto.salvarOfertas();
+      const sat2 = w2.auto.mercadoSaturado();
+      const acts2 = w2.auto.planBag(mochila(w2.m, w2.auto, [slot('9500~C', 'lendario')])).acts;
+      t.check('L5: CONTROLO - com 1 oferta o mercado NAO esta saturado', sat2.sat === false);
+      t.check('L5: sem saturacao, a oferta igual/melhor ainda impede o re-anuncio', acaoDe(acts2, '9500~C') === 'PROTEGER' && eAnunciado(acts2, '9500~C') === false);
+      // A comparação é por TIER: uma cópia MELHOR que a oferta continua a ser anunciada.
+      t.check('L5: copia S+ e melhor que a oferta S -> o actor deve anunciar (melhoraOferta)',
+        w.auto.melhoraOferta({ base: '9500', qual: 'SS', refino: 0 }) === true);
+      t.check('L5: copia B e pior que a oferta S -> nao se anuncia (melhoraOferta)',
+        w.auto.melhoraOferta({ base: '9500', qual: 'B', refino: 0 }) === false);
+      t.check('L5: base SEM oferta -> anuncia (melhoraOferta)',
+        w.auto.melhoraOferta({ base: '1234', qual: 'B', refino: 0 }) === true);
     }
 
     /* ============ R1 - REPETICAO DE ITEM BASE (TK-02-65) ============

@@ -647,6 +647,31 @@
     } catch { return { sat: false, lend: 0, total: 0 }; }
   }
 
+  /** MELHOR oferta anunciada POR BASE (cache fresca): Map base -> { ix, refino, id, qual }.
+   *  DEFEITO MEDIDO 2026-10-23 (queixa do dono: "por que os meus itens nao tao sendo anunciados?"):
+   *  o `necessidadesBase` comparava só a BASE, então uma mochila com `3173~B` (melhor) ficava
+   *  invisível por haver `3173~C` anunciada; e o `planBag` prometia anunciar outra vez cópias que já
+   *  estavam no mercado, o que prendia a necessidade em `true` e enchia a base de passos `mercado`. */
+  function ofertasPorBase() {
+    const m = new Map();
+    for (const o of (Array.isArray(_ofertasCache) ? _ofertasCache : [])) {
+      const b = String(o.base || ''); if (!b) continue;
+      const ix = qIdx(String(o.qual || '?').toUpperCase());
+      const ref = Number(o.refino) || 0;
+      const cur = m.get(b);
+      if (!cur || ix > cur.ix || (ix === cur.ix && ref > cur.refino)) m.set(b, { ix, refino: ref, id: o.id, qual: o.qual });
+    }
+    return m;
+  }
+  /** A cópia é MELHOR que a oferta já anunciada deste base? Sem oferta = sim (nada a comparar). */
+  function melhoraOferta(it, mapa) {
+    const o = (mapa || ofertasPorBase()).get(String(it.base));
+    if (!o) return true;
+    const ix = qIdx(String(it.qual || '?').toUpperCase());
+    if (ix !== o.ix) return ix > o.ix;
+    return (Number(it.refino) || 0) > o.refino;
+  }
+
   function planBag(bag, marketCount = 10, marketCap = 10, opts = null) {
     // `opts.cofreA` (2026-10-22): o passo do COFRE, quando o boneco JÁ está na Fonte, pede o
     // plano com esta opção. Sem ela o lendário A só vai ao cofre com a mochila em pressão
@@ -808,9 +833,10 @@
       // ALINHADO com o `venderBase` (que agora só protege S+): antes mandava épico A+ para o cofre
       // enquanto o ator podia vendê-lo — risco de venda não intencional.
       else if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('S')) acts.push({ action: 'GUARDAR_COFRE', it, why: `épico ${it.qual} (S+), só pro cofre` });
-      // ÉPICO A+ DA MINHA CLASSE: "poderia ser usável" (dono, 2026-10-21) — não se vende, não se
-      // anuncia, fica na mochila para o equipador. Mesma regra do lendário A+.
-      else if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('A') && classeItem(it.base) === classeCampeao()) acts.push({ action: 'PROTEGER', it, why: `épico ${it.qual} da minha classe: utilizável, nunca se vende` });
+      // ÉPICO A: VENDE-SE (ordem do dono, 2026-10-23, verbatim: "é pra vender epico tier a tambem").
+      // O ramo antigo prendia o `épico A+ da minha classe` na mochila; a regra do dono é que só S+
+      // é intocável ("a nao ser q seja tier s mais"). O MELHOR do slot continua a ser apanhado
+      // pelo ramo `EQUIPAR` mais abaixo, e o S+ vai para o cofre na linha de cima.
       // ============ REGRA DO DONO (verbatim, 2026-10-14) ============
       // "item basico, epico, duplicado: vende no lojista. a nao ser q seja tier s mais."
       // As excepções S+ já estão tratadas ACIMA (lendário A/S/SS -> PROTEGER; épico A/S/SS
@@ -895,9 +921,11 @@
       // e fica a liandry a. se eu tenho outra liandry a, (duas), anuncia uma delas no mercado."
       // -> LENDARIO duplicado vai ao MERCADO; basico/epico duplicado vai ao Lojista.
       else if (duplicado.has(it)) acts.push(it.raridade === 'lendario'
-        ? (mercadoSaturado().sat
-          ? { action: 'PROTEGER', it, why: 'duplicata de lendário, mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista)' }
-          : { action: 'ANUNCIAR_MERCADO', it, why: 'duplicata de lendário (fica a de maior tier) → mercado' })
+        ? (melhoraOferta(it)
+          ? (mercadoSaturado().sat
+            ? { action: 'PROTEGER', it, why: 'duplicata de lendário, mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista)' }
+            : { action: 'ANUNCIAR_MERCADO', it, why: 'duplicata de lendário (fica a de maior tier) → mercado' })
+          : { action: 'PROTEGER', it, why: 'duplicata de lendário: já há uma oferta deste item no mercado em tier igual ou melhor (esta cópia fica na mochila; lendário nunca vai ao Lojista)' })
         : { action: 'VENDER_LOJISTA', it, why: 'duplicata (fica 1, o de maior tier)' });
       // LENDÁRIO < A: via antiga (mercado/saturado), DEPOIS da duplicata — é a ordem original
       // e o teste T3 depende dela (a duplicata tem de ser apanhada primeiro).
@@ -905,9 +933,11 @@
       // se vende lendario pelo lojista, so pelo mercado". -> um LENDÁRIO NUNCA cai no ramo do
       // Lojista, nem quando o mercado está saturado (antes: `ms.sat ? VENDER_LOJISTA : mercado`).
       // A saturação só decide SE anuncia agora; se não puder anunciar, o item FICA na mochila.
-      else if (it.raridade === 'lendario') { const ms = mercadoSaturado(); acts.push(ms.sat
-        ? { action: 'PROTEGER', it, why: 'lendário < A, mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista, regra do dono)' }
-        : { action: 'ANUNCIAR_MERCADO', it, why: 'lendário < A → mercado (lendário nunca vai ao Lojista)' }); }
+      else if (it.raridade === 'lendario') { const ms = mercadoSaturado();
+        if (!melhoraOferta(it)) acts.push({ action: 'PROTEGER', it, why: 'lendário < A: já há oferta deste item no mercado em tier igual ou melhor (esta cópia fica na mochila; lendário nunca vai ao Lojista)' });
+        else acts.push(ms.sat
+          ? { action: 'PROTEGER', it, why: 'lendário < A, mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista, regra do dono)' }
+          : { action: 'ANUNCIAR_MERCADO', it, why: 'lendário < A → mercado (lendário nunca vai ao Lojista)' }); }
       else acts.push({ action: 'GUARDAR', it, why: 'sem regra' });
     }
 
@@ -2306,7 +2336,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-macro-completa';
+  const BUILD = '2026-10-23-anuncio-tier-epicoA';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -4308,8 +4338,9 @@ const CFG_VER = 4;
       // PROTEGER (automation.js:590) e o actor vendia-o na MESMA passagem — planeador e actor a
       // discordarem. Um A/S/SS de lendário fica na mochila; vende-se no MERCADO se for o caso.
       if (lend && qIdx(qual) >= qIdx('A')) { regras.protegidos.push({ id, motivo: `lendário ${qual}: A+ nunca vai ao Lojista` }); continue; }
-      // ÉPICO DA MINHA CLASSE A+ também não: "poderia ser usável" é a mesma regra do lendário.
-      if (epi && qIdx(qual) >= qIdx('A') && classeItem(puro) === classeCampeao()) { regras.protegidos.push({ id, motivo: `épico ${qual} da minha classe: utilizável, não vai ao Lojista` }); continue; }
+      // ÉPICO A: VENDE-SE (ordem do dono, 2026-10-23: "é pra vender epico tier a tambem"). A guarda
+      // antiga protegia o épico A+ da minha classe e por isso o actor e o planeador discordavam —
+      // o que é o MELHOR do slot já está protegido acima pelo `equiparAgora` (vai ser equipado).
       // L4 (regra do dono): LENDÁRIO DUPLICADO com o mercado SATURADO fica na MOCHILA — nunca ao
       // Lojista nem anunciado. A contagem de duplicados é o `dups` do topo desta função (3032).
       if (lend && mercadoSaturado().sat) {   // L4: mercado saturado -> o lendario NAO vai ao Lojista
@@ -4825,9 +4856,12 @@ const CFG_VER = 4;
       // Sem leitura fresca: NÃO se viaja a adivinhar; pede-se a leitura e fecha-se a necessidade.
       const fresca = ofertasFrescas();
       if (!fresca) { try { salvarOfertas(); } catch { /* ignore */ } }
-      const anunciadas = new Set((fresca ? _ofertasCache : []).map((o) => String(o.base)));
+      // A comparação é por TIER, não só por base (defeito medido 2026-10-23): com `3173~B` na
+      // mochila e `3173~C` anunciada, o `anunciar` fechava e a cópia MELHOR nunca era anunciada.
+      // Só há necessidade quando o plano quer anunciar uma cópia melhor do que a que já está lá.
+      const mapaOfertas = fresca ? ofertasPorBase() : null;
       n.anunciar = fresca && podeFazer('anunciar').pode
-        && acts.some((a) => a.action === 'ANUNCIAR_MERCADO' && !anunciadas.has(String(a.it.base)));
+        && acts.some((a) => a.action === 'ANUNCIAR_MERCADO' && melhoraOferta(a.it, mapaOfertas));
     } catch { /* ignore */ }
     // PRESENTE — P0 MEDIDO AO VIVO (o ciclo que restava): o `#rastreio-login` está SEMPRE no DOM
     // (é um rastreador do HUD) e o jogo só o ESCONDE quando não há nada a pegar — jogo.js:6257
@@ -9525,16 +9559,40 @@ const CFG_VER = 4;
     // PERSISTE já: sem isto o storage guardava a lista ANTIGA e, no tick seguinte, o
     // `ofertasEmCache` ressuscitava-a — a necessidade `mercado` reabria e o boneco voltava à Fonte.
     try { chrome.storage.local.set({ [OFERTAS_KEY]: { at: _ofertasAt, ofertas: minhas } }); } catch { /* ignore */ }
-    const anunciados = []; const cancelados = [];
-    const mm = minhas.length ? mercadoEl(true) : null;   // só se houver o que cancelar quando saturar
+    const anunciados = []; const cancelados = []; const falhas = [];
+    const mm = minhas.length ? mercadoEl(true) : null;   // só se houver o que cancelar
+    // UMA CÓPIA POR BASE, e a MELHOR (defeito medido 2026-10-23): a ordem "menor tier primeiro"
+    // anunciava a C e deixava a B na mochila, e várias cópias do mesmo base podiam ser anunciadas.
+    const porBase = new Map();
     for (const it of cand) {
+      const k = String(it.base); const cur = porBase.get(k);
+      if (!cur || qIdx(it.qual) > qIdx(cur.qual) || (qIdx(it.qual) === qIdx(cur.qual) && (it.refino || 0) > (cur.refino || 0))) porBase.set(k, it);
+    }
+    const escolhidos = [...porBase.values()].sort((a, b) => qIdx(a.qual) - qIdx(b.qual) || (a.refino || 0) - (b.refino || 0));
+    const cancelarNaUI = async (id) => {
+      if (!mm) return false;
+      if (mm.hidden) { press('j'); await humano(500); }
+      mm.querySelector('[data-aba="minhas"]')?.click(); await humano(320);
+      const ok = cancelarOferta(id); await humano(400);
+      return ok;
+    };
+    for (const it of escolhidos) {
       if (ehLendarioDaBuild(it.base)) continue;                            // lendário da build da classe: NUNCA anuncia
-      if (minhas.length + anunciados.length >= 10 - cancelados.length) { /* cheio: tenta abrir vaga */ }
-      if (minhas.some((o) => String(o.base) === String(it.base))) continue;      // já anunciado
+      const ja = minhas.find((o) => String(o.base) === String(it.base));
+      if (ja) {
+        // Já há oferta deste base: só vale TROCAR se a cópia da mochila for melhor. Igual ou pior
+        // fica na mochila (o plano já não pede isto — é a reconciliação planeador↔actor).
+        const qi = qIdx(String(ja.qual || '?').toUpperCase());
+        const melhor = qIdx(it.qual) > qi || (qIdx(it.qual) === qi && (it.refino || 0) > (Number(ja.refino) || 0));
+        if (!melhor) continue;
+        if (!(await cancelarNaUI(ja.id))) { falhas.push({ base: it.base, motivo: 'nao cancelou a oferta pior' }); continue; }
+        cancelados.push(ja.id);
+      }
       if (minhas.length + anunciados.length - cancelados.length >= 10) {
         const epi = minhas.find((o) => !String(o.raridade || '').toLowerCase().startsWith('lend') && !cancelados.includes(o.id));
-        if (!epi) break;                                                          // só lendárias → saturado (Lojista cuida)
-        await cancelarOferta(epi.id); cancelados.push(epi.id); await humano(350);
+        if (!epi) { falhas.push({ base: it.base, motivo: 'mercado cheio de lendarias' }); break; }
+        if (!(await cancelarNaUI(epi.id))) { falhas.push({ base: it.base, motivo: 'nao cancelou epica' }); continue; }
+        cancelados.push(epi.id); await humano(350);
       }
       // PREÇO pela POLÍTICA PURA (`precoDeAnuncio`): mesmo tier -> 90%; sem mesmo tier, o
       // tier SUPERIOR é TECTO (a bota de 1,5M com uma A mais barata foi este caso); 1,5M só
@@ -9544,6 +9602,7 @@ const CFG_VER = 4;
       if (!(pr.preco >= 1)) {
         logEvent('mercado', { acao: 'preco', base: it.base, id: it.id, qual: it.qual,
           preco: null, regra: pr.regra, ofertasBase: pr.ofertasBase });
+        falhas.push({ base: it.base, motivo: pr.regra || 'sem preco' });
         continue;
       }
       const preco = pr.preco;
@@ -9555,17 +9614,21 @@ const CFG_VER = 4;
       logEvent('mercado', { acao: 'preco', base: it.base, id: it.id, qual: it.qual,
         refTier: pr.refTier, ofertasTier: pr.ofertasTier, ofertasBase: pr.ofertasBase,
         preco, regra: pr.regra });
-      if (r.ok) anunciados.push({ base: it.base, qual: it.qual, id: it.id, preco, refTier: pr.refTier, ofertasTier: pr.ofertasTier }); else break;
+      // NÃO se faz `break` (defeito medido 2026-10-23): UM item que o jogo não deixava anunciar
+      // abortava todos os seguintes — a mochila ficava com anúncios nenhuns. Agora falha só ele.
+      if (r.ok) anunciados.push({ base: it.base, qual: it.qual, id: it.id, preco, refTier: pr.refTier, ofertasTier: pr.ofertasTier });
+      else falhas.push({ base: it.base, motivo: r.motivo || 'falhou' });
     }
     if (Array.isArray(_ofertasCache)) for (const a of anunciados) if (a.preco) _ofertasCache.push({ id: 'novo:' + a.base + ':' + a.qual, base: a.base, qual: a.qual, raridade: 'lendario', preco: a.preco });
-    logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length });
-    // FALHA AUTO-DIAGNOSTICADA: havia candidato que NÃO está anunciado e nada foi anunciado
-    // (mercado saturado só com lendários, clique/preço falhou). Devolver `ok:true` fazia a
-    // necessidade ficar `true` para sempre e a rotina repetir `mercado` em cada passagem
-    // (P0 medido 2026-10-21: 10 passos, 5 aberturas de mercado numa só ida à base).
-    const porAnunciar = cand.filter((it) => !minhas.some((o) => String(o.base) === String(it.base)));
+    logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length, falhas: falhas.length });
+    // FALHA AUTO-DIAGNOSTICADA: havia candidato que o actor NÃO resolveu (não anunciado, ou uma
+    // cópia melhor que a oferta ainda não substituiu). Devolver `ok:true` fazia a necessidade ficar
+    // `true` para sempre e a rotina repetir `mercado` em cada passagem (P0 medido 2026-10-21:
+    // 10 passos, 5 aberturas de mercado numa só ida à base).
+    const feito = new Set(anunciados.map((a) => String(a.base)));
+    const porAnunciar = escolhidos.filter((it) => !feito.has(String(it.base)) && melhoraOferta(it, ofertasPorBase()));
     const okTudo = anunciados.length > 0 || porAnunciar.length === 0;
-    return { ok: okTudo, anunciados, cancelados, motivo: okTudo ? null : 'nada anunciado de ' + porAnunciar.map((x) => x.base).join(',') };
+    return { ok: okTudo, anunciados, cancelados, falhas, motivo: okTudo ? null : 'nada anunciado de ' + porAnunciar.map((x) => x.base).join(',') };
     } finally { try { fecharJanelas(); } catch { /* ignore */ } ocupado = false; }
   }
 
@@ -13148,7 +13211,7 @@ const CFG_VER = 4;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
+  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, ofertasPorBase, melhoraOferta, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },

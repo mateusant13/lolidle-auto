@@ -138,11 +138,10 @@ export const suite = {
 
       const bag2 = mochila(w.m, w.auto, [slot('4001~A', 'epico'), slot('4001~C', 'epico')]);
       const acts2 = acoes(w.auto, bag2);
-      // ACTUALIZADO 2026-10-21 (regra do dono, verbatim: "é um item tier A que é da minha classe,
-      // que poderia ser usavel"). O 4001 e épico AD (a classe do adtest): A+ da MINHA classe passa
-      // a PROTEGER. A regra antiga ("só S+ é intocável") valia para o que NÃO é da minha classe.
-      t.check('T4: epico A da MINHA classe -> PROTEGER (regra do dono 2026-10-21)',
-        acaoDe(acts2, '4001~A') === 'PROTEGER');
+      // ACTUALIZADO 2026-10-23 (ordem do dono, verbatim: "é pra vender epico tier a tambem").
+      // O épico A da MINHA classe passou a ir ao Lojista — só S+ é intocável.
+      t.check('T4: epico A da MINHA classe -> VENDER_LOJISTA (ordem do dono 2026-10-23)',
+        acaoDe(acts2, '4001~A') === 'VENDER_LOJISTA');
       t.check('T4: CONTROLO - epico A de OUTRA classe continua a ir ao Lojista',
         acaoDe(acoes(w.auto, mochila(w.m, w.auto, [slot('6653~A', 'epico')])), '6653~A') === 'VENDER_LOJISTA');
       t.check('T4: CONTROLO - a duplicata ABAIXO de A do epico E vendida', eVendido(acts2, '4001~C') === true);
