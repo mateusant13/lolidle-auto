@@ -283,6 +283,16 @@ export const suite = {
       // ao plano: `anunciarLendarios` só anuncia o que veio como ANUNCIAR_MERCADO).
       const acts1 = w.auto.planBag(mochila(w.m, w.auto, [slot('3100~C', 'lendario')])).acts;
       t.check('L6: uma única cópia do especial fica PROTEGER (não vai ao mercado)', acaoDe(acts1, '3100~C') === 'PROTEGER' && eAnunciado(acts1, '3100~C') === false);
+      // MERCADO CHEIO (10/10): o excedente ESPERA e o plano diz porquê. Sem isto a necessidade
+      // `anunciar` ficava `true` para sempre e o boneco voltava à Fonte sem poder anunciar nada.
+      const w4 = novoMundo();
+      alimentarCatalogo(w4.m);
+      definirCampeao(w4.m, 'aptest');
+      await saturarMercado(w4.auto, w4.m);
+      const acts4 = w4.auto.planBag(mochila(w4.m, w4.auto, [slot('3100~C', 'lendario'), slot('3100~C', 'lendario'), slot('3100~C', 'lendario')])).acts;
+      const doBase4 = acts4.filter((a) => String(a.it.base).replace(/[+~].*$/, '') === '3100');
+      t.check('L6: mercado cheio -> excedente fica PROTEGER (nenhum ANUNCIAR)', doBase4.every((a) => a.action === 'PROTEGER'));
+      t.check('L6: e o motivo diz que o mercado está CHEIO', doBase4.some((a) => /CHEIO/.test(String(a.why || ''))));
     }
 
     /* ============ R1 - REPETICAO DE ITEM BASE (TK-02-65) ============

@@ -647,6 +647,22 @@
     } catch { return { sat: false, lend: 0, total: 0 }; }
   }
 
+  /** LIMITE de ofertas do jogo (lido do servidor em `anunciarLendarios`; 10 é só o default de
+   *  arranque até haver leitura — `jogo.js:2702`). */
+  let _limiteMercado = 10;
+  /** Há lugar para mais uma oferta AGORA? Vaga livre, ou uma oferta minha que o jogo deixa
+   *  cancelar (as lendárias saturam o mercado e não se cancelam para pôr outra lendária). */
+  function livreOuCancelavel() {
+    let of = []; try { of = ofertasEmCache() || []; } catch { of = []; }
+    const n = Array.isArray(of) ? of.length : 0;
+    const lim = Math.max(1, Number(_limiteMercado) || 10);
+    // CACHE VELHA (ofertas podem ter vendido entretanto): conta como vaga — a ida à base relê o
+    // servidor. Sem isto, um mercado cheio ficava "cheio" para sempre e o anuncio nunca reabria.
+    if (!_ofertasAt || (Date.now() - _ofertasAt) > 30 * 60 * 1000) return true;
+    if (n < lim) return true;
+    return of.some((o) => !String(o.raridade || '').toLowerCase().startsWith('lend'));
+  }
+
   /** MELHOR oferta anunciada POR BASE (cache fresca): Map base -> { ix, refino, id, qual }.
    *  DEFEITO MEDIDO 2026-10-23 (queixa do dono: "por que os meus itens nao tao sendo anunciados?"):
    *  o `necessidadesBase` comparava só a BASE, então uma mochila com `3173~B` (melhor) ficava
@@ -2365,7 +2381,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-mercado-cheio';
+  const BUILD = '2026-10-23-mercado-cheio-vagas';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -4538,6 +4554,9 @@ const CFG_VER = 4;
       return `anúncio falhou ${r.n || 3}x seguidas (${r.motivo || 'motivo não registado'}): fica na mochila até a falha expirar (lendário nunca vai ao Lojista)`;
     }
     if (!melhoraOferta(it)) return 'já há oferta deste item no mercado em tier igual ou melhor (esta cópia fica na mochila; lendário nunca vai ao Lojista)';
+    // CAPACIDADE: com o mercado cheio e sem oferta cancelável, o item espera — e a necessidade
+    // `anunciar` fecha (antes ficava `true` para sempre e o boneco voltava à Fonte sem nada).
+    if (!livreOuCancelavel()) return 'mercado CHEIO (' + (Array.isArray(ofertasEmCache()) ? ofertasEmCache().length : 0) + '/' + _limiteMercado + '): fica na mochila até abrir vaga (lendário nunca vai ao Lojista)';
     return null;
   }
 
@@ -9656,6 +9675,7 @@ const CFG_VER = 4;
     const mercado = mk.mercado || [];
     const minhas = mk.minhas || [];
     const limite = Math.max(1, Number(mk.limite) || 10);   // LIMITE lido do servidor (jogo.js:2702), não copiado
+    _limiteMercado = limite;                               // o PLANO passa a saber as vagas
     _ofertasCache = minhas; _ofertasAt = Date.now();               // saturação passa a saber o que está anunciado
     // PERSISTE já: sem isto o storage guardava a lista ANTIGA e, no tick seguinte, o
     // `ofertasEmCache` ressuscitava-a — a necessidade `mercado` reabria e o boneco voltava à Fonte.
@@ -9669,7 +9689,13 @@ const CFG_VER = 4;
       const k = String(it.base); const cur = porBase.get(k);
       if (!cur || qIdx(it.qual) > qIdx(cur.qual) || (qIdx(it.qual) === qIdx(cur.qual) && (it.refino || 0) > (cur.refino || 0))) porBase.set(k, it);
     }
-    const escolhidos = [...porBase.values()].sort((a, b) => qIdx(a.qual) - qIdx(b.qual) || (a.refino || 0) - (b.refino || 0));
+    // UMA cópia por base primeiro (a melhor) e depois as CÓPIAS EXTRA do mesmo base enquanto
+    // houver vaga — o plano já as marcou como excedente. Sem isto, 6 Zhonyas enchiam UM slot e o
+    // mercado voltava a ficar a meio (queixa do dono 2026-10-23).
+    const umPorBase = [...porBase.values()].sort((a, b) => qIdx(a.qual) - qIdx(b.qual) || (a.refino || 0) - (b.refino || 0));
+    const extras = cand.filter((it) => umPorBase.indexOf(it) < 0)
+      .sort((a, b) => qIdx(b.qual) - qIdx(a.qual) || (b.refino || 0) - (a.refino || 0));
+    const escolhidos = umPorBase.concat(extras);
     const cancelarNaUI = async (id) => {
       if (!mm) return false;
       marcarFase('mercado: cancelar ' + String(id));
@@ -9731,8 +9757,8 @@ const CFG_VER = 4;
     // cópia melhor que a oferta ainda não substituiu). Devolver `ok:true` fazia a necessidade ficar
     // `true` para sempre e a rotina repetir `mercado` em cada passagem (P0 medido 2026-10-21:
     // 10 passos, 5 aberturas de mercado numa só ida à base).
-    const feito = new Set(anunciados.map((a) => String(a.base)));
-    const porAnunciar = escolhidos.filter((it) => !feito.has(String(it.base)) && !anuncioBloqueado(it.base) && melhoraOferta(it, ofertasPorBase()));
+    const feito = new Set(anunciados.map((a) => String(a.id || a.base)));
+    const porAnunciar = escolhidos.filter((it) => !feito.has(String(it.id)) && !anuncioBloqueado(it.base) && melhoraOferta(it, ofertasPorBase()) && livreOuCancelavel());
     const okTudo = anunciados.length > 0 || porAnunciar.length === 0;
     return { ok: okTudo, anunciados, cancelados, falhas, motivo: okTudo ? null : 'nada anunciado de ' + porAnunciar.map((x) => x.base).join(',') };
     } finally { try { fecharJanelas(); } catch { /* ignore */ } ocupado = false; }
