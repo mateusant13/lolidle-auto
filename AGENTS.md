@@ -31,7 +31,7 @@ Está no `motor.js`, que **aplica** X. Vai ver o que o jogo **faz**. Depois comp
   `motor.js`, **modela-se** — não se pergunta. Perguntar o que já está no código é empurrar trabalho.
 - **Se a primeira resposta for plausível, procuro activamente a que a contradiz.** Plausível ≠ provado.
   Nos sete bugs de 2026-10-14, o primeiro número que saiu era o errado **nas sete vezes**.
-- **Ler a LISTA, não o valor.** Um campo escalado a mais ou a menos muda tudo: `motor.js:254-255` escala
+- **Ler a LISTA, não o valor.** Um campo escalado a mais ou a menos muda tudo: `motor.js:278-283` escala
   `ad/ap/mana/vida/armadura/rm/va/rv/critico/regen/cdr` e **não** o `penMag`. Ler "a fórmula" não chega —
   ler **quais campos** ela toca.
 
@@ -44,18 +44,18 @@ Todas do mesmo tipo. Todas apanhadas pelo dono, não pelo agente.
 | # | O que eu disse | O que o motor dizia |
 |---|---|---|
 | 1 | "O Ímpeto dá 15% de CDR" | `0,15 × 1,15 × 1,36 = 23,46%` — qualidade e refino **escalam** |
-| 2 | "O pen da bota A é 17,25%" | `motor.js:254-255` **não escala** o `penMag` — é 15% |
-| 3 | "CDR vale mais contra o chefe (1 abate)" | `motor.js:3080` — o Barão invoca 2 larvas **a cada 34,3 s**, não 14 (ver adenda abaixo) |
-| 4 | "O Rei Destruído dá 4.600 por auto no Barão" | `motor.js:1190-1191` — **tecto de 3×CURVA.hp** → 863 |
-| 5 | "O roubo de vida vale 0,02%, é quase nada" | `motor.js:1226-1228` — cura `dano × rv`; vale **269 cura/s** numa base AD |
+| 2 | "O pen da bota A é 17,25%" | `motor.js:278-283` **não escala** o `penMag` — é 15% |
+| 3 | "CDR vale mais contra o chefe (1 abate)" | `motor.js:3355` — o Barão invoca 2 larvas **a cada 34,3 s**, não 14 (ver adenda abaixo) |
+| 4 | "O Rei Destruído dá 4.600 por auto no Barão" | `motor.js:1291-1294` — **tecto de 3×CURVA.hp** → 863 |
+| 5 | "O roubo de vida vale 0,02%, é quase nada" | `motor.js:1332-1334` — cura `dano × rv`; vale **269 cura/s** numa base AD |
 | 6 | "O `multClasse = 0.12` bloqueia a build AD" | Não bloqueia. O bloqueio é `pesosItem('mago').ad = 0` |
-| 7 | "A Katarina não tem cura própria" | O kit dela tem **`curaGiro`** (`motor.js:755-756`) — **cura no giro** |
+| 7 | "A Katarina não tem cura própria" | O kit dela tem **`curaGiro`** (`motor.js:796`) — **cura no giro** |
 
 **Nenhum era erro de matemática. Todos eram o motor a não ler o jogo que tem à frente.**
 
 > **Adenda (2026-10-14, 21:15) — a prova #3 corrigida pelo próprio erro que ela denuncia.** A tabela
-> dizia "2 larvas a cada 14s". O 14 é o campo `espera` do invocar (`motor.js:3076`) e o invocar é
-> **1 de 3** mecânicas do rodízio (`motor.js:3080`): `(0+14)+(1,3+9)+(1+9) = 34,3 s`. Simulado passo
+> dizia "2 larvas a cada 14s". O 14 é o campo `espera` do invocar (`motor.js:3351`) e o invocar é
+> **1 de 3** mecânicas do rodízio (`motor.js:3355`): `(0+14)+(1,3+9)+(1+9) = 34,3 s`. Simulado passo
 > a passo (1/60 s): invocações em t = 6,82 / 41,12 / 75,42 / 109,72 s. A conclusão da build não mudou
 > (CDR continua a ganhar, +15,52%), mas o número estava errado. **Lia-se um campo em vez da lista —
 > Regra Nº 1, outra vez.** Fonte: `tools/sim-troca.mjs` + `docs/troca-em-combate.md`.
@@ -1034,3 +1034,22 @@ correr: sobe-se o comando acima. **Nunca** se responde "confirma no Chrome" ou "
 
 **Uma linha:** relay é infraestrutura local e idempotente — sobe-se sozinho, prova-se com
 `/json/version` + uma avaliação real, e o dono nunca é interrompido.
+
+---
+
+## REGRA Nº 17 — A BUILD IDEAL TEM DONO E TEM DOCUMENTO (2026-10-23)
+
+O dono suspeitou que a "build ideal" da conta dele estava errada. A suspeita procede enquanto a
+decisão não for auditável: **um número que não se explica é um número em que não se confia.**
+
+O estudo completo — inputs, fórmula, `file:linha` e **a lista honesta do que o modelo não vê** —
+está em **`docs/build-ideal.md`**. Quem mexer em `buildIdeal`, `montarBuildDe`,
+`montarBuildDePorScore`, `scoreSet`, `statsSet`, `estimarSet` ou `sobrevivenciaSet` lê aquele
+documento ANTES, e actualiza-o depois. As três armadilhas que ele regista, em uma linha cada:
+
+1. **A régua é o dono, não o DPS:** sobrevive com poção > mata em menos segundos > gasta menos ouro.
+   `automation.js:9832-9841`. Um score que só ordena dano não é a build ideal.
+2. **`scoreSet` poda; quem escolhe é o modelo de luta.** A medição que o obrigou está em
+   `automation.js:9792-9800` — e um "melhor score" que mata mais devagar está errado.
+3. **Número de resumo é suspeito até ser confirmado no `motor.js`** (`multTier`, `passivasDoItem`,
+   `QUALIDADES`, `RM_MONSTRO`, o `3036`, o teto `3×CURVA.hp`). É a REGRA Nº 1 aplicada à build.

@@ -33,8 +33,8 @@
    *    3031 Gume do Infinito -> `danoCritico += 0.4`   (motor.js:515)  [classe AD]
    *    3089 Rabadon          -> `ap *= 1.35`           (motor.js:522)  [classe AP]
    *  São os DOIS ÚNICOS multiplicadores de classe desse bloco. Os outros `tem()` de lá SOMAM ao
-   *  total (motor.js:514 `2501: ad += 0.02*(vida-baseVida)`; motor.js:521 `3003: ap += 0.03*mana`)
-   *  ou dão penetração (motor.js:539 `3036: 30%`), logo não têm a mesma natureza: não mudam a
+   *  total (motor.js:549 `2501: ad += 0.02*(vida-baseVida)`; motor.js:562 `3003: ap += 0.03*mana`)
+   *  ou dão penetração (motor.js:580 `3036: 30%`), logo não têm a mesma natureza: não mudam a
    *  RÉGUA do boneco — são somas, não multiplicadores.
    *
    *  REGRA: um item desta lista NUNCA é vendido nem anunciado — NEM DUPLICADO (o duplicado fica
@@ -1619,12 +1619,12 @@
   // Os limites do jogo estavam espalhados por 6 `Math.min(...)` soltos no ficheiro, copiados.
   // Ficam aqui nomeados. NENHUM destes é exportado pelo motor (sao inline), pelo que a fonte e o
   // file:linha indicado — se o jogo os mudar, ha UM sitio a corrigrir (e o teste de caps apanha).
-  const CAP_CDR = 0.4;             // motor.js:537  `reducaoRecarga: Math.min(0.4, ...)`
-  const CAP_PEN_MAG = 0.6;         // motor.js:529  `penMagica: Math.min(0.6, ...)`
-  const CAP_ESQUIVA = 0.25;        // motor.js:536  `esquiva: Math.min(0.25, ...)`
+  const CAP_CDR = 0.4;             // motor.js:578  `reducaoRecarga: Math.min(0.4, ...)`
+  const CAP_PEN_MAG = 0.6;         // motor.js:570  `penMagica: Math.min(0.6, ...)`
+  const CAP_ESQUIVA = 0.25;        // motor.js:577  `esquiva: Math.min(0.25, ...)`
   const CAP_CRITICO = 1;           // motor.js:541  `critico: Math.min(1, ...)`
   const VEL_ATAQUE_MAX = 3;        // motor.js:344  `export const VEL_ATAQUE_MAX = 3`
-  /** Pen de ARMADURA maxima (motor.js:539): `1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`.
+  /** Pen de ARMADURA maxima (motor.js:580): `1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`.
    *  A extensao usava `Math.min(0.7, ...)` como tecto da SOMA — um numero que o motor nunca
    *  aplica e que nao mordia nunca. Com o pen do kit (max 0,45, motor.js:560) e a 3036 o valor
    *  real do motor e 1-(1-0,45)x0,7 = 0,835. */
@@ -1634,8 +1634,8 @@
   // O motor NÃO usa a armadura do monstro contra o dano MÁGICO: usa 60% dela.
   //   motor.js:1177-1178 "dano mágico ignora a armadura: os monstros não têm resistência mágica"
   //                       "RM_MONSTRO: a resistência mágica dos monstros é 60% da armadura"
-  //   motor.js:1179 `export const RM_MONSTRO = 0.6;`
-  //   motor.js:1202 `arm = magico ? (poder ? alvo.armadura * RM_MONSTRO * (1 - (a.penMagica||0)) : 0)
+  //   motor.js:1282 `export const RM_MONSTRO = 0.6;`
+  //   motor.js:1305 `arm = magico ? (poder ? alvo.armadura * RM_MONSTRO * (1 - (a.penMagica||0)) : 0)
   //                            : alvo.armadura * (1 - alvo.reducaoArmadura) * (1 - a.penArmadura)`
   //   motor.js:2155 (veneno) e motor.js:1167 `mitigar(dano, armadura) = dano * 100/(100+max(0,armadura))`.
   // SEM isto o dano mágico do jogador ficava SUBESTIMADO (~1,6x a 104 de armadura: 100/164 = 0,61
@@ -1643,14 +1643,14 @@
   // IMPORTANTE — onde NÃO se aplica: ao dano que o JOGADOR TOMA, o motor usa a `rm` do jogador
   // (motor.js:3101 `mag(2.6) => mitigar(i.ad*2.6, a.rm)`, onde `a` é o jogador) — o jogador não é
   // um monstro. É por isso que `danoMecanica`/`avaliar` (que medem o dano RECEBIDO) ficam como estão.
-  /** RM_MONSTRO do motor (motor.js:1179). Vem do META se o `inject.js` o expuser; o fallback é o
+  /** RM_MONSTRO do motor (motor.js:1282). Vem do META se o `inject.js` o expuser; o fallback é o
    *  valor do motor, com o file:linha (nunca um 0.6 solto). */
-  const rmMonstro = () => numOr(META.rmMonstro, 0.6);   // motor.js:1179
+  const rmMonstro = () => numOr(META.rmMonstro, 0.6);   // motor.js:1282
   /** O campeão actual é de MAGIA? (motor.js:22 `classeItem` / `kit(estado).magia`.) Fica numa funcao
    *  so para nao repetir `(META.champAtual && META.champAtual.magia)` em 12 sitios. */
   const magiaChamp = () => !!(META.champAtual && META.champAtual.magia);
   /** Mitigação da SAÍDA do jogador contra um monstro — a mesma conta do `estimarSet`/`scoreSet`
-   *  (motor.js:1202): o mago bate na resistência mágica do monstro (armadura x RM_MONSTRO), o AD
+   *  (motor.js:1305): o mago bate na resistência mágica do monstro (armadura x RM_MONSTRO), o AD
    *  bate na armadura com a pen de armadura. Serve para a CURA: o roubo de vida cura o dano
    *  DEPOIS de mitigar (motor.js:1226-1228, `golpear`). */
   function mitSaida(s, magia) {
@@ -1659,7 +1659,7 @@
     return 100 / (100 + Math.max(0, arm));
   }
 
-  /** Armadura EFECTIVA do alvo contra dano MÁGICO (motor.js:1202). */
+  /** Armadura EFECTIVA do alvo contra dano MÁGICO (motor.js:1305). */
   const armMagicaEfetiva = (armadura, penMag) => Math.max(0, (armadura || 0) * rmMonstro() * (1 - (penMag || 0)));
 
   // ============ VALOR REAL DA PEÇA (motor.js) — o `preco` do catálogo é o BASE ============
@@ -2007,7 +2007,7 @@
   }
 
   /** Stats que o painel escreve por ID (nao ha rotulo por onde os pescar por texto):
-   *    `#st-cdr`   −N%     jogo.js:6465 (`reducaoRecarga`, motor.js:537 — foco + itens, tecto 0,4)
+   *    `#st-cdr`   −N%     jogo.js:6465 (`reducaoRecarga`, motor.js:578 — foco + itens, tecto 0,4)
    *    `#st-crit`  N%      jogo.js:6463 (`critico`, motor.js:541 — chance)
    *    `#st-critx` ×1,75   jogo.js:6464 (`danoCritico`, motor.js:499 base, +0,4 com 3031)
    *  A regex do `readStats` nao tinha rotulo de CDR e o critico era deitado fora. */
@@ -2200,7 +2200,7 @@
       // (docs/auditoria-do-jogo.md item 7).
       critico: sid.critico != null ? sid.critico / 100 : (s['Crítico'] || 0) / 100,
       critDano: sid.critDano != null ? sid.critDano : 1.75,          // motor.js:499 (base)
-      // CDR TOTAL do painel (motor.js:537: foco + itens, tecto 0,4) — a soma dos itens so nao chega.
+      // CDR TOTAL do painel (motor.js:578: foco + itens, tecto 0,4) — a soma dos itens so nao chega.
       cdr: sid.cdr != null ? sid.cdr / 100 : null,
       // BONUS AD (motor.js:540 `bonusAd: ad - baseAd`): o AD que vem DOS ITENS e dos %. E o que
       // a HEMORRAGIA do Darius usa (motor.js:1652 `danoSangue = (13 + 0.3*adEfetivo.bonusAd + 4*nivel)/5`).
@@ -2260,8 +2260,8 @@ const CFG_VER = 4;
   const difNivelMotor = (nivelAlvo, nivelJogador) => Math.max(0, (Number(nivelAlvo) || 0) - (Number(nivelJogador) || 1) - NIVEL_DIF_FB.livre);
   /** motor.js:1201 — o MONSTRO bem acima do nível bate mais forte (tecto maxDanoMonstro). */
   const fatorDanoMonstroMotor = (d) => d ? Math.min(NIVEL_DIF_FB.maxDanoMonstro, 1 + NIVEL_DIF_FB.danoMonstro * d) : 1;   // motor.js:1201, recebe a DIFICULDADE
-  /** motor.js:1202 — o JOGADOR contra monstro bem acima do nível: o dano DELE é reduzido (piso 0,25). */
-  const fatorDanoJogadorMotor = (d) => d ? Math.max(NIVEL_DIF_FB.minDanoJogador, 1 - NIVEL_DIF_FB.danoJogador * d) : 1;   // motor.js:1202, recebe a DIFICULDADE
+  /** motor.js:1305 — o JOGADOR contra monstro bem acima do nível: o dano DELE é reduzido (piso 0,25). */
+  const fatorDanoJogadorMotor = (d) => d ? Math.max(NIVEL_DIF_FB.minDanoJogador, 1 - NIVEL_DIF_FB.danoJogador * d) : 1;   // motor.js:1305, recebe a DIFICULDADE
 
   const KAT_FB = {
     Q: { max: 10, rec: (r) => 10 - 0.35 * (r - 1), base: (r) => 80 + 35 * (r - 1), ratio: (r) => 0.45 + 0.03 * (r - 1), mult: 3, alvo: '3 alvos', adaga: true },
@@ -2541,10 +2541,10 @@ const CFG_VER = 4;
         base: serie(h.base), ratio: serie(h.ratio), rec: serie(h.recarga), nivel: h.nivel,
         duracao: h.duracao, duracaoPen: h.duracaoPen, penSuspiro: h.penSuspiro,
         va: serie(h.va), bonus: serie(h.bonus), bonusHab: serie(h.bonusHab),
-        // ---- kit passivo / penetração / cura (motor.js:529 `penE`, 552 `penArmadura`) ----
+        // ---- kit passivo / penetração / cura (motor.js:551 `penE`, 552 `penArmadura`) ----
         // `pen` = penetração de armadura POR RANK da habilidade (só o E do Darius a tem,
         // motor.js:573: 0,20 no rank 1 -> 0,45 no rank 10). O MOTOR aplica-a sempre
-        // (atributos, motor.js:529 -> 552); a matemática de build ignorava-a.
+        // (atributos, motor.js:551 -> 580); a matemática de build ignorava-a.
         pen: serie(h.pen),
         // Voracidade/cura do giro da Katarina (motor.js:749-750 P; 768 D).
         curaBase: h.curaBase, curaGiro: serie(h.curaGiro), vaAdaga: serie(h.vaAdaga),
@@ -2578,8 +2578,8 @@ const CFG_VER = 4;
 
   /** ============ PENETRACAO DO KIT (TK-02-114) ============
    *  O MOTOR aplica a penetracao de armadura que vem do KIT, sempre ligada, por rank:
-   *    motor.js:529  `const penE = k.hab.E.pen && estado.ranks.E ? k.hab.E.pen[estado.ranks.E - 1] : 0;`
-   *    motor.js:552  `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`
+   *    motor.js:551  `const penE = k.hab.E.pen && estado.ranks.E ? k.hab.E.pen[estado.ranks.E - 1] : 0;`
+   *    motor.js:580  `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`
    *  ha UM UNICO `pen:` em todo o game-src: o E do DARIUS (motor.js:573,
    *  `pen: [0.2, 0.23, 0.26, 0.29, 0.32, 0.35, 0.38, 0.41, 0.43, 0.45]` = 20% no rank 1,
    *  45% no rank 10). A Katarina NAO tem (kit-katarina-vivo.json: 0 ocorrencias de "pen").
@@ -2677,7 +2677,7 @@ const CFG_VER = 4;
           apPct: S.apPct || 0, lich: S.lich, ap: S.ap, ad: S.ad, manaToAp: S.manaToAp || 0, efeito: ((META.itens || []).find((x) => String(x.id) === base) || {}).efeito || null };
       });
       const soma = (k) => itens.reduce((t, x) => t + (x[k] || 0), 0);
-      // motor.js:552 `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)` — penE = a do KIT.
+      // motor.js:580 `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)` — penE = a do KIT.
       const penItens = Math.max(0, Math.min(1, soma('penArmaduraItens')));
       const penKit = penKitCampeao('E');
       return { cdr: Math.min(CAP_CDR, soma('cdr')), penMag: Math.min(CAP_PEN_MAG, soma('penMag')),
@@ -2688,7 +2688,7 @@ const CFG_VER = 4;
     for (const e of readEquip()) {
       const s = e.stats || parseDica(e.dica);
       cdr += s.cdr || 0; penMag += s.penMag || 0; apPct += s.apPct || 0; lich = Math.max(lich, s.lich || 0); apItens += s.ap || 0;
-      // PEN DE ARMADURA do 3036 (motor.js:539): o `parseDica` le o TEXTO da passiva e nao tem
+      // PEN DE ARMADURA do 3036 (motor.js:580): o `parseDica` le o TEXTO da passiva e nao tem
       // campo de pen de armadura, pelo que a 3036 valia 0 neste caminho — o ramo com `ids`
       // (statsSet) sempre a viu. Medido: 30% de pen a faltar NUM item que a build AD poe.
       // PEN DE ARMADURA lida do TEXTO do item (nao por ID): o 3036 e outros entram sozinhos.
@@ -2702,15 +2702,15 @@ const CFG_VER = 4;
       if (pv.manaToAp) manaToAp += pv.manaToAp;
       itens.push({ base: e.base, nome: e.nome, refino: e.refino, qual: e.qual, ...s });
     }
-    // CDR do PAINEL manda (motor.js:537): o painel escreve `reducaoRecarga` = foco + itens, com o
-    // tecto de 0,4. A soma dos itens NAO inclui o foco (0,4% por ponto de Foco, motor.js:537),
+    // CDR do PAINEL manda (motor.js:578): o painel escreve `reducaoRecarga` = foco + itens, com o
+    // tecto de 0,4. A soma dos itens NAO inclui o foco (0,4% por ponto de Foco, motor.js:578),
     // pelo que um boneco com 10 de foco tem 4% de CDR que esta soma nao via.Quando o painel nao
     // esta la (banco de testes), fica a soma dos itens.
     const cdrPainel = (player() || {}).cdr;
     if (cdrPainel != null) cdr = cdrPainel;
-    // PEN DE ARMADURA DO KIT (motor.js:529 -> 552): o caminho sem `ids` e o que o jogo real usa
+    // PEN DE ARMADURA DO KIT (motor.js:551 -> 580): o caminho sem `ids` e o que o jogo real usa
     // (`dpsPorHabilidade`, `avaliar`, `mitSaida`). A penetracao da E do Darius (20%->45% por
-    // rank) entra aqui uma vez, encadeada com a dos itens (3036 = 0,3, motor.js:539).
+    // rank) entra aqui uma vez, encadeada com a dos itens (3036 = 0,3, motor.js:580).
     const penKit = penKitCampeao('E');
     return { cdr: Math.min(CAP_CDR, cdr), penMag: Math.min(CAP_PEN_MAG, penMag),
       penArmadura: 1 - (1 - penKit) * (1 - penArmaduraDe(penArm)), penArmaduraItens: penArmaduraDe(penArm), penKit, apPct, lich, apItens, manaToAp, itens };
@@ -2867,7 +2867,7 @@ const CFG_VER = 4;
     let v = 0;
     if (pen && penSeg) v += pen * (penSeg / cd) * (dpsTotal || 0);
     if (vaGanho && vaSeg) v += (vaGanho / VA_BASE_MOTOR) * (vaSeg / cd) * (dpsTotal || 0);
-    // ---- PENETRACAO PASSIVA DO KIT (motor.js:529 -> 552; TK-02-114) --------------------------
+    // ---- PENETRACAO PASSIVA DO KIT (motor.js:551 -> 580; TK-02-114) --------------------------
     // A E do DARIUS da penetracao de armadura como PASSIVA (motor.js:573-574:
     // `Dá penetração de armadura (passiva)`): o motor aplica-a por rank em
     // `atributos`, SEM depender de recarga nem de duracao. Portanto o valor do ponto e
@@ -3397,7 +3397,7 @@ const CFG_VER = 4;
     const poder = p.poder || 0;
     const armAlvo = alvo?.armadura || 0;
     // O `rankItens` pontua AP × penetração MÁGICA contra o ALVO -> a armadura efectiva leva o
-    // RM_MONSTRO do motor (motor.js:1202). Sem ele o ganho de DPS mágico saía subestimado.
+    // RM_MONSTRO do motor (motor.js:1305). Sem ele o ganho de DPS mágico saía subestimado.
     const mit = (pen) => 100 / (100 + armMagicaEfetiva(armAlvo, pen));
     const cdrAtual = Math.min(CAP_CDR, (efeitosEquipados().cdr || 0));
     // CDR SÓ NAS HABILIDADES (a MESMA correcção do `scoreSet`): o dano de auto-ataque não escala
@@ -6619,10 +6619,10 @@ const CFG_VER = 4;
       const ef = String(it.efeito || '');
       if (!c) { const mm = ef.match(/[\u2212-]\s*(\d+)\s*%\s*(?:na\s*)?recarga/i); if (mm) c = +mm[1] / 100; }
       // PEN MAGICA vs PEN DE ARMADURA — sao COISAS DIFERENTES no motor:
-      //   motor.js:529 `penMagica = min(0.6, (tem('3135') ? 0.4 : 0) + pct.penMag)` -> a pen MAGICA
+      //   motor.js:570 `penMagica = min(0.6, (tem('3135') ? 0.4 : 0) + pct.penMag)` -> a pen MAGICA
       //     vem SO do 3135 (40%, pelo texto) e do campo `penMag` (3175, 15%). O 3036 NAO entra aqui.
-      //   motor.js:539 `penArmadura = 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)` -> o 3036 da 30% de
-      //     pen de ARMADURA e so conta no ramo FISICO (motor.js:1202 `arm = magico ? ... : alvo.armadura
+      //   motor.js:580 `penArmadura = 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)` -> o 3036 da 30% de
+      //     pen de ARMADURA e so conta no ramo FISICO (motor.js:1305 `arm = magico ? ... : alvo.armadura
       //     * (1 - reducaoArmadura) * (1 - penArmadura)`).
       // BUG CORRIGIDO (2026-10-14): a regex generica `% de penetra` apanhava o texto do 3036
       // ('30% de penetracao de armadura') e arquivava-o como pen MAGICA — inflacionava o dano magico
@@ -6693,23 +6693,23 @@ const CFG_VER = 4;
       if (pv.execute) det.push('+' + Math.round(pv.execute.pct * 100) + '% (<' + Math.round(pv.execute.below * 100) + '%)');
     }
     cdr = Math.min(CAP_CDR, cdr); pen = Math.min(CAP_PEN_MAG, pen);
-    // ---- PEN DE ARMADURA: a do KIT encadeada com a dos ITENS (motor.js:552) ------------------
-    //   motor.js:529  `penE = k.hab.E.pen && estado.ranks.E ? k.hab.E.pen[estado.ranks.E - 1] : 0`
-    //   motor.js:552  `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`
+    // ---- PEN DE ARMADURA: a do KIT encadeada com a dos ITENS (motor.js:580) ------------------
+    //   motor.js:551  `penE = k.hab.E.pen && estado.ranks.E ? k.hab.E.pen[estado.ranks.E - 1] : 0`
+    //   motor.js:580  `penArmadura: 1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`
     // O MOTOR aplica a penetracao do kit SEMPRE (e por rank). A matematica de build ignorava-a
     // (TK-02-114): com o E do Darius a rank 4 (0,29) a pen ia de 0,30 (so o 3036) para
     // 1 - 0,71*0,70 = 0,503 — e o Cajado do Vazio / itens de pen ficavam SOBREVALORADOS.
     // `penArmaduraItens` fica separada para quem encadeia por-item (efeitosEquipados(ids)).
-    // A pen dos ITENS ja vem encadeada (motor.js:539): o 3036 contribui 0,3 e o
+    // A pen dos ITENS ja vem encadeada (motor.js:580): o 3036 contribui 0,3 e o
     // `penArmaduraDe` do motor aplica o `* 0,7` UMA vez so
-    // (motor.js:552 `1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`). Aqui o 3036 ja entrou
+    // (motor.js:580 `1 - (1 - penE) * (tem('3036') ? 0.7 : 1)`). Aqui o 3036 ja entrou
     // no `penArmadura` (0,3), portanto o factor extra so se aplica quando NAO houve
     // contribuicao de item — senao contaria o 0,7 duas vezes (medido: 0,652 em vez de 0,503).
     const penArmaduraItens = Math.max(0, Math.min(1, penArmadura));
     const penKit = penKitCampeao('E');
     penArmadura = 1 - (1 - penKit) * (1 - penArmaduraItens);
-    // `pen` = pen MAGICA (motor.js:542, tecto 0,6) e `penArmadura` = pen de ARMADURA
-    // (motor.js:552, so no ramo fisico).
+    // `pen` = pen MAGICA (motor.js:570, tecto 0,6) e `penArmadura` = pen de ARMADURA
+    // (motor.js:580, so no ramo fisico).
     return { ap: apItem * (1 + apPct), apBruto: apItem, apPct, ad: adItem * (1 + adPct), adBruto: adItem, adPct,
       mana: manaItem, vida: vidaItem * (1 + vidaPct), vidaPct, armadura: armaduraItem * (1 + armPct), armPct,
       rm: rmItem * (1 + rmPct), rmPct, va: vaItem, regen: regenItem, esquiva: esquivaItem,
@@ -6838,12 +6838,12 @@ const CFG_VER = 4;
       const d = cd ? total / cd : 0;
       dps += d; habs.push({ t: h.t, nome: h.name, dps: Math.round(d), golpes, fluxo: +fluxoMult.toFixed(3) });
     }
-    // MITIGAÇÃO PELO TIPO DE DANO do campeão (motor.js:1202):
-    //   mágico -> armadura do alvo × RM_MONSTRO × (1 − penMagica)   [motor.js:1179, 529]
-    //   físico -> armadura do alvo × (1 − penArmadura)             [motor.js:539]
+    // MITIGAÇÃO PELO TIPO DE DANO do campeão (motor.js:1305):
+    //   mágico -> armadura do alvo × RM_MONSTRO × (1 − penMagica)   [motor.js:1282, 529]
+    //   físico -> armadura do alvo × (1 − penArmadura)             [motor.js:580]
     // TK-02-150: o ramo FÍSICO usava a pen MÁGICA (`pen`) — penetração que o motor só dá a quem bate com
     // magia. Num campeão AD isso infla o dano estimado e muda a escolha de itens: as duas pens
-    // são coisas diferentes no motor (motor.js:529 vs 539) e cada uma fica no seu ramo.
+    // são coisas diferentes no motor (motor.js:570 vs 580) e cada uma fica no seu ramo.
     const magiaCh = !!(champ && champ.magia);
     const shredMax = (S.shred && S.shred.max) || 0;
     const mit = 100 / (100 + (magiaCh ? armMagicaEfetiva(alvo?.armadura, pen) : (alvo?.armadura || 0) * (1 - penArmadura) * (1 - shredMax)));
@@ -7590,7 +7590,7 @@ const CFG_VER = 4;
    *  (`valorPassiva`, `* (ap ? 7 : 1)`). MEDIDO com a matemática do motor (tools/sim-build.mjs):
    *  a bota de PEN (3175) + Ímpeo (4629) DOMINA a bota de CDR (3171) em AP, CDR e pen ao mesmo
    *  tempo (AP 899 vs 859, CDR 15% vs 8%, pen 55% vs 40%), e ganha em TODAS as armaduras de 0 a
-   *  200+ — porque o motor aplica o pen em `mit()` (motor.js:1179 / automation.js:5482).
+   *  200+ — porque o motor aplica o pen em `mit()` (motor.js:1282 / automation.js:5482).
    *  A ESCALA é a MESMA que a passiva já usava para o pen (7 por 1% = 700 por unidade em AP;
    *  1 por 1% = 100 nos outros perfis) — nenhum peso inventado. */
   // ============ PESO DO ROUBO DE VIDA — derivado do MOTOR, nao de gosto ============
@@ -7864,9 +7864,9 @@ const CFG_VER = 4;
   //     Logo vida/armadura/RM valem MENOS e a penetração rende pouco (mitigar, motor.js:1167).
   //
   // ── CHEFE: UM alvo, vida alta, armadura alta, luta longa ──────────────────────────────
-  //   · Penetração de armadura: motor.js:539 (3036 = 30%) aplicada em motor.js:1202
+  //   · Penetração de armadura: motor.js:580 (3036 = 30%) aplicada em motor.js:1305
   //     (arm = alvo.armadura × (1 − penArmadura)). E o MESMO item dá +15% de dano contra
-  //     chefes, SÓ contra chefes: motor.js:1214 (if (alvo.chefe && a.tem?.('3036'))).
+  //     chefes, SÓ contra chefes: motor.js:1317 (if (alvo.chefe && a.tem?.('3036'))).
   //   · Dano crítico: motor.js:515 (3031 = +40%) aplicado em motor.js:1213
   //     (if (critico) dano *= a.danoCritico).
   //   · Redução de armadura por ataque (Cutelo Negro, motor.js:1705): só rende em luta longa.
@@ -7904,12 +7904,12 @@ const CFG_VER = 4;
     chefe: {
       stat: { va: 1, critico: 1.15, cdr: 1, ad: 1.05, ap: 1.05, rv: 1.2, vida: 1.3, armadura: 1.25, rm: 1.25, mana: 1, regen: 1.1 },
       itens: {
-        '3036': { mult: 2.2, why: 'Lembranças do Lorde Dominik: 30% de penetração de armadura [motor.js:539] + 15% de dano CONTRA CHEFES [motor.js:1214]' },
+        '3036': { mult: 2.2, why: 'Lembranças do Lorde Dominik: 30% de penetração de armadura [motor.js:580] + 15% de dano CONTRA CHEFES [motor.js:1317]' },
         '3031': { mult: 1.7, why: 'Gume do Infinito: +40% no dano do acerto crítico [motor.js:515 → motor.js:1213]' },
         '3071': { mult: 1.5, why: 'Cutelo Negro: −6% de armadura do alvo por ataque, até 30%, só rende em luta longa [motor.js:1705]' },
         '3153': { mult: 1.45, why: 'Espada do Rei Destruído: 5% da vida atual do alvo, com teto de 3× a curva, o chefe bate no teto [motor.js:1702, motor.js:1191]' },
         '6653': { mult: 1.4, why: 'Liandry: queima 1,5% da vida máxima por segundo, com teto, o chefe bate no teto [motor.js:1207, motor.js:1191]' },
-        '3135': { mult: 1.35, why: 'Cajado do Vazio: 40% de penetração mágica [motor.js:529]' },
+        '3135': { mult: 1.35, why: 'Cajado do Vazio: 40% de penetração mágica [motor.js:570]' },
         '3065': { mult: 1.2, why: 'Rookern: +25% em TODA a cura recebida, luta longa [motor.js:1286]' },
         '6333': { mult: 1.25, why: '30% do dano recebido vira sangramento; abater cura 15% [motor.js:1790, motor.js:2701]' },
         '3026': { mult: 1.3, why: 'Renascimento: volta com 50% da vida, morrer no chefe custa muito [motor.js:2729]' },
@@ -8040,7 +8040,7 @@ const CFG_VER = 4;
   //       tabela abaixo cita o file:linha dessa leitura.
   //   (b) o catálogo pode declarar campos MULTIPLICATIVOS (`adPct`/`apPct`/`vidaPct`/`armPct`/
   //       `rmPct`/`esquiva`/`penMag`) que o motor soma em `pct` e aplica ao TOTAL
-  //       (motor.js:501 `const pct = {...}`; motor.js:511/523). Um item com um destes é, POR
+  //       (motor.js:536 `pct`; motor.js:544-549). Um item com um destes é, POR
   //       DEFINIÇÃO DO MOTOR, um item de tratamento especial -> `especiaisDoCatalogo()`
   //       acrescenta-os sozinho (sem ninguém os escrever aqui).
   //
@@ -8052,7 +8052,7 @@ const CFG_VER = 4;
   const ITENS_ESPECIAIS = [
     // ---------------- AD (o equivalente do Rabadon para o Yasuo/Darius/Ezreal) ----------------
     { id: '3031', papel: 'ad', tipo: 'critico',     motivo: '+40% no dano do acerto crítico (o Yasuo critica 2x por passiva)', fonte: 'motor.js:515' },
-    { id: '3036', papel: 'ad', tipo: 'penetracao',  motivo: '30% de penetração de armadura', fonte: 'motor.js:539' },
+    { id: '3036', papel: 'ad', tipo: 'penetracao',  motivo: '30% de penetração de armadura', fonte: 'motor.js:580' },
     { id: '3071', papel: 'ad', tipo: 'penetracao',  motivo: 'cada ataque reduz 6% da armadura do alvo (até 30%)', fonte: 'motor.js:1705' },
     { id: '3072', papel: 'ad', tipo: 'sustento',    motivo: 'a cura que passa da vida máxima vira escudo (até 25%)', fonte: 'motor.js:1229' },
     { id: '3078', papel: 'ad', tipo: 'proc',        motivo: '2 cargas de Lâmina Encantada (a habilidade carrega o ataque)', fonte: 'motor.js:1672' },
@@ -8071,13 +8071,13 @@ const CFG_VER = 4;
     // ---------------- AP (a família do Rabadon) ----------------
     { id: '3089', papel: 'ap', tipo: 'multiplicador', motivo: '+35% em TODO o Poder de Habilidade (o Rabadon)', fonte: 'motor.js:522' },
     { id: '3003', papel: 'ap', tipo: 'multiplicador', motivo: '+3% da mana máxima em Poder de Habilidade', fonte: 'motor.js:521' },
-    { id: '3135', papel: 'ap', tipo: 'penetracao',    motivo: '40% de penetração mágica', fonte: 'motor.js:529' },
+    { id: '3135', papel: 'ap', tipo: 'penetracao',    motivo: '40% de penetração mágica', fonte: 'motor.js:570' },
     { id: '3100', papel: 'ap', tipo: 'proc',          motivo: '+75% do Poder de Habilidade no ataque depois de uma habilidade', fonte: 'motor.js:1688, motor.js:1944' },
     { id: '6655', papel: 'ap', tipo: 'area',          motivo: 'Eco: a cada 6 s a próxima habilidade bate em até 3 inimigos', fonte: 'motor.js:1945' },
     { id: '3102', papel: 'ap', tipo: 'anti-golpe',    motivo: 'bloqueia o próximo golpe de monstro (a cada 40 s)', fonte: 'motor.js:2698' },
     { id: '3157', papel: 'ap', tipo: 'anti-morte',    motivo: 'Stasis: invulnerável 2,5 s abaixo de 25% de vida', fonte: 'motor.js:2722' },
     // ---------------- TANQUE / NEUTRO (defensivos que o motor lê pelo ID) ----------------
-    { id: '2501', papel: 'tanque', tipo: 'multiplicador', motivo: 'AD igual a 2% da vida bónus (escala com vida, não com AD)', fonte: 'motor.js:514' },
+    { id: '2501', papel: 'tanque', tipo: 'multiplicador', motivo: 'AD igual a 2% da vida bónus (escala com vida, não com AD)', fonte: 'motor.js:549' },
     { id: '3065', papel: 'tanque', tipo: 'cura',          motivo: '+25% em TODA a cura recebida', fonte: 'motor.js:1286' },
     { id: '3075', papel: 'tanque', tipo: 'defesa',        motivo: 'quem te ataca recebe 10 + 10% da armadura bónus', fonte: 'motor.js:1735' },
     { id: '3748', papel: 'tanque', tipo: 'area',          motivo: '+1,5% da vida MÁXIMA em todos os alcançados', fonte: 'motor.js:1721' },
@@ -8085,13 +8085,13 @@ const CFG_VER = 4;
     { id: '3143', papel: 'tanque', tipo: 'multiplicador', motivo: '+10% da armadura TOTAL (campo `armPct` do catálogo)', fonte: 'motor.js:523' },
     { id: '8020', papel: 'tanque', tipo: 'multiplicador', motivo: '+8% da vida MÁXIMA (campo `vidaPct` do catálogo)', fonte: 'motor.js:511' },
     { id: '6673', papel: 'ad',     tipo: 'multiplicador', motivo: '+6% da vida MÁXIMA (campo `vidaPct` do catálogo)', fonte: 'motor.js:511' },
-    { id: '3170', papel: 'tanque', tipo: 'esquiva',       motivo: '+5% de esquiva (campo `esquiva` do catálogo)', fonte: 'motor.js:536' },
+    { id: '3170', papel: 'tanque', tipo: 'esquiva',       motivo: '+5% de esquiva (campo `esquiva` do catálogo)', fonte: 'motor.js:577' },
     { id: '3172', papel: 'ad',     tipo: 'multiplicador', motivo: '+6% do Dano de Ataque TOTAL (campo `adPct` do catálogo)', fonte: 'motor.js:523' },
   ];
-  /** Campos MULTIPLICATIVOS do catálogo que o motor aplica ao TOTAL (motor.js:501 `pct`).
+  /** Campos MULTIPLICATIVOS do catálogo que o motor aplica ao TOTAL (motor.js:536 `pct`).
    *  [campo, para que papel o campo aponta]. Qualquer item com um destes entra no mapa
    *  especial SOZINHO — não há ninguém a escrevê-lo à mão. */
-  const CAMPOS_MULT = [['adPct', 'ad'], ['apPct', 'ap'], ['vidaPct', 'neutro'], ['armPct', 'tanque'], ['rmPct', 'tanque'], ['esquiva', 'tanque'], ['penMag', 'ap']];   // TK-02-66: `penMag` faltava (motor.js:501/514 `pct`); `papel 'ap'` porquesó entra na mitigação MÁGICA (motor.js:542/1202)
+  const CAMPOS_MULT = [['adPct', 'ad'], ['apPct', 'ap'], ['vidaPct', 'neutro'], ['armPct', 'tanque'], ['rmPct', 'tanque'], ['esquiva', 'tanque'], ['penMag', 'ap']];   // TK-02-66: `penMag` faltava (motor.js:536 `pct`); `papel 'ap'` porquesó entra na mitigação MÁGICA (motor.js:570/1305)
 
   let _espCache = null;
   /** O MAPA ESPECIAL já resolvido para o campeão ACTUAL. Memoizado por (classe, perfil,
@@ -8114,7 +8114,7 @@ const CFG_VER = 4;
     for (const e of ITENS_ESPECIAIS) add(e.id, e.papel, e.tipo, e.motivo, e.fonte);
     for (const it of itens) for (const par of CAMPOS_MULT) {
       if (!it[par[0]] || mapa.has(String(it.id))) continue;
-      add(it.id, par[1], 'multiplicador', par[0] + ' ' + Math.round(it[par[0]] * 100) + '% do total (campo do catálogo)', 'motor.js:501-523');
+      add(it.id, par[1], 'multiplicador', par[0] + ' ' + Math.round(it[par[0]] * 100) + '% do total (campo do catálogo)', 'motor.js:536-549');
     }
     _espCache = { chave, mapa };
     return mapa;
@@ -8146,7 +8146,7 @@ const CFG_VER = 4;
     // já é somado por `(it.penMag||0)*w.penMag` em `valorDeFase`/`poderItem`/`montarBuildDe`
     // (pesosItem: mago 700, os outros 100). Sem esta guarda o 3175 conta a pen DUAS vezes
     // (0,15×700 + 15×7 = 210 de valor). O 3135 NÃO tem campo — o motor dá os 40% por
-    // `tem('3135')` (motor.js:542) — logo o texto é o ÚNICO portador e continua a contar.
+    // `tem('3135')` (motor.js:570) — logo o texto é o ÚNICO portador e continua a contar.
     if (it.penMag == null) v += n(/([\d,]+)%\s*de penetração mágica/i) * (ap ? 7 : 1);
     if (/queimam o alvo/i.test(e)) v += ap ? 140 : 20;                        // Liandry (queima % da vida, ótimo no chefe)
     if (/menos de 40% de Vida/i.test(e)) v += ap ? 90 : 15;                   // Chama Sombria (execução)
@@ -8368,7 +8368,7 @@ const CFG_VER = 4;
     // (PESO_FASE) × 1,6 (multRar) + stats = 1061 — os tais +472 de "palpites" empilhados.
     // A passiva entra agora como termo ADITIVO: leva `multClasse`+`multRar` e UMA só opinião
     // extra — a da FASE (é a calibração POR ITEM que o motor lê pelo ID, ex.: 3036 vs chefes,
-    // motor.js:1214). NÃO leva `multEsp` (a classe já é coberta por `multClasse`). O `bonus`
+    // motor.js:1317). NÃO leva `multEsp` (a classe já é coberta por `multClasse`). O `bonus`
     // de fase também JÁ NÃO multiplica os stats: ele descreve a MECÂNICA do item (a passiva),
     // não a soma de stats. Com `fase` nula o `bonus` é 1 e tudo isto colapsa no antigo.
     let vPassiva = valorPassiva(base) * (fase ? bonusItemFase(base, fase) : 1);
@@ -8730,7 +8730,7 @@ const CFG_VER = 4;
       armadura: (it.armadura || 0) * m, rm: (it.rm || 0) * m, va: (it.va || 0) * m, rv: (it.rv || 0) * m,
       critico: (it.critico || 0) * m, regen: (it.regen || 0) * m, cdr: (cdr || 0) * m,
       // FORA da lista do motor (motor.js:254-255): não escalados.
-      penMag: penMag || 0, penArmadura: it.penArmadura || (b === '3036' ? 0.3 : 0),   // motor.js:539
+      penMag: penMag || 0, penArmadura: it.penArmadura || (b === '3036' ? 0.3 : 0),   // motor.js:580
     };
   }
 
@@ -11141,9 +11141,9 @@ const CFG_VER = 4;
     const champ = _champScore || META.champAtual || null;
     const S = statsSet(ids);
     const apSet = apDoSet(ids, S, C.curStats).ap;
-    // Idem `estimarSet`: MITIGAÇÃO PELO TIPO DE DANO do campeão (motor.js:1202).
+    // Idem `estimarSet`: MITIGAÇÃO PELO TIPO DE DANO do campeão (motor.js:1305).
     // TK-02-150: o ramo FÍSICO usava a pen MÁGICA (`S.pen`), que o motor só dá a quem bate com
-    // magia (motor.js:529). Cada pen fica no seu ramo: penArmadura no físico (motor.js:539).
+    // magia (motor.js:570). Cada pen fica no seu ramo: penArmadura no físico (motor.js:580).
     const magiaCh = !!(champ && champ.magia);
     const mit = 100 / (100 + (magiaCh ? armMagicaEfetiva(alvo?.armadura, S.pen) : (alvo?.armadura || 0) * (1 - (S.penArmadura || 0))));
     // BUG CORRIGIDO: usava SEMPRE S.ap, por isso o melhorSet recomendava Rabadon
@@ -11157,7 +11157,7 @@ const CFG_VER = 4;
     // ---- CDR SÓ NAS HABILIDADES (correcção do Lead, 2026-10-14) --------------------------------
     // O CDR acelera a TAXA DE LANÇAMENTO das habilidades; NÃO aumenta o dano de cada AUTO-ATAQUE.
     // Estrutura correcta: `danoTotal = danoAutos + danoHabilidades/(1-cdr)`. É o que o motor faz:
-    //   motor.js:1398/motor.js:3236 `cd = cdBase * (1 - cdr)` -> a RECARGA é que encolhe;
+    //   motor.js:1694/motor.js:1694 `cd = cdBase * (1 - cdr)` -> a RECARGA é que encolhe;
     //   motor.js:1211 `dano = mitigar(bruto, arm) * ...` -> o dano do golpe não depende do CDR.
     // A REPARTIÇÃO vem do `dpsPorHabilidade` (o modelo que já existe e divide cada habilidade pela
     // recarga efectiva) — não há duas contabilidades de CDR a divergir.
@@ -11844,7 +11844,7 @@ const CFG_VER = 4;
     const av = avaliar(boss, nivel, p, { skill: curaSkill, pocao: 0 });
     const efEq = efeitosEquipados();
     const meDps = meuDps() || 0;
-    // `armEf` JÁ levava a penetração mágica dos itens (tooltip c/ refino) mas FALTAVA o RM_MONSTRO: o dano medido do campeão contra o chefe é MÁGICO (a penetração usada é a mágica) -> motor.js:1202.
+    // `armEf` JÁ levava a penetração mágica dos itens (tooltip c/ refino) mas FALTAVA o RM_MONSTRO: o dano medido do campeão contra o chefe é MÁGICO (a penetração usada é a mágica) -> motor.js:1305.
     const mitBoss = 100 / (100 + armMagicaEfetiva(s.armadura, efEq.penMag));
     const meuDpsBoss = meDps * mitBoss;
     // motor.js:1200-1202 — monstro BEM ACIMA do nível do jogador aguenta mais (d = nivelAlvo - nivelJogador - livre;
@@ -12181,13 +12181,13 @@ const CFG_VER = 4;
   /** REGIÃO DE CAÇA NO RIFT — a ÚNICA que o farm pode escolher.
    *
    *  DEFEITO QUE ISTO FECHA (2026-10-21): o filtro era só `!ehRuneterra(l)`. Com as regiões
-   *  novas do motor (motor.js:539-590), entrava `fj` (arena:true, mundo:'freljord') e as zonas
+   *  novas do motor (motor.js:534-590), entrava `fj` (arena:true, mundo:'freljord') e as zonas
    *  do Freljord (`mundo:'freljord'`), que NÃO têm marcador no mapa do Rift (mapa.js:59 filtra
    *  `!l.base && !l.arena`) e se jogam por portal no 2.º mundo. O boneco não as alcança por
    *  `viajarPara` — então não podem entrar em ranking nem ser recomendadas.
    *  `base:true` é a Fonte; `arena:true` são as arenas (fj/aram) — nenhuma é caça.
    *  As NOVAS regiões do Rift (`anciao`, `base`, `nexus`) passam: têm `faixa`, não são base
-   *  nem arena (motor.js:539-576), e chegam sozinhas no `META.locais` do inject. */
+   *  nem arena (motor.js:534-583), e chegam sozinhas no `META.locais` do inject. */
   const ehRegiaoDeFarm = (l) => !!l && !!l.faixa && !l.base && !l.arena && !l.mundo && !ehRuneterra(l);
 
   /** REGIAO RECOMENDADA (a AUTO, sempre) — ignora a regiao FIXA do dono (`cfg.regionDefault`).
@@ -12896,7 +12896,7 @@ const CFG_VER = 4;
     numEcra, parseBig, lerVidaHud, lerStatsId, lerBuffs, lerRecargaItens, lerAnaliseJogo, divergenciasPocao, divergenciasKit, fracAuto, pocaoInfo,
     killsMinAoVivo, voracidadeDe, cdVoraz, nivelChefeDe, mecanicaDe, fracHabs, multCrit, critDoSet, tierDe, capsMotor: () => ({ cdr: CAP_CDR, penMag: CAP_PEN_MAG, esquiva: CAP_ESQUIVA, critico: CAP_CRITICO, velAtaque: VEL_ATAQUE_MAX, penArmadura: penArmaduraDe(0.45, true) }),
     // ---- PENETRACAO DO KIT (TK-02-114): a pen de armadura que vem do KIT do campeao, por rank,
-    // lida do kit do motor (motor.js:529 -> 552). So o E do Darius a tem.
+    // lida do kit do motor (motor.js:551 -> 580). So o E do Darius a tem.
     penKitDe, penKitCampeao, rankKitDe, statsSet, aplicarKit,
     // ---- CURA DO GIRO (TK-02-130): a cura propria da Katarina, por rank da D ---
     curaGiroDe, curaGiroS, cdVorazMotor, _larvasInvoca: () => _larvasInvoca.slice(),
