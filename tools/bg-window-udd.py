@@ -66,6 +66,16 @@ def main() -> int:
     bg = carregar_bg()
 
     # Proxy de subprocess: so a linha do Chrome `--new-window` leva a flag.
+    #
+    # MEDIDO (2026-10-23): com o Chrome do dono JA a correr, `chrome.exe
+    # --user-data-dir=<perfil> --new-window <url>` sai com codigo **21**
+    # (`RESULT_CODE_NORMAL_EXIT_PROCESS_NOTIFIED`): a linha de comandos foi entregue a
+    # instancia viva e o processo novo saiu, mas a instancia NAO cria janela nova (o
+    # hand-off do singleton leva o URL, nao o `--new-window`). Resultado: nenhum hwnd
+    # novo, `bg-window.py` responde "new chrome window not found" e o UIA nao tem onde
+    # clicar. Lancar por `explorer.exe` (nivel medio) foi tentado: mesmo 21.
+    # Ou seja: nao ha caminho de JANELA para o perfil em uso. A solucao definitiva e a
+    # REGRA 11.3 (reload sem janela pelo service worker da propria extensao).
     real = bg.subprocess
     class SubprocessProxy(types.SimpleNamespace):
         def __getattr__(self, name):

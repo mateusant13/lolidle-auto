@@ -772,6 +772,25 @@ perfil real e o resultado **é a prova**:
 **Portanto:** a janela invisível não é preguiça — é o único canal que existe. O que deixou de existir foi o
 **roubo de foco**.
 
+### 13.4 MEDIDO (2026-10-23): com o Chrome do dono ABERTO, não há janela nenhuma para o UIA
+
+O canal da 13.1 parte de `chrome --new-window --user-data-dir=<perfil do dono>`. Com o browser
+**já a correr**, esse processo sai com código **21** (`RESULT_CODE_NORMAL_EXIT_PROCESS_NOTIFIED`):
+a linha de comandos foi **entregue à instância viva** e o processo novo saiu — mas a instância
+**não cria janela nova** (o *hand-off* do *singleton* leva o URL, não o `--new-window`). Consequência:
+`bg-window.py open` devolve `{"ok":false,"err":"new chrome window not found"}` e
+`node tools/recarregar-extensao.mjs reload` morre em `fase:"abrir-janela"` — **sem** tocar no
+perfil, sem roubar foco, e sem nada para o UIA clicar.
+
+Verificado também que a causa **não** é elevação (`explorer.exe` como lançador de nível médio dá o
+mesmo 21) nem caminho errado do perfil (`Win32_Process` mostra `--user-data-dir="C:\ChromeDebugProfile"`
+e esse perfil está vivo: `Local State` escrito no minuto da medição, 50 extensões).
+
+**Portanto o reload deixa de ter caminho de janela e passa a exigir a 11.3** — `chrome.storage.onChanged`
+no `background.js` (ou um alarme de 30 s, como o VOD.RIP) que faça `chrome.runtime.reload()` sozinho.
+Enquanto isso não existir, um reload que falhe em `abrir-janela` **não é bug do script** e não se
+"resolve" insistindo: é a arquitetura que falta.
+
 ---
 
 ## REGRA Nº 14 — A RECEITA CANÓNICA: COMO MEXER NO CHROME DO DONO SEM QUE ELE DÊ POR NADA
