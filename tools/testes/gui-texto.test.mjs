@@ -148,6 +148,14 @@ export const suite = {
     const semContentor = escritos.filter((i) => !src.includes('id="' + i + '"'));
     t.check('T8j: todo o id escrito por setHtml tem contentor no HTML (' + escritos.length + ' ids)',
       semContentor.length === 0, 'sem contentor: ' + semContentor.join(', '));
+    // T8m (2026-10-23, encontrado pela PROVA POR ABA ao vivo): contentor que existe mas NUNCA e'
+    // desenhado na aba onde vive. `ap-auto-base`/`ap-build-fase` estao no painel da Macro e so
+    // eram escritos com Painel/Itens activos; `ap-painel-build` (resumo na aba Itens) nunca era
+    // desenhado em lado nenhum. Isto le-se no despacho por aba, que e' o unico sitio que os liga.
+    t.check('T8m: a aba Macro desenha os blocos que vivem nela (base + build por fase)',
+      /else if \(tabAtiva === 'macro'\) \{ renderMacro\(\); renderAuto\(\); renderBuildFase\(\); \}/.test(src));
+    t.check('T8n: a aba Itens desenha o resumo da build por fase',
+      /else if \(tabAtiva === 'itens'\) \{ renderBuildFase\(\); renderBuildResumo\(\); renderItens\(\); \}/.test(src));
 
     /* ================= T9 - a política do cofre aparece na GUI (1 linha, sem palestra) ================= */
     t.check('T9: o cartão do cofre diz a política nova numa linha (A -> cofre; C/B -> troca)',

@@ -3513,8 +3513,11 @@ switches: 'interruptores',
     renderAgora();                                       // "agora" alimenta Painel e Manual
     if (tabAtiva === 'painel') renderPainel();
     else if (tabAtiva === 'farm') { renderFarmModo(); renderFarmItens(); renderFarmObjetivo(); renderFarm(); }
-    else if (tabAtiva === 'macro') renderMacro();
-    else if (tabAtiva === 'itens') { renderBuildFase(); renderItens(); }
+    // A ABA MACRO TEM DE DESENHAR OS SEUS BLOCOS (defeito medido 2026-10-23 pela prova por aba:
+    // `ap-auto-base` e `ap-build-fase` vivem no painel da Macroe so eram escritos quando as abas
+    // Painel/Itens estavam activas; na Macro apareciam VAZIOS.
+    else if (tabAtiva === 'macro') { renderMacro(); renderAuto(); renderBuildFase(); }
+    else if (tabAtiva === 'itens') { renderBuildFase(); renderBuildResumo(); renderItens(); }
     else if (tabAtiva === 'mercado') renderMercado();
     else if (tabAtiva === 'personagem') { renderSkills(); renderAtrib(); }
     else if (tabAtiva === 'ganhos') { renderFarm(); renderChefes(); renderHistorico(); }
