@@ -2398,7 +2398,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-anuncio-diagnostico';
+  const BUILD = '2026-10-23-anuncio-lista-viva';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -7874,18 +7874,34 @@ const CFG_VER = 4;
       const A = parseSlotId(a), B = parseSlotId(b);
       return String(A.base) === String(B.base) && A.refino === B.refino && A.qual === B.qual;
     };
-    const slots = [...m.querySelectorAll('[data-escolher]')].filter((s) => {
-      const img = s.querySelector('img')?.getAttribute('src') || '';
+    // DEFEITO MEDIDO (2026-10-23, ao vivo): a lista da aba 'vender' é REDESENHADA a cada
+    // selecção (jogo.js:2676 `lista.innerHTML = ...`). Guardar os botões numa NodeList e clicar
+    // o 2.º/3.º deixava de fazer nada -- todos os cliques caíam em nós DESTACADOS e a chave lida
+    // era sempre a da 1.ª cópia. Medido: alvo `664644~C`, o jogo respondia `664644~B` três vezes,
+    // `anunciados: 0` com 8 candidatos e a praça presa em 8/10. Por isso se RE-CONSULTA a lista
+    // a cada clique, e se espera que a chave MUDE antes de a ler.
+    const slotsDe = () => [...m.querySelectorAll('[data-escolher]')].filter((s) => {
+      const img = (s.querySelector('img')?.getAttribute('src')) || '';
       return img.includes('/' + base + '.');
     });
-    if (!slots.length) return { ok: false, motivo: 'sem ' + base + ' na mochila' };
+    const nSlots = slotsDe().length;
+    if (!nSlots) return { ok: false, motivo: 'sem ' + base + ' na mochila' };
+    const lerChave = () => String(q1('#mj-minimo')?.dataset?.chave || '').split('|')[0] || '';
     let b = null, escolhido = null;
     const vistos = [];
-    for (const s of slots) {
-      s.click(); await humano(240);
-      // o id da cópia seleccionada (pode demorar um render a aparecer)
+    let antes = lerChave();
+    for (let k = 0; k < nSlots; k++) {
+      const s = slotsDe()[k];               // <- re-consulta: o nó anterior já não está no DOM
+      if (!s) break;
+      s.click(); await humano(220);
       let chave = '';
-      for (let i = 0; i < 6 && !chave; i++) { chave = String(q1('#mj-minimo')?.dataset?.chave || '').split('|')[0] || ''; if (!chave) await esperar(120); }
+      for (let i = 0; i < 8; i++) {
+        const c = lerChave();
+        if (c && c !== antes) { chave = c; break; }
+        await esperar(130);
+      }
+      if (!chave) chave = lerChave();      // duas cópias IGUAIS: a chave não muda, e tanto faz
+      antes = chave;
       vistos.push(chave || '(sem chave)');
       if (iguais(chave, alvo)) { b = s; escolhido = chave || null; break; }
     }
@@ -7895,11 +7911,12 @@ const CFG_VER = 4;
     // `anunciados: 0`, e nenhuma razão no histórico).
     // E se a mochila tem UMA só cópia deste base não há ambiguidade nenhuma: anunciar essa é
     // exactamente o que foi pedido (o `alvo` só protege contra escolher OUTRA cópia).
-    if (!b && slots.length === 1 && alvo) {
-      b = slots[0]; slots[0].click(); await humano(240); escolhido = vistos[0] || null;
+    if (!b && nSlots === 1 && alvo) {
+      const s1 = slotsDe()[0]; if (s1) { s1.click(); await humano(220); }
+      b = s1 || null; escolhido = vistos[0] || null;
       logEvent('mercado', { acao: 'alvo-nao-casou', base, alvo, vistos, via: 'unica copia do base' });
     }
-    if (!b) return { ok: false, motivo: 'a copia pedida nao esta na mochila (nao se anuncia outra)', alvo: alvo || null, candidatos: slots.length, vistos };
+    if (!b) return { ok: false, motivo: 'a copia pedida nao esta na mochila (nao se anuncia outra)', alvo: alvo || null, candidatos: nSlots, vistos };
     // PORTEIRO: A/S/SS nunca vão ao mercado.
     const q = parseSlotId(escolhido || alvo || '').qual;
     if (QUAL.includes(q) && qIdx(q) >= qIdx('A')) return { ok: false, motivo: `tier ${q}: A+ nunca vai ao mercado`, tier: q, id: escolhido || alvo || null };
@@ -9864,7 +9881,7 @@ const CFG_VER = 4;
       // NÃO se faz `break` (defeito medido 2026-10-23): UM item que o jogo não deixava anunciar
       // abortava todos os seguintes — a mochila ficava com anúncios nenhuns. Agora falha só ele.
       if (r.ok) { anunciados.push({ base: it.base, qual: it.qual, id: it.id, preco, refTier: pr.refTier, ofertasTier: pr.ofertasTier }); limparFalhaAnuncio(it.base); }
-      else { falhas.push({ base: it.base, motivo: r.motivo || 'falhou' }); registrarFalhaAnuncio(it.base, r.motivo || 'falhou'); }
+      else { falhas.push({ base: it.base, motivo: r.motivo || 'falhou', alvo: r.alvo || it.id || null, vistos: r.vistos || null, candidatos: r.candidatos || null }); registrarFalhaAnuncio(it.base, r.motivo || 'falhou'); }
     }
     if (Array.isArray(_ofertasCache)) for (const a of anunciados) if (a.preco) _ofertasCache.push({ id: 'novo:' + a.base + ':' + a.qual, base: a.base, qual: a.qual, raridade: 'lendario', preco: a.preco });
     logEvent('mercado', { acao: 'slots', limite, usados: minhas.length, livres: Math.max(0, limite - minhas.length), candidatos: escolhidos.length, anunciados: anunciados.length, falhas: falhas.length, falhasDetalhe: falhas.slice(0, 4) });
