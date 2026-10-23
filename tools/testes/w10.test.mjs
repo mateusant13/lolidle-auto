@@ -235,6 +235,24 @@ export const suite = {
         w.auto.melhoraOferta({ base: '9500', qual: 'B', refino: 0 }) === false);
       t.check('L5: base SEM oferta -> anuncia (melhoraOferta)',
         w.auto.melhoraOferta({ base: '1234', qual: 'B', refino: 0 }) === true);
+      // AUTO-CURA: 3 falhas seguidas do MESMO item tiram-no do plano (a necessidade fecha) e ele
+      // volta sozinho quando a falha expirar. Sem isto, um item que o jogo não deixa anunciar
+      // prendia `n_anunciar` em true para sempre.
+      const w3 = novoMundo();
+      alimentarCatalogo(w3.m);
+      definirCampeao(w3.m, 'adtest');
+      w3.auto.registrarFalhaAnuncio('4629', 'sem preco de referencia');
+      w3.auto.registrarFalhaAnuncio('4629', 'sem preco de referencia');
+      t.check('L5: 2 falhas ainda NAO bloqueiam', w3.auto.anuncioBloqueado('4629') === false);
+      w3.auto.registrarFalhaAnuncio('4629', 'sem preco de referencia');
+      t.check('L5: 3 falhas bloqueiam o anuncio', w3.auto.anuncioBloqueado('4629') === true);
+      const acts3 = w3.auto.planBag(mochila(w3.m, w3.auto, [slot('4629+1~B', 'lendario')])).acts;
+      t.check('L5: item bloqueado sai do plano (PROTEGER, nunca ANUNCIAR)',
+        acaoDe(acts3, '4629+1~B') === 'PROTEGER' && eAnunciado(acts3, '4629+1~B') === false);
+      t.check('L5: o motivo diz que falhou 3x', /falhou\s*3x/i.test(String((acts3.filter((a) => a.it.id === '4629+1~B')[0] || {}).why || '')));
+      w3.auto.limparFalhaAnuncio('4629');
+      t.check('L5: limpar a falha devolve o item ao anuncio', w3.auto.anuncioBloqueado('4629') === false
+        && eAnunciado(w3.auto.planBag(mochila(w3.m, w3.auto, [slot('4629+1~B', 'lendario')])).acts, '4629+1~B') === true);
     }
 
     /* ============ R1 - REPETICAO DE ITEM BASE (TK-02-65) ============

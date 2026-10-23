@@ -920,21 +920,22 @@
       // DUPLICATA por RARIDADE (regra do dono, verbatim): "a liandry c e anunciada no mercado...
       // e fica a liandry a. se eu tenho outra liandry a, (duas), anuncia uma delas no mercado."
       // -> LENDARIO duplicado vai ao MERCADO; basico/epico duplicado vai ao Lojista.
-      else if (duplicado.has(it)) acts.push(it.raridade === 'lendario'
-        ? (melhoraOferta(it)
-          ? (mercadoSaturado().sat
-            ? { action: 'PROTEGER', it, why: 'duplicata de lendário, mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista)' }
-            : { action: 'ANUNCIAR_MERCADO', it, why: 'duplicata de lendário (fica a de maior tier) → mercado' })
-          : { action: 'PROTEGER', it, why: 'duplicata de lendário: já há uma oferta deste item no mercado em tier igual ou melhor (esta cópia fica na mochila; lendário nunca vai ao Lojista)' })
-        : { action: 'VENDER_LOJISTA', it, why: 'duplicata (fica 1, o de maior tier)' });
+      else if (duplicado.has(it)) {
+        const bloq = it.raridade === 'lendario' ? porqueNaoAnunciar(it) : null;
+        if (it.raridade !== 'lendario') acts.push({ action: 'VENDER_LOJISTA', it, why: 'duplicata (fica 1, o de maior tier)' });
+        else if (bloq) acts.push({ action: 'PROTEGER', it, why: 'duplicata de lendário: ' + bloq });
+        else acts.push(mercadoSaturado().sat
+          ? { action: 'PROTEGER', it, why: 'duplicata de lendário, mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista)' }
+          : { action: 'ANUNCIAR_MERCADO', it, why: 'duplicata de lendário (fica a de maior tier) → mercado' });
+      }
       // LENDÁRIO < A: via antiga (mercado/saturado), DEPOIS da duplicata — é a ordem original
       // e o teste T3 depende dela (a duplicata tem de ser apanhada primeiro).
       // REGRA DO DONO (2026-10-14, verbatim): "lendarios sao desejados pelos jogadores, entao nunca
       // se vende lendario pelo lojista, so pelo mercado". -> um LENDÁRIO NUNCA cai no ramo do
       // Lojista, nem quando o mercado está saturado (antes: `ms.sat ? VENDER_LOJISTA : mercado`).
       // A saturação só decide SE anuncia agora; se não puder anunciar, o item FICA na mochila.
-      else if (it.raridade === 'lendario') { const ms = mercadoSaturado();
-        if (!melhoraOferta(it)) acts.push({ action: 'PROTEGER', it, why: 'lendário < A: já há oferta deste item no mercado em tier igual ou melhor (esta cópia fica na mochila; lendário nunca vai ao Lojista)' });
+      else if (it.raridade === 'lendario') { const ms = mercadoSaturado(); const bloq = porqueNaoAnunciar(it);
+        if (bloq) acts.push({ action: 'PROTEGER', it, why: 'lendário < A: ' + bloq });
         else acts.push(ms.sat
           ? { action: 'PROTEGER', it, why: 'lendário < A, mercado SATURADO: fica na mochila (lendário NUNCA vai ao Lojista, regra do dono)' }
           : { action: 'ANUNCIAR_MERCADO', it, why: 'lendário < A → mercado (lendário nunca vai ao Lojista)' }); }
@@ -2336,7 +2337,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-anuncio-tier-epicoA';
+  const BUILD = '2026-10-23-autodiagnostico';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -4211,8 +4212,10 @@ const CFG_VER = 4;
   /** Cura na base via Soraka. Antes devolvia `true` mesmo quando o NPC não abria (o botão
    *  estático de `#npcs` está oculto na Fonte) — falso verde. Agora devolve o que provou. */
   async function curarBase() {
+    marcarFase('curar (Soraka)');
     const ok = await abrirNpc('Soraka', '#janela-npc [data-palavra="curar"]');
     if (!ok) return false;
+    marcarFase('curar (confirmar)');
     q1('#janela-npc [data-palavra="curar"]')?.click();
     await humano(350);
     return true;
@@ -4258,6 +4261,7 @@ const CFG_VER = 4;
     const regras = { epicosVendidos: [], protegidos: [] };
     fecharJanelas();
     await humano(280);
+    marcarFase('lojista (abrir conversa)');
     // Na Fonte e nas cidades o jogo ESCONDE `#npcs` e os NPCs abrem-se pelo CANVAS
     // (`jogo.js:7025`). O `clickNPC` sozinho devolvia "sem vender" na Fonte (medido ao vivo
     // 2026-10-19, no debloat do cofre) porque o botao estatico do Lojista nao existe/esta oculto.
@@ -4310,6 +4314,7 @@ const CFG_VER = 4;
       return true;
     };
     for (const s of qa1('#janela-venda .cofre-slot[data-separar]')) {
+      marcarFase('venda: escolher slots');
       const id = s.dataset.separar || ''; const dica = s.dataset.dica || '';
       if (id.startsWith('esp:')) continue;                       // espólio já foi em lote
       if (apenas && !forcar(id)) continue;                       // modo cofre: só os ids retirados
@@ -4398,6 +4403,7 @@ const CFG_VER = 4;
       for (let k = 0; k < vezes; k++) { if (!clicarVenda(id)) break; regras.epicosVendidos.push(id); await humano(120); }
     }
     await humano(380);
+    marcarFase('venda: fechar cesta');
     q1('#janela-venda [data-vender-cesta]')?.click();
     await humano(850);
     fecharJanelas();
@@ -4419,6 +4425,7 @@ const CFG_VER = 4;
     const compraveis = ['vidaS', 'vidaF', 'vida'].filter(pocaoCompravel);
     const p = readPotions();
     const falta = compraveis.filter((k) => (p[k] || 0) < alvo[k]);
+    marcarFase('repor (abrir lojista)');
     const sobrou = () => Object.keys(min).filter((k) => (readPotions()[k] || 0) < min[k]);
     if (!falta.length) return { ok: true, nada: true, min, compraveis, faltou: sobrou() };
     let falou = false;
@@ -4431,6 +4438,7 @@ const CFG_VER = 4;
     await humano(280);
     const feitos = {};
     const semBotao = [];
+    marcarFase('repor (comprar lotes)');
     for (const k of compraveis) {                               // mais caras primeiro
       const antes = readPotions()[k] || 0;
       if (antes >= alvo[k]) continue;                             // já tem o suficiente, NÃO compra de novo
@@ -4469,6 +4477,41 @@ const CFG_VER = 4;
   // baseLock e o supervisarBase respondia 'base ocupada (mutex)' indefinidamente
   // -> o boneco nunca chegava ao ramo de viajar. O lock tem de ser auto-curável.
   const BASE_LOCK_MS = 150000, PASSO_MS = 45000;
+  // ===== AUTO-DIAGNÓSTICO DA BASE (2026-10-23) =========================================
+  // O dono: "pq tu quer fazer isso manual invés de fazer o script desbugar isso". Um passo que
+  // estoura os 45 s aparecia no log como `timeout de passo` sem dizer ONDE parou — e o culpado
+  // real (aba escondida a meio: o Chrome aperta os timers e `esperar(120)` passa a ~1 s) ficava
+  // invisível. `marcarFase` é o marcador que cada actor de base actualiza; o `acaoBase` leva-o
+  // para o log quando falha, e aborta no instante em que a aba fica escondida (o jogo pára).
+  let _passoFase = null;
+  const marcarFase = (f) => { _passoFase = String(f || ''); };
+  // ANÚNCIO QUE FALHA SEMPRE: 3 falhas seguidas do MESMO item deixam-no fora do plano por 30 min
+  // (em vez de a necessidade `anunciar` ficar `true` para sempre e o boneco voltar à Fonte à toa).
+  const ANUNCIO_FALHAS_TTL_MS = 30 * 60 * 1000;
+  let _anuncioFalhas = new Map();      // base -> { n, ate, motivo }
+  function anuncioBloqueado(base) {
+    const b = String(base || ''); const r = _anuncioFalhas.get(b);
+    if (!r) return false;
+    if (Date.now() > r.ate) { _anuncioFalhas.delete(b); return false; }
+    return r.n >= 3;
+  }
+  function registrarFalhaAnuncio(base, motivo) {
+    const b = String(base || ''); if (!b) return;
+    const cur = _anuncioFalhas.get(b) || { n: 0, ate: 0, motivo: null };
+    _anuncioFalhas.set(b, { n: cur.n + 1, ate: Date.now() + ANUNCIO_FALHAS_TTL_MS, motivo: String(motivo || '') });
+    if (cur.n + 1 >= 3) logEvent('mercado', { acao: 'anuncio-bloqueado', base: b, falhas: cur.n + 1, motivo: String(motivo || ''), ttlMs: ANUNCIO_FALHAS_TTL_MS });
+  }
+  function limparFalhaAnuncio(base) { _anuncioFalhas.delete(String(base || '')); }
+  /** PORQUE esta cópia NÃO se anuncia agora (null = pode anunciar). Usado pelo `planBag` para
+   *  que o plano e o actor concordem — é isto que fecha a necessidade `anunciar`. */
+  function porqueNaoAnunciar(it) {
+    if (anuncioBloqueado(it.base)) {
+      const r = _anuncioFalhas.get(String(it.base)) || {};
+      return `anúncio falhou ${r.n || 3}x seguidas (${r.motivo || 'motivo não registado'}): fica na mochila até a falha expirar (lendário nunca vai ao Lojista)`;
+    }
+    if (!melhoraOferta(it)) return 'já há oferta deste item no mercado em tier igual ou melhor (esta cópia fica na mochila; lendário nunca vai ao Lojista)';
+    return null;
+  }
 
   // ---------------------------- NECESSIDADES QUE FALHARAM ("não há como satisfazer isto agora")
   /** P0 MEDIDO AO VIVO (ciclo de recall): uma necessidade que o passo NÃO consegue fechar
@@ -5207,14 +5250,28 @@ const CFG_VER = 4;
     const passo = async (nome, fn) => {
       res.ordem.push(nome);
       const t0 = Date.now();
+      _passoFase = null;
+      // VIGIA DA ABA: se a aba ficar escondida a meio, o jogo pára e o Chrome atrasa os timers
+      // (`esperar(120)` passa a ~1 s) — era isto que estourava os 45 s sem dizer porquê. Agora
+      // o passo aborta no instante e o log nomeia a causa e a fase.
+      let vigia = null;
+      const escondida = new Promise((r) => {
+        if (typeof document === 'undefined' || typeof setInterval !== 'function') return;
+        vigia = setInterval(() => { if (document.hidden) r({ escondida: true, ms: Date.now() - t0, fase: _passoFase }); }, 400);
+      });
       try {
-        // TETO por passo: um passo que nao responde nao pode prender a rotina toda.
         res[nome] = await Promise.race([
           Promise.resolve().then(fn),
-          new Promise((r) => setTimeout(() => r({ timeout: true, ms: PASSO_MS }), PASSO_MS)),
+          new Promise((r) => setTimeout(() => r({ timeout: true, ms: PASSO_MS, fase: _passoFase }), PASSO_MS)),
+          escondida,
         ]);
-        if (res[nome] && res[nome].timeout) logIssue('base:' + nome, { erro: 'timeout de passo', ms: PASSO_MS });
-      } catch (e) { res[nome] = { erro: String(e) }; logIssue('base:' + nome, { erro: String(e) }); }
+        if (res[nome] && res[nome].timeout) logIssue('base:' + nome, { erro: 'timeout de passo', ms: PASSO_MS, fase: res[nome].fase || _passoFase || null });
+        else if (res[nome] && res[nome].escondida) {
+          res.abaEscondida = true;
+          logIssue('base:' + nome, { erro: 'aba escondida a meio do passo (o jogo para e os timers do Chrome atrasam)', ms: res[nome].ms, fase: res[nome].fase || null });
+        }
+      } catch (e) { res[nome] = { erro: String(e) }; logIssue('base:' + nome, { erro: String(e), fase: _passoFase || null }); }
+      finally { if (vigia) { try { clearInterval(vigia); } catch { /* ignore */ } } }
       res[nome + 'Ms'] = Date.now() - t0;
       // CAUSA (2): um passo que falhou TEM de aparecer. Antes `res.ok` ficava `true` à mesma.
       if (passoFalhou(res[nome])) { res.falhas.push(nome); res.ok = false; }
@@ -5244,6 +5301,11 @@ const CFG_VER = 4;
         for (const x of fila) { feitas.add(x[0]); res.ordem.push(x[1]); }
         for (const x of fila) {
           await passo(x[1], x[2]);
+          if (res.abaEscondida) {
+            res.ok = false;
+            res.motivo = 'aba escondida a meio de ' + x[1] + ' (o jogo para; a base retoma quando a aba estiver à frente)';
+            logEvent('base', res); marcarAtiva(); return res;
+          }
           if ((readLocation().text || '') !== 'Fonte') {
             res.saiu = p; res.ok = false; res.motivo = 'saiu da Fonte durante a rotina (passo ' + x[1] + ')';
             logEvent('base', res); marcarAtiva(); return res;
@@ -9553,6 +9615,7 @@ const CFG_VER = 4;
     // saturar (e o anunciarItemPorBase, por sua vez, já abre para anunciar).
     const mk = await mercadoDoServidor();
     if (!mk) return { ok: false, motivo: 'sem leitura do mercado', anunciados: [], cancelados: [] };
+    marcarFase('mercado (ofertas lidas)');
     const mercado = mk.mercado || [];
     const minhas = mk.minhas || [];
     _ofertasCache = minhas; _ofertasAt = Date.now();               // saturação passa a saber o que está anunciado
@@ -9571,6 +9634,7 @@ const CFG_VER = 4;
     const escolhidos = [...porBase.values()].sort((a, b) => qIdx(a.qual) - qIdx(b.qual) || (a.refino || 0) - (b.refino || 0));
     const cancelarNaUI = async (id) => {
       if (!mm) return false;
+      marcarFase('mercado: cancelar ' + String(id));
       if (mm.hidden) { press('j'); await humano(500); }
       mm.querySelector('[data-aba="minhas"]')?.click(); await humano(320);
       const ok = cancelarOferta(id); await humano(400);
@@ -9578,6 +9642,7 @@ const CFG_VER = 4;
     };
     for (const it of escolhidos) {
       if (ehLendarioDaBuild(it.base)) continue;                            // lendário da build da classe: NUNCA anuncia
+      if (anuncioBloqueado(it.base)) continue;                             // 3 falhas seguidas: fora do plano até expirar
       const ja = minhas.find((o) => String(o.base) === String(it.base));
       if (ja) {
         // Já há oferta deste base: só vale TROCAR se a cópia da mochila for melhor. Igual ou pior
@@ -9599,10 +9664,12 @@ const CFG_VER = 4;
       // tier A; tier B/C só Rabadon/Gume, por excepção nomeada. Sem referência válida NÃO se
       // anuncia (nada de inventar 1,5M para um tier B).
       const pr = precoDeAnuncio(it, mercado, cfg);
+      marcarFase('mercado: anunciar ' + String(it.base) + '~' + String(it.qual));
       if (!(pr.preco >= 1)) {
         logEvent('mercado', { acao: 'preco', base: it.base, id: it.id, qual: it.qual,
           preco: null, regra: pr.regra, ofertasBase: pr.ofertasBase });
         falhas.push({ base: it.base, motivo: pr.regra || 'sem preco' });
+        registrarFalhaAnuncio(it.base, pr.regra || 'sem preco');
         continue;
       }
       const preco = pr.preco;
@@ -9616,8 +9683,8 @@ const CFG_VER = 4;
         preco, regra: pr.regra });
       // NÃO se faz `break` (defeito medido 2026-10-23): UM item que o jogo não deixava anunciar
       // abortava todos os seguintes — a mochila ficava com anúncios nenhuns. Agora falha só ele.
-      if (r.ok) anunciados.push({ base: it.base, qual: it.qual, id: it.id, preco, refTier: pr.refTier, ofertasTier: pr.ofertasTier });
-      else falhas.push({ base: it.base, motivo: r.motivo || 'falhou' });
+      if (r.ok) { anunciados.push({ base: it.base, qual: it.qual, id: it.id, preco, refTier: pr.refTier, ofertasTier: pr.ofertasTier }); limparFalhaAnuncio(it.base); }
+      else { falhas.push({ base: it.base, motivo: r.motivo || 'falhou' }); registrarFalhaAnuncio(it.base, r.motivo || 'falhou'); }
     }
     if (Array.isArray(_ofertasCache)) for (const a of anunciados) if (a.preco) _ofertasCache.push({ id: 'novo:' + a.base + ':' + a.qual, base: a.base, qual: a.qual, raridade: 'lendario', preco: a.preco });
     logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length, falhas: falhas.length });
@@ -9626,7 +9693,7 @@ const CFG_VER = 4;
     // `true` para sempre e a rotina repetir `mercado` em cada passagem (P0 medido 2026-10-21:
     // 10 passos, 5 aberturas de mercado numa só ida à base).
     const feito = new Set(anunciados.map((a) => String(a.base)));
-    const porAnunciar = escolhidos.filter((it) => !feito.has(String(it.base)) && melhoraOferta(it, ofertasPorBase()));
+    const porAnunciar = escolhidos.filter((it) => !feito.has(String(it.base)) && !anuncioBloqueado(it.base) && melhoraOferta(it, ofertasPorBase()));
     const okTudo = anunciados.length > 0 || porAnunciar.length === 0;
     return { ok: okTudo, anunciados, cancelados, falhas, motivo: okTudo ? null : 'nada anunciado de ' + porAnunciar.map((x) => x.base).join(',') };
     } finally { try { fecharJanelas(); } catch { /* ignore */ } ocupado = false; }
@@ -13211,7 +13278,7 @@ const CFG_VER = 4;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, ofertasPorBase, melhoraOferta, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
+  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },
