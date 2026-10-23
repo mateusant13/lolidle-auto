@@ -1926,7 +1926,7 @@
     // OBSERVABILIDADE DO SUSTENTO (2026-10-23): o que o veredicto ACIMA somou de cura. Sem estes
     // campos nao se distingue "a conta viu o roubo de vida" de "a conta esqueceu-se dele" — e foi
     // exactamente essa cegueira que fez o modelo dizer "morre" onde o dono ganha a luta.
-    let dpsSaida = 0, curaRvMax = 0, curaRegenMax = 0;
+    let dpsSaida = 0, curaRvMax = 0, curaRegenMax = 0, curaGiroMax = 0;
     // DOIS RISCOS SEPARADOS (queixa do dono, 2026-10-22): "se eu morro pro chefe mas
     // sobrevivo pros mobs, eu devo ir farmar". Um chefe que mata NÃO invalida os mobs; só
     // quando os MOBS matam é que não há farm nenhum. Antes os dois caíam no mesmo `morte`.
@@ -1938,6 +1938,11 @@
       // AGENTS.md (prova n.o 5) mede em ~269 cura/s — era simplesmente ignorado. Era por isto
       // que a conta dizia "morre" onde o dono ganha.
       dpsSaida = Math.max(0, Number(myDps) || 0);
+      // CURA DO GIRO (motor.js:2188-2193): a cura PROPRIA da Katarina vale ~190 cura/s ao vivo
+      // (medido 2026-10-23 com `curaGiroS()`), ~29x a regeneracao — e o `estimarRegiao` nunca a
+      // passava, portanto o veredicto da regiao era calculado com ZERO desta cura (AGENTS.md,
+      // prova n.o 7). So entra com DPS conhecido: sem o dano do giro nao ha cura para somar.
+      if (dpsSaida > 0) { try { curaMob.giro = curaGiroS(); } catch { /* 0 */ } }
       // (i) A ZONA ESTÁ ACIMA DO BONECO? É a regra determinística e é a que apanha o caso medido
       // (Covil do Barão, `nm: [40, 48]`, com o boneco a 29). A tolerância é a MESMA que o
       // `doNivel0` logo abaixo já usa (6 níveis) — não se inventa um critério novo.
@@ -1959,6 +1964,7 @@
         if (Number.isFinite(a.tMorrer)) riscoTMorrer = Math.min(riscoTMorrer == null ? Infinity : riscoTMorrer, +a.tMorrer.toFixed(1));
         curaRvMax = Math.max(curaRvMax, Number(a.curaRv) || 0);
         curaRegenMax = Math.max(curaRegenMax, Number(a.curaRegen) || 0);
+        curaGiroMax = Math.max(curaGiroMax, Number(a.curaGiroS) || 0);
       }
       if (riscoTMorrer === Infinity) riscoTMorrer = null;
       // (iii-b) O CHEFE DA REGIAO — a avaliação de luta que faltava (TK-02-41): a região tem
@@ -2074,7 +2080,7 @@
       const rr2 = (agregar() || []).find((x) => x.region && String(x.region).startsWith(String(loc.nome)));
       if (rr2 && rr2.goldPotionMin != null) goldPotionMin = Math.round(rr2.goldPotionMin);
     } catch { /* ignore */ }
-    return { killsMinTeorico: (killsMin > 0 ? killsMin : 1), kAbates: (cfg.kAbates != null ? cfg.kAbates : 1), id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: +L.toFixed(1), fatorXp: fx, noite: mm.noite, multXp: +mm.xp.toFixed(3), multOuro: +mm.ouro.toFixed(3), mobHp: Math.round(hpAvg), mobsPerWave, minhaDps: myDps || null, modo, kXp: kx, kOuro: ko, xpKill: +(xpK * kx).toFixed(2), goldKill: +(goldK * ko).toFixed(2), killsMin: +killsMin.toFixed(1), xpMin: Math.round(xpK * kx * killsMin), goldMin: Math.round(goldK * ko * killsMin), xpMinReal: xpReal, goldMinReal: goldReal, goldLiqMin: Math.max(0, goldReal - goldPotionMin), goldPotionMin, mobsMatam, chefeMatam, chefeFatal: chefeMatam, mobsSeguros: !mobsMatam, runasKill: +runasKill.toFixed(5), runasMin: +(runasKill * killsMin).toFixed(2), runasChefe: +runasChefe.toFixed(2), runasH: Math.round(runasKill * killsMin * 60), morte, riscoMob, riscoDps, riscoTMorrer, dpsSaida, curaRv: +curaRvMax.toFixed(2), curaRegen: +curaRegenMax.toFixed(2) };
+    return { killsMinTeorico: (killsMin > 0 ? killsMin : 1), kAbates: (cfg.kAbates != null ? cfg.kAbates : 1), id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: +L.toFixed(1), fatorXp: fx, noite: mm.noite, multXp: +mm.xp.toFixed(3), multOuro: +mm.ouro.toFixed(3), mobHp: Math.round(hpAvg), mobsPerWave, minhaDps: myDps || null, modo, kXp: kx, kOuro: ko, xpKill: +(xpK * kx).toFixed(2), goldKill: +(goldK * ko).toFixed(2), killsMin: +killsMin.toFixed(1), xpMin: Math.round(xpK * kx * killsMin), goldMin: Math.round(goldK * ko * killsMin), xpMinReal: xpReal, goldMinReal: goldReal, goldLiqMin: Math.max(0, goldReal - goldPotionMin), goldPotionMin, mobsMatam, chefeMatam, chefeFatal: chefeMatam, mobsSeguros: !mobsMatam, runasKill: +runasKill.toFixed(5), runasMin: +(runasKill * killsMin).toFixed(2), runasChefe: +runasChefe.toFixed(2), runasH: Math.round(runasKill * killsMin * 60), morte, riscoMob, riscoDps, riscoTMorrer, dpsSaida, curaRv: +curaRvMax.toFixed(2), curaRegen: +curaRegenMax.toFixed(2), curaGiro: +curaGiroMax.toFixed(2) };
   }
 
   /** Calibra o fator de conta (k) comparando o estimado com o MEDIDO.
@@ -2426,7 +2432,7 @@
     // `va` = velocidade de ataque do HUD — usada como PISO de DPS quando nao ha historico medido
     // (dano × vel. ataque = DPS de auto-ataque). Antes so existia `dano`, e usar o DANO POR GOLPE
     // como se fosse DPS inflacionava qualquer valor de buff (ex.: a Respiracao do Vento).
-    return {
+    const p = {
       nivel,
       vida: hp.max != null ? hp.max : 4188, vidaCur: hp.cur, vidaAtual: hp.cur, escudo: hp.escudo, vidaEff: (hp.vidaEff != null ? hp.vidaEff : hp.max),
       armadura: s['Armadura'] || 0, rm: s['Res. mágica'] || 0, dano: s['Dano'] || 0, poder: s['Poder'] || 0, va: s['Vel. ataque'] || 0,
@@ -2456,6 +2462,13 @@
       extraVida: vidaExtraDoJogo(hp.max != null ? hp.max : 4188),
       fonte: { vida: hp.max != null ? 'jogo:hud' : 'fallback', rv: s['Roubo de vida'] != null ? 'jogo:st' : 'ausente' },
     };
+    // SUSTENTO/DEFESA DO KIT (motor.js:718/721/1796/1848/2004) — precisa da vida, da velocidade
+    // de ataque e do CDR ja no jogador, por isso e' calculado DEPOIS do objecto base.
+    const kS = sustentoDoKit(p);
+    p.defesaPct = kS.defesaPct;
+    p.curaAtaque = kS.curaAtaque;
+    p.kitSustento = kS.partes;
+    return p;
   }
 
   // Habilidades da Katarina (FALLBACK; o normal é vir do motor via META.kit).
@@ -2469,7 +2482,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-sustento-luta';
+  const BUILD = '2026-10-23-sustento-luta2';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -2566,6 +2579,54 @@ const CFG_VER = 4;
     if (!base && !cg) return { cura: 0, tem: false };
     return { cura: base + (cg || 0), tem: true };
   }
+  /** SUSTENTO E DEFESA DO KIT DO CAMPEAO (lido do kit que o motor manda, nunca copiado).
+   *
+   *  Duas mecanicas que o jogo aplica e o modelo NAO tinha (medido 2026-10-23, depois da queixa
+   *  "a tua matematica diz que eu morro mas na realidade eu ganho"):
+   *   - `defesaBonus` (Estandarte de Noxus, motor.js:721/2004): enquanto a skill esta activa, a
+   *     defesa e multiplicada por `1 + defesaBonus` (motor.js:1848: `(i.magico ? a.rm : a.armadura)
+   *     * (1 + ... + estandarteDef)`). Menos dano recebido.
+   *   - `curaSangue` (Banho de Sangue, motor.js:718/1796): cada AUTO-ATAQUE num alvo com
+   *     Hemorragia cura `a.vida * curaSangue[rank]` - 1,9% da vida maxima por golpe no rank 10.
+   *
+   *  A PONDERACAO E' UPTIME (duracao / recarga efectiva com o CDR real): e o maximo que a skill
+   *  pode dar se for usada em recarga, portanto e um TECTO, nao um exagero. Rank vem do arsenal
+   *  (`rankKitDe`); sem rank, nao se inventa (0). */
+  function sustentoDoKit(p) {
+    const out = { defesaPct: 0, curaAtaque: 0, partes: [] };
+    try {
+      if (!KAT || typeof KAT !== 'object') return out;
+      const p_ = p || {};
+      const cdr = Math.min(0.4, Math.max(0, Number(p_.cdr) || 0));
+      const vida = Math.max(0, Number(p_.vida) || 0);
+      const va = Math.max(0, Number(p_.va) || 1);
+      const hemorragia = !!(META.champAtual && META.champAtual.hemorragia);
+      for (const t of Object.keys(KAT)) {
+        const k = KAT[t];
+        if (!k || k.passiva) continue;
+        const rank = rankKitDe(t) || 0;
+        if (!rank) continue;
+        const dur = Number(k.duracao) || 0;
+        let recarga = 0;
+        try { recarga = typeof k.rec === 'function' ? Number(k.rec(rank)) || 0 : 0; } catch { recarga = 0; }
+        if (dur <= 0 || recarga <= 0) continue;
+        const ciclo = recarga / (1 - cdr);
+        const uptime = Math.max(0, Math.min(1, dur / ciclo));
+        // DEFESA (motor.js:1848/2004)
+        if (Array.isArray(k.defesaBonus) && k.defesaBonus.length) {
+          const f = Number(k.defesaBonus[Math.min(rank, k.defesaBonus.length) - 1]) || 0;
+          if (f > 0) { out.defesaPct += f * uptime; out.partes.push(t + ':defesa+' + Math.round(f * 100) + '%x' + uptime.toFixed(2)); }
+        }
+        // CURA POR ATAQUE (motor.js:1796) - exige alvo com Hemorragia (flag do proprio campeao)
+        if (hemorragia && Array.isArray(k.curaSangue) && k.curaSangue.length && vida > 0) {
+          const f = Number(k.curaSangue[Math.min(rank, k.curaSangue.length) - 1]) || 0;
+          if (f > 0) { out.curaAtaque += f * vida * va * uptime; out.partes.push(t + ':curaAtaque+' + (f * 100).toFixed(1) + '%'); }
+        }
+      }
+    } catch { /* nunca quebra a conta */ }
+    return out;
+  }
+
   /** CURA POR SEGUNDO do giro das adagas (motor.js:2188-2193): o dano do giro X a fracao
    *  `curaBase + curaGiro[rank]`. E a cura PROPRIA da Katarina (AGENTS.md, prova n.o 7) e
    *  entra na sobrevivencia (o criterio do dono: quantas pocoes / quanto custa).
@@ -3384,7 +3445,10 @@ const CFG_VER = 4;
     const ND = META.nivelDif || { danoMonstro: 0.15, maxDanoMonstro: 3, danoJogador: 0.07, minDanoJogador: 0.25 };
     const fM = dif ? Math.min(ND.maxDanoMonstro || 3, 1 + ND.danoMonstro * dif) : 1;
     const fJ = dif ? Math.max(ND.minDanoJogador ?? 0.25, 1 - ND.danoJogador * dif) : 1;
-    const def = s.magico ? (player.rm || 0) : (player.armadura || 0);
+    // DEFESA DO KIT (Estandarte de Noxus, motor.js:1848/2004): enquanto activa, o motor multiplica
+    // a armadura/RM por `1 + defesaBonus`. Ponderado por uptime em `sustentoDoKit`.
+    const _defBonus = 1 + Math.max(0, Number(player.defesaPct) || 0);
+    const def = ((s.magico ? (player.rm || 0) : (player.armadura || 0)) || 0) * _defBonus;
     const mit = 100 / (100 + def);
     const as = s.as || 1;
     const intervalo = 1 / as;                      // janela entre golpes
@@ -3401,7 +3465,7 @@ const CFG_VER = 4;
     const rod = META.rodizio && META.rodizio[monstro];
     if (rod) for (const mc of rod) {
       const mm = mecanicaDe(mc); if (!mm || !mm.mult) continue;
-      const d = s.ad * mm.mult * fM * (100 / (100 + (mm.magico ? (player.rm || 0) : (player.armadura || 0))));
+      const d = s.ad * mm.mult * fM * (100 / (100 + (mm.magico ? (player.rm || 0) : (player.armadura || 0)) * _defBonus));
       if (d > piorMec) { piorMec = d; mecFatalNome = mm.nome; }
     }
     // PISCINA DE VIDA = vida maxima + ESCUDO activo (motor.js:2718; `(+N)` em jogo.js:6203).
@@ -3422,12 +3486,15 @@ const CFG_VER = 4;
     // REGENERACAO NATURAL (motor.js:576 + 1464): o motor soma `a.regen` a vida em TODOS os
     // ticks, dentro do combate. Sem este termo a conta subestimava o sustento sempre.
     const curaRegen = Math.max(0, Number(player.regen) || 0);
-    const curaTotal = curaSkill + curaPocao + curaRv + curaGiroS + curaRegen;
+    // CURA POR ATAQUE do kit (Banho de Sangue, motor.js:1796): % da vida maxima por golpe num alvo
+    // com Hemorragia, ja ponderada pelo uptime e pela velocidade de ataque (`sustentoDoKit`).
+    const curaKit = Math.max(0, Number(player.curaAtaque) || 0);
+    const curaTotal = curaSkill + curaPocao + curaRv + curaGiroS + curaRegen + curaKit;
     const liquido = dpsTomado - curaTotal;
     const alvoGolpe = Math.max(0, danoGolpe - curaSkill * intervalo); // o que a poção precisa cobrir por janela
     const mix = melhorMix(nPocoes, alvoGolpe);
     const tMorrer = liquido > 0 ? (vidaPool || 1) / liquido : Infinity;
-    return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaRv, curaGiroS, curaRegen, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
+    return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaRv, curaGiroS, curaRegen, curaKit, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
   }
 
   /** Agrega os ciclos observados por região (médias por minuto + mortes).
@@ -13699,7 +13766,7 @@ const CFG_VER = 4;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, veredictoBase, quarentenaBase, chefeVivo, podeRecordar, regenDoJogo, motivosDeViagem, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
+  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, veredictoBase, quarentenaBase, chefeVivo, podeRecordar, regenDoJogo, sustentoDoKit, motivosDeViagem, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },

@@ -108,8 +108,85 @@ export const suite = {
         com.tMorrer > 0 && sem.tMorrer > 0);
     }
 
-    /* ============ S5/S6: O VEREDICTO DA REGIAO PASSA A VER O SUSTENTO ============ */
+    /* ============ S7/S8/S9/S10: SUSTENTO E DEFESA DO PROPRIO KIT ============ */
     {
+      // Kit SINTETICO com as duas mecanicas do Darius (motor.js:718 F `curaSangue` 2% no rank 10,
+      // motor.js:721 B `defesaBonus` 50% no rank 10). Os numeros sao do teste, nao do jogo: o que
+      // se prova aqui e' a FORMULA e o caminho (kit -> player -> avaliar).
+      const KIT = {
+        F: { nivel: 23, max: 10, recarga: [17.5], duracao: 6, curaSangue: [0.02] },
+        B: { nivel: 33, max: 10, recarga: [21.5], duracao: 10, defesaBonus: [0.5] },
+      };
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'darius', {
+        nivel: 35, kit: KIT, hemorragia: true,
+        stats: { hp: 5000, hpperlevel: 100, hpregen: 10, hpregenperlevel: 0.5, armor: 100, spellblock: 80 },
+      });
+      m.montar('#hab-ativas .hab[data-t]', ['F', 'B'].map((tt) => m.el({
+        tag: 'div', label: 'hab-' + tt, className: 'hab', dataset: { t: tt }, textContent: '10 / 10',
+      })));
+      m.montar('#hud-vida-txt', [m.el({ label: 'hud-vida-txt', textContent: '5000 / 5000' })]);
+      m.montar('.st', [
+        m.el({ label: 'st-dano', textContent: 'Dano 300' }),
+        m.el({ label: 'st-arm', textContent: 'Armadura 100' }),
+        m.el({ label: 'st-rm', textContent: 'Res. mágica 80' }),
+        m.el({ label: 'st-va', textContent: 'Vel. ataque 1' }),
+      ]);
+      alimentarMeta(m, { locais: LOCAIS, monstros: MONSTROS });
+
+      const p = auto.player();
+      // F: uptime = 6/17.5 = 0.3428 ; cura/ataque = 2% x 5000 x 1 = 100 -> 34.28/s
+      t.check('S7: cura por ataque do kit (Banho de Sangue, motor.js:1796) ponderada por uptime',
+        Math.abs((p.curaAtaque || 0) - 0.02 * 5000 * (6 / 17.5)) < 0.5);
+      // B: uptime = 10/21.5 = 0.4651 ; defesa = 50% x 0.4651 = 0.2326
+      t.check('S8: defesa do kit (Estandarte, motor.js:1848/2004) ponderada por uptime',
+        Math.abs((p.defesaPct || 0) - 0.5 * (10 / 21.5)) < 0.005);
+
+      const cura = { skill: 0, pocao: 0 };
+      const semDef = auto.avaliar('lobo', 30, Object.assign({}, p, { defesaPct: 0 }), cura);
+      const comDef = auto.avaliar('lobo', 30, p, cura);
+      t.check('S9: com a defesa do kit o dano RECEBIDO e menor (menos mitigacao a fingir)',
+        comDef.dpsTomado < semDef.dpsTomado * 0.99);
+      t.check('S10: e a cura do kit entra no `curaTotal` (o liquido e o DPS tomado menos a soma)',
+        Math.abs((comDef.curaKit || 0) - (p.curaAtaque || 0)) < 0.01 &&
+        Math.abs(comDef.curaTotal - (comDef.curaSkill + comDef.curaPocao + comDef.curaRv + comDef.curaGiroS + comDef.curaRegen + comDef.curaKit)) < 0.01 &&
+        Math.abs(comDef.liquido - (comDef.dpsTomado - comDef.curaTotal)) < 0.01);
+    }
+
+    /* ============ S11: A CURA DO GIRO (Katarina) ENTRA NO VEREDICTO DA REGIAO ============ */
+    {
+      // Kit VIVO da Katarina (REGRA N.o 3: lido do jogo, nunca copiado).
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      const { RAIZ } = await import('./dom-stub.mjs');
+      const v = JSON.parse(fs.readFileSync(path.join(RAIZ, 'docs/game-src/kit-katarina-vivo.json'), 'utf8').replace(/^\/\/.*$/gm, ''));
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'katarina', { kit: v.kit.hab, magia: true });
+      m.montar('#hud-nivel', [m.el({ label: 'hud-nivel', textContent: '35' })]);
+      m.montar('#hud-vida-txt', [m.el({ label: 'hud-vida-txt', textContent: '4188 / 4188' })]);
+      m.montar('#hab-ativas .hab[data-t]', ['Q', 'W', 'E', 'R', 'G', 'A', 'F', 'B', 'T', 'D'].map((tt) => m.el({
+        tag: 'div', label: 'hab-' + tt, className: 'hab', dataset: { t: tt }, textContent: '10 / 10',
+      })));
+      m.montar('.st', [
+        m.el({ label: 'st-dano', textContent: 'Dano 300' }),
+        m.el({ label: 'st-arm', textContent: 'Armadura 100' }),
+        m.el({ label: 'st-rm', textContent: 'Res. mágica 80' }),
+        m.el({ label: 'st-va', textContent: 'Vel. ataque 1' }),
+        m.el({ label: 'st-ap', textContent: 'Poder 400' }),
+      ]);
+      alimentarMeta(m, { locais: LOCAIS, monstros: MONSTROS });
+
+      const comDps = auto.estimarRegiao('lobos', { dps: 1000 });
+      const semDps = auto.estimarRegiao('lobos', { dps: 0 });
+      t.check('S11: com DPS a cura do giro (motor.js:2188-2193) entra no veredicto da regiao',
+        comDps && comDps.curaGiro > 0 && (semDps.curaGiro || 0) === 0);
+    }
+
+    /* ============ S5/S6: O VEREDICTO DA REGIAO PASSA A VER O SUSTENTO ============ */    {
       const { auto } = mundo({ nivel: 30, rv: 20 });
       const p = auto.player();
       t.check('S5a: o rv do painel chega ao jogador (20% -> 0.2)', Math.abs(p.rv - 0.2) < 1e-9);
