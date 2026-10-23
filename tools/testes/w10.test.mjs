@@ -255,6 +255,36 @@ export const suite = {
         && eAnunciado(w3.auto.planBag(mochila(w3.m, w3.auto, [slot('4629+1~B', 'lendario')])).acts, '4629+1~B') === true);
     }
 
+    /* ============ L6 - EXCEDENTE DE ITEM ESPECIAL vai ao MERCADO (queixa do dono 2026-10-23:
+     * "meu mercado ta com 5 slots de 10. por que? arruma") ============
+     * O campeão só consome UMA cópia por build em que o item entra. As outras são excedente e
+     * seguem a regra normal (lendário -> mercado). Antes, TODAS as cópias de um item especial
+     * ficavam PROTEGER e o mercado ficava a meio. */
+    {
+      const w = novoMundo();
+      alimentarCatalogo(w.m);
+      definirCampeao(w.m, 'aptest');
+      // `3100` (Perdicao de Lich) e o especial do AP que existe no catalogo CONTROLADO e NAO
+      // entra na build deste campeao de teste (fases=[]): e o caso do excedente puro.
+      t.check('L6: CONTROLO - 3100 e item especial do AP', w.auto.ehEspecialMeu('3100') === true);
+      t.check('L6: CONTROLO - 3100 nao e peca da build deste campeao', (w.auto.fasesDoItem('3100') || []).length === 0);
+      const fs = w.auto.fasesDoItem('3100') || [];
+      const nec = Math.max(1, fs.length);
+      const slots = [];
+      for (let i = 0; i < nec + 2; i++) slots.push(slot('3100~C', 'lendario'));
+      const acts = w.auto.planBag(mochila(w.m, w.auto, slots)).acts;
+      const doBase = acts.filter((a) => String(a.it.base).replace(/[+~].*$/, '') === '3100');
+      const prot = doBase.filter((a) => a.action === 'PROTEGER').length;
+      const anun = doBase.filter((a) => a.action === 'ANUNCIAR_MERCADO').length;
+      t.check('L6: só as cópias que o campeão usa ficam PROTEGER (1 por build, no mínimo 1)', prot === nec);
+      t.check('L6: o excedente vai ao MERCADO (o mercado enche, não fica a meio)', anun === (nec + 2) - nec);
+      t.check('L6: lendário excedente NUNCA vai ao Lojista', doBase.every((a) => a.action !== 'VENDER_LOJISTA'));
+      // CONTROLO NEGATIVO: UMA só cópia é a que o campeão usa — não se anuncia (e o actor obedece
+      // ao plano: `anunciarLendarios` só anuncia o que veio como ANUNCIAR_MERCADO).
+      const acts1 = w.auto.planBag(mochila(w.m, w.auto, [slot('3100~C', 'lendario')])).acts;
+      t.check('L6: uma única cópia do especial fica PROTEGER (não vai ao mercado)', acaoDe(acts1, '3100~C') === 'PROTEGER' && eAnunciado(acts1, '3100~C') === false);
+    }
+
     /* ============ R1 - REPETICAO DE ITEM BASE (TK-02-65) ============
      * motor.js:2902/2909/2913-2914: so o LENDARIO repetido e proibido. */
     {

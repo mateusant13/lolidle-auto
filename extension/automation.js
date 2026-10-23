@@ -794,6 +794,10 @@
       for (let i = 0; i < vagas; i++) aAnunciar.add(candidatos[i]);
     }
 
+    // Quantas cópias de cada item ESPECIAL o campeão realmente usa (1 por build em que entra).
+    // O resto é excedente e tem de chegar ao mercado — ver o ramo `ehEspecialMeu` abaixo.
+    const necEspecial = {}, especiaisVistos = {};
+
     for (const it of itens) {
       if (aAnunciar.has(it)) {
         const ms = mercadoSaturado();
@@ -874,7 +878,31 @@
       // Um item especial DA MINHA CLASSE é intocável: o motor gasta-o em mim (ex.: Gume do
       // Infinito +40% no crítico, motor.js:515; Rabadon +35% AP, motor.js:522). O motivo e o
       // file:linha saem do mapa, para o log dizer PORQUE e não só "protegido".
-      else if (ehEspecialMeu(it.base)) { const e = especialDe(it.base); acts.push({ action: 'PROTEGER', it, why: `tratamento especial (${e.papel}/${e.tipo}) para ${ident.perfil}/${ident.classe}: ${e.motivo} [${e.fonte}]` }); }
+      //
+      // DEFEITO MEDIDO 2026-10-23 (o dono: "meu mercado ta com 5 slots de 10. por que?"): esta
+      // linha protegia TODAS as cópias. Com 6 Zhonyas (3157) e 2 de cada outro especial, 20 dos
+      // 22 lendários < A ficavam PROTEGER e o mercado ficava a meio — o motor só consome UMA
+      // cópia por fase em que o item entra. Agora protege-se o que o campeão USA (1 por build em
+      // que entra, no mínimo 1) e o EXCEDENTE segue a regra normal (lendário -> mercado).
+      else if (ehEspecialMeu(it.base)) {
+        const b = String(it.base);
+        if (necEspecial[b] == null) {
+          let fs = []; try { fs = fasesDoItem(b) || []; } catch { fs = []; }
+          necEspecial[b] = Math.max(1, fs.length);
+        }
+        especiaisVistos[b] = (especiaisVistos[b] || 0) + 1;
+        if (especiaisVistos[b] <= necEspecial[b]) {
+          const e = especialDe(it.base);
+          acts.push({ action: 'PROTEGER', it, why: `tratamento especial (${e.papel}/${e.tipo}) para ${ident.perfil}/${ident.classe}: ${e.motivo} [${e.fonte}]` });
+        } else if (it.raridade !== 'lendario') {
+          acts.push({ action: 'VENDER_LOJISTA', it, why: `excedente de item especial (o campeão usa ${necEspecial[b]})` });
+        } else {
+          const bloq = porqueNaoAnunciar(it);
+          acts.push(bloq || mercadoSaturado().sat
+            ? { action: 'PROTEGER', it, why: `excedente de item especial (o campeão usa ${necEspecial[b]}): ${bloq || 'mercado SATURADO'} — fica na mochila (lendário nunca vai ao Lojista)` }
+            : { action: 'ANUNCIAR_MERCADO', it, why: `excedente de item especial (o campeão usa ${necEspecial[b]}) → mercado (lendário nunca vai ao Lojista)` });
+        }
+      }
       // ---- REGRA DURA DO DONO: "um épico equipável NUNCA pode ficar na mochila com um básico
       // equipado". Isto é a acção EQUIPAR, e vem ANTES de qualquer ramo de venda: um épico que
       // desloca um equipado de degrau INFERIOR não é lixo, é upgrade. (Antes, sem esta linha, o
@@ -2337,7 +2365,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-autodiagnostico';
+  const BUILD = '2026-10-23-mercado-cheio';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -9607,7 +9635,16 @@ const CFG_VER = 4;
     ocupado = true;
     try {
     const bag = scanBag(); if (!bag) return { ok: false, motivo: 'sem bolsa' };
-    const cand = (bag.items || []).filter((i) => i.kind === 'item' && i.raridade === 'lendario' && QUAL.includes(i.qual) && qIdx(i.qual) < qIdx('A') && !ehPrioridadeExtrema(i.base) && !ehLendarioDaBuild(i.base));
+    // O PLANO MANDA (defeito medido 2026-10-23): o actor escolhia da mochila INTEIRA e podia
+    // anunciar uma cópia que o `planBag` protegia (ex.: 1 única Zhonya de tratamento especial).
+    // Agora só se anuncia o que o plano marcou `ANUNCIAR_MERCADO` — é o que torna a regra do
+    // excedente autoritária e mantém planeador e actor a dizer a mesma coisa.
+    let aprovados = null;
+    try {
+      const pb = planBag(bag);
+      aprovados = new Set(((pb && pb.acts) || []).filter((a) => a.action === 'ANUNCIAR_MERCADO').map((a) => String(a.it.id)));
+    } catch { aprovados = null; }
+    const cand = (bag.items || []).filter((i) => i.kind === 'item' && i.raridade === 'lendario' && QUAL.includes(i.qual) && qIdx(i.qual) < qIdx('A') && !ehPrioridadeExtrema(i.base) && !ehLendarioDaBuild(i.base) && (!aprovados || aprovados.has(String(i.id))));
     if (!cand.length) return { ok: true, anunciados: [], motivo: 'sem lendário <A (ou todos são da build da classe)' };
     cand.sort((a, b) => qIdx(a.qual) - qIdx(b.qual) || (a.refino || 0) - (b.refino || 0));   // menor tier primeiro
     // TK-01: LEITURA do servidor (GET /api/mercado) — o comparativo de preços e as minhas
@@ -9618,6 +9655,7 @@ const CFG_VER = 4;
     marcarFase('mercado (ofertas lidas)');
     const mercado = mk.mercado || [];
     const minhas = mk.minhas || [];
+    const limite = Math.max(1, Number(mk.limite) || 10);   // LIMITE lido do servidor (jogo.js:2702), não copiado
     _ofertasCache = minhas; _ofertasAt = Date.now();               // saturação passa a saber o que está anunciado
     // PERSISTE já: sem isto o storage guardava a lista ANTIGA e, no tick seguinte, o
     // `ofertasEmCache` ressuscitava-a — a necessidade `mercado` reabria e o boneco voltava à Fonte.
@@ -9653,7 +9691,7 @@ const CFG_VER = 4;
         if (!(await cancelarNaUI(ja.id))) { falhas.push({ base: it.base, motivo: 'nao cancelou a oferta pior' }); continue; }
         cancelados.push(ja.id);
       }
-      if (minhas.length + anunciados.length - cancelados.length >= 10) {
+      if (minhas.length + anunciados.length - cancelados.length >= limite) {
         const epi = minhas.find((o) => !String(o.raridade || '').toLowerCase().startsWith('lend') && !cancelados.includes(o.id));
         if (!epi) { falhas.push({ base: it.base, motivo: 'mercado cheio de lendarias' }); break; }
         if (!(await cancelarNaUI(epi.id))) { falhas.push({ base: it.base, motivo: 'nao cancelou epica' }); continue; }
@@ -9687,6 +9725,7 @@ const CFG_VER = 4;
       else { falhas.push({ base: it.base, motivo: r.motivo || 'falhou' }); registrarFalhaAnuncio(it.base, r.motivo || 'falhou'); }
     }
     if (Array.isArray(_ofertasCache)) for (const a of anunciados) if (a.preco) _ofertasCache.push({ id: 'novo:' + a.base + ':' + a.qual, base: a.base, qual: a.qual, raridade: 'lendario', preco: a.preco });
+    logEvent('mercado', { acao: 'slots', limite, usados: minhas.length, livres: Math.max(0, limite - minhas.length), candidatos: escolhidos.length, anunciados: anunciados.length, falhas: falhas.length });
     logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length, falhas: falhas.length });
     // FALHA AUTO-DIAGNOSTICADA: havia candidato que o actor NÃO resolveu (não anunciado, ou uma
     // cópia melhor que a oferta ainda não substituiu). Devolver `ok:true` fazia a necessidade ficar
