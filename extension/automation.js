@@ -1923,12 +1923,21 @@
     // monstro a monstro; basta UM mob que mate para a região NÃO ser segura. `morte: null`
     // significa NÃO SE SABE — e o filtro é FAIL-CLOSED (não se sabe não manda ninguém morrer).
     let morte = null, avaliados = 0, riscoMob = null, riscoDps = null, riscoTMorrer = null;
+    // OBSERVABILIDADE DO SUSTENTO (2026-10-23): o que o veredicto ACIMA somou de cura. Sem estes
+    // campos nao se distingue "a conta viu o roubo de vida" de "a conta esqueceu-se dele" — e foi
+    // exactamente essa cegueira que fez o modelo dizer "morre" onde o dono ganha a luta.
+    let dpsSaida = 0, curaRvMax = 0, curaRegenMax = 0;
     // DOIS RISCOS SEPARADOS (queixa do dono, 2026-10-22): "se eu morro pro chefe mas
     // sobrevivo pros mobs, eu devo ir farmar". Um chefe que mata NÃO invalida os mobs; só
     // quando os MOBS matam é que não há farm nenhum. Antes os dois caíam no mesmo `morte`.
     let mobsMatam = false, chefeMatam = false;
     try {
       const curaMob = { skill: 0, pocao: curaPocaoMax() * 0.6 };
+      // O DPS DE SAIDA entra no veredicto (5.o argumento do `avaliar`): sem ele `curaRv` fica 0
+      // e o ROUBO DE VIDA — que o motor aplica em cada auto-ataque (motor.js:1332) e que a
+      // AGENTS.md (prova n.o 5) mede em ~269 cura/s — era simplesmente ignorado. Era por isto
+      // que a conta dizia "morre" onde o dono ganha.
+      dpsSaida = Math.max(0, Number(myDps) || 0);
       // (i) A ZONA ESTÁ ACIMA DO BONECO? É a regra determinística e é a que apanha o caso medido
       // (Covil do Barão, `nm: [40, 48]`, com o boneco a 29). A tolerância é a MESMA que o
       // `doNivel0` logo abaixo já usa (6 níveis) — não se inventa um critério novo.
@@ -1936,7 +1945,7 @@
       const acima = nivelMin != null && (p.nivel || 1) + 6 < nivelMin;
       if (acima) { mobsMatam = true; chefeMatam = !!loc.chefe; }
       for (const par of (loc.monstros || [])) {
-        const a = avaliar(par[0], Math.round(L), p, curaMob);
+        const a = avaliar(par[0], Math.round(L), p, curaMob, dpsSaida);
         if (!a) continue;
         avaliados++;
         // (ii) MECÂNICA INSTA-KILL (o `mortal` do avaliador: o pior golpe do rodízio passa da vida).
@@ -1948,6 +1957,8 @@
         if (a.mortal || (usaTempo && a.tMorrer < segMatar * 1.5)) { mobsMatam = true; riscoMob = par[0]; }
         if (Number.isFinite(a.dpsTomado)) riscoDps = Math.max(riscoDps || 0, Math.round(a.dpsTomado));
         if (Number.isFinite(a.tMorrer)) riscoTMorrer = Math.min(riscoTMorrer == null ? Infinity : riscoTMorrer, +a.tMorrer.toFixed(1));
+        curaRvMax = Math.max(curaRvMax, Number(a.curaRv) || 0);
+        curaRegenMax = Math.max(curaRegenMax, Number(a.curaRegen) || 0);
       }
       if (riscoTMorrer === Infinity) riscoTMorrer = null;
       // (iii-b) O CHEFE DA REGIAO — a avaliação de luta que faltava (TK-02-41): a região tem
@@ -1958,12 +1969,14 @@
       try {
         if (loc.chefe && loc.chefe[0]) {
           const nc = nivelChefeDe(loc);
-          const avc = avaliar(loc.chefe[0], nc, p, curaMob);
+          const avc = avaliar(loc.chefe[0], nc, p, curaMob, dpsSaida);
           if (avc) {
             avaliados++;
             if (avc.mortal) { chefeMatam = true; if (!riscoMob) riscoMob = loc.chefe[0]; }
             if (Number.isFinite(avc.dpsTomado)) riscoDps = Math.max(riscoDps || 0, Math.round(avc.dpsTomado));
             if (Number.isFinite(avc.tMorrer)) riscoTMorrer = Math.min(riscoTMorrer == null ? Infinity : riscoTMorrer, +avc.tMorrer.toFixed(1));
+            curaRvMax = Math.max(curaRvMax, Number(avc.curaRv) || 0);
+            curaRegenMax = Math.max(curaRegenMax, Number(avc.curaRegen) || 0);
             // o chefe aguenta muito mais que um mob: morrer ANTES de o matar é o critério.
             //  (a) insta-kill: o pior golpe do rodízio passa da vida (`mortal`);
             //  (b) com DPS conhecido: morre em menos de 1,5x o tempo que leva a matá-lo;
@@ -2061,7 +2074,7 @@
       const rr2 = (agregar() || []).find((x) => x.region && String(x.region).startsWith(String(loc.nome)));
       if (rr2 && rr2.goldPotionMin != null) goldPotionMin = Math.round(rr2.goldPotionMin);
     } catch { /* ignore */ }
-    return { killsMinTeorico: (killsMin > 0 ? killsMin : 1), kAbates: (cfg.kAbates != null ? cfg.kAbates : 1), id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: +L.toFixed(1), fatorXp: fx, noite: mm.noite, multXp: +mm.xp.toFixed(3), multOuro: +mm.ouro.toFixed(3), mobHp: Math.round(hpAvg), mobsPerWave, minhaDps: myDps || null, modo, kXp: kx, kOuro: ko, xpKill: +(xpK * kx).toFixed(2), goldKill: +(goldK * ko).toFixed(2), killsMin: +killsMin.toFixed(1), xpMin: Math.round(xpK * kx * killsMin), goldMin: Math.round(goldK * ko * killsMin), xpMinReal: xpReal, goldMinReal: goldReal, goldLiqMin: Math.max(0, goldReal - goldPotionMin), goldPotionMin, mobsMatam, chefeMatam, chefeFatal: chefeMatam, mobsSeguros: !mobsMatam, runasKill: +runasKill.toFixed(5), runasMin: +(runasKill * killsMin).toFixed(2), runasChefe: +runasChefe.toFixed(2), runasH: Math.round(runasKill * killsMin * 60), morte, riscoMob, riscoDps, riscoTMorrer };
+    return { killsMinTeorico: (killsMin > 0 ? killsMin : 1), kAbates: (cfg.kAbates != null ? cfg.kAbates : 1), id, nome: loc.nome, faixa: loc.faixa, tier: loc.tier, mobLevel: +L.toFixed(1), fatorXp: fx, noite: mm.noite, multXp: +mm.xp.toFixed(3), multOuro: +mm.ouro.toFixed(3), mobHp: Math.round(hpAvg), mobsPerWave, minhaDps: myDps || null, modo, kXp: kx, kOuro: ko, xpKill: +(xpK * kx).toFixed(2), goldKill: +(goldK * ko).toFixed(2), killsMin: +killsMin.toFixed(1), xpMin: Math.round(xpK * kx * killsMin), goldMin: Math.round(goldK * ko * killsMin), xpMinReal: xpReal, goldMinReal: goldReal, goldLiqMin: Math.max(0, goldReal - goldPotionMin), goldPotionMin, mobsMatam, chefeMatam, chefeFatal: chefeMatam, mobsSeguros: !mobsMatam, runasKill: +runasKill.toFixed(5), runasMin: +(runasKill * killsMin).toFixed(2), runasChefe: +runasChefe.toFixed(2), runasH: Math.round(runasKill * killsMin * 60), morte, riscoMob, riscoDps, riscoTMorrer, dpsSaida, curaRv: +curaRvMax.toFixed(2), curaRegen: +curaRegenMax.toFixed(2) };
   }
 
   /** Calibra o fator de conta (k) comparando o estimado com o MEDIDO.
@@ -2347,6 +2360,60 @@
     if (!Number.isFinite(tot)) return null;
     return Math.max(0, tot - base);
   }
+  /** REGENERACAO DE VIDA POR SEGUNDO, pela formula do MOTOR (lida, nunca copiada):
+   *    motor.js:576  regen = (hpregen + hpregenperlevel*g)/5 + 0.1*vitalidade + regenItens
+   *    motor.js:1464 estado.vida += a.regen * dt   (TODOS os ticks, DENTRO do combate)
+   *  `g` = crescimento(nivel) e a curva do motor (motor.js:468-471), os stats base do campeao
+   *  vem em META.kits[id].stats e o regen dos itens do `statsSet` (motor.js:543 soma-os).
+   *  FALTAVA POR COMPLETO: `avaliar` somava cura de skills, pocoes, roubo de vida e giro — e
+   *  nunca a regeneracao, que o jogo aplica sempre. Era uma das razoes de a conta dizer
+   *  "morre" onde o dono ganha a luta (queixa de 2026-10-23).
+   */
+  function regenDoJogo() {
+    try {
+      const id = (META.champAtual && META.champAtual.id) || null;
+      const st = id && META.kits && META.kits[id] && META.kits[id].stats;
+      if (!st || !Number.isFinite(Number(st.hpregen))) return null;
+      const nivel = parseInt(document.querySelector("#hud-nivel")?.textContent || document.querySelector("#st-nivel")?.textContent || "0", 10) || 1;
+      // motor.js:468-471
+      const n18 = Math.min(nivel, 18);
+      const g = (n18 - 1) * (0.7025 + 0.0175 * (n18 - 1)) + Math.max(0, nivel - 18);
+      // pontos em Vitalidade: +0,1 de regen cada (motor.js:538/576), lidos do painel do jogo
+      let vit = 0;
+      try {
+        const el = document.querySelector('[data-valor="vitalidade"]');
+        const m = String((el && el.textContent) || "").match(/(\d+)/);
+        if (m) vit = +m[1];
+      } catch { vit = 0; }
+      let regenItens = 0;
+      try {
+        const ids = readEquip().map((e) => e.base + (e.refino ? "+" + e.refino : "") + (e.qual ? "~" + e.qual : ""));
+        regenItens = Number((statsSet(ids) || {}).regen) || 0;
+      } catch { regenItens = 0; }
+      return (Number(st.hpregen) + Number(st.hpregenperlevel || 0) * g) / 5 + 0.1 * vit + regenItens;
+    } catch { return null; }
+  }
+
+  /** VIDA EXTRA que o JOGO da e a conta ignorava (motor.js):
+   *   - Anjo Guardian (3026, motor.js:3003-3004): golpe letal -> volta a 50% da vida (1x/300 s)
+   *   - Pele de Aco (3053, motor.js:2999-3000): abaixo de 30% -> escudo de 60% da vida bonus
+   *  Sem isto o modelo declara `mortal` um golpe que o jogo cura. Somam-se ao POOL (conservador:
+   *  ignora-se o cooldown — em luta longa os dois podem voltar a estar prontos). */
+  function vidaExtraDoJogo(vida) {
+    try {
+      const eq = readEquip();
+      const tem = (base) => eq.some((e) => String(e.base) === String(base));
+      let extra = 0;
+      if (tem("3026")) extra += 0.5 * (Number(vida) || 0);                     // renascimento
+      if (tem("3053")) {
+        const ids = eq.map((e) => e.base + (e.refino ? "+" + e.refino : "") + (e.qual ? "~" + e.qual : ""));
+        const bonusVida = Number((statsSet(ids) || {}).vida) || 0;              // vida que vem DOS ITENS
+        extra += 0.6 * bonusVida;                                               // `d.escudo = 0.6*a.bonusVida`
+      }
+      return extra;
+    } catch { return 0; }
+  }
+
   /** Personagem actual no formato usado por avaliar().
    *  A vida agora vem do HUD com `fmt` k/M e o ESCUDO somado a vida efectiva; o `rv`, o critico e
    *  o CDR — que o painel do jogo escreve e eram deitados fora — passam a fazer parte do estado. */
@@ -2383,6 +2450,10 @@
       // O painel da o AD TOTAL (motor.js:508 `ad = k.adBase + k.adNivel * g` + itens), por isso o
       // bonus e TOTAL menos o que o kit diz que e base. TK-02-149.
       bonusAd: bonusAdDe(dano, nivel),
+      // REGENERACAO (motor.js:576/1464) e VIDAS EXTRA dos itens (motor.js:2999-3004):
+      // entram em `avaliar` — era o que faltava para a conta ver o que o jogo ja da.
+      regen: regenDoJogo(),
+      extraVida: vidaExtraDoJogo(hp.max != null ? hp.max : 4188),
       fonte: { vida: hp.max != null ? 'jogo:hud' : 'fallback', rv: s['Roubo de vida'] != null ? 'jogo:st' : 'ausente' },
     };
   }
@@ -2398,7 +2469,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-reajuste-periodico';
+  const BUILD = '2026-10-23-sustento-luta';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -3336,7 +3407,10 @@ const CFG_VER = 4;
     // PISCINA DE VIDA = vida maxima + ESCUDO activo (motor.js:2718; `(+N)` em jogo.js:6203).
     // `vidaEff` e o que o jogador AGUENTA, nao so a vida — um Yasuo com o Fluxo cheio sobrevive
     // a um golpe que o modelo diz que mata (docs/auditoria-do-jogo.md C6).
-    const vidaPool = (player.vidaEff != null ? player.vidaEff : player.vida) || 0;
+    let vidaPool = (player.vidaEff != null ? player.vidaEff : player.vida) || 0;
+    // VIDAS EXTRA dos itens (Anjo Guardiao / Pele de Aco, motor.js:2999-3004). Entram no POOL:
+    // e a vida que o jogo devolve num golpe que, sem o item, seria a morte.
+    vidaPool += Math.max(0, Number(player.extraVida) || 0);
     const mortal = piorMec > 0 && piorMec >= vidaPool;
     const curaSkill = Math.max(0, cura?.skill || 0);            // cura/s medida das skills (sem poção)
     const curaPocao = cura?.pocao || 0;            // cura/s EFETIVA medida das poções
@@ -3345,12 +3419,15 @@ const CFG_VER = 4;
     // CURA DO GIRO (motor.js:2169-2170) entra por `cura.giro` quando o chamador a conhece.
     const curaRv = dps > 0 ? (player.rv || 0) * dps * mitSaida(s, magiaChamp()) : 0;
     const curaGiroS = Math.max(0, cura?.giro || 0);
-    const curaTotal = curaSkill + curaPocao + curaRv + curaGiroS;
+    // REGENERACAO NATURAL (motor.js:576 + 1464): o motor soma `a.regen` a vida em TODOS os
+    // ticks, dentro do combate. Sem este termo a conta subestimava o sustento sempre.
+    const curaRegen = Math.max(0, Number(player.regen) || 0);
+    const curaTotal = curaSkill + curaPocao + curaRv + curaGiroS + curaRegen;
     const liquido = dpsTomado - curaTotal;
     const alvoGolpe = Math.max(0, danoGolpe - curaSkill * intervalo); // o que a poção precisa cobrir por janela
     const mix = melhorMix(nPocoes, alvoGolpe);
     const tMorrer = liquido > 0 ? (vidaPool || 1) / liquido : Infinity;
-    return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaRv, curaGiroS, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
+    return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaRv, curaGiroS, curaRegen, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
   }
 
   /** Agrega os ciclos observados por região (médias por minuto + mortes).
@@ -3366,6 +3443,10 @@ const CFG_VER = 4;
   let _agregarEmCurso = false;
   let _agregarUltimo = [];
   let _agregarReentradas = 0;
+  /** DPS de saida medido, em cache de 60 s (`atualizarDpsCache`, chamado 1x/min no tick). O
+   *  `_agregarCorpo` le-o para o roubo de vida do `risco` do chefe; declarado AQUI (antes de
+   *  `agregar`) para nunca cair na TDZ de um `let` declarado mais abaixo. */
+  let _dpsCache = { at: 0, v: 0 };
   function agregar() {
     if (_agregarEmCurso) { _agregarReentradas++; return _agregarUltimo; }
     _agregarEmCurso = true;
@@ -3415,7 +3496,10 @@ const CFG_VER = 4;
       // CURA DO GIRO (motor.js:2188-2193): a Katarina cura sozinha enquanto gira. O `risco` e
       // o numero que decide se a regiao e segura (e quantas pocoes gasta) — tinha de a levar.
       // `_giroS` vem de FORA do map (não depende da região): ver o topo de `_agregarCorpo`.
-      const risco = r.boss && nivelChefe ? avaliar(r.boss, nivelChefe, pl, { skill: curaSkillChefe, pocao: curaPocaoChefe || cp * 0.6, giro: _giroS }) : null;
+      // DPS de saida (cache de 60 s, ver `tickAutoplay`): sem ele o `risco` do chefe tambem
+      // ignorava o roubo de vida e marcava `morre` em lutas que o dono ganha.
+      const dpsMed = (_dpsCache && Date.now() - _dpsCache.at < 60000) ? (_dpsCache.v || 0) : 0;
+      const risco = r.boss && nivelChefe ? avaliar(r.boss, nivelChefe, pl, { skill: curaSkillChefe, pocao: curaPocaoChefe || cp * 0.6, giro: _giroS }, dpsMed) : null;
       return { region: r.region, n: r.n, janelas: r.janelas, deaths: r.deaths, boss: r.boss, goldMin: r.g / d, xpMin: r.x / d, killsMin: r.k / d, mobHpMinRel: r.hpm, potMin: r.p / d, goldPotionMin: r.gp / d, healSkillS: curaSkill, healSkillChefeS: curaSkillChefe, healPotionS: curaPocao, bossMs: r.bossN ? r.bossMs / r.bossN : null, potChefe: r.bpc ? r.bpoc / r.bpc : null, risco: risco ? { nivel: nivelChefe, hp: risco.hp, dps: risco.dpsTomado, danoGolpe: risco.danoGolpe, intervalo: risco.intervalo, nPocoes: risco.nPocoes, curaSkill: risco.curaSkill, curaPocao: risco.curaPocao, curaTotal: risco.curaTotal, liquido: risco.liquido, mixTxt: risco.mixTxt, custoPocaoS: risco.custoPocaoS, tMorrer: risco.tMorrer, fM: risco.fM, piorMec: risco.piorMec, mecFatalNome: risco.mecFatalNome, mortal: risco.mortal, morre: risco.morre } : null };
     });
     arr.sort((a, b) => b.goldMin - a.goldMin);
@@ -11552,7 +11636,7 @@ const CFG_VER = 4;
     }).filter((o) => o.vendedor || o.base);
   }
   /** PASSO do poller: le o mercado, casa com a watch e (na base) compra a mais barata que caiba. */
-  let _watchAt = 0, _watchTentou = 0, _watchAchados = [], _watchUltimaCompra = null, _watchRecallAt = 0;
+  let _watchAt = 0, _watchTentou = 0, _watchAchados = [], _watchUltimaCompra = null, _watchRecallAt = 0, _watchEsperaLog = null;
   async function vigiarMercadoPasso() {
     _watchTentou = Date.now();
     if (pausado) return { ok: false, motivo: 'pausado' };
@@ -11580,6 +11664,15 @@ const CFG_VER = 4;
       // VOLTAR À BASE IMEDIATAMENTE (dono 2026-10-20): se há uma oferta pronta, o poller
       // (2 s) já manda o recall — não espera pelo supervisor de 5 s nem pelo fim do chefe.
       const pronta = prontas.find((o) => podeComprarOfertaWatch(o, readGold(), w).ok);
+      // NÃO SE RECORDA A MEIO DE UM CHEFE: a oferta tem lock de 3 min, o abate é único.
+      const libera = podeRecordar();
+      if (pronta && !libera.pode) {
+        if (_watchEsperaLog !== libera.chefe) {
+          _watchEsperaLog = libera.chefe;
+          logEvent("mercado", { acao: "watch-espera-chefe", id: pronta.id, chefe: libera.chefe, motivo: libera.motivo });
+        }
+        return { ok: true, achados: achados, comprou: null, motivo: "chefe vivo: compra-se depois do abate", oferta: pronta.id };
+      }
       if (pronta && !ocupado && Date.now() - _watchRecallAt > esperaRecallMs() + 2000) {
         _watchRecallAt = Date.now();
         logEvent('mercado', { acao: 'watch-voltar', id: pronta.id, vendedor: pronta.vendedor, item: pronta.item, preco: pronta.preco, fase: (farm.current && farm.current.fase) || null });
@@ -12935,6 +13028,48 @@ const CFG_VER = 4;
   let _recallsSemFechar = 0, _farmForcadoAte = 0;
   const FARM_FORCADO_MS = 10 * 60 * 1000;   // 10 min
   let ocupado = false;   // operação em andamento (mercado/loja) → NUNCA viajar no meio
+
+  /* ===================== NÃO SE ABANDONA UM CHEFE =====================
+   * Queixa do dono (2026-10-23 17:19), verbatim: "eu vi meu boneco quase matando o barao.
+   * chegou no final da vida dele, voltou pra base sozinho. que ridiculo."
+   *
+   * O recall da base (`supervisarBase` → `press(b)`) perguntava se a necessidade PAGA a
+   * viagem, e nada mais. Com o Barão a 2% de vida ele recordou para ir ao mercado — e o
+   * abate inteiro (xp, ouro, item) foi deitado fora, porque o chefe volta cheio.
+   *
+   * A fonte é o JOGO: o estado vivo traz `inimigos[]` e cada um diz se é `chefe`/`guardiao`
+   * (`motor.js` — o chefe da região nasce `chefe:true`). Enquanto houver um VIVO no ecrã,
+   * a luta está a decorrer e não se recorda. Tecto: passados CHEFE_ESPERA_MAX na MESMA luta
+   * deixa de segurar — um chefe que o boneco não consegue matar não pode prendê-lo para
+   * sempre (senão trocamos "abandona o chefe" por "nunca mais sai do campo").
+   *
+   * Isto NÃO toca na FUGA: fugir é sobrevivência (outro caminho, outro gatilho). O que se
+   * proíbe é a saída VOLUNTÁRIA (mercado, comprar, vender, região ideal, diária).
+   */
+  const CHEFE_ESPERA_MAX = 3 * 60 * 1000;
+  let _chefeDesde = 0, _chefeChave = null;
+  /** Chefe/guardião VIVO no ecrã (`agora` é injectável para o banco de testes). */
+  function chefeVivo(agora) {
+    const t2 = Number(agora) > 0 ? Number(agora) : Date.now();
+    let al = null;
+    try {
+      const v = estadoVivo();
+      al = ((v && v.inimigos) || []).filter((i) => i && (i.chefe || i.guardiao) && Number(i.hp) > 0);
+    } catch { al = null; }
+    if (!al || !al.length) { _chefeDesde = 0; _chefeChave = null; return null; }
+    const chave = al.map((i) => String(i.id || i.mid || i.nome || '?')).sort().join(',');
+    if (chave !== _chefeChave) { _chefeChave = chave; _chefeDesde = t2; }
+    const desdeMs = _chefeDesde ? Math.max(0, t2 - _chefeDesde) : 0;
+    return { n: al.length, chave, desdeMs, segurando: desdeMs < CHEFE_ESPERA_MAX };
+  }
+  /** PODE sair/recordar AGORA para tratar de uma necessidade? */
+  function podeRecordar(agora) {
+    const chefe = chefeVivo(agora);
+    if (chefe && chefe.segurando) {
+      return { pode: false, motivo: "chefe vivo no ecra (" + chefe.n + ") - abate-se primeiro", chefe: chefe.chave, desdeMs: chefe.desdeMs };
+    }
+    return { pode: true, chefe: chefe ? chefe.chave : null };
+  }
   /** Sai do campo para uma região que CONTA a diária? Só quando: a região actual está fora da
    *  conta (monstros abaixo de nível-5), a diária está aceite e vale a pena, e NÃO há chefe/
    *  guardião vivo (não se abandona uma luta), região fixa ou rota do dono. `viajarPara` já
@@ -12944,8 +13079,7 @@ const CFG_VER = 4;
       if (cfg.autoTarefa === false || pausado || ocupado || _baseBusy || baseLock) return false;
       if (!podeFazer('farm').pode) return false;
       if (Date.now() - _diariaViagemAt < 120000) return false;
-      const v = estadoVivo();
-      if (v && Array.isArray(v.inimigos) && v.inimigos.some((i) => i && (i.chefe || i.guardiao) && (i.hp > 0))) return false;
+      if (chefeVivo()) return false;                                  // não se abandona uma luta
       const alvo = diariaRegiaoForcada();
       if (!alvo) return false;
       const atual = localId(readLocation().text);
@@ -12957,6 +13091,7 @@ const CFG_VER = 4;
     } catch { return false; }
   }
 
+  let _esperaChefeLog = null;
   let _idealViagemAt = 0;
   /** MODO AUTOMÁTICO: sair de uma região que já não é a ideal (ordem do dono, 2026-10-23).
    *  Queixa, verbatim: "acabei de tirar a escolha de farmar item, e ele nao voltou do covil do
@@ -12974,8 +13109,7 @@ const CFG_VER = 4;
       if (rota && rota.ativa) return false;                           // a rota manda
       if (Array.isArray(cfg.farmarItem) && cfg.farmarItem.length) return false; // farm de item manda
       if (Date.now() - _idealViagemAt < 180000) return false;
-      const v = estadoVivo();
-      if (v && Array.isArray(v.inimigos) && v.inimigos.some((i) => i && i.chefe && Number(i.hp) > 0)) return false;
+      if (chefeVivo()) return false;                                  // não se abandona uma luta
       const atual = localId(readLocation().text);
       if (!atual || naBase()) return false;
       const ideal = regiaoIdeal();
@@ -13149,6 +13283,16 @@ const CFG_VER = 4;
       logEvent('afk-farmar', { regiao: reg, paradoMin: Math.round((Date.now() - ativaEm) / 60000) });
       marcarAtiva();
       viajarPara(reg);
+    } else if (!teste && motivo && podeRecordar().pode === false && (urgenteWatch || motivoViagem)) {
+      // CHEFE A MORRER À FRENTE: não se recorda. A oferta da watch tem lock de 3 min e a
+      // necessidade da base espera 5 s — deitar fora o abate (o chefe volta cheio) é que é
+      // caro. Log com throttle por CHEFE, não por tick.
+      const lib = podeRecordar();
+      if (_esperaChefeLog !== lib.chefe) {
+        _esperaChefeLog = lib.chefe;
+        logEvent("base", { espera: lib.motivo, ...info });
+      }
+      marcarAtiva();                     // está a lutar: não é AFK
     } else if (!teste && motivo && urgenteWatch) {
       // WATCH PRONTA: voltar JÁ, esteja em mobs, no chefe ou em modo farm-forçado.
       // GUARDA DE RECALL PARTILHADA com o poller: sem isto, o poller (2 s) e este
@@ -13184,6 +13328,18 @@ const CFG_VER = 4;
    *  Sem tick, o auto-play para e o boneco fica na base sem uma linha de log.
    *  Cada funcao tem o seu proprio throttle interno, por isso chamar isto com
    *  frequencia e seguro e idempotente. */
+  /** DPS de saida medido, em cache de 60 s. `meuDps()` percorre as regiões medidas (agregar ->
+   *  estimarRegiao): chamá-lo a cada tick seria trabalho a mais no caminho quente — 1x/min chega
+   *  para o termo de roubo de vida do `risco`. */
+  function atualizarDpsCache() {
+    try {
+      if (Date.now() - _dpsCache.at < 60000) return _dpsCache.v;
+      const v = meuDps();
+      _dpsCache = { at: Date.now(), v: (Number(v) || 0) };
+      return _dpsCache.v;
+    } catch { return 0; }
+  }
+
   let _ultimoTick = 0;
   function tickAutoplay() {
     _ultimoTick = Date.now();
@@ -13204,6 +13360,7 @@ const CFG_VER = 4;
         ok.click();
       }
     } catch { /* ignore */ }
+    try { atualizarDpsCache(); } catch { /* ignore */ }   // 1x/min: alimenta o roubo de vida do risco
     try { loop(); feito.push('loop'); } catch (e) { logIssue('tick:loop', { erro: String(e) }); }
     try { rotaPasso(); feito.push('rotaPasso'); } catch (e) { logIssue('tick:rota', { erro: String(e) }); }
     try { supervisarBase(); feito.push('supervisarBase'); } catch (e) { logIssue('tick:base', { erro: String(e) }); }
@@ -13542,7 +13699,7 @@ const CFG_VER = 4;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, veredictoBase, quarentenaBase, motivosDeViagem, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
+  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, veredictoBase, quarentenaBase, chefeVivo, podeRecordar, regenDoJogo, motivosDeViagem, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },

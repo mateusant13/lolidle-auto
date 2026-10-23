@@ -83,6 +83,11 @@ import { suite as suiteGuiTexto } from './gui-texto.test.mjs';
 // ORDENS DE 2026-10-22 (dono): sempre em missão, skills que o PvE não ativa fora da rotação e
 // chefe-fatal sem inviabilizar o farm (fuga na deteção).
 import { suite as suitePveSempre } from './pve-sempre.test.mjs';
+import { suite as suiteAbandono } from './abandono.test.mjs';
+// SUSTENTO (dono, 2026-10-23): "que variaveis tu deixou de fora da luta do chefe onde a tua
+// matematica diz que eu morro mas na realidade eu ganho" — regeneracao (motor.js:576/1464),
+// roubo de vida no veredicto da regiao e vidas extra dos itens (motor.js:2999-3004).
+import { suite as suiteSustento } from './sustento.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -117,6 +122,8 @@ const SUITES = [
   suiteMercadoPreco,
   suiteGuiTexto,
   suitePveSempre,
+  suiteAbandono,
+  suiteSustento,
 ];
 const checks = [];
 const notas = [];
