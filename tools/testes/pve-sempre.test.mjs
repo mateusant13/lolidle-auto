@@ -165,6 +165,18 @@ export const suite = {
         auto.estimarRegiao('barao').mobsSeguros === true);
       t.check('C1b: os dois riscos sao CAMPOS SEPARADOS (mobsMatam=false, chefeMatam=true)',
         bar.mobsMatam === false && bar.chefeMatam === true);
+      // A FUGA NA DETECCAO (ordem do dono, 2026-10-23: "volta pra base ASSIM QUE o Barao e
+      // detectado"). O chefe em cena vem do estado VIVO (inimigos), nao do farm.current.
+      m.montar('#local-nome', [m.el({ tag: 'span', label: 'local', textContent: 'Covil do Barão nível 40–50' })]);
+      auto.setConfig({ enabled: true, manutencao: true, fugir: true, margemChefe: 0.7 });
+      m.dispatchMessage({ __lolidleAuto: 'estado', inimigos: [{ nome: 'barao', chefe: true, hp: 5000 }] });
+      auto.checarChefeFatal();
+      const logFuga = (auto.exportar().farm.log || []).filter((l) => l.type === 'chefe-fatal');
+      t.check('C1d: chefe em cena + regiao que mata -> a fuga dispara na deteccao',
+        logFuga.length > 0 && logFuga.some((l) => l.regiaoMata === true));
+      t.check('C1e: e NAO adia com "as poções cobrem" quando o risco e MEDIDO',
+        !logFuga.some((l) => l.adiado));
+      m.dispatchMessage({ __lolidleAuto: 'estado', inimigos: [] });
       // ATRIBUICAO DA MORTE MEDIDA (ordem do dono, 2026-10-23): quem matou decide o veredicto.
       // Antes, o `risco.rmorte` do agregado (risco do CHEFE) era lido como "os mobs matam" e a
       // primeira morte no Covil condenava a regiao inteira.
