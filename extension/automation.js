@@ -2398,7 +2398,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-anuncio-lista-viva';
+  const BUILD = '2026-10-23-reajuste-periodico';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -7975,6 +7975,39 @@ const CFG_VER = 4;
     return { ok: true, reajustados: ok, exec };
   }
 
+  /** REAJUSTE LIMITADO (2026-10-23). `executarMercado` existia e NUNCA era chamado: o plano
+   *  de reajuste era decorativo e uma oferta anunciada a um preço errado (7999 numa B cuja
+   *  mesma B custava 29.997) ficava errada para sempre. Aqui executa-se a fatia que cabe no
+   *  passo `mercado` (o único que já abre a janela na base), do MAIOR desvio para o menor, para
+   *  a praça convergir em poucas visitas sem estourar o PASSO_MS.
+   */
+  async function reajustarMercado(max) {
+    const plano = await planejarMercado();
+    if (!plano || plano.ok === false) return { ok: false, motivo: (plano && plano.motivo) || 'sem plano', feitos: 0, restantes: 0 };
+    const acoes = (plano.acoes || []).filter((a) => a && a.acao && !/^ok\b/i.test(String(a.acao))).slice();
+    if (!acoes.length) return { ok: true, feitos: 0, restantes: 0 };
+    const desvio = (x) => (Number(x.para) > 0 && Number(x.de) > 0) ? Math.abs(Math.log(Number(x.para) / Number(x.de))) : 9;
+    acoes.sort((a, b) => desvio(b) - desvio(a));
+    const mm = mercadoEl(true); if (mm && mm.hidden) { press('j'); await humano(600); }
+    let feitos = 0;
+    for (const a of acoes.slice(0, Math.max(0, max))) {
+      marcarFase('mercado: reajuste ' + String(a.base || a.id));
+      if (String(a.acao).startsWith('reanunciar')) {
+        mm?.querySelector('[data-aba="minhas"]')?.click(); await humano(320);
+        await cancelarOferta(a.id); await humano(480);
+        const r = await anunciarItemPorBase(a.base, a.para, a.item || (a.qual ? a.base + '~' + a.qual : null));
+        logEvent('mercado', { acao: 'reajuste', id: a.id, base: a.base, qual: a.qual, de: a.de, para: a.para, feito: !!r.ok, motivo: r.motivo || null });
+        if (r.ok) feitos++;
+      } else {
+        mm?.querySelector('[data-aba="minhas"]')?.click(); await humano(300);
+        const ok = cancelarOferta(a.id); await humano(380);
+        logEvent('mercado', { acao: 'reajuste', id: a.id, base: a.base, qual: a.qual, porque: a.acao, feito: !!ok });
+        if (ok) feitos++;
+      }
+    }
+    return { ok: true, feitos, restantes: Math.max(0, acoes.length - Math.max(0, max)) };
+  }
+
   /** QUALIDADES do motor (motor.js:174-178, `mult`). ERA UMA SEGUNDA COPIA deste mapa no mesmo
    *  ficheiro (havia tambem `QUAL_MULT` mais acima) — duas copias divergentes a espera de acontecer.
    *  Fica um so nome, apontando para a primeira (motor.js:174-178). */
@@ -9883,9 +9916,12 @@ const CFG_VER = 4;
       if (r.ok) { anunciados.push({ base: it.base, qual: it.qual, id: it.id, preco, refTier: pr.refTier, ofertasTier: pr.ofertasTier }); limparFalhaAnuncio(it.base); }
       else { falhas.push({ base: it.base, motivo: r.motivo || 'falhou', alvo: r.alvo || it.id || null, vistos: r.vistos || null, candidatos: r.candidatos || null }); registrarFalhaAnuncio(it.base, r.motivo || 'falhou'); }
     }
+    // REAJUSTE: duas acções por ida (as de maior desvio). Sem isto o plano nunca era executado.
+    let reajuste = null;
+    try { reajuste = await reajustarMercado(2); } catch (e) { reajuste = { ok: false, motivo: String((e && e.message) || e) }; }
     if (Array.isArray(_ofertasCache)) for (const a of anunciados) if (a.preco) _ofertasCache.push({ id: 'novo:' + a.base + ':' + a.qual, base: a.base, qual: a.qual, raridade: 'lendario', preco: a.preco });
     logEvent('mercado', { acao: 'slots', limite, usados: minhas.length, livres: Math.max(0, limite - minhas.length), candidatos: escolhidos.length, anunciados: anunciados.length, falhas: falhas.length, falhasDetalhe: falhas.slice(0, 4) });
-    logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length, falhas: falhas.length, falhasDetalhe: falhas.slice(0, 4) });
+    logEvent('mercado', { acao: 'anunciar-lendarios', anunciados: anunciados.length, cancelados: cancelados.length, falhas: falhas.length, falhasDetalhe: falhas.slice(0, 4), reajuste: reajuste ? { feitos: reajuste.feitos || 0, restantes: reajuste.restantes || 0, motivo: reajuste.motivo || null } : null });
     // FALHA AUTO-DIAGNOSTICADA: havia candidato que o actor NÃO resolveu (não anunciado, ou uma
     // cópia melhor que a oferta ainda não substituiu). Devolver `ok:true` fazia a necessidade ficar
     // `true` para sempre e a rotina repetir `mercado` em cada passagem (P0 medido 2026-10-21:
@@ -12958,6 +12994,29 @@ const CFG_VER = 4;
     } catch { return false; }
   }
 
+  /** REAJUSTE PERIÓDICO do mercado (2026-10-23). O plano de reajuste só era executado quando
+   *  havia uma cópia NOVA para anunciar; uma oferta já publicada a um preço errado (7999 numa B
+   *  cuja mesma B custava 29.997) ficava errada para SEMPRE. Corre quando o boneco está na Fonte
+   *  (por qualquer motivo), no máximo 1×/30 min e 2 acções por vez, do maior desvio para o menor.
+   */
+  const REAJUSTE_MS = 30 * 60 * 1000;
+  let _reajusteAt = 0;
+  function talvezReajustarMercado() {
+    try {
+      if (pausado || ocupado || _baseBusy || baseLock) return;
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (!naBase()) return;
+      if (!podeFazer('anunciar').pode) return;
+      if (Date.now() - _reajusteAt < REAJUSTE_MS) return;
+      _reajusteAt = Date.now();
+      _baseBusy = true;                            // a rotina não começa por cima do mercado aberto
+      reajustarMercado(2)
+        .then((r) => logEvent('mercado', { acao: 'reajuste-periodico', feitos: (r && r.feitos) || 0, restantes: (r && r.restantes) || 0, motivo: (r && r.motivo) || null }))
+        .catch(() => null)
+        .finally(() => { _baseBusy = false; _ultimaBase = 0; });
+    } catch { /* ignore */ }
+  }
+
   function supervisarBase() {
     if (!podeFazer('manutencao').pode || pausado) return;   // base = manutencao (vender/cofre/repor)
     // ABA EM SEGUNDO PLANO: o jogo usa requestAnimationFrame, logo com a aba oculta o loop para
@@ -12965,6 +13024,7 @@ const CFG_VER = 4;
     // marca as necessidades como indisponíveis 45 min por uma falha que não existe. P0 medido
     // 2026-10-21 (lab): `venda` -> `sem lojista` numa aba oculta. Não se faz nada até voltar.
     if (typeof document !== 'undefined' && document.hidden) return;
+    talvezReajustarMercado();   // preços errados de ofertas ANTIGAS (ver a doc acima)
     // Avalia a NECESSIDADE (vale na base E no campo): mochila cheia, tarefa pronta, lixo, sem tarefa
     let motivo = null, motivoViagem = null, info = {}, falta = [], faltaViagem = [], necess = null;
     try {
