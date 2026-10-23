@@ -105,6 +105,24 @@ export const suite = {
     r = auto.precoDeAnuncio({ base: '3031', qual: 'B' }, [{ base: '3031', qual: 'A', preco: 8000000 }], CONF);
     t.check('P4c: Gume nunca abaixo de 10M, mesmo com A a 8M', r.preco === 10000000);
 
+    // O EXCEDENTE NÃO ABRE EXCEPÇÃO AO RABADON (ordem do dono: "nao é pra rabaddon ter interacao
+    // pra venda ou destruicao do item ... mesmo duplicados"). O plano da mochila nunca o manda ao
+    // Lojista nem ao mercado, mesmo com 2 cópias.
+    {
+      const mR = criarMundo();
+      const aR = carregarAutomation(mR);
+      alimentarCatalogo(mR);
+      definirCampeao(mR, 'aptest');
+      aR.setConfig({ enabled: true });
+      montarMochila(mR, [
+        { id: '3089~B', raridade: 'lendario' },
+        { id: '3089~B', raridade: 'lendario' },
+      ], 30);
+      const actsR = aR.planBag(aR.scanBag(true)).acts.filter((x) => x.it && String(x.it.base).replace(/[+~].*$/, '') === '3089');
+      t.check('P4d: 2 cópias do Rabadon -> nenhuma vai ao Lojista nem ao mercado',
+        actsR.length === 2 && actsR.every((x) => x.action === 'PROTEGER'));
+    }
+
     /* ================= P5 - planejarMercado DESCE a oferta ================= */
     m.sandbox.fetch = async () => ({
       ok: true, status: 200,
