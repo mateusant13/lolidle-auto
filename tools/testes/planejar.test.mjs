@@ -25,7 +25,16 @@ const ZONA_BARAO = { id: 'barao', nome: 'Covil do Barão', nm: [40, 48], monstro
 const ONDE_ITEM = {
   '3089': { barao: { zona: ZONA_BARAO, porClasse: { ap: 0.02 } } },
   '3031': { barao: { zona: ZONA_BARAO, porClasse: { ad: 0.02 } } },
+  // Zona de OUTRO mundo (Runeterra/Freljord), como o jogo a manda: `mundo: true`. A rota nunca
+  // pode passar por aqui (a extensão só anda no Rift) e é isto que o P6 prova.
+  '3089b': { fjfloresta: { zona: { id: 'fj-floresta', nome: 'Floresta dos Pinheiros Brancos', mundo: true }, porClasse: { ap: 0.9 } } },
 };
+
+/** `META.locais` como o inject o reencaminha: `faixa` é o marcador de região de farm do Rift. */
+const LOCAIS = [
+  Object.assign({}, ZONA_BARAO, { faixa: [40, 50], tier: 7 }),
+  { id: 'fj-floresta', nome: 'Floresta dos Pinheiros Brancos', mundo: true, faixa: [1, 10] },
+];
 
 /** Monstros do Barão (motor.js:290/297). */
 const MONSTROS = {
@@ -52,7 +61,7 @@ export const suite = {
   async run(t) {
     const m = criarMundo();
     const auto = carregarAutomation(m);
-    alimentarMeta(m, { itens: ITENS, monstros: MONSTROS, ondeItem: ONDE_ITEM });
+    alimentarMeta(m, { itens: ITENS, monstros: MONSTROS, ondeItem: ONDE_ITEM, locais: LOCAIS });
     auto.importar({ farm: { cycles: CYCLES, log: [], issues: [] } });
 
     const plano = (champ, ids) => { definirCampeao(m, champ); return auto.planejar(ids); };
@@ -79,5 +88,14 @@ export const suite = {
     t.check('P4: AP->3089 chance ' + chanceDe(plano('aptest', ['3089']), '3089') + ' e AD->3089 chance ' + chanceDe(plano('adtest', ['3089']), '3089'),
       chanceDe(plano('aptest', ['3089']), '3089') > 0 && chanceDe(plano('adtest', ['3089']), '3089') === 0);
     t.check('P5: nenhum seletor desconhecido foi usado (stub honesto)', m.unstubbed().length === 0);
+
+    /* ---- zona de OUTRO MUNDO nunca entra na rota (Runeterra/Freljord) ----
+     * DEFEITO MEDIDO AO VIVO (2026-10-23): a rota guardada tinha "Floresta dos Pinheiros
+     * Brancos", que a extensão não alcança pelo mapa do Rift. Agora `planejar` usa a MESMA
+     * fonte da `regiaoRecomendada` (`ehRegiaoDeFarm`) e falha fechado quando a zona não
+     * está no `META.locais`. */
+    const fora = plano('aptest', ['3089b']);
+    t.check('P6: zona fora do Rift (mundo:true) nao entra no plano', (fora || []).length === 0);
+    t.check('P6b: zona ausente do META.locais falha fechado', (plano('aptest', ['9999']) || []).length === 0);
   },
 };

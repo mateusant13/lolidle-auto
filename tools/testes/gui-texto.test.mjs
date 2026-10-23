@@ -104,9 +104,20 @@ export const suite = {
     /* ================= T8 - NENHUMA aba/ID se perdeu no revamp ================= */
     // A casca foi reescrita; os contentores NAO podem ter mudado, ou os desenhadores
     // (`renderTudo`) e os handlers (`ACOES`) deixam de encontrar o que desenham.
-    const abas = ['painel', 'farm', 'itens', 'mercado', 'macro', 'personagem', 'ganhos', 'historico', 'pocao', 'manual'];
-    t.check('T8: as dez abas existem (botao do rail + painel)',
+  // O histório deixou de ser aba própria (ordem do dono, 2026-10-23): vive DENTRO de Ganhos.
+  // O alias leva lá qualquer chamador antigo. O check abaixo tem de seguir a regra NOVA (Regra
+  // Nº 6 do AGENTS: se um teste codifica o comportamento antigo, o verde é falso).
+    const abas = ['painel', 'farm', 'itens', 'mercado', 'macro', 'personagem', 'ganhos', 'pocao', 'manual'];
+    t.check('T8: as nove abas existem (botao do rail + painel)',
       abas.every((a) => src.includes('data-tab="' + a + '"') && src.includes('id="ap-t-' + a + '"')));
+    // HISTÓRICO DENTRO DE GANHOS (ordem do dono, 2026-10-23): uma só aba. O histórico CONTINUA
+    // a existir, mas como secção de Ganhos, e qualquer chamador antigo (`hist`) cai lá.
+    t.check('T8k: o historico e uma seccao de Ganhos, com alias para chamadores antigos',
+      /ap-t-ganhos[\s\S]*ap-hi-48h-resumo[\s\S]*ap-hi-progresso|ap-t-ganhos[\s\S]*ap-hi-48h-resumo[\s\S]*ap-hi-eventos/.test(src)
+      && /hist:\s*'ganhos'/.test(src) && !src.includes('id="ap-t-historico"'));
+    // ABATE DE MOB NAO ENTRA NA LISTA (o dono nao quer "matou larva"); chefe e item continuam.
+    t.check('T8l: a lista do historico descarta abate de mob sem item',
+      /!\(e && e\.type === 'evento:abate' && !e\.chefe && !e\.itens\)/.test(src));
     // O FARM é aba PRÓPRIA (ordem do dono, 2026-10-22): deixou de ser um alias de "ganhos".
     t.check('T8d: a aba FARM deixou de ser alias de ganhos',
       /farm:\s*'farm'/.test(src));

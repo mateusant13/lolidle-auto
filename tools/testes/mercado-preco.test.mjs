@@ -165,8 +165,10 @@ export const suite = {
 
     /* ================= P7 - raridade NOVA (mitica) ================= */
     const CAT_MIT = CATALOGO.concat([
-      { id: '9001', nome: 'Mítico AD', raridade: 'mitica', espaco: 'arma', ad: 100, preco: 100000 },
-      { id: '9002', nome: 'Mítico AP', raridade: 'mitica', espaco: 'arma', ap: 100, preco: 100000 },
+      // Stats MUITO acima dos lendários do stub (320-400) de propósito: o ponto do P8 é provar
+      // que o mítico CONCORRE. Se perdesse por ser fraco, o teste não diria nada.
+      { id: '9001', nome: 'Mítico AD', raridade: 'mitica', espaco: 'arma', ad: 500, preco: 100000 },
+      { id: '9002', nome: 'Mítico AP', raridade: 'mitica', espaco: 'arma', ap: 500, preco: 100000 },
     ]);
     const m2 = criarMundo();
     const a2 = carregarAutomation(m2);
@@ -187,6 +189,18 @@ export const suite = {
     t.check('P7c: nenhum mítico vai ao Lojista, cofre ou mercado',
       acts.every((x) => !x.it || !String(x.it.raridade).includes('mitic')
         || !['VENDER_LOJISTA', 'GUARDAR_COFRE', 'ANUNCIAR_MERCADO'].includes(x.action)));
+    // P8 (ordem do dono, 2026-10-23): o mitico tem de ser CONSIDERADO pela build, nao apenas
+    // protegido. "classe a servir, stats e passiva ... nada manual, nada hardcoded." O 9001 tem
+    // 100 AD e e uma arma, logo tem de ganhar o lugar a qualquer lendario de arma do catalogo.
+    const buildAD = (a2.buildIdeal() || []).map(String);
+    t.check('P8: o mitico AD entra na build ideal do campeao AD', buildAD.indexOf('9001') >= 0);
+    const mAP = criarMundo();
+    const aAP = carregarAutomation(mAP);
+    alimentarCatalogo(mAP, CAT_MIT);
+    definirCampeao(mAP, 'aptest');
+    const buildAP = (aAP.buildIdeal() || []).map(String);
+    t.check('P8b: o mitico AP entra na build ideal do campeao AP', buildAP.indexOf('9002') >= 0);
+    t.check('P8c: e o mitico da OUTRA classe nao entra na build AP', buildAP.indexOf('9001') < 0);
 
     // O ALVO DE EQUIPAMENTO: o mítico da CLASSE ERRADA nunca entra no pool; o da classe
     // pode entrar (a ordem do dono permite equipar, mas só quando faz sentido).

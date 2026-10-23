@@ -19,7 +19,7 @@
   const STORAGE_KEY = 'lolidleAutoPotion';
   const PLAN_KEY = STORAGE_KEY + ':plan';
 
-  const RARITY = { basico: 0, epico: 1, lendario: 2 };
+  const RARITY = { basico: 0, epico: 1, lendario: 2, mitico: 3, mitica: 3 };
   const QUAL = ['C', 'B', 'A', 'S', 'SS'];
   const qIdx = (q) => QUAL.indexOf(q);   // -1 = qualidade DESCONHECIDA ('?' sendo avaliada), nunca tratar como C
   const RABADON = '3089';
@@ -58,13 +58,20 @@
   const prioExtremaDe = (base) => { const p = basePura(base); return PRIORIDADE_EXTREMA.find((e) => e.id === p) || null; };
   /** DEGRAU DE RARIDADE — a "restrição dura" da regra do dono ("EPICO e MELHOR que BASICO").
    *  Espelha o motor: motor.js:47 `raridade = (i) => i.raridade || (i.lendario ? 'lendario' : 'basico')`. */
-  const RAR_IDX = { basico: 0, epico: 1, lendario: 2 };
+  const RAR_IDX = { basico: 0, epico: 1, lendario: 2, mitico: 3, mitica: 3 };
   const rarIdx = (r) => (RAR_IDX[r] != null ? RAR_IDX[r] : 0);
+  /** MITICO (2026-10-23): o catálogo VIVO do jogo passou a ter `raridade:'mitico'` (3 itens:
+   *  3004 Manamune, 3084 Coração de Aço, 4646 Tempestade de Luden), todos com `mitico:true`,
+   *  `espaco`, stats numéricos e `efeito` — exactamente a mesma forma de um lendário.
+   *  NÃO é "raridade desconhecida": é o TOPO do catálogo e tem de ENTRAR no score da build
+   *  (a decisão é medida pelo `scoreSet`, não pelo nome nem por uma lista escrita à mão).
+   *  `ehRaridadeNova` continua a ser o fail-closed para raridades que o código nunca viu. */
+  const ehMitico = (r) => /^mitic/i.test(String(r == null ? '' : r));
   /** RARIDADES que a extensão CONHECE (motor.js:48 `raridade`). Qualquer outra é uma raridade
-   *  NOVA (o dono anunciou `mitica` em 2026-10-22) e é EXCEPÇÃO: não se vende, não se destrói,
-   *  não se move e não se altera. Só se EQUIPA quando é da classe do campeão (ou neutra).
-   *  A regra é por CONJUNTO, não por nome: uma raridade futura cai aqui sozinha. */
-  const RARIDADES_CONHECIDAS = new Set(['basico', 'epico', 'lendario']);
+   *  NOVA e é EXCEPÇÃO: não se vende, não se destrói, não se move e não se altera. Só se
+   *  EQUIPA quando é da classe do campeão (ou neutra). A regra é por CONJUNTO, não por nome:
+   *  uma raridade futura cai aqui sozinha. */
+  const RARIDADES_CONHECIDAS = new Set(['basico', 'epico', 'lendario', 'mitico']);
   const ehRaridadeNova = (r) => !RARIDADES_CONHECIDAS.has(String(r == null ? '' : r).toLowerCase());
   /** BARRA de combate: 4 habilidades — motor.js:900 `export const BARRA = 4`. */
   const BARRA_SLOTS = 4;
@@ -169,6 +176,11 @@
     testeMobSeg: 20,          // segundos de mobs por build no teste (20s = 3x amostra vs 60s)
     testeLoop: true,          // repete os conjuntos em loop acumulando amostras
     mobHpMinRel: 0.15,        // HP mín. relativo acima disso = sobrevive aos mobs (observado)
+    // MARGEM DA LUTA DE CHEFE (2026-10-23): a `agregar()` mede a vida mínima RELATIVA nas lutas
+    // de chefe (`farm.lutas[].hpMinPct`). Abaixo desta margem, o chefe é tratado como aquele que
+    // MATA — mesmo que a teoria diga que ganha. Foi a medida que separou o Barão (61%, o dono
+    // confirma que morre) do Dragão (80-82%, seguro). O dono pode afrouxar/apertar na aba Macro.
+    margemChefe: 0.70,
     // FUGA = SOBREVIVÊNCIA (regra do dono, verbatim: "e e pra fugir de qualquer coisa que mata,
     // pra qualquer boneco, em qualquer situacao" / "NAO E PRA MORRER, NUNCA, COM ESSE SCRIPT").
     // `fugir` é interruptor PRÓPRIO (pai `manutencao` na tabela INTERRUPTORES): o dono desliga
@@ -475,7 +487,7 @@
     const minhaClasse = c.magia ? 'ap' : 'ad';
     for (const id of ids) {
       const it = (META.itens || []).find((x) => String(x.id) === String(id));
-      if (!it || it.raridade !== 'lendario') continue;
+      if (!it || !(it.raridade === 'lendario' || ehMitico(it.raridade))) continue;
       const cl = classeItem(id);
       if (cl === 'neutro' || cl === minhaClasse) lend.add(String(id));      // lendário DA CLASSE (nunca o da classe errada)
     }
@@ -493,7 +505,8 @@
 
   // ------------------------------------------------------------- regras
   const isProtected = (it) => it.kind === 'item' && (
-    ehRaridadeNova(it.raridade) ||                             // raridade NOVA/desconhecida (ex.: mitica): excepção intocável
+    ehRaridadeNova(it.raridade) ||                             // raridade NOVA/desconhecida: excepção intocável
+    ehMitico(it.raridade) ||                                   // MITICO: topo do catálogo, nunca se vende/move
     !QUAL.includes(it.qual) ||                                  // '?' (sendo avaliado) = BLINDADO: pode virar A
     (it.raridade === 'lendario' && qIdx(it.qual) >= qIdx('A')) ||
     ehPrioridadeExtrema(it.base) ||                             // PRIORIDADE EXTREMA por classe (3031/3089): nem venda, nem mercado, NEM DUPLICADO
@@ -763,7 +776,19 @@
           ? { action: 'PROTEGER', it, why: `A em excesso (${totalA} A na mochila), a MENOS desejável para ${ident.perfil}/${ident.classe}; mercado SATURADO: fica no cofre/mochila` }
           : { action: 'ANUNCIAR_MERCADO', it, why: `A em excesso (${totalA} A na mochila): a MENOS desejável para ${ident.perfil}/${ident.classe} → mercado` });
       }
-      // ===== RARIDADE NOVA (ex.: `mitica`, 2026-10-22) =====================================
+      // ===== MITICO (2026-10-23): topo do catálogo, mesma regra de ouro =====================
+      // Nunca se vende, destrói ou move; a única acção permitida é EQUIPAR, e só quando é da
+      // classe do campeão (ou neutro). Antes esta raridade caía em `ehRaridadeNova` por não
+      // estar no conjunto; agora que é CONHECIDA (entra no score da build), precisa de ramo
+      // próprio — senão escorregava até ao `else` final e ia à venda.
+      else if (ehMitico(it.raridade)) {
+        const daClasse = ehUsavelPeloCampeao(it.base);
+        const escolhido = equiparIds.has(it.id) || equiparBases.has(String(it.base));
+        acts.push(daClasse && escolhido
+          ? { action: 'EQUIPAR', it, why: `mítico da classe (${ident.perfil}/${ident.classe}): topo do catálogo, nunca se vende/destrói/move` }
+          : { action: 'PROTEGER', it, why: `mítico: nunca se vende, destrói ou move${daClasse ? '' : '; classe errada, nem equipa'}` });
+      }
+      // ===== RARIDADE NOVA (desconhecida) ==================================================
       // ORDEM DO DONO, verbatim: "jogo tem uma raridade nova, chamada mitica. nao podemos
       // fazer nada com essa raridade pela extensao, ela é excecao. nao pode em nenhuma
       // hipotese destruir os itens ou mexer neles. só equipar, quando faz sentido pra classe
@@ -1052,7 +1077,22 @@
   let farm = { current: null, cycles: [], log: [], issues: [], deaths: [] };
 
   const parseBig = (s) => { if (!s) return null; const m = String(s).match(/([\d.,]+)\s*([kKmM])?/); if (!m) return null; const v = parseNum(m[1], m[2]); return Number.isFinite(v) ? Math.round(v) : null; };
-  function logEvent(type, data) { try { farm.log = [{ at: Date.now(), type, ...data }, ...(farm.log || [])].slice(0, 200); logHist(type, data); } catch { /* ignore */ } }
+  function logEvent(type, data) {
+    try {
+      const now = Date.now();
+      // O `rotacao` corre a cada ~2 s e enchia o ring de 200 entradas: `base`, `morte` e
+      // `chefe-fatal` eram EXPULSOS antes de alguém os poder ler (medido 2026-10-23: o log
+      // estava 100% rotacao/evento e o dono perguntou "como chegou a esse ponto?"). Coalesce-se:
+      // uma única entrada de rotacao, reescrita no máximo a cada 30 s, e só quando algo mudou.
+      if (type === 'rotacao') {
+        if (!data || data.mudou === false) return;
+        const i = (farm.log || []).findIndex((e) => e && e.type === 'rotacao');
+        if (i >= 0 && now - farm.log[i].at < 30000) { farm.log[i] = { at: now, type, ...data }; logHist(type, data); return; }
+      }
+      farm.log = [{ at: now, type, ...data }, ...(farm.log || [])].slice(0, 200);
+      logHist(type, data);
+    } catch { /* ignore */ }
+  }
   function logIssue(type, data) { try { farm.issues = [{ at: Date.now(), type, ...data }, ...(farm.issues || [])].slice(0, 100); } catch { /* ignore */ } }
 
   const PRECO_POCAO = { get vida() { return pocaoInfo('vida').preco; }, get vidaF() { return pocaoInfo('vidaF').preco; }, get vidaS() { return pocaoInfo('vidaS').preco; } };
@@ -1845,10 +1885,54 @@
           }
         }
       } catch { /* ignore */ }
-      // (iv) O HISTÓRICO MEDIDO manda: se aquela região já o matou, não é segura.
+      // (iv) O HISTÓRICO MEDIDO manda — MAS SÓ O QUE ELE PROVA (correcção do Lead, 2026-10-23).
+      // DEFEITO MEDIDO AO VIVO (é este): `rr.risco` do `agregar()` é a luta contra o CHEFE da
+      // região (o `agregar` constrói-o com `r.boss`), não os mobs. Marcá-lo como `mobsMatam`
+      // dizia "os mobs matam você" onde só o CHEFE mata: Covil do Barão tinha 6 janelas medidas,
+      // ZERO mortes, 4349 ouro/min, 12919 xp/min e `mobHpMinRel` 0,55 (os mobs nunca o levaram
+      // abaixo de 55% da vida) — e mesmo assim aparecia xp 0, ouro 0, "o chefe mata você" e a
+      // região era recusada para regressar. Ordem do dono, verbatim: "por que nao sabe que eu
+      // sobrevivo aos MOBS e morro pro chefe, e baseia o xp e ouro nisso?"
+      // Regra nova: o risco TEÓRICO do chefe -> `chefeMatam`; as MORTES MEDIDAS -> atribuídas
+      // pelo nome de quem matou (`farm.deaths[].by`); a vida mínima MEDIDA dos mobs ->
+      // `mobsMatam` só abaixo da margem do dono (`cfg.mobHpMinRel`).
       try {
-        const rr = (agregar() || []).find((x) => x.region && String(x.region).startsWith(String(loc.nome)));
-        if (rr && rr.risco && rr.risco.morre) mobsMatam = true;
+        const normN = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const nomeRegiao = normN(loc.nome);
+        const nomeChefe = normN(loc.chefe && loc.chefe[0]);
+        const mesmaRegiao = (r) => r && r.region && normN(r.region).indexOf(nomeRegiao) === 0;
+        const rr = (agregar() || []).find(mesmaRegiao);
+        if (rr) {
+          if (rr.risco && rr.risco.morre) chefeMatam = true;            // luta de CHEFE, não mobs
+          const margem = Number(cfg.mobHpMinRel != null ? cfg.mobHpMinRel : 0.15);
+          if (rr.mobHpMinRel != null && Number(rr.mobHpMinRel) < margem) mobsMatam = true;
+        }
+        // MORTES MEDIDAS: o `by` diz quem matou. Se foi o chefe, é o chefe que mata; se foi um
+        // mob (ou nome desconhecido), são os mobs. Sem esta atribuição, a primeira morte no
+        // Barão condenava a região inteira e o boneco nunca podia voltar a farmar os mobs.
+        for (const d of (farm.deaths || [])) {
+          if (!mesmaRegiao(d)) continue;
+          const por = normN(d.by);
+          if (por && nomeChefe && (por === nomeChefe || por.indexOf(nomeChefe) >= 0 || nomeChefe.indexOf(por) >= 0)) {
+            chefeMatam = true;
+          } else {
+            mobsMatam = true;
+          }
+        }
+        // MARGEM MEDIDA NA LUTA DE CHEFE: a teoria pode dizer "ganha" e a luta real descer abaixo
+        // da margem de segurança do dono. Medido no Barão: a teoria diz `tMorrer: null` (nunca
+        // morre) e as duas lutas reais desceram a 61% de vida; o dono CONFIRMA que morre. A
+        // margem é `cfg.margemChefe` (default 0,70). É dado medido, não nome de zona.
+        const lutas = (farm.lutas || []).filter((l) => mesmaRegiao(l) && l && l.boss);
+        if (lutas.length) {
+          const margemC = Number(cfg.margemChefe != null ? cfg.margemChefe : 0.70);
+          for (const l of lutas.slice(0, 5)) {
+            let hp = Number(l.hpMinPct);
+            if (!Number.isFinite(hp)) continue;
+            if (hp > 1) hp /= 100;                                     // a medida vem em %
+            if (hp < margemC) { chefeMatam = true; break; }
+          }
+        }
       } catch { /* ignore */ }
       // FAIL-CLOSED (regra do dono: "NAO E PRA MORRER, NUNCA, COM ESSE SCRIPT"): sem prova de
       // que sobrevive, a regiao NAO e segura. `avaliados === 0` significa que nao conseguimos
@@ -2222,7 +2306,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-gui-completa';
+  const BUILD = '2026-10-23-chefe-margem-mitico';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -3435,18 +3519,16 @@ const CFG_VER = 4;
       const it = (META.itens || []).find((x) => x.id === id);
       for (const zid of Object.keys(o)) {
         const z = o[zid]; const zona = z.zona || {};
-        // SÓ SUMMONER'S RIFT (queixa do dono, 2026-10-22: "Melhor destino ... Floresta dos
-        // Pinheiros Brancos"). O `ONDE_ITEM` do jogo carrega zonas de Runeterra/Freljord, que a
-        // extensão não alcança pelo mapa do Rift. O filtro usa os MESMOS marcadores do motor
-        // (`base`/`arena`/`mundo`, LER — não copiar nomes) e cai para os dados da própria zona
-        // quando o `META.locais` ainda não chegou (o inject pode não ter reencaminhado).
+        // SÓ AS REGIÕES DE FARM DO RIFT — MESMO CRITÉRIO DA `regiaoRecomendada` (2026-10-23).
+        // DEFEITO MEDIDO: este filtro era uma CÓPIA da regra (`base`/`arena`/`mundo` + regex de
+        // nome) e ainda caía para os dados da própria zona quando o `META.locais` não tinha a
+        // entrada — foi por essa porta que "Floresta dos Pinheiros Brancos" (Freljord/Runeterra,
+        // `mundo:true`) entrou na rota guardada em `cfg.rotaFarm` e ficou a ser mostrada na GUI
+        // mesmo depois de a regra existir. Agora há UMA fonte (`ehRegiaoDeFarm`) e FAIL-CLOSED:
+        // zona que não está no `META.locais` não entra na rota.
         const loc = (META.locais || []).find((l) => String(l.id) === String(zid)
           || (zona.nome && String(l.nome) === String(zona.nome)));
-        const alvo = loc || zona || {};
-        const nomeAlvo = semAcento(String(alvo.nome || alvo.id || zid));
-        const foraDoRift = !alvo.id && !alvo.nome ? true
-          : !!(alvo.base || alvo.arena || alvo.mundo) || /runeterra|freljord/i.test(nomeAlvo);
-        if (foraDoRift) continue;
+        if (!loc || !ehRegiaoDeFarm(loc)) continue;
         const mobs = (zona.monstros || []).map((m) => m[0]);
         const bossNome = zona.chefe ? zona.chefe[0] : null;
         const nivel = zona.nm ? Math.round((zona.nm[0] + zona.nm[1]) / 2) : (zona.faixa ? Math.round((zona.faixa[0] + zona.faixa[1]) / 2) : null);
@@ -3478,11 +3560,16 @@ const CFG_VER = 4;
     return Object.keys(o);
   }
   function exportar() {
-    return { at: Date.now(), farm: { cycles: farm.cycles, log: farm.log, issues: farm.issues }, meta: { at: META.at, monstros: META.monstros, locais: META.locais, balanco: META.balanco }, agregado: agregar(), recomendacao: recomendar() };
+    return { at: Date.now(), farm: { cycles: farm.cycles, log: farm.log, issues: farm.issues, deaths: farm.deaths, lutas: farm.lutas }, meta: { at: META.at, monstros: META.monstros, locais: META.locais, balanco: META.balanco }, agregado: agregar(), recomendacao: recomendar() };
   }
   function importar(d) {
     if (!d || !d.farm) return false;
     farm.cycles = d.farm.cycles || []; farm.log = d.farm.log || []; farm.issues = d.farm.issues || [];
+    // MEDIÇÕES RESTAURADAS (2026-10-23): uma cópia de segurança que perde as MORTES e as LUTAS
+    // restaura um histórico que mente sobre o risco. `estimarRegiao` lê as duas (`by` de quem
+    // matou, `hpMinPct` das lutas de chefe), por isso elas entram no import.
+    if (Array.isArray(d.farm.deaths)) farm.deaths = d.farm.deaths;
+    if (Array.isArray(d.farm.lutas)) farm.lutas = d.farm.lutas;
     publishFarm();
     try { chrome.storage.local.set({ [AGG_KEY]: agregar() }); } catch { /* ignore */ }
     return true;
@@ -3579,7 +3666,15 @@ const CFG_VER = 4;
     let estReg = null; try { estReg = estimarRegiao(idReg); } catch { /* ignore */ }
     const mobsMatam = !!(estReg && estReg.mobsMatam);
     const chefeMata = !!(estReg && estReg.chefeMatam);
-    const bosAgora = !!(c && (c.fase === 'boss' || c.boss));
+    // CHEFE EM CENA: o `farm.current` só sabe do chefe se o handler do log o marcou. O estado
+    // vivo (inimigos do jogo) sabe sempre — é a fonte directa. Usar os dois: o pedido do dono é
+    // "volta pra base ASSIM QUE o Barão é detectado", não "quando a extensão se lembrar dele".
+    let bosVivo = false;
+    try {
+      const v = estadoVivo();
+      bosVivo = !!(v && Array.isArray(v.inimigos) && v.inimigos.some((i) => i && i.chefe && Number(i.hp) > 0));
+    } catch { /* ignore */ }
+    const bosAgora = bosVivo || !!(c && (c.fase === 'boss' || c.boss));
     // `morre`: risco MEDIDO na região OU o veredicto FAIL-CLOSED do `estimarRegiao` (região acima do
     // nível é declarada mortal sem precisar de histórico). Sem o segundo, no stub não havia medida e a fuga não disparava.
     // Mobs que matam valem sempre; chefe que mata só enquanto ele está em cena.
@@ -3597,10 +3692,18 @@ const CFG_VER = 4;
         cobrem = temos >= precisa;
       } catch { /* ignore */ }
     }
-    // QUEM MANDA FUGIR: golpe injogável OU região que mata OU luta perdida sem poções que cheguem.
+    // QUEM MANDA FUGIR: golpe injogável OU região/chefe que MATA (medido) OU luta perdida sem
+    // poções que cheguem. O `cobrem` só pode ADIAR o último caso — nunca um risco MEDIDO.
+    // DEFEITO CORRIGIDO (medido ao vivo, 2026-10-23): a linha seguinte era
+    //   `if (!fatalVivo && cobrem) { adiado: 'poções cobrem'; return; }`
+    // e adiava TAMBÉM quando `morre` era verdadeiro. Com `estimarRegiao` a dizer que a região
+    // matava e `cobrem` verdadeiro, a fuga nunca acontecia: o boneco ficava no Covil do Barão e
+    // morria. "As poções cobrem a luta ESTIMADA" é uma aposta; uma morte MEDIDA não é aposta.
     const foge = fatalVivo || morre || (perde && !cobrem);
-    if (!foge) return;
-    if (!fatalVivo && cobrem) { logEvent('chefe-fatal', { adiado: 'poções cobrem', regiao: regiaoTxt, perde, morre }); return; }
+    if (!foge) {
+      if (perde && cobrem) logEvent('chefe-fatal', { adiado: 'poções cobrem a luta estimada', regiao: regiaoTxt, perde, morre });
+      return;
+    }
     fugindoAte = Date.now() + (cfg.fugirMs || 30000);
     const decisao = { regiaoMata: morre, lutaPerdida: perde, regiao: regiaoTxt, regiaoId: idReg, chefe: (c && c.boss) || null, fatalVivo, morre, perde, cobrem,
       dps: r && r.risco ? Math.round(r.risco.dps) : null, tMorrer: r && r.risco ? r.risco.tMorrer : null, acao: 'fugir (B → base)' };
@@ -4955,7 +5058,17 @@ const CFG_VER = 4;
       // com tarefa PRONTA entregava a tarefa e saía sem tocar nas diárias. O Capitão entrega as
       // prontas ao abrir a opção e aceita as disponíveis de hoje no mesmo diálogo (jogo.js:5458).
       r.diaria = await aceitarDiarias();
-      if (!(tarefaEstado() || {}).tem) r.nova = await aceitarTarefa();
+      // TROCA DE ÁREA: só com objectivo explícito de farm, e só com pouco progresso (cancelar
+      // perde o que já fez). Isto é o que faltava quando ele passou a farmar Rabadon no Covil.
+      const alvoArea = regiaoDoFarmAtual();
+      if (alvoArea) {
+        const m = missaoAtual();
+        const pouco = !m.feitos || !m.qtd || (m.feitos / m.qtd) < 0.5;
+        if (m.tem && m.regiao && String(m.regiao) !== String(alvoArea) && pouco) {
+          r.trocou = await trocarTarefaPara(alvoArea);
+        }
+      }
+      if (!(tarefaEstado() || {}).tem) r.nova = await aceitarTarefa(alvoArea || null);
       return r;
     }],
     // O passo `diaria` próprio existe para a oportunidade de ACEITAR quando a tarefa ainda está a
@@ -5320,7 +5433,7 @@ const CFG_VER = 4;
     try { ideal = new Set((buildIdeal() || []).map(String)); } catch { /* sem campeao */ }
     try { comps = componentesDaBuild(); } catch { /* ignore */ }
     try { reserv = basesReservadas(); } catch { /* ignore */ }
-    const RAR_ORD = { basico: 0, epico: 1, lendario: 2 };
+    const RAR_ORD = { basico: 0, epico: 1, lendario: 2, mitico: 3, mitica: 3 };
     const cand = [];
     for (const s of slots) {
       const base = String(s.base == null ? '' : s.base);
@@ -5383,7 +5496,7 @@ const CFG_VER = 4;
   }
   /** Aceita a tarefa do Capitão da Legião (na Fonte) mais vantajosa e fazível.
    *  Fluxo: NPC → `[data-palavra="tarefa"]` → `#npc-troca .troca-linha [data-tarefa=k]`. */
-  async function aceitarTarefa() {
+  async function aceitarTarefa(preferirRegiao) {
     if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
     fecharJanelas(); await humano(250);
     if (!(await abrirNpc('Capitão da Legião', '#janela-npc [data-palavra="tarefa"]'))) return { ok: false, motivo: 'sem capitao' };
@@ -5446,15 +5559,21 @@ const CFG_VER = 4;
       // Zona onde o motor PROVA que eu morro não vale: 15% do valor (não zero — se todas forem
       // inseguras, escolhe-se a menos má). O resto é o valor/segundo REAL × (1,15 se é a minha zona).
       const score = val * (seguro ? bonusAlvo : 0.15) + (minReal > 0 ? itemBonus / minReal : itemBonus);
-      return { row, k: b ? b.dataset.tarefa : null, min, xp, ouro, garant, podeItem, tipo, qtd, lugar: nomeLugar, ritmo, minReal, seguro, score, txt };
+      return { row, k: b ? b.dataset.tarefa : null, locId: loc ? String(loc.id) : null, min, xp, ouro, garant, podeItem, tipo, qtd, lugar: nomeLugar, ritmo, minReal, seguro, score, txt };
     }).filter((o) => o.k != null);
     if (!ofertas.length) return { ok: true, motivo: 'sem tarefas' };
+    // PREFERÊNCIA POR ÁREA (ordem do dono, 2026-10-23): "indo pra area de farm nova pra farmar o
+    // rabadon, meu boneco deveria ter trocado a missao atual e pego uma da area do farm de item
+    // atual". Se houver oferta na área onde ele VAI farmar, ela ganha; se não houver, escolhe-se a
+    // melhor (nunca se fica sem missão).
+    const daArea = preferirRegiao ? ofertas.filter((o) => o.locId === String(preferirRegiao)) : [];
+    const pool = daArea.length ? daArea : ofertas;
     // O valor/segundo (com o MEU ritmo em cada região) já decide — não há penalização fixa por
     // tipo: a "zona de cima" pesa se o motor provar que é lenta (medido) ou letal (`seguro`).
-    ofertas.sort((a, b) => b.score - a.score);
-    const best = ofertas[0];
+    pool.sort((a, b) => b.score - a.score);
+    const best = pool[0];
     best.row.querySelector('[data-tarefa]').click(); await humano(450);
-    logEvent('tarefa', { aceitou: best.tipo, lugar: best.lugar, min: best.min, minReal: best.minReal != null ? +best.minReal.toFixed(1) : null, ritmo: best.ritmo != null ? Math.round(best.ritmo) : null, seguro: best.seguro, xp: best.xp, ouro: best.ouro, item: best.garant ? 'garantido' : (best.podeItem ? 'chance' : null) });
+    logEvent('tarefa', { aceitou: best.tipo, lugar: best.lugar, min: best.min, minReal: best.minReal != null ? +best.minReal.toFixed(1) : null, ritmo: best.ritmo != null ? Math.round(best.ritmo) : null, seguro: best.seguro, xp: best.xp, ouro: best.ouro, item: best.garant ? 'garantido' : (best.podeItem ? 'chance' : null), daAreaPedida: !!preferirRegiao, naArea: !preferirRegiao ? null : String(best.locId) === String(preferirRegiao) });
     fecharJanelas();
     return { ok: true, tipo: best.tipo, lugar: best.lugar, min: best.min, xp: best.xp, ouro: best.ouro, item: best.garant ? 'garantido' : (best.podeItem ? 'chance' : null), todas: ofertas.map((o) => ({ tipo: o.tipo, lugar: o.lugar, min: o.min, minReal: o.minReal != null ? +o.minReal.toFixed(1) : null, ritmo: o.ritmo != null ? Math.round(o.ritmo) : null, seguro: o.seguro, xp: o.xp, ouro: o.ouro, score: Math.round(o.score) })) };
   }
@@ -5464,6 +5583,66 @@ const CFG_VER = 4;
     const bt = document.querySelector('#rastreio-tarefa');
     if (!bt || bt.hidden) return { tem: false, pronta: false };
     return { tem: true, pronta: bt.classList.contains('pronta'), texto: (bt.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 140) };
+  }
+
+  /** A ÁREA da missão actual, lida do rastreador do jogo (`#rastreio-tarefa`, jogo.js:6774-6784)
+   *  — "Tarefa: <alvo><feitos>/<qtd> · <Local>". O local vem do `tar.local` do motor e o jogo
+   *  escreve o NOME; casa-se pelo nome LIDO do `META.locais` (Regra Nº 3, nada escrito à mão). */
+  function missaoAtual() {
+    const st = tarefaEstado() || { tem: false, pronta: false };
+    if (!st.tem) return { tem: false, pronta: false, regiao: null };
+    const txt = String(st.texto || '');
+    const prog = txt.match(/(\d+)\s*\/\s*(\d+)/);
+    let local = null;
+    for (const l of (META.locais || [])) {
+      if (!l || !l.nome) continue;
+      if (semAcento(txt).indexOf(semAcento(l.nome)) >= 0 && (!local || String(l.nome).length > String(local.nome).length)) local = l;
+    }
+    return { ...st, regiao: local ? String(local.id) : null, nomeRegiao: local ? local.nome : null,
+      feitos: prog ? +prog[1] : null, qtd: prog ? +prog[2] : null };
+  }
+
+  /** A REGIÃO que o dono mandou farmar AGORA: passo da rota, ou região fixa. `null` = automático
+   *  (aí a missão não é trocada: não há "área do farm" explícita para casar). */
+  function regiaoDoFarmAtual() {
+    const r = cfg.rotaFarm;
+    if (r && r.ativa && Array.isArray(r.passos) && r.passos.length) {
+      const p = r.passos[Math.max(0, Math.min(r.passos.length - 1, Number(r.indice) || 0))];
+      if (p && p.regiao) return String(p.regiao);
+    }
+    if (cfg.regionDefault) return String(cfg.regionDefault);
+    return null;
+  }
+
+  /** TROCA a missão para uma da área onde o boneco vai farmar (ordem do dono, 2026-10-23,
+   *  verbatim: "indo pra area de farm nova pra farmar o rabadon, meu boneco deveria ter trocado a
+   *  missao atual e pego uma da area do farm de item atual").
+   *  O jogo NÃO aceita uma segunda missão (`motor.js:3713` `if (... estado.tarefa ...) return
+   *  false`), logo trocar = CANCELAR (Capitão → `cancelar` → `sim`, perde o progresso) e aceitar
+   *  outra. Por isso só se faz com POUCO progresso (<50%) e só na base. */
+  async function trocarTarefaPara(regiaoId) {
+    const alvo = (META.locais || []).find((l) => String(l.id) === String(regiaoId));
+    if (!alvo) return { ok: false, motivo: 'regiao desconhecida' };
+    if (!naBase()) return { ok: false, motivo: 'so na Fonte' };
+    const m = missaoAtual();
+    if (!m.tem) return aceitarTarefa(regiaoId);
+    if (String(m.regiao) === String(regiaoId)) return { ok: true, motivo: 'missao ja e da area' };
+    if (m.feitos != null && m.qtd && m.feitos / m.qtd >= 0.5) return { ok: false, motivo: 'missao da area antiga ja avancada', feitos: m.feitos, qtd: m.qtd };
+    fecharJanelas(); await humano(250);
+    if (!(await abrirNpc('Capitão da Legião', '#janela-npc [data-palavra="tarefa"]'))) return { ok: false, motivo: 'sem capitao' };
+    const bt = await waitForNpc('#janela-npc [data-palavra="tarefa"]', 4000);
+    if (!bt) return { ok: false, motivo: 'sem opcao tarefa' };
+    bt.click(); await humano(350);
+    const cancelar = await waitForNpc('#janela-npc [data-palavra="cancelar"]', 3000);
+    if (!cancelar) { fecharJanelas(); return { ok: false, motivo: 'sem opcao cancelar' }; }
+    cancelar.click(); await humano(350);
+    const sim = await waitForNpc('#janela-npc [data-palavra="sim"]', 3000);
+    if (!sim) { fecharJanelas(); return { ok: false, motivo: 'sem confirmacao' }; }
+    sim.click(); await humano(400);
+    fecharJanelas(); await humano(200);
+    const r = await aceitarTarefa(regiaoId);
+    logEvent('tarefa', { trocou: true, de: m.nomeRegiao, para: alvo.nome, ok: !!r.ok, naArea: r && r.lugar === alvo.nome });
+    return r;
   }
 
   // ---------------------------------------------------------------- MISSÕES DIÁRIAS
@@ -6525,6 +6704,14 @@ const CFG_VER = 4;
     if ((m = ef.match(/(\d+(?:[.,]\d+)?)\s*%\s*de penetracao magica/))) setMax('penMag', n(m[1]) / 100);
     if ((m = ef.match(/a cada (\d+(?:[.,]\d+)?)\s*s,\s*a proxima habilidade causa mais (\d+(?:[.,]\d+)?)\s*\+\s*(\d+(?:[.,]\d+)?)\s*%\s*do poder de habilidade em ate (\d+)\s*inimigos/))) {
       p.areaProc = { cd: n(m[1]), flat: n(m[2]), apRatio: n(m[3]) / 100, alvos: Math.max(1, parseInt(m[4], 10)) };
+    }
+    // MITICO Tempestade de Luden (2026-10-23, vivo): "cada habilidade que voce usa solta um raio
+    // que salta em ate 3 inimigos perto (150 + 45% do Poder de Habilidade ...), no maximo uma vez
+    // a cada 1,2 s". A ordem do texto e inversa da do Eco antigo (o `a cada` vem DEPOIS), logo o
+    // regex acima nao o apanha. Sem isto o mitico era pontuado so pelos 137 AP e perdia para um
+    // lendario — exactamente o que o dono proibiu ("tem que considerar os miticos").
+    if (!p.areaProc && (m = ef.match(/raio que salta em ate (\d+) inimigos?[^.]*?\((\d+(?:[.,]\d+)?)\s*\+\s*(\d+(?:[.,]\d+)?)\s*%\s*do poder de habilidade[^.]*?a cada (\d+(?:[.,]\d+)?)\s*s/))) {
+      p.areaProc = { cd: n(m[4]), flat: n(m[2]), apRatio: n(m[3]) / 100, alvos: Math.max(1, parseInt(m[1], 10)) };
     }
     if ((m = ef.match(/habilidades queimam o alvo, causando (\d+(?:[.,]\d+)?)\s*%\s*da vida maxima dele por segundo durante (\d+(?:[.,]\d+)?)\s*s/))) {
       p.burnPct = { pct: n(m[1]) / 100, dur: n(m[2]) };
@@ -8149,6 +8336,14 @@ const CFG_VER = 4;
     // `tem('3135')` (motor.js:570) — logo o texto é o ÚNICO portador e continua a contar.
     if (it.penMag == null) v += n(/([\d,]+)%\s*de penetração mágica/i) * (ap ? 7 : 1);
     if (/queimam o alvo/i.test(e)) v += ap ? 140 : 20;                        // Liandry (queima % da vida, ótimo no chefe)
+    // MITICO Tempestade de Luden (2026-10-23): o efeito é dano recorrente por habilidade — sem
+    // isto o mitico só contava os 137 AP e perdia para um lendário, apesar do proc. O valor é o
+    // mesmo tipo de ponto dos outros: (base + %AP)/CD, escalado pela classe.
+    if (/raio que salta/i.test(e)) {
+      const mp = e.match(/\(([\d,]+)\s*\+\s*([\d,]+)\s*%\s*do Poder de Habilidade/i);
+      const cd = parseFloat(String(n(/a cada ([\d,]+)\s*s/i) || 1.2).replace(',', '.')) || 1.2;
+      if (mp) v += ((parseFloat(mp[1].replace(',', '.')) + parseFloat(mp[2].replace(',', '.')) / 100 * 200) / cd) * (ap ? 2 : 0.5);
+    }
     if (/menos de 40% de Vida/i.test(e)) v += ap ? 90 : 15;                   // Chama Sombria (execução)
     v += n(/próximo ataque causa \+([\d,]+)%/i) * (ap ? 2.2 : 1.2);           // Lich
     v += n(/Dano de Ataque total em ([\d,]+)%/i) * (ap ? 1 : 9);              // AD%
@@ -8687,7 +8882,7 @@ const CFG_VER = 4;
     const v = (it.ad || 0) * w.ad + (it.ap || 0) * w.ap + (it.va || 0) * w.va + (it.critico || 0) * w.critico + (it.rv || 0) * w.rv
       + (it.vida || 0) * w.vida + (it.armadura || 0) * w.armadura + (it.rm || 0) * w.rm
       + (it.cdr || 0) * w.cdr + (it.penMag || 0) * w.penMag + (it.mana || 0) * w.mana + (it.regen || 0) * w.regen + valorPassiva(base, c);
-    const RAR = { basico: 1, epico: 1.15, lendario: 1.35 };
+    const RAR = { basico: 1, epico: 1.15, lendario: 1.35, mitico: 1.55, mitica: 1.55 };
     return v * pesoClasse(base) * (RAR[it.raridade] || 1) * (Q_MULT[qual] || 1) * (1 + 0.12 * (refino || 0));
   }
 
@@ -8889,7 +9084,14 @@ const CFG_VER = 4;
   /** Grava a rota e arranca no 1.º passo. `alvos` aceita ids de item e a palavra "cartas". */
   function iniciarRota(alvos) {
     if (cfg.autoFarm === false) return { ok: false, motivo: 'switch do farm desligado' };
-    const passos = planejarRota(alvos);
+    // FAIL-CLOSED: só passos cuja região é, de facto, região de farm do Rift. Uma rota gravada
+    // por uma versão antiga (ex.: "fj-floresta") não pode voltar a arrancar nem ser mostrada
+    // como plano válido.
+    const valido = (id) => {
+      const l = (META.locais || []).find((x) => String(x.id) === String(id));
+      return !!l && ehRegiaoDeFarm(l);
+    };
+    const passos = planejarRota(alvos).filter((p) => valido(p.regiao));
     if (!passos.length) return { ok: false, motivo: 'nenhum passo: o jogo não sabe onde estes alvos dropam' };
     const rota = { alvos: (alvos || []).map(String), passos, indice: 0, desde: Date.now(), ativa: true, at: Date.now() };
     setConfig({ rotaFarm: rota, regionDefault: passos[0].regiao });
@@ -8913,6 +9115,15 @@ const CFG_VER = 4;
     for (let guarda = 0; guarda < r.passos.length + 1; guarda++) {
       const p = r.passos[i];
       if (!p) { pararRota('rota completa'); return null; }
+      // passo com região que já não é região de farm (rota antiga, zona de outro mundo): salta.
+      const locP = (META.locais || []).find((x) => String(x.id) === String(p.regiao));
+      if (!locP || !ehRegiaoDeFarm(locP)) {
+        try { logEvent('rota', { acao: 'passo-invalido', regiao: p.regiao }); } catch { /* ignore */ }
+        i += 1;
+        if (i >= r.passos.length) { pararRota('rota completa'); return null; }
+        setConfig({ rotaFarm: Object.assign({}, r, { indice: i, desde: Date.now(), at: Date.now() }), regionDefault: r.passos[i].regiao });
+        continue;
+      }
       let feito = false;
       if (p.tipo === 'cartas') {
         feito = (Date.now() - Number(r.desde || Date.now())) >= Math.max(1, Number(p.minutos) || 30) * 60000;
@@ -9641,7 +9852,7 @@ const CFG_VER = 4;
   //   [x] F6 beam avalia o 5.º slot de TODO o pool (bota ou não-bota), ao contrário do greedy.
   // =====================================================================================
   function montarBuildDe(c, fase) {
-    const todos = (META.itens || []).filter((i) => i.raridade === 'lendario' || i.raridade === 'epico');
+    const todos = (META.itens || []).filter((i) => i.raridade === 'lendario' || i.raridade === 'epico' || ehMitico(i.raridade));
     if (!c || !todos.length || typeof scoreSet !== 'function') return montarBuildDePesos(c, fase);
     // ---- CACHE DA BUILD IDEAL (TK-06) -------------------------------------------------------
     // A chave (fingerprintBuild) cobre tudo o que o scoreSet le: campeão, fase, catálogo,
@@ -9908,9 +10119,9 @@ const CFG_VER = 4;
       const cl = classeItem(i.id);
       const multClasse = cl === 'neutro' ? 1 : (cl === classe ? 1 : 0.12);
       const multDef = multDefensivo(i, perfil);
-      return v * multClasse * multDef * (({ basico: 1, epico: 1.15, lendario: 1.35 })[i.raridade] || 1) * bonusDe(i.id);
+      return v * multClasse * multDef * (({ basico: 1, epico: 1.15, lendario: 1.35, mitico: 1.55, mitica: 1.55 })[i.raridade] || 1) * bonusDe(i.id);
     };
-    const todos = (META.itens || []).filter((i) => i.raridade === 'lendario' || i.raridade === 'epico');
+    const todos = (META.itens || []).filter((i) => i.raridade === 'lendario' || i.raridade === 'epico' || ehMitico(i.raridade));
     const cmp = (a, b) => (poder(b) - poder(a)) || (String(a.id) < String(b.id) ? -1 : 1);
     const botas = todos.filter((i) => i.espaco === 'botas').sort(cmp)[0] || null;
     const usados = new Set(botas ? [String(botas.id)] : []);
@@ -10365,7 +10576,7 @@ const CFG_VER = 4;
     const pIdeal = valorDe(id, ctx);
     const classe = (META.champAtual && META.champAtual.magia) ? 'ap' : 'ad';
     return (META.itens || []).filter((i) => String(i.id) !== String(id)
-      && (i.raridade === 'lendario' || i.raridade === 'epico')
+      && (i.raridade === 'lendario' || i.raridade === 'epico' || ehMitico(i.raridade))
       && (i.espaco === alvo.espaco || classeItem(i.id) === classe)
       && valorDe(i.id, ctx) >= pIdeal * 0.55
       && valorDe(i.id, ctx) <= pIdeal * 0.98)
@@ -12364,6 +12575,43 @@ const CFG_VER = 4;
     } catch { return false; }
   }
 
+  let _idealViagemAt = 0;
+  /** MODO AUTOMÁTICO: sair de uma região que já não é a ideal (ordem do dono, 2026-10-23).
+   *  Queixa, verbatim: "acabei de tirar a escolha de farmar item, e ele nao voltou do covil do
+   *  barao para a base e depois para a regiao ideal. alem de eu ter limpado, eu tambem selecionei
+   *  'auto farm sozinho'". Em auto (`regionDefault == null`, sem rota, sem farm de item) NADA
+   *  comparava a região actual com a `regiaoIdeal()` — o boneco ficava onde estava para sempre.
+   *  Só se muda quando a ideal é claramente melhor (>25% no ganho) e os mobs dela são seguros:
+   *  sem isso havia ping-pong entre duas regiões parecidas e cada viagem custa recall + tempo. */
+  function talvezViajarIdeal() {
+    try {
+      if (cfg.autoFarm === false || pausado || ocupado || _baseBusy || baseLock) return false;
+      if (!podeFazer('farm').pode) return false;
+      if (cfg.regionDefault != null) return false;                    // região fixa = ordem do dono
+      const rota = cfg.rotaFarm;
+      if (rota && rota.ativa) return false;                           // a rota manda
+      if (Array.isArray(cfg.farmarItem) && cfg.farmarItem.length) return false; // farm de item manda
+      if (Date.now() - _idealViagemAt < 180000) return false;
+      const v = estadoVivo();
+      if (v && Array.isArray(v.inimigos) && v.inimigos.some((i) => i && i.chefe && Number(i.hp) > 0)) return false;
+      const atual = localId(readLocation().text);
+      if (!atual || naBase()) return false;
+      const ideal = regiaoIdeal();
+      if (!ideal || String(ideal) === String(atual)) return false;
+      const loc = (META.locais || []).find((l) => String(l.id) === String(atual));
+      if (!loc || !ehRegiaoDeFarm(loc)) return false;                 // não se "sai" de zona que não é de farm
+      const a = estimarRegiao(atual), b = estimarRegiao(ideal);
+      if (!a || !b || b.morte || b.mobsMatam) return false;
+      const ganho = (x) => (Number(x.goldMinReal) || 0) + (Number(x.xpMinReal) || 0) * 0.05;
+      const ga = ganho(a), gb = ganho(b);
+      if (!(gb > ga * 1.25)) return false;
+      _idealViagemAt = Date.now();
+      logEvent('regiao-ideal', { de: atual, para: ideal, motivo: 'modo automático: a região actual não é a ideal' });
+      viajarPara(ideal);
+      return true;
+    } catch { return false; }
+  }
+
   function supervisarBase() {
     if (!podeFazer('manutencao').pode || pausado) return;   // base = manutencao (vender/cofre/repor)
     // ABA EM SEGUNDO PLANO: o jogo usa requestAnimationFrame, logo com a aba oculta o loop para
@@ -12512,6 +12760,7 @@ const CFG_VER = 4;
       setTimeout(() => { try { if (naBase()) acaoBase(); } catch { /* ignore */ } }, esperaRecallMs());
     } else {
       if (talvezViajarDiaria()) return;
+      if (talvezViajarIdeal()) return;
       marcarAtiva();                                              // no mapa = ativo
     }
   }
@@ -12881,7 +13130,7 @@ const CFG_VER = 4;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
+  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },

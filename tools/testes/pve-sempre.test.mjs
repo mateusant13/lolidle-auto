@@ -163,6 +163,16 @@ export const suite = {
         bar.xpMin >= bar.xpMinReal && bar.xpMin > 0);
       t.check('C1: a regiao continua a servir para farmar (mobsSeguros -> regiaoSegura)',
         auto.estimarRegiao('barao').mobsSeguros === true);
+      t.check('C1b: os dois riscos sao CAMPOS SEPARADOS (mobsMatam=false, chefeMatam=true)',
+        bar.mobsMatam === false && bar.chefeMatam === true);
+      // ATRIBUICAO DA MORTE MEDIDA (ordem do dono, 2026-10-23): quem matou decide o veredicto.
+      // Antes, o `risco.rmorte` do agregado (risco do CHEFE) era lido como "os mobs matam" e a
+      // primeira morte no Covil condenava a regiao inteira.
+      auto.importar({ farm: { deaths: [{ at: 1, by: 'barao', region: 'Covil do Barao 29-36' }] } });
+      const eChefe = auto.estimarRegiao('barao');
+      t.check('C3: morte causada pelo CHEFE nao acusa os mobs como letais', eChefe.mobsMatam === false);
+      auto.importar({ farm: { deaths: [{ at: 2, by: 'larv', region: 'Covil do Barao 29-36' }] } });
+      t.check('C4: morte causada por um MOB acusa mobsMatam', auto.estimarRegiao('barao').mobsMatam === true);
 
       // COntraste: a zona do Freljord nao pode sequer entrar no planejador de item.
       alimentarMeta(m, { ondeItem: { '3089': { fj: { zona: LOCAIS[2], porClasse: { ap: 0.5 } },
@@ -171,6 +181,27 @@ export const suite = {
       t.check('C2: o planejador NAO oferece a zona do Freljord (fora do Rift)',
         (plano || []).every((x) => x.zona !== 'fj'));
       t.check('C2: e mantem a zona do Rift (barao)', (plano || []).some((x) => x.zona === 'barao'));
+    }
+
+    /* ================= 4) LOG: A ROTACAO NAO AFUNDA O HISTORICO ================= */
+    {
+      // DEFEITO MEDIDO (2026-10-23): o `rotacao` corre a cada ~2 s e o anel de 200 ficou
+      // 100% rotacao/evento — `base`, `morte` e `chefe-fatal` eram expulsos antes de alguem
+      // os ler. O dono perguntou "como chegou a esse ponto?" e o log nao tinha resposta.
+      const m = criarMundo();
+      const a = carregarAutomation(m);
+      alimentarCatalogo(m);
+      a.logEvent('rotacao', { mudou: true, alvo: 'X' });
+      a.logEvent('rotacao', { mudou: true, alvo: 'Y' });
+      a.logEvent('morte', { by: 'barao', region: 'Covil do Barao' });
+      a.logEvent('rotacao', { mudou: true, alvo: 'Z' });
+      const log = a.exportar().farm.log;
+      const nRot = log.filter((e) => e.type === 'rotacao').length;
+      t.check('L1: rotacao repetida ocupa UMA entrada (coalescida)', nRot === 1);
+      t.check('L2: o evento de morte sobrevive a rotacao', log.some((e) => e.type === 'morte'));
+      const antes = a.exportar().farm.log.length;
+      a.logEvent('rotacao', { mudou: false });
+      t.check('L3: rotacao sem mudanca nao entra no log', a.exportar().farm.log.length === antes);
     }
   },
 };

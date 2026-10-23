@@ -277,6 +277,31 @@ switches: 'interruptores',
   };
   /** Cópia ordenada (não mexe no array da automação): lendários → maior tier → maior refino. */
   const ordenarItens = (arr) => (Array.isArray(arr) ? arr.slice().sort(ordemItemGui) : []);
+  /** Itens da BUILD IDEAL do campeão (e os componentes dela). Lidos do motor, nada escrito à mão. */
+  const ideaisDoCampeao = () => cache('gui-ideais', 20000, () => {
+    const s = new Set();
+    try { for (const b of (buildIdeal() || [])) s.add(BASE_ID(String(b))); } catch { /* sem motor */ }
+    try {
+      const c = ler('componentesDaBuild', null);
+      if (c) { if (typeof c.forEach === 'function') c.forEach((b) => s.add(BASE_ID(String(b)))); }
+    } catch { /* ignore */ }
+    return s;
+  });
+  /** MERCADO: os itens IDEIAS vêm SEMPRE primeiro (ordem do dono, 2026-10-23, verbatim: "qualquer
+   *  item do mercado tem que vir primeiro os itens ideais do campeao"). Depois disso, a ordem
+   *  normal (raridade -> qualidade -> refino). */
+  const ordemMercado = (a, b) => {
+    const s = ideaisDoCampeao();
+    const base = (x) => BASE_ID(String((x && (x.base || x.id || x.item)) || ''));
+    const ia = s.has(base(a)) ? 0 : 1;
+    const ib = s.has(base(b)) ? 0 : 1;
+    if (ia !== ib) return ia - ib;
+    return ordemItemGui(a, b);
+  };
+  const ordenarMercado = (arr) => (Array.isArray(arr) ? arr.slice().sort(ordemMercado) : []);
+  const ehIdeal = (x) => {
+    try { return ideaisDoCampeao().has(BASE_ID(String((x && (x.base || x.id || x.item)) || ''))); } catch { return false; }
+  };
   const locais = () => (ler('getMeta', {}) || {}).locais || [];
   const nomeRegiao = (id) => { const l = locais().find((x) => x.id === id); return l ? limparNivel(l.nome) : String(id || '-'); };
   const idRegiaoDe = (txt) => ler('localId', null, txt) || null;
@@ -676,6 +701,12 @@ switches: 'interruptores',
     '#lolidle-ap .campo input{margin-top:1px}',
     '#lolidle-ap .item-na{display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;background:#1b2029;border:1px solid var(--lin2);border-radius:5px;color:var(--mut);font-size:10px}',
     '#lolidle-ap .tag{display:inline-block;background:#0e1a28;border:1px solid #24405c;color:#a9cdff;border-radius:6px;padding:1px 7px;font-size:10px;margin:1px 2px 1px 0}',
+    // ---- LINHAS VISUAIS (Personagem): barra + número, em vez de tabela de texto ----
+    '#lolidle-ap .skrow{display:grid;grid-template-columns:minmax(90px,1fr) 96px 64px auto;gap:8px;align-items:center;padding:5px 6px;border-bottom:1px solid #ffffff06}',
+    '#lolidle-ap .skrow.prox{background:#f0c24e0d;border-left:2px solid var(--ouro)}',
+    '#lolidle-ap .skrow .nm,#lolidle-ap .atrow .nm{font-size:11.5px;font-weight:600;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '#lolidle-ap .skrow .vl,#lolidle-ap .atrow .vl{font-size:10.5px;color:var(--dim);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}',
+    '#lolidle-ap .atrow{display:grid;grid-template-columns:88px 52px minmax(70px,1fr);gap:8px;align-items:center;padding:4px 2px}',
     // ---- RODAPÉ ----
     '#lolidle-ap footer{display:flex;align-items:center;gap:12px;padding:8px 16px;background:#0b0e12;border-top:1px solid var(--lin2);font-size:11px;color:var(--mut)}',
     '#lolidle-ap .fb{flex:1;min-width:0;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
@@ -798,7 +829,6 @@ switches: 'interruptores',
       + '  <button class="tab" data-tab="macro"><i>⚙</i><span>Macro</span></button>'
       + '  <span class="nav-sec">Acompanhar</span>'
       + '  <button class="tab" data-tab="ganhos"><i>▲</i><span>Ganhos</span></button>'
-      + '  <button class="tab" data-tab="historico"><i>✳</i><span>Histórico</span></button>'
       + '  <span class="nav-sec">Sistema</span>'
       + '  <button class="tab" data-tab="pocao"><i>✚</i><span>Poção</span></button>'
       + '  <button class="tab" data-tab="manual"><i>⌘</i><span>Manual</span></button>'
@@ -827,6 +857,7 @@ switches: 'interruptores',
       + '  </section>'
       // ---------------- MACRO: configuração de cada rotina ----------------
       + '  <section class="pane" id="ap-t-macro">'
+      + '    <div class="grid2"><div id="ap-macro-loop"></div><div id="ap-macro-params"></div></div>'
       + '    <div id="ap-macro-farm"></div>'
       + '    <div id="ap-macro-cartas"></div>'
       + '    <div id="ap-macro-mercado"></div>'
@@ -864,18 +895,15 @@ switches: 'interruptores',
       + '    <div id="ap-at-stats"></div>'
       + '    <div id="ap-at-acoes"></div>'
       + '  </section>'
-      // ---------------- GANHOS: só CHEFES e CORRIDAS (sem ganhos de mob) ----------------
+      // ---------------- GANHOS: chefes, corridas e HISTÓRICO (uma só aba, ordem do dono) ------
       + '  <section class="pane" id="ap-t-ganhos">'
       + '    <div id="ap-fm-agora"></div>'
       + '    <div id="ap-fm-chefes"></div>'
-      + '  </section>'
-      // ---------------- HISTÓRICO ----------------
-      + '  <section class="pane" id="ap-t-historico">'
       + '    <div id="ap-hi-48h-resumo"></div>'
-      + '    <div id="ap-hi-48h"></div>'
       + '    <div id="ap-hi-mortes"></div>'
       + '    <div id="ap-hi-lutas"></div>'
       + '    <div id="ap-hi-eventos"></div>'
+      + '    <div id="ap-hi-48h"></div>'
       + '    <div id="ap-hi-problemas"></div>'
       + '  </section>'
       // ---------------- POÇÃO ----------------
@@ -983,7 +1011,7 @@ switches: 'interruptores',
   /** Nomes das abas ANTIGAS -> as de agora. Um chamador antigo (script de manutenção, teste)
    *  não pode ficar com o painel em branco: o alias leva à aba certa. `mercado` deixou de ser
    *  alias de `itens`: passou a ser aba própria (pedido do dono). */
-  const TAB_ALIAS = { agora: 'painel', auto: 'painel', skills: 'personagem', atrib: 'personagem', farm: 'farm', hist: 'historico', historico: 'historico', pocao: 'pocao', poções: 'pocao', pocoes: 'pocao', manual: 'manual' };
+  const TAB_ALIAS = { agora: 'painel', auto: 'painel', skills: 'personagem', atrib: 'personagem', farm: 'farm', hist: 'ganhos', historico: 'ganhos', ganhos: 'ganhos', pocao: 'pocao', poções: 'pocao', pocoes: 'pocao', manual: 'manual' };
   function setTab(nome) {
     tabAtiva = TAB_ALIAS[nome] || nome;
     // BUG MEDIDO (2026-10-19): o alias era aplicado ao `tabAtiva` mas a classe usava o nome
@@ -2097,7 +2125,7 @@ switches: 'interruptores',
     // setHtml reconstruía o cartão e apagava a escolha feita no "item a retirar". A hora vai
     // para o <span> do cabeçalho e é escrita depois, com textContent.
     const lista = itens.length
-      ? tabela(['slot', 'item', 'qualidade', 'refino', 'quantidade'], itens.map((i, n) => '<tr><td>' + esc(cofreSlot(i, n)) + '</td><td>'
+      ? tabela(['item', 'qualidade', 'refino', 'quantidade'], itens.map((i, n) => '<tr><td>'
         + (i.base ? itemImgTag(i.base, i.refino, nomeCofre(i)) : '') + esc(nomeCofre(i))
         + '</td><td>' + esc(i.qual || 'C') + '</td><td>' + (i.refino ? '+' + esc(i.refino) : '-') + '</td><td>' + (i.qtd == null ? '-' : '×' + fmt(i.qtd)) + '</td></tr>').join(''))
       : '<p class="vazio">Ainda não há leitura do cofre, não sei o que está guardado.</p>'
@@ -2335,6 +2363,12 @@ switches: 'interruptores',
   }
 
   // ---------------------------------------------------------------- ABA HABILIDADES
+  // ---------------------------------------------------------------- ABA PERSONAGEM
+  /** Barra visual com o valor escrito por cima. Uma linha de código, muitos cartões usam. */
+  const barraDe = (v, max, txt, cls) => {
+    const p = max > 0 ? Math.max(0, Math.min(1, Number(v) / Number(max))) : 0;
+    return '<span class="bar"><i class="' + (cls || '') + '" style="width:' + (p * 100).toFixed(1) + '%"></i><u>' + esc(txt) + '</u></span>';
+  };
   function renderSkills() {
     const sk = ler('readSkills', null);
     const dps = ler('dpsPorHabilidade', null);
@@ -2384,22 +2418,35 @@ switches: 'interruptores',
     const liberada = (h) => (Number(h.nivel) || 1) <= (nivelAtual || 999);
     const podeSubir = (h) => (h.rank || 0) < (h.maxRank || 0) && !h.max && liberada(h);
     const proximo = arsenal.find(podeSubir);
+    // VISUAL, NÃO TABELA (queixa do dono, 2026-10-23: "muito texto e pouco visual"): cada
+    // habilidade é uma linha com barra de RANK e o dano em número. A tabela de 6 colunas saiu.
+    const linhasOrdem = arsenal.map((h) => {
+      const r = Number(h.rank) || 0, max = Number(h.maxRank) || 4;
+      const ult = ler('ehUltimate', false, h.t);
+      const lib = liberada(h);
+      const stt = h.max ? 'máximo' : (!lib ? 'nível ' + (h.nivel || '?') : (r === 0 ? 'abrir' : 'subir'));
+      return '<div class="skrow' + (proximo && proximo.t === h.t ? ' prox' : '') + '">'
+        + '<span class="nm" title="' + esc(h.name || h.t) + '">' + esc(h.name || h.t) + (ult ? ' 👑' : '') + (h.onBar ? ' ⚔' : '') + '</span>'
+        + '<span>' + barraDe(r, max, r + '/' + max, h.max ? '' : (lib ? '' : 'low')) + '</span>'
+        + '<span class="vl">' + (dpsDe[h.t] ? fmt(dpsDe[h.t]) + '/s' : '-') + '</span>'
+        + '<span class="vl">' + stt + '</span></div>';
+    }).join('');
     setHtml('ap-sk-ordem', card('Ordem de subida', 'a mesma regra que a automação usa no botão de subir',
-      tabela(['#', 'habilidade', 'rank', 'dano/s', 'na barra', 'situação'],
-        arsenal.map((h, i) => '<tr class="' + (proximo && proximo.t === h.t ? 'melhor' : '') + '"><td>' + (i + 1) + '</td><td>' + esc(h.name || h.t)
-          + (ler('ehUltimate', false, h.t) ? ' 👑' : '') + '</td><td>' + (h.rank == null ? '-' : h.rank + '/' + (h.maxRank || '?')) + '</td><td>' + fmt(dpsDe[h.t] || 0)
-          + '</td><td>' + (h.onBar ? 'sim' : 'não') + '</td><td>' + (h.max ? 'no máximo' : (!liberada(h) ? ('bloqueada (nível ' + (h.nivel || '?') + ')') : (h.rank === 0 ? 'por desbloquear' : 'pode subir'))) + '</td></tr>').join(''),
-        'sem habilidades lidas')
-      + (proximo ? '<p class="aviso ok">O próximo ponto vai para <b>' + esc(proximo.name || proximo.t) + '</b>' + ((proximo.rank || 0) === 0 ? ' (desbloquear, ao desbloquear entra sozinha na barra)' : ' (a que dá mais dano)') + '.</p>'
-        : '<p class="aviso">Nada para subir agora (tudo no máximo ou sem pontos).</p>')));
+      '<div>' + (linhasOrdem || '<p class="vazio">sem habilidades lidas</p>') + '</div>'
+      + (proximo ? '<p class="aviso ok">Próximo ponto: <b>' + esc(proximo.name || proximo.t) + '</b>' + ((proximo.rank || 0) === 0 ? ' (desbloquear)' : ' (mais dano)') + '</p>'
+        : '<p class="aviso">Nada para subir agora.</p>')
+      + '<p class="hint tira">⚔ = está na barra de combate · 👑 = ultimate.</p>'));
 
+    const habsDps = (dps ? (dps.habs || []) : []).filter((h) => h.dano || h.passiva).slice(0, 12);
+    const maxDps = Math.max(1, ...habsDps.map((h) => Number(h.dps) || 0));
     setHtml('ap-sk-dps', card('Dano de cada habilidade', 'estimativa da automação com os seus stats',
-      dps ? '<div class="kvs">' + kv('poder de habilidade', fmt(dps.ap)) + kv('dano de ataque', fmt(dps.ad)) + kv('nível', String(dps.nivel)) + '</div>'
-        + tabela(['habilidade', 'rank', 'dano direto/s', 'adaga/s', 'Lich/s', 'total/s', 'recarga'],
-          (dps.habs || []).filter((h) => h.dano || h.passiva).slice(0, 16).map((h) => '<tr><td>' + esc(h.nome || h.t) + (h.naBarra ? ' *' : '') + (h.adaga ? ' 🗡' : '') + '</td><td>' + (h.rank == null ? '-' : h.rank)
-            + '</td><td>' + (h.dpsDireto ? fmt(h.dpsDireto) : '-') + '</td><td>' + (h.dpsAdaga ? fmt(h.dpsAdaga) : '-') + '</td><td>' + (h.dpsLich ? fmt(h.dpsLich) : '-')
-            + '</td><td><b>' + (h.dps != null ? fmt(h.dps) : '-') + '</b></td><td>' + (h.cd != null ? h.cd + 's' : '-') + '</td></tr>').join(''), 'sem dados')
-        + '<p class="hint">* = está na barra de combate · 🗡 = deixa adaga (dispara a Voracidade)</p>'
+      dps ? '<div class="kvs">' + kv('AP', fmt(dps.ap)) + kv('AD', fmt(dps.ad)) + kv('nível', String(dps.nivel)) + '</div>'
+        + '<div>' + habsDps.map((h) => '<div class="skrow">'
+          + '<span class="nm" title="' + esc(h.nome || h.t) + '">' + esc(h.nome || h.t) + (h.naBarra ? ' ⚔' : '') + (h.adaga ? ' 🗡' : '') + '</span>'
+          + '<span>' + barraDe(h.dps || 0, maxDps, (h.dps != null ? fmt(h.dps) : '-') + '/s') + '</span>'
+          + '<span class="vl">r' + (h.rank == null ? '-' : h.rank) + '</span>'
+          + '<span class="vl">' + (h.cd != null ? h.cd + 's' : '-') + '</span></div>').join('') + '</div>'
+        + '<p class="hint tira">⚔ = na barra · 🗡 = deixa adaga (Voracidade).</p>'
         : '<p class="aviso err">A automação não conseguiu calcular o dano das habilidades.</p>'));
 
     // A fase vem do farm para a GUI mostrar o MESMO ideal do runtime; `preview` impede
@@ -2465,8 +2512,14 @@ switches: 'interruptores',
 
     setHtml('ap-at-lista', card('Distribuição atual', 'lida do painel do jogo',
       atrs.length
-        ? tabela(['atributo', 'pontos', 'total com equipamento'],
-          atrs.map((a) => '<tr><td>' + esc(a.nome) + '</td><td><b>' + (a.valor == null ? '-' : a.valor) + '</b></td><td>' + (a.total == null ? '-' : a.total) + '</td></tr>'))
+        ? (() => {
+          const maxA = Math.max(1, ...atrs.map((a) => Number(a.valor) || 0));
+          return '<div>' + atrs.map((a) => '<div class="atrow">'
+            + '<span class="nm">' + esc(a.nome) + '</span>'
+            + '<span class="vl">' + (a.valor == null ? '-' : a.valor) + '</span>'
+            + '<span>' + barraDe(a.valor || 0, maxA, a.total != null ? 'total ' + a.total : '') + '</span></div>').join('') + '</div>'
+            + '<p class="hint tira">A barra é a proporção dos pontos; o número por cima é o total com equipamento.</p>';
+        })()
         : '<p class="vazio">O painel de atributos do jogo ainda não está na página. Abra a aba "Atributos" no jogo e volte aqui.</p>'));
 
     const modelos = meta.modelos || null;
@@ -2477,7 +2530,7 @@ switches: 'interruptores',
     const dica = !dicaMapa ? null
       : (typeof dicaMapa === 'string' ? dicaMapa
         : (dicaMapa[nomeCh] || dicaMapa[Object.keys(dicaMapa).find((k) => nomeCh.includes(String(k).toLowerCase()))] || null));
-    const blocoModelo = '<p class="hint">' + (modelos ? Object.keys(modelos).map((k) => '<b>' + esc(modelos[k].nome || k) + '</b>: ' + esc(Object.keys(modelos[k].pesos || {}).map((p) => p + ' ' + modelos[k].pesos[p]).join(', '))).join(' · ') : 'Modelo equilibrado.') + '</p>';
+    const blocoModelo = '<p class="hint">' + (modelos ? 'Modelo do jogo: ' + Object.keys(modelos).map((k) => '<b>' + esc(modelos[k].nome || k) + '</b>').join(' · ') : 'Modelo equilibrado.') + '</p>';
 
     const st = ler('readStats', {}) || {};
     setHtml('ap-at-stats', card('Stats de combate', 'lidos da ficha do jogo',
@@ -2574,16 +2627,22 @@ switches: 'interruptores',
     // regiões (medido × meta)
     const agg = agregado();
     const rec = recomendacao();
-    setHtml('ap-fm-regioes', card('Regiões, o que foi medido', 'ouro/xp reais por minuto, com o risco calculado',
+    setHtml('ap-fm-regioes', card('Regiões, o que foi medido', 'ouro/xp reais por minuto, com mobs e chefe separados',
       agg.length
-        ? tabela(['região', 'chefe', 'ouro/min', 'xp/min', 'abates/min', 'mortes', 'você sobrevive ao chefe?', 'poções (ouro/min)'],
+        ? tabela(['região', 'chefe', 'ouro/min', 'xp/min', 'abates/min', 'mortes', 'mobs', 'chefe', 'poções (ouro/min)'],
           agg.map((r) => {
             const z = r.risco;
             const melhor = rec && rec.regiao === r.region;
-            const risco = z ? (z.morte ? '💀 o golpe do chefe mata você' : (z.morre ? '⚠ você morre em ' + fmt1(z.tMorrer) + 's' : '✔ você sobrevive')) : '-';
+            // MOBS e CHEFE são riscos DIFERENTES (ordem do dono, 2026-10-23): "por que nao sabe
+            // que eu sobrevivo aos MOBS e morro pro chefe, e baseia o xp e ouro nisso?".
+            // `r.risco` é a luta contra o CHEFE (agregar); a vida mínima dos mobs é medida.
+            const mobs = r.mobHpMinRel != null
+              ? (Number(r.mobHpMinRel) < 0.15 ? '💀 mobs' : '✔ ' + Math.round(Number(r.mobHpMinRel) * 100) + '% vida')
+              : '-';
+            const chefe = z ? (z.mortal ? '💀 mata' : (z.morre ? '⚠ ' + fmt1(z.tMorrer) + 's' : '✔ sobrevive')) : '-';
             return '<tr class="' + (melhor ? 'melhor' : '') + '"><td>' + (melhor ? '⭐ ' : '') + esc(limparNivel(r.region)) + '</td><td>' + esc(limparNivel(r.boss || '-'))
               + '</td><td>' + fmt(r.goldMin) + '</td><td>' + fmt(r.xpMin) + '</td><td>' + fmt1(r.killsMin) + '</td><td>' + (r.deaths || 0)
-              + '</td><td>' + risco + '</td><td>' + fmt(r.goldPotionMin) + '</td></tr>';
+              + '</td><td>' + mobs + '</td><td>' + chefe + '</td><td>' + fmt(r.goldPotionMin) + '</td></tr>';
           }), 'Ainda não há ciclos medidos')
         : '<p class="vazio">Ainda não há ciclos medidos. Farmar um pouco numa região já cria histórico.</p>'
         + (rec ? '<p class="aviso ok">Recomendação agora: <b>' + esc(limparNivel(rec.regiao)) + '</b>, ' + fmt(rec.ouroLiquidoMin) + ' ouro limpo/min (' + (rec.sobrevive ? 'você sobrevive ao chefe' : 'só mobs: o chefe mata') + ').</p>' : '')));
@@ -2592,8 +2651,12 @@ switches: 'interruptores',
     const obj = cfg().objetivo || 'xp';
     const rank = ler('rankRegioes', [], obj) || [];
     const riscoDe = (x) => {
-      if (!x || x.morte == null) return '-';
-      return x.sobrevive ? '✔ sobrevive' : '💀 o chefe mata você';
+      if (!x) return '-';
+      // Risco de MOBS e de CHEFE são coisas diferentes (dono, 2026-10-23): a região pode ser
+      // segura nos mobs e letal no chefe (Covil do Barão). Mostrar um veredicto só escondia isso.
+      const mobs = x.mobsMatam === true ? '💀 mobs' : (x.mobsMatam === false ? '✔ mobs' : '- mobs');
+      const chefe = x.chefeMatam === true ? '💀 chefe' : (x.chefeMatam === false ? '✔ chefe' : '- chefe');
+      return mobs + ' · ' + chefe;
     };
     setHtml('ap-fm-rank', card('Ranking por ' + (obj === 'ouro' ? 'ouro' : obj === 'runas' ? 'runas' : 'experiência'), 'estimativa para o seu nível',
       rank.length
@@ -2607,7 +2670,7 @@ switches: 'interruptores',
     // últimos ciclos: MOBS por minuto, CHEFE por abate (ver a nota no topo desta seção)
     const ciclos = (f.cycles || []).slice(0, 30);
     setHtml('ap-fm-ciclos', card('Últimos ciclos', 'um ciclo = farmar até matar o chefe',
-      tabela(['#', 'hora', 'região / chefe', 'mob ouro/min', 'mob xp/min', 'mob poções/min', 'chefe ouro/abate', 'chefe xp/abate', 'tempo do chefe'],
+      tabela(['#', 'hora', 'região / chefe', 'mob ouro/min', 'mob xp/min', 'mob poções/min', 'chefe ouro/abate', 'chefe xp/abate', 'luta do chefe (s)'],
         ciclos.map((c2, i) => {
           const mm = (c2.mobFase && c2.mobFase.perMin) || {};
           const pk = porAbate(c2.bossFase);
@@ -2661,14 +2724,16 @@ switches: 'interruptores',
 
     // CHEFES: um por abate (loot ÷ abates). Sem colunas de mob.
     const ciclos = (f.cycles || []).filter((c2) => c2 && c2.boss).slice(0, 30);
-    setHtml('ap-fm-chefes', card('Chefes abatidos', 'loot por abate, com o tempo ao lado',
-      tabela(['hora', 'região', 'chefe', 'ouro/abate', 'xp/abate', 'tempo', 'poções'], ciclos.map((c2) => {
+    setHtml('ap-fm-chefes', card('Chefes abatidos', 'loot por abate; a coluna de tempo é a DURAÇÃO DA LUTA, não a corrida',
+      tabela(['hora', 'região', 'chefe', 'ouro/abate', 'xp/abate', 'luta (s)', 'poções'], ciclos.map((c2) => {
         const pk2 = porAbate(c2.bossFase);
         return '<tr><td>' + hora(c2.endedAt || c2.startedAt) + '</td><td>' + esc(limparNivel(c2.region))
           + '</td><td>' + esc(limparNivel(c2.boss)) + '</td><td>' + (pk2 ? fmt(pk2.gold) : '-')
           + '</td><td>' + (pk2 ? fmt(pk2.xp) : '-') + '</td><td>' + (c2.bossDurMs ? fmtDur(c2.bossDurMs) : '-')
           + '</td><td>' + fmt((c2.bossFase && c2.bossFase.potions) || 0) + '</td></tr>';
       }), 'ainda sem chefes abatidos')
+      + '<p class="hint tira">“luta (s)” é o tempo do <b>combate com o chefe</b>, não é uma corrida nem inclui viagem ou base. '
+      + 'O ciclo completo (chegar, farmar mobs, matar o chefe, voltar) aparece em <b>Últimos ciclos</b>, na aba Farm.</p>'
       + '<p class="hint tira">Dividir o loot do chefe pelo tempo premia quem morre rápido; por abate é a comparação honesta.</p>'));
   }
 
@@ -2853,10 +2918,11 @@ switches: 'interruptores',
       + kv('mercado cheio?', sat == null ? '-' : (cheio ? 'sim' : 'não') + (lend == null ? '' : ' <small>' + fmt(lend) + '/10 lendários</small>'))
       + '</div>'
       + (ofertas.length
-        ? tabela(['item', 'raridade', 'qualidade', 'preço'], ordenarItens(ofertas).map((o) => '<tr><td>' + esc(o.nome || o.base || '?') + '</td><td>' + esc(o.raridade || '-')
+        ? tabela(['item', 'raridade', 'qualidade', 'preço'], ordenarMercado(ofertas).map((o) => '<tr><td>' + (ehIdeal(o) ? '⭐ ' : '') + esc(o.nome || o.base || '?') + '</td><td>' + esc(o.raridade || '-')
           + '</td><td>' + esc(o.qual || '-') + '</td><td>' + fmt(o.preco) + '</td></tr>'))
         : '<p class="vazio">Ainda não há leitura das suas ofertas.</p>'
           + '<p class="hint tira">A automação lê-as quando passa pelo mercado e grava a lista, a partir daí aparece aqui, sem precisar clicar em nada. O botão abaixo força uma leitura nova.</p>')
+      + '<p class="hint tira">⭐ = item da sua build ideal (ou componente dela). Esses vêm sempre no topo.</p>'
       + diag('Mercado: leitura e ações manuais (manutenção manual)')
       + '<div class="acoes">'
       + acaoD('ap-mk-ler', '📖 Forçar leitura das minhas ofertas', 'Abre o mercado, lê a aba "Minhas ofertas", grava e fecha. Não muda nada.')
@@ -2910,7 +2976,7 @@ switches: 'interruptores',
     };
     const wOut = !w.at ? '<p class="vazio">Ainda não vigiou. A automação vigia sozinho a cada ' + wCad + ' s; o botão abaixo força agora.</p>'
       : wAch.length
-        ? tabela(['vendedor', 'item', 'preço', 'estado'], ordenarItens(wAch).map((o) => {
+        ? tabela(['vendedor', 'item', 'preço', 'estado'], ordenarMercado(wAch).map((o) => {
           const falta = faltaDe(o);
           return '<tr><td>' + esc(o.vendedor || '?') + '</td><td>' + esc(o.item || '?')
             + '</td><td>' + fmt(o.preco) + (o.moeda && o.moeda !== 'ouro' ? ' ' + esc(o.moeda) : '')
@@ -3136,6 +3202,10 @@ switches: 'interruptores',
     const ouro = abates.reduce((s, e) => s + (Number(e.ouro) || 0), 0);
     const xp = abates.reduce((s, e) => s + (Number(e.xp) || 0), 0);
     const itens = h.filter((e) => e.type === 'evento:item' || (e.type === 'evento:abate' && e.itens));
+    // A LISTA não mostra abate de MOB (ordem do dono, 2026-10-23): "matou larva" e afins são
+    // ruído. Só ficam chefes, itens e tudo o que mexe no bolso, na vida ou na decisão. As TAXAS
+    // de mob continuam medidas na aba Farm, que é onde se compara região.
+    h = h.filter((e) => !(e && e.type === 'evento:abate' && !e.chefe && !e.itens));
     const vendas = h.filter((e) => e.type === 'mercado' && (e.acao === 'anunciar' || e.acao === 'anunciar-lendarios'));
     const compras = h.filter((e) => e.type === 'mercado' && (e.acao === 'watch-comprar' || e.acao === 'comprar'));
     const gasto = compras.reduce((s, e) => s + (Number(e.preco) || 0), 0);
@@ -3324,21 +3394,86 @@ switches: 'interruptores',
   function renderMacro() {
     const c = cfg();
     const rota = c.rotaFarm || null;
+    // ---------- O LOOP (o que se repete, e em que passo está) ----------
+    const fAtual = (farm() || {}).current || {};
+    const ciclos = ((farm() || {}).cycles || []).length;
+    setHtml('ap-macro-loop', card('O loop do macro', 'as rotinas repetem enquanto o switch estiver ligado',
+      '<div class="kvs">'
+      + kv('fase agora', esc(fAtual.fase || 'fora do farm'))
+      + kv('região', esc(limparNivel(fAtual.region || '-') || '-'))
+      + kv('ciclos medidos', fmt(ciclos))
+      + kv('auto-play', c.enabled ? 'ligado' : 'desligado')
+      + '</div>'
+      + '<div class="lista">'
+      + '<div class="ln"><b>1</b><span class="d">escolhe a região (rota, região fixa, ou a melhor para o objetivo)</span></div>'
+      + '<div class="ln"><b>2</b><span class="d">viaja e farma; a barra de skills e a build alternam por fase</span></div>'
+      + '<div class="ln"><b>3</b><span class="d">chefe detetado e perigoso: volta à Fonte antes de morrer</span></div>'
+      + '<div class="ln"><b>4</b><span class="d">na base trata o que falta (vender, repor, cofre, tarefa, mercado)</span></div>'
+      + '<div class="ln"><b>5</b><span class="d">sem nada pendente, volta a farmar (ou à região ideal, no modo auto)</span></div>'
+      + '</div>'
+      + '<p class="hint tira">O loop não para: cada passo só corre quando a sua condição aparece. A POÇÃO é a excepção, corre a cada segundo.</p>'));
+
+    // ---------- PARÂMETROS: valor ACTUAL ao lado do RECOMENDADO ----------
+    const rec = { idleBaseMs: 20000, curaAbaixo: 45, margemChefe: 70, mobHpMinRel: 15, barraCadenciaMs: 2, fugirMs: 30 };
+    const campoNum = (id, rot, val, recom, passo, min, max, nota) => '<label class="campo">' + esc(rot)
+      + '<input id="' + id + '" type="number" step="' + passo + '" min="' + min + '" max="' + max + '" value="' + esc(val) + '" placeholder="' + esc(recom) + '">'
+      + '<small class="hint">atual ' + esc(val) + ' · recomendado ' + esc(recom) + (nota ? ' · ' + esc(nota) : '') + '</small></label>';
+    setHtml('ap-macro-params', card('Parâmetros do loop', 'o valor em uso e o recomendado; edite e grave',
+      '<div class="grid2">'
+      + campoNum('ap-mp-fuga', 'Fuga: espera entre fugas (s)', Math.round(Number(c.fugirMs || 30000) / 1000), rec.fugirMs, 5, 5, 600, 'evita ping-pong')
+      + campoNum('ap-mp-idle', 'Paragem na Fonte sem nada a fazer (s)', Math.round(Number(c.idleBaseMs || 20000) / 1000), rec.idleBaseMs / 1000, 5, 5, 600, 'só para fechar janelas')
+      + campoNum('ap-mp-cura', 'Curar na Fonte abaixo de (% vida)', Math.round(Number(c.curaAbaixo != null ? c.curaAbaixo : 0.45) * 100), rec.curaAbaixo, 5, 5, 95, 'acima disto a poção trata')
+      + campoNum('ap-mp-margem', 'Margem da luta de chefe (% vida)', Math.round(Number(c.margemChefe != null ? c.margemChefe : 0.70) * 100), rec.margemChefe, 5, 10, 100, 'abaixo disto o chefe mata')
+      + campoNum('ap-mp-mobs', 'Vida mínima dos mobs (% vida)', Math.round(Number(c.mobHpMinRel != null ? c.mobHpMinRel : 0.15) * 100), rec.mobHpMinRel, 5, 0, 100, 'abaixo disto os mobs matam')
+      + campoNum('ap-mp-barra', 'Reavaliar a barra de skills (s)', Math.round(Number(c.barraCadenciaMs || 2000) / 1000), rec.barraCadenciaMs, 1, 1, 60, 'não clica se o alvo não mudar')
+      + '</div>'
+      + '<div class="acoes">'
+      + acao('ap-macro-salvar', 'Gravar parâmetros', 'Aplica os seis valores. Vazio = fica o recomendado.')
+      + acao('ap-macro-recomendado', 'Voltar ao recomendado', 'Repõe os seis valores recomendados (sem mexer nos switches).', 'sec')
+      + '</div>'
+      + '<p class="hint tira">Valores de política, não do jogo: o recomendado é o que a automação usou nas medições. Mudar a margem do chefe muda o que conta como "mata você".</p>'));
     // ---------- FARM: objetivo, alvos e ROTA ----------
     const alvos = Array.from(selItens || []);
-    const rotaHtml = (rota && Array.isArray(rota.passos) && rota.passos.length)
-      ? '<div class="lista">' + rota.passos.map((p, i) => '<div class="ln ' + (rota.ativa && i === (Number(rota.indice) || 0) ? 'proteg' : '') + '">'
+    // SÓ REGIÕES DE FARM DO RIFT na rota (ordem do dono): a mesma função do motor, sem cópia.
+    const validaRota = (id) => {
+      try {
+        const l = (locais() || []).find((x) => String(x.id) === String(id));
+        return !!(l && ler('ehRegiaoDeFarm', null, l));
+      } catch { return false; }
+    };
+    const passosRota = (rota && Array.isArray(rota.passos)) ? rota.passos : [];
+    const passosOk = passosRota.filter((p) => validaRota(p.regiao));
+    const invalidos = passosRota.filter((p) => !validaRota(p.regiao));
+    const rotaHtml = passosOk.length
+      ? '<div class="lista">' + passosOk.map((p, i) => '<div class="ln ' + (rota.ativa && i === (Number(rota.indice) || 0) ? 'proteg' : '') + '">'
         + '<b>' + (i + 1) + '. ' + esc(limparNivel(p.nome || p.regiao)) + '</b><span class="d">' + esc(p.motivo || '')
-        + (p.tipo === 'cartas' ? ' · ' + (p.minutos || 30) + ' min' : '') + (p.alvos && p.alvos.length ? ' · ' + esc(p.alvos.map((x) => nomeItem(x.item)).join(', ')) : '') + '</span></div>').join('') + '</div>'
+        + (p.tipo === 'cartas' ? ' · ' + (p.minutos || 30) + ' min' : '')
+        + (p.alvos && p.alvos.length ? ' · ' + esc(p.alvos.map((x) => nomeItem(x.item) + (x.dropsH ? ' (' + fmt1(x.dropsH) + '/h)' : '')).join(', ')) : '') + '</span></div>').join('') + '</div>'
         + '<p class="hint">' + (rota.ativa ? 'A seguir o passo ' + ((Number(rota.indice) || 0) + 1) + '.' : 'Rota parada' + (rota.parou ? ': ' + esc(rota.parou) : '') + '.') + '</p>'
-      : '<p class="vazio">Ainda sem rota. Escolha os itens no Painel e monte a rota.</p>';
+      : '<p class="vazio">Ainda sem rota.</p>';
+    const invalidosHtml = invalidos.length
+      ? '<p class="aviso warn">Rota guardada tem ' + invalidos.length + ' passo(s) fora das regiões de farm do Rift ('
+        + esc(invalidos.map((p) => limparNivel(p.nome || p.regiao)).join(', ')) + '). Esses passos são ignorados.</p>'
+      : '';
+    const ideais = buildIdeal();
+    const sugestao = ideais.length
+      ? '<p class="hint tira">Sugestão (build ideal): ' + esc(ideais.map((b) => nomeItem(b)).join(', ')) + '. Use <b>Escolher itens</b> na aba Farm para marcar outros.</p>'
+      : '<p class="hint tira">Sem campeão carregado: a build ideal aparece quando o jogo entregar o campeão. Pode marcar itens à mão na aba Farm.</p>';
     setHtml('ap-macro-farm', card('Rota de farm (itens e cartas)', 'calculada com os drops do jogo e guardada',
       rotaHtml
+      + invalidosHtml
+      + '<div class="kvs">'
+      + kv('alvos marcados', alvos.length ? esc(alvos.map((b) => nomeItem(b)).join(', ')) : 'nenhum')
+      + kv('itens ideais', ideais.length ? esc(ideais.length + ' (build do campeão)') : '-')
+      + '</div>'
+      + sugestao
       + '<label class="campo" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="ap-rota-cartas"> incluir uma paragem para cartas</label>'
       + '<div class="acoes">'
-      + acao('ap-rota-montar', 'Montar e seguir', 'Usa os itens escolhidos no Painel mais a paragem de cartas e viaja para o 1.º passo.')
+      + acao('ap-rota-montar', 'Montar e seguir', alvos.length ? 'Usa os itens marcados (aba Farm) mais a paragem de cartas e viaja para o 1.º passo.' : 'Sem itens marcados usa a BUILD IDEAL do campeão: a rota vai às regiões que dropam esses itens.')
       + acao('ap-rota-parar', 'Parar a rota', 'Pára a rota e volta a escolher a região sozinha.', 'sec', !(rota && rota.ativa))
-      + '</div>'));
+      + acao('ap-rota-limpar', 'Limpar rota guardada', 'Apaga a rota guardada (incluindo passos velhos de outra versão). A automação volta ao modo automático.', 'sec', !passosRota.length)
+      + '</div>'
+      + '<p class="hint tira">Uma rota é uma lista de regiões: cada passo é a região que mais dropa o item pedido (chance × abates/hora). A missão do Capitão é trocada para a área da rota quando há uma oferta lá.</p>'));
 
     // ---------- CARTAS ----------
     const cb = ler('cartasNaBolsa', null) || { novas: 0, lista: [] };
@@ -3382,8 +3517,7 @@ switches: 'interruptores',
     else if (tabAtiva === 'itens') { renderBuildFase(); renderItens(); }
     else if (tabAtiva === 'mercado') renderMercado();
     else if (tabAtiva === 'personagem') { renderSkills(); renderAtrib(); }
-    else if (tabAtiva === 'ganhos') { renderFarm(); renderChefes(); }
-    else if (tabAtiva === 'historico') renderHistorico();
+    else if (tabAtiva === 'ganhos') { renderFarm(); renderChefes(); renderHistorico(); }
     else if (tabAtiva === 'pocao') renderPocao();
     else if (tabAtiva === 'manual') renderManual();
     recolherAcoesManuais();
@@ -3396,7 +3530,7 @@ switches: 'interruptores',
   // Cadência por aba: a do Painel acompanha o HUD (o content.js publica a vida a cada 1 s e
   // `estadoAgora()` tem cache de 2 s; o resto do painel lê caches de 10 s/15 s da automação). As abas
   // de relatório são mais lentas porque recalculam listas grandes.
-  const CADENCIA = { painel: 1500, farm: 6000, macro: 5000, itens: 8000, mercado: 5000, personagem: 3000, ganhos: 8000, historico: 15000, pocao: 3000, manual: 15000 };
+  const CADENCIA = { painel: 1500, farm: 6000, macro: 5000, itens: 8000, mercado: 5000, personagem: 3000, ganhos: 8000, pocao: 3000, manual: 15000 };
   function tick() {
     if (!aberto) return;
     renderCabecalho();                                   // o cabeçalho é sempre o primeiro a saber
@@ -3920,19 +4054,58 @@ switches: 'interruptores',
     'ap-farm-go': (b) => farmarAgora(b),
     'ap-goto-macro': () => setTab('macro'),
     'ap-rota-montar': (b) => executar(b, 'Montar a rota', async () => {
-      const alvos = Array.from(selItens || []);
+      let alvos = Array.from(selItens || []);
+      // SEM itens marcados, a rota usa a BUILD IDEAL do campeão (ordem do dono: "dá opção
+      // decente pra usar"). Assim o botão nunca é um beco sem saída.
+      if (!alvos.length) alvos = (buildIdeal() || []).map(String);
       const cartas = !!(document.getElementById('ap-rota-cartas') || {}).checked;
       if (cartas) alvos.push('cartas');
-      if (!alvos.length) return { ok: false, motivo: 'escolha pelo menos um item (ou inclua cartas) no Painel.' };
+      if (!alvos.length) return { ok: false, motivo: 'escolha pelo menos um item (ou inclua cartas) na aba Farm.' };
       const r = await chamarA('iniciarRota', alvos);
       if (!r.ok || !r.v || !r.v.ok) return { ok: false, motivo: (r.v && r.v.motivo) || r.erro || 'não consegui montar a rota.' };
       ultimoRender = 0;
       return { ok: true, msg: 'Rota montada com ' + (r.v.rota.passos.length) + ' passo(s). A seguir.' };
     }),
+    'ap-rota-limpar': (b) => executar(b, 'Limpar a rota', async () => {
+      let ok = true;
+      try { await chamarA('pararRota', 'limpar'); } catch { ok = false; }
+      const r = await chamarA('setConfig', { rotaFarm: null });
+      if (!r.ok) return { ok: false, motivo: r.erro || 'não consegui limpar.' };
+      ultimoRender = 0; return { ok: true, msg: 'Rota apagada. A automação volta a escolher a região sozinha.' };
+    }),
     'ap-rota-parar': (b) => executar(b, 'Parar a rota', async () => {
       const r = await chamarA('pararRota', 'pedido');
       if (!r.ok) return { ok: false, motivo: r.erro || 'não consegui parar.' };
       ultimoRender = 0; return { ok: true, msg: 'Rota parada.' };
+    }),
+    // PARÂMETROS DO LOOP: a GUI não guarda nada por si. Os campos são convertidos para as
+    // unidades da automação (ms, fração) e gravados pelo `setConfig`, que é o único escritor.
+    'ap-macro-salvar': (b) => executar(b, 'Gravar parâmetros', async () => {
+      const num = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return null;
+        const t = String(el.value == null ? '' : el.value).trim();
+        if (!t) return null;
+        const v = Number(t.replace(',', '.'));
+        return Number.isFinite(v) ? v : null;
+      };
+      const patch = {};
+      const fuga = num('ap-mp-fuga'); if (fuga != null) patch.fugirMs = Math.round(fuga * 1000);
+      const idle = num('ap-mp-idle'); if (idle != null) patch.idleBaseMs = Math.round(idle * 1000);
+      const cura = num('ap-mp-cura'); if (cura != null) patch.curaAbaixo = cura / 100;
+      const marg = num('ap-mp-margem'); if (marg != null) patch.margemChefe = marg / 100;
+      const mobs = num('ap-mp-mobs'); if (mobs != null) patch.mobHpMinRel = mobs / 100;
+      const barra = num('ap-mp-barra'); if (barra != null) patch.barraCadenciaMs = Math.round(barra * 1000);
+      if (!Object.keys(patch).length) return { ok: false, motivo: 'nada para gravar: os campos estão vazios.' };
+      const r = await chamarA('setConfig', patch);
+      if (!r.ok) return { ok: false, motivo: r.erro || 'a automação recusou os valores.' };
+      ultimoRender = 0;
+      return { ok: true, msg: 'Parâmetros gravados (' + Object.keys(patch).length + ').' };
+    }),
+    'ap-macro-recomendado': (b) => executar(b, 'Repor o recomendado', async () => {
+      const r = await chamarA('setConfig', { fugirMs: 30000, idleBaseMs: 20000, curaAbaixo: 0.45, margemChefe: 0.70, mobHpMinRel: 0.15, barraCadenciaMs: 2000 });
+      if (!r.ok) return { ok: false, motivo: r.erro || 'a automação recusou os valores.' };
+      ultimoRender = 0; return { ok: true, msg: 'Valores recomendados repostos.' };
     }),
     'ap-cartas-abrir': (b) => executar(b, 'Abrir cartas', async () => {
       const r = await chamarA('abrirCartasMisteriosas');
