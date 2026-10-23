@@ -1164,6 +1164,23 @@
         const i = (farm.log || []).findIndex((e) => e && e.type === 'rotacao');
         if (i >= 0 && now - farm.log[i].at < 30000) { farm.log[i] = { at: now, type, ...data }; logHist(type, data); return; }
       }
+      // O MESMO DEFEITO na VIGIA (medido 2026-10-23): o poller corre a cada 2 s e, enquanto
+      // houver uma oferta `pronta` que NÃO se pode comprar (preço em orbes, por exemplo), ele
+      // escreve `watch` a cada passagem. Em ~1 min o histórico ficava 100% `watch` e as
+      // entradas de `base`/`mercado:plano`/`morte` desapareciam. Coalesce-se por alvo:
+      // reescreve no lugar (com `repeticoes`) no máximo a cada 5 min, ou já se o item mudou.
+      if (type === 'mercado' && data && (data.acao === 'watch' || data.acao === 'watch-travada')) {
+        const i = (farm.log || []).findIndex((e) => e && e.type === 'mercado' && e.acao === data.acao);
+        if (i >= 0) {
+          const alvoAntes = ((farm.log[i].primeiro || {}).id) || null;
+          const alvoAgora = ((data.primeiro || {}).id) || null;
+          const mesmaOferta = alvoAntes === alvoAgora;
+          if (mesmaOferta && now - farm.log[i].at < 300000) {
+            farm.log[i] = { at: now, type, ...data, repeticoes: (Number(farm.log[i].repeticoes) || 0) + 1, desde: farm.log[i].desde || farm.log[i].at };
+            return;                        // não escreve no histórico nem ocupa vaga no ring
+          }
+        }
+      }
       farm.log = [{ at: now, type, ...data }, ...(farm.log || [])].slice(0, 200);
       logHist(type, data);
     } catch { /* ignore */ }
@@ -2381,7 +2398,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-mercado-cheio-vagas';
+  const BUILD = '2026-10-23-preco-mesmo-tier-base-completa';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -5056,7 +5073,13 @@ const CFG_VER = 4;
       let valorLixo = 0;
       for (const x of lixo) { const v = valorVenda(x.base, x.qual, x.refino); valorLixo += Number(v) || 0; }
       n._lixoCofre = { itens: lixo.length, valor: Math.round(valorLixo), custoOuro: Math.round(Number(custo && custo.ouro) || 0) };
-      n.venderLixoCofre = podeFazer('cofre').pode && lixo.length > 0
+      // P0 MEDIDO (2026-10-23): a necessidade ardia com 1 item de 300 de ouro e a ida a Fonte
+      // custava 340 — o boneco ia, vendia, voltava e repetia. O PORTÃO do valor tem de estar
+      // AQUI (onde a necessidade nasce) e não só em `motivosDeViagem`: assim o passo nem corre.
+      // Sem valores medidos (ouro do lixo = 0) mantém-se a regra antiga — não se inventa custo.
+      const custoOuroLixo = Number(custo && custo.ouro) || 0;
+      const lixoPaga = !custoOuroLixo || !valorLixo || valorLixo >= custoOuroLixo;
+      n.venderLixoCofre = podeFazer('cofre').pode && lixo.length > 0 && lixoPaga
         && (!_ultimaVendaCofre || (Date.now() - _ultimaVendaCofre) > cadLixo);
     } catch { n.venderLixoCofre = false; }
     n.mercado = n.anunciar;      // só vai ao mercado se houver lendário <A p/ anunciar
@@ -5261,6 +5284,24 @@ const CFG_VER = 4;
     const x = n || necessidadesBase();
     return Object.keys(x).filter((k) => x[k] === true && PASSOS_CHAVES.has(k));
   }
+  /** VEREDICTO da rotina da base (PURA, testável sem DOM): o que ainda PAGA estar na Fonte.
+   *
+   *  P0 MEDIDO (2026-10-23) — "arruma essa merda que fica indo na fonte sem ter o inventario
+   *  cheio": o veredicto era `faltandoNaBase().length === 0`, a lista CRUA. `lerCofre`,
+   *  `cofreA` (oportunidades) e `venderLixoCofre` (lote barato) ficavam `true` para sempre, o
+   *  `res.ok` nunca subia e o boneco ficava preso na Fonte: `farmar: NAO (base incompleta)`,
+   *  `restou: cofreA,lerCofre,venderLixoCofre,mercado` a cada 5 s.
+   *
+   *  Quem decide é a MESMA conta que decide a IDA (`motivosDeViagem`): se não paga viagem, não
+   *  segura. E um passo que FALHOU só conta se a necessidade dele ainda for motivo de viagem —
+   *  o cofre do Ornn que não abriu não pode prender o personagem na base.
+   */
+  function veredictoBase(falta, necess, falhas) {
+    const pendente = motivosDeViagem(falta, necess, cfg);
+    const passoDa = (nome) => { const par = PASSOS_BASE.find((x) => x[1] === nome); return !!(par && pendente.indexOf(par[0]) >= 0); };
+    const falhasContam = (Array.isArray(falhas) ? falhas : []).filter(passoDa);
+    return { pendente, falhasContam, ok: pendente.length === 0 && falhasContam.length === 0 };
+  }
 
   /** ROTINA DA BASE — REPETE até não faltar nada.
    *
@@ -5361,24 +5402,34 @@ const CFG_VER = 4;
       }
       // CAUSA (2)/(3): o veredicto é a RE-LEITURA, não a esperança do código.
       const fim = necessidadesBase();
+      // P0 MEDIDO (2026-10-23) — "fica indo na fonte sem ter o inventario cheio": `restou` é a
+      // lista de TUDO o que ainda está verdadeiro, incluindo OPORTUNIDADES (`lerCofre`,
+      // `cofreA`) e coisas que não pagam a viagem (`vender` com 3 itens, lixo do cofre de 300
+      // de ouro). Quem decide `ok` é o `veredictoBase` — a MESMA conta que decide a ida.
       res.restou = faltandoNaBase(fim);
+      const ver = veredictoBase(res.restou, fim, res.falhas);
+      res.pendente = ver.pendente;
+      res.falhasContam = ver.falhasContam;
       res.fechou = Math.max(0, inicio.length - res.restou.length);   // quantas necessidades FECHARAM
-      res.ok = res.restou.length === 0 && res.falhas.length === 0;
+      res.ok = ver.ok;
       // O que NÃO fechou fica indisponível por INDISPONIVEL_MS (deixa de ser pedido); o que
       // fechou volta a ser pedível quando aparecer outra vez. Sem isto, qualquer coisa que a
       // loja não vende (ex.: Poção Suprema abaixo do nível 30) vira ping-pong eterno.
+      // Só se quarentena o que PAGA viagem: uma oportunidade (`lerCofre`, `cofreA`) e um lote
+      // que não paga a ida (`vender`, `venderLixoCofre`) não são falhanços — se fossem
+      // marcados 45 min, o cofre deixava de ser lido e o lixo acumulava sem ninguém saber.
       const aindaAbertas = new Set(res.restou);
       // `comprarWatch` NUNCA fica 45 min indisponível: a oferta pode ter sido vendida
       // nesse instante e o poller (2 s) já traz outra. Marcar aqui mataria a vigia toda.
       // `tarefa` idem, mas por outro motivo: ficar SEM MISSÃO é proibido pelo dono; o travão
       // dela é o backoff curto de 60 s, não a quarentena de 45 min.
-      for (const k of res.restou) {
+      for (const k of res.pendente) {
         if (k === 'comprarWatch') continue;
         if (k === 'tarefa') { _tarefaProx = Date.now() + TAREFA_BACKOFF_MS; continue; }
-        marcarIndisponivel(k, 'a base não conseguiu fechar esta necessidade' + (res.falhas.length ? ' (passos: ' + res.falhas.join(',') + ')' : ''));
+        marcarIndisponivel(k, 'a base não conseguiu fechar esta necessidade' + (res.falhasContam.length ? ' (passos: ' + res.falhasContam.join(',') + ')' : ''));
       }
       for (const k of inicio) if (!aindaAbertas.has(k)) limparIndisponivel(k);
-      if (!res.ok) res.motivo = 'base incompleta: ' + (res.restou.length ? res.restou.join(',') : 'passos falhados (' + res.falhas.join(',') + ')');
+      if (!res.ok) res.motivo = 'base incompleta: ' + (res.pendente.length ? res.pendente.join(',') : 'passos falhados (' + res.falhasContam.join(',') + ')');
       logEvent('base', res);
       marcarAtiva();
     } finally { baseLock = false; baseLockAt = 0; }
@@ -7565,10 +7616,15 @@ const CFG_VER = 4;
    *  milhoes pra mais."
    *
    *  Regras, por ordem:
-   *   1) oferta do MESMO tier -> 90% da mais barata (regra de 2026-10-21);
-   *   2) sem oferta do mesmo tier, mas com oferta de tier SUPERIOR -> 90% da mais barata do
-   *      tier superior. É o TECTO: um tier inferior não pode ser anunciado acima de um tier
-   *      melhor que já está mais barato (foi exactamente o bug da bota);
+   *   1) oferta do MESMO tier -> 90% da mais barata. PONTO FINAL: é o preço DAQUELE tier no
+   *      mercado (ordem do dono, 2026-10-23, verbatim: "explica por que meu boneco ta vendendo
+   *      o mesmo item a 7999 tier b sendo que o primeiro mais barato anunciado na loja é 30k
+   *      tier b"). MEDIDO ao vivo: base 3190 tinha uma `~A` de 64 (lixo de alguém) e a `~B` mais
+   *      barata a 29.997 — o tecto do tier superior puxava a B para 58 (e antes para 7999).
+   *      Um tier A barato é o preço do tier A, não o preço do B;
+   *   2) SEM oferta do mesmo tier, com oferta de tier SUPERIOR -> 90% da mais barata do tier
+   *      superior. Aí (e só aí) o tier melhor funciona como TECTO — foi o caso da bota B a 1,5M
+   *      com uma A mais barata e NENHUMA B à venda: preço inventado acima do mercado real;
    *   3) tier A sem referência -> `precoSemComparavel` (1,5M). SÓ tier A;
    *   4) tier B/C sem referência -> NÃO usa 1,5M. Excepções nomeadas pelo dono, por ID-base:
    *      Rabadon (3089) -> 1,5M; Gume (3031) -> 10M+ (piso). Sem referência e sem excepção,
@@ -7596,19 +7652,12 @@ const CFG_VER = 4;
 
     const mesmoTier = ofertas.filter((x) => qDe(x) === qual);
     const refMesmo = menorDe(mesmoTier);
-    // Tier SUPERIOR: um tier pior não pode custar mais do que um tier melhor já à venda.
-    // A regra é o MENOR entre o mesmo tier e o tier superior — o caso do dono era uma bota
-    // B a 1,5M com uma A mais barata; escolher "mesmo tier primeiro" ainda a punha acima da A.
+    // Tier SUPERIOR: FALLBACK, não tecto. Só entra quando NÃO há oferta do mesmo tier (ver a
+    // doc acima: em 2026-10-23 o tecto punha uma B a 58 com a B do mercado a 29.997).
     const superior = ofertas.filter((x) => QUAL.includes(qDe(x)) && QUAL.includes(qual) && qIdx(qDe(x)) > qIdx(qual));
     const refSuperior = menorDe(superior);
-    const refs = [];
-    if (refMesmo != null) refs.push({ preco: refMesmo * fator, tipo: 'mesmo', ref: refMesmo, n: mesmoTier.length });
-    if (refSuperior != null) refs.push({ preco: refSuperior * fator, tipo: 'superior', ref: refSuperior, n: superior.length });
-    if (refs.length) {
-      const best = refs.reduce((a, b) => (b.preco < a.preco ? b : a));
-      const regra = best.tipo === 'mesmo' ? '90% do menor do MESMO tier' : '90% do menor de tier SUPERIOR (tecto)';
-      return outP(best.preco, regra, best.ref, best.n);
-    }
+    if (refMesmo != null) return outP(refMesmo * fator, '90% do menor do MESMO tier', refMesmo, mesmoTier.length);
+    if (refSuperior != null) return outP(refSuperior * fator, 'sem oferta do MESMO tier: 90% do menor de tier SUPERIOR', refSuperior, superior.length);
 
     // Excepções do dono, por ID-base (não por nome traduzido).
     const exc = (c.precoSemComparavelPorBase || {})[base];
@@ -7623,8 +7672,9 @@ const CFG_VER = 4;
   }
 
   /** REFERÊNCIA de preço de uma oferta MINHA no mercado (PURA). Usa o MESMO critério do
-   *  `precoDeAnuncio`: mesmo tier primeiro; se não houver, o tier SUPERIOR funciona como
-   *  TECTO. Devolve `{ alvo, tipo, ref, ofertasTier }` ou `null` (sem comparável). */
+   *  `precoDeAnuncio`: MESMO tier primeiro (é o preço daquele tier); o tier SUPERIOR só entra
+   *  quando não há NENHUMA oferta do mesmo tier. Devolve `{ alvo, tipo, ref, ofertasTier }` ou
+   *  `null` (sem comparável). */
   function referenciaPrecoMercado(o, mercado, conf) {
     const c = conf || cfg || {};
     const fator = typeof fatorAnuncio === 'function' ? fatorAnuncio() : 0.9;
@@ -7640,12 +7690,10 @@ const CFG_VER = 4;
     const refMesmo = menorDe(mesmo);
     const superior = ofertas.filter((x) => QUAL.includes(qDe(x)) && QUAL.includes(qual) && qIdx(qDe(x)) > qIdx(qual));
     const refSuperior = menorDe(superior);
-    // O MENOR entre o mesmo tier e o tier superior (a mesma regra do `precoDeAnuncio`).
-    const cands = [];
-    if (refMesmo != null) cands.push({ alvo: alvoDe(refMesmo), tipo: 'mesmo', ref: refMesmo, ofertasTier: mesmo.length });
-    if (refSuperior != null) cands.push({ alvo: alvoDe(refSuperior), tipo: 'superior', ref: refSuperior, ofertasTier: superior.length });
-    if (!cands.length) return null;
-    return cands.reduce((a, b) => (b.alvo < a.alvo ? b : a));
+    // MESMO tier manda. O superior só serve de referência quando aquele tier não tem oferta.
+    if (refMesmo != null) return { alvo: alvoDe(refMesmo), tipo: 'mesmo', ref: refMesmo, ofertasTier: mesmo.length };
+    if (refSuperior != null) return { alvo: alvoDe(refSuperior), tipo: 'superior', ref: refSuperior, ofertasTier: superior.length };
+    return null;
   }
 
   /** Lê os preços do mercado (aba Comprar): [{ base, qual, preco, txt }]. */
@@ -12833,7 +12881,7 @@ const CFG_VER = 4;
     // 2026-10-21 (lab): `venda` -> `sem lojista` numa aba oculta. Não se faz nada até voltar.
     if (typeof document !== 'undefined' && document.hidden) return;
     // Avalia a NECESSIDADE (vale na base E no campo): mochila cheia, tarefa pronta, lixo, sem tarefa
-    let motivo = null, motivoViagem = null, info = {}, falta = [], necess = null;
+    let motivo = null, motivoViagem = null, info = {}, falta = [], faltaViagem = [], necess = null;
     try {
       const bag = scanBag();
       // FONTE ÚNICA DA VERDADE: `necessidadesBase()` — a MESMA que o `acaoBase` usa (PASSOS_BASE).
@@ -12852,7 +12900,7 @@ const CFG_VER = 4;
       const itensVenda = Number(venda && venda.itens) || 0;
       const minVenda = Math.max(1, Number(cfg.venderMinItens) || 6);
       const vendaPagaViagem = !!venda && (!!venda.mochilaQuaseCheia || itensVenda >= minVenda);
-      const faltaViagem = motivosDeViagem(falta, necess);
+      faltaViagem = motivosDeViagem(falta, necess);
       motivoViagem = faltaViagem.length ? ('base: ' + faltaViagem.join(',')) : null;
       info.vendaPagaViagem = vendaPagaViagem; info.venderMinItens = minVenda;
       if (venda && !vendaPagaViagem && falta.indexOf('vender') >= 0) info.vendaAdiada = { itens: itensVenda, min: minVenda, motivo: 'nao paga a viagem (vende-se se ja estiver na base)' };
@@ -12887,8 +12935,14 @@ const CFG_VER = 4;
           // re-leitura final do `acaoBase`, mas esta leitura apanha o que APARECEU depois dela
           // (uma tarefa que ficou pronta, lixo novo, pontos de skill/atributo). Sem isto o
           // boneco saía da base a meio e voltava segundos depois — a queixa do dono.
-          let faltaAgora = [];
-          try { faltaAgora = faltandoNaBase(); } catch { /* ignore */ }
+          // SÓ volta a farmar se a rotina da base REALMENTE concluiu E nada PAGA viagem falta.
+          // P0 MEDIDO (2026-10-23): este portão usava `faltandoNaBase()` CRU — `lerCofre`,
+          // `cofreA` e `venderLixoCofre` (oportunidades / lote que não paga a ida) ficavam `true`
+          // para sempre e o boneco nunca saía da Fonte ("farmar: NAO (base incompleta)",
+          // `restou: cofreA,lerCofre,venderLixoCofre,mercado` a cada 5 s). Quem decide agora é a
+          // MESMA conta que decide a IDA (`motivosDeViagem`): se não paga viagem, não segura.
+          let faltaAgora = [], necessAgora = null;
+          try { necessAgora = necessidadesBase(); faltaAgora = motivosDeViagem(faltandoNaBase(necessAgora), necessAgora); } catch { /* ignore */ }
           // SÓ volta a farmar se a rotina da base REALMENTE concluiu E nada falta.
           // `podeFazer('autoplay')` em vez de `cfg.enabled` (correcção do Lead, 2026-10-14):
           // o actor pergunta à HIERARQUIA — viajar para farmar é auto-play, e o auto-play tem
@@ -12939,7 +12993,7 @@ const CFG_VER = 4;
       if (ocupado || _baseBusy || baseLock) return;   // NUNCA viajar com a base em andamento
       // ...e NUNCA com necessidade pendente. Se a lista do início do tick não estava vazia mas o
       // ramo de cima não correu (throttle de 20 s), liberta-se o throttle e a base roda já.
-      if (falta.length) { _ultimaBase = 0; logEvent('base', { farmar: 'NAO (falta ' + falta.join(',') + ')', falta }); return; }
+      if (faltaViagem.length) { _ultimaBase = 0; logEvent('base', { farmar: 'NAO (falta ' + faltaViagem.join(',') + ')', falta: faltaViagem, soOportunidades: falta.filter((k) => faltaViagem.indexOf(k) < 0) }); return; }
       if (Date.now() - ativaEm < (cfg.idleBaseMs || 180000)) return;
       // PORTÃO QUE FALTAVA (correcção do Lead, 2026-10-14): este ramo viajava para farmar SEM
       // perguntar nada — era o caminho que, com o auto-play desligado, punha a Katarina a
@@ -13343,7 +13397,7 @@ const CFG_VER = 4;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
+  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, veredictoBase, motivosDeViagem, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },

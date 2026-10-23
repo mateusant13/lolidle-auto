@@ -295,6 +295,55 @@ export const suite = {
       t.check('L6: e o motivo diz que o mercado está CHEIO', doBase4.some((a) => /CHEIO/.test(String(a.why || ''))));
     }
 
+    /* ============ L7 - VEREDICTO DA BASE: oportunidade NAO segura o boneco na Fonte ======
+     * Queixa do dono (2026-10-23, verbatim): "arruma agora essa merda que fica indo na fonte
+     * sem ter o inventario cheio ou coisa decente pra fazer". Medido ao vivo: `farmar: NAO
+     * (base incompleta)`, `restou: cofreA,lerCofre,venderLixoCofre,mercado` a cada 5 s — o
+     * boneco nunca saía da Fonte. O `ok` era `faltandoNaBase().length === 0`, a lista CRUA,
+     * onde `lerCofre`/`cofreA`/`venderLixoCofre` (oportunidades) ficam `true` para sempre.
+     * Quem decide é a MESMA conta que decide a IDA: `motivosDeViagem`. */
+    {
+      const w = novoMundo();
+      alimentarCatalogo(w.m);
+      definirCampeao(w.m, 'adtest');
+      // SÓ oportunidades abertas: a base está COMPLETA e ele pode farmar.
+      let v = w.auto.veredictoBase(['lerCofre', 'cofreA'], { _lixoCofre: null }, []);
+      t.check('L7: lerCofre/cofreA sozinhos NAO seguram o boneco (ok=true)', v.ok === true && v.pendente.length === 0);
+      // Um lote de venda que NÃO paga a viagem também não segura.
+      v = w.auto.veredictoBase(['vender'], { _venda: { itens: 1, valor: 10, mochilaQuaseCheia: false } }, ['venda']);
+      t.check('L7: venda que nao paga a ida NAO segura (nem a falha dela conta)', v.ok === true && v.falhasContam.length === 0);
+      // NECESSIDADE REAL aberta + falha DELA: segura, e o motivo diz qual.
+      v = w.auto.veredictoBase(['tarefa'], null, ['tarefas']);
+      t.check('L7: tarefa aberta + falha da tarefa SEGURA (ok=false)',
+        v.ok === false && v.pendente.indexOf('tarefa') >= 0 && v.falhasContam.indexOf('tarefas') >= 0);
+      // Falha de um passo cuja necessidade NÃO está aberta não conta (nem trava, nem quarentena).
+      v = w.auto.veredictoBase(['tarefa'], null, ['ler cofre']);
+      t.check('L7: falha de passo sem necessidade aberta NAO conta',
+        v.ok === false && v.falhasContam.length === 0 && v.pendente.indexOf('tarefa') >= 0);
+      // CONTROLO: sem nada aberto e sem falhas, ok.
+      v = w.auto.veredictoBase([], null, []);
+      t.check('L7: nada aberto -> ok', v.ok === true);
+    }
+
+    /* ============ L8 - HISTORICO: a vigia nao expulsa `base`/`morte` do ring ==============
+     * Medido 2026-10-23: o poller de 2 s escrevia `mercado {acao:'watch'}` a cada passagem
+     * (a oferta ficava pronta mas paga em ORBES, logo nunca comprava) e o ring de 200 ficava
+     * 100% `watch` — as entradas de `base` desapareciam antes do dono as ler. */
+    {
+      const w = novoMundo();
+      const w1 = (i) => w.auto.logEvent('mercado', { acao: 'watch', n: 1, prontas: 1, primeiro: { id: i, item: '3089+5~A', preco: 299, moeda: 'orbs' } });
+      w1('o1'); w1('o1'); w1('o1');
+      let watches = (w.auto.getFarm().log || []).filter((e) => e && e.acao === 'watch');
+      t.check('L8: 3 passagens da vigia com a MESMA oferta -> 1 entrada (repeticoes 2)',
+        watches.length === 1 && Number(watches[0].repeticoes) === 2);
+      w.auto.logEvent('base', { ir: 'ja na base' });
+      w1('o2');
+      watches = (w.auto.getFarm().log || []).filter((e) => e && e.acao === 'watch');
+      t.check('L8: oferta DIFERENTE -> entrada nova (2 no total)', watches.length === 2);
+      t.check('L8: a entrada de `base` continua no historico',
+        (w.auto.getFarm().log || []).some((e) => e && e.type === 'base' && e.ir === 'ja na base'));
+    }
+
     /* ============ R1 - REPETICAO DE ITEM BASE (TK-02-65) ============
      * motor.js:2902/2909/2913-2914: so o LENDARIO repetido e proibido. */
     {

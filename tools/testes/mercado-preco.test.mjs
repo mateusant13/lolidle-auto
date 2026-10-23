@@ -11,7 +11,8 @@
  *
  * O que este banco prova, SEM browser/rede:
  *   P1  mesmo tier -> 90% do menor (regra antiga preservada);
- *   P2  sem mesmo tier, tier SUPERIOR é TECTO -> 90% do menor do tier melhor;
+ *   P2  sem mesmo tier, tier SUPERIOR é o FALLBACK -> 90% do menor do tier melhor;
+ *       COM mesmo tier, o mesmo tier manda (correcção do dono, 2026-10-23);
  *   P3  1,5M só tier A; tier B/C sem referência NÃO usa 1,5M;
  *   P4  excepções do dono: Rabadon (3089) 1,5M; Gume (3031) 10M+;
  *   P5  `planejarMercado` DESCE uma oferta B quando há uma A mais barata;
@@ -51,7 +52,7 @@ export const suite = {
       [{ base: '3006', qual: 'B', preco: 1000000 }], CONF);
     t.check('P1: oferta do MESMO tier -> 90% do menor', r.preco === 900000 && /MESMO tier/i.test(r.regra));
 
-    /* ================= P2 - tier superior é TECTO ================= */
+    /* ================= P2 - tier superior é FALLBACK ================= */
     // O caso exacto do dono: B a 1,5M, mas existe uma bota A mais barata (1M).
     r = auto.precoDeAnuncio(
       { base: '3006', qual: 'B' },
@@ -67,16 +68,25 @@ export const suite = {
       { base: '3006', qual: 'C' },
       [{ base: '3006', qual: 'B', preco: 500000 }, { base: '3006', qual: 'A', preco: 800000 }], CONF);
     t.check('P2c: tier C usa o menor dos tiers SUPERIORES (B 500k -> 450k)', r.preco === 450000);
-    // O CASO EXACTO DO DONO: há uma oferta do MESMO tier, mas ela é MAIS CARA que a do tier
-    // superior. "Mesmo tier primeiro" ainda deixava a B acima da A; o preço tem de ser o menor.
+    // CORRIGIDO (dono, 2026-10-23): quando EXISTE oferta do MESMO tier, ela manda — o tier
+    // superior deixou de ser tecto e passou a ser FALLBACK. MEDIDO ao vivo na base 3190: uma
+    // `~A` de 64 (lixo de outro jogador) empurrava a `~B` anunciada para 58/7999, com a `~B`
+    // mais barata da loja a 29.997. Um tier A barato é o preço do A, não o preço do B.
     r = auto.precoDeAnuncio(
       { base: '3006', qual: 'B' },
       [{ base: '3006', qual: 'B', preco: 1000000 }, { base: '3006', qual: 'A', preco: 800000 }], CONF);
-    t.check('P2d: B 1M com A 800k -> 720k (a A manda, não o mesmo tier)', r.preco === 720000);
+    t.check('P2d: B 1M com A 800k -> 900k (o MESMO tier manda; a A não é tecto)', r.preco === 900000
+      && /MESMO tier/i.test(r.regra));
     r = auto.precoDeAnuncio(
       { base: '3006', qual: 'B' },
       [{ base: '3006', qual: 'B', preco: 500000 }, { base: '3006', qual: 'A', preco: 800000 }], CONF);
-    t.check('P2e: B 500k com A 800k -> 450k (aí o mesmo tier é o menor)', r.preco === 450000);
+    t.check('P2e: B 500k com A 800k -> 450k (mesmo tier, o menor)', r.preco === 450000);
+    // O CASO AO VIVO (2026-10-23): B do mercado a 29.997 e uma A de lixo a 64. O anúncio é
+    // 90% da B (26.997), nunca 90% da A (58).
+    r = auto.precoDeAnuncio(
+      { base: '3190', qual: 'B' },
+      [{ base: '3190', qual: 'B', preco: 29997 }, { base: '3190', qual: 'A', preco: 64 }], CONF);
+    t.check('P2f: B 29.997 com A 64 -> 26.997 (a A não define o preço do B)', r.preco === 26997);
 
     /* ================= P3 - 1,5M SÓ tier A ================= */
     r = auto.precoDeAnuncio({ base: '3006', qual: 'A' }, [], CONF);

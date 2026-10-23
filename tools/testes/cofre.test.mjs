@@ -621,13 +621,45 @@ export const suite = {
       // o banco comeca em modo observacao (DEFAULT.enabled=false); liga o mestre como a GUI faria
       auto.setConfig({ enabled: true });
       const n1 = auto.necessidadesBase();
-      t.check('C15: antes, n.venderLixoCofre e true (ha lixo, cadencia nao travada)', n1.venderLixoCofre === true);
+      // CORRIGIDO (2026-10-23): 1 básico no cofre NÃO paga a ida à Fonte (medido ao vivo:
+      // cofre com 1 item de 300 e `custoIda.ouro` = 340). Antes a necessidade ardia e o boneco
+      // ia, vendia, voltava e repetia. O portão do valor passou a estar AQUI, onde a
+      // necessidade nasce — não só em `motivosDeViagem`.
+      t.check('C15: 1 básico no cofre NÃO paga a ida -> n.venderLixoCofre false',
+        n1.venderLixoCofre === false
+          && n1._lixoCofre.itens === 1
+          && n1._lixoCofre.valor < n1._lixoCofre.custoOuro);
       const r = await auto.venderLixoDoCofre();
       t.check('C15: vendidos vazios (nao confirmou o saque)', Array.isArray(r.vendidos) && r.vendidos.length === 0);
       t.check('C15: a mochila NAO cresceu', m.estado.montados.get('#mochila')[0].children.length === 0);
       t.check('C15: NAO registou venda', !(auto.getFarm().log || []).some((e) => e.type === 'cofre' && e.acao === 'vender-lixo'));
+    }
+
+    /* ============ C15b - LIXO QUE PAGA A IDA: a necessidade volta a arder =============== */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest');
+      montarLocal(m, 'Fonte');
+      m.montar('#equip > button.slot[data-id]', [
+        m.el({ tag: 'button', label: 'equip:2007', className: 'slot lendario', attrs: { 'data-id': '2007~S', 'data-dica': 'Botas AD (lendario)' } }),
+      ]);
+      montarMochila(m, []);
+      // 12 cópias do MESMO básico: 11 são lixo e, somadas, pagam a ida (a conta é a do jogo,
+      // `valorVenda`, contra o `custoIdaBase` medido — nada de números escritos aqui).
+      montarGradeCofreMotor(m, Array.from({ length: 12 }, () => (
+        { base: '1005', qual: 'C', nome: 'Adaga Inutil [C]', rar: 'basico', dica: 'Adaga Inutil (basico)' }
+      )), { semSaque: true });
+      montarLojista(m, [{ id: '1005~C', dica: 'Adaga Inutil (basico)' }]);
+      auto.setConfig({ enabled: true });
+      const n1 = auto.necessidadesBase();
+      t.check('C15b: lixo que PAGA a ida -> n.venderLixoCofre true',
+        n1.venderLixoCofre === true && n1._lixoCofre.valor >= n1._lixoCofre.custoOuro && n1._lixoCofre.itens >= 2);
+      const r = await auto.venderLixoDoCofre();
+      t.check('C15b: vendidos vazios (nao confirmou o saque)', Array.isArray(r.vendidos) && r.vendidos.length === 0);
       const n2 = auto.necessidadesBase();
-      t.check('C15: DEPOIS, n.venderLixoCofre continua true (cadencia NAO avancou)', n2.venderLixoCofre === true);
+      t.check('C15b: DEPOIS, n.venderLixoCofre continua true (cadencia NAO avancou)', n2.venderLixoCofre === true);
     }
 
     /* C16 - NAO ANDAR AS CEGAS (bug medido ao vivo em 2026-10-20): com a aba em segundo plano
