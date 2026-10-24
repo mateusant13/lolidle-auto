@@ -753,5 +753,20 @@ Antes do D20, o Anciao tambem dizia `tMorrerS: null` — "nunca morre" — com 1
   passam `pocao` como TAXA. Falta UM adjudicador.
 - **D03/D04/D06** — `recomendar` continua a so' ver regioes com chefe (`agregar` so' cria `risco`
   quando ha `r.boss`); `scoreRegiao` continua a ordenar por ouro bruto; o CDR tem tres fontes.
-- **A bota (CDR vs penetracao)** — a afirmacao "a bota de CDR ganha a de penetracao" ainda NAO
-  tem prova calculada por fase (mobs vs chefe) nem troca automatica por fase. E' o proximo item.
+- **A bota: MEDIDA (2026-10-24), e a afirmacao NAO e' universal.** `node tools/botas-cdr-vs-pen.mjs`
+  corre as lutas no motor do jogo (Katarina nv36, base 3115/3089/3168/3031), com seed deterministica:
+
+  | tier | fase | CDR | PEN | vence |
+  |---|---|---|---|---|
+  | epico | mobs | 13,85 s | 13,95 s | empate |
+  | epico | chefe | 123,5 s / 70 pocoes | **121,25 s / 69** | **PEN** (a bota de CDR epica nao da AP; a de pen da 35) |
+  | lendario | mobs | 11,55 s | **10,75 s** | **PEN** |
+  | lendario | chefe | **107,2 s / 59 pocoes** | 113,4 s / 62 | **CDR** |
+
+  Ou seja: **"a bota de CDR ganha a de penetracao" so' na fase de CHEFE e no tier LENDARIO.** Em mobs
+  ganha a de penetracao, e no tier epico a de CDR perde tambem no chefe. Por isso a escolha nao pode
+  ser um id fixo: tem de sair do modelo por fase (`estimarSet`/`scoreSet` com o alvo da fase), que e'
+  como `buildIdeal`/`montarBuildDe` ja tratam as botas (pool separado por `espaco === 'botas'`,
+  `automation.js:9375-9540`). **Por medir:** se o MODELO concorda com o JOGO nestas quatro linhas -
+  e' o passo seguinte (o resto do modelo ja foi validado contra o motor nas outras grandezas).
+
