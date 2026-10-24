@@ -201,7 +201,11 @@ export const suite = {
     t0 = Date.now();
     auto.buildIdealPara(c);
     const dt2 = Date.now() - t0;
-    t.check('B2a: a 1ª chamada (beam) demora < 2 s no stub (' + dt1 + ' ms)', dt1 < 2000);
+    // LIMIAR (2026-10-23): era 2.000 ms e deu FALSO VERMELHO com a maquina carregada (8 processos
+    // de mutacao em paralelo -> 2.082 ms). O que este check existe para apanhar e' um BLOQUEIO (o
+    // beam que pendurava o main thread), nao uma variacao de 4%. 5 s continua a apanhar o bug real
+    // e deixa de acusar contencao de CPU. Um limiar de tempo que depende da carga nao e' instrumento.
+    t.check('B2a: a 1ª chamada (beam) demora < 5 s no stub (' + dt1 + ' ms)', dt1 < 5000);
     t.check('B2b: a 2ª chamada (cache hit) demora < 50 ms (' + dt2 + ' ms)', dt2 < 50);
 
     /* =====================================================================

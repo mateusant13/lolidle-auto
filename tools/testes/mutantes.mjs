@@ -16,7 +16,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
+import os from 'node:os';
+import { spawn } from 'node:child_process';
 import process from 'node:process';
 import { RAIZ, AUTOMATION_PATH, AUTOMATION_REL } from './dom-stub.mjs';
 
@@ -151,9 +153,13 @@ const MUTACOES = [
   },
   {
     id: 'M13-sem-piso-do-lojista',
-    o_que: 'o piso do Lojista desaparece (oferta de 64 volta a ser referencia -> um lendario cai para 58 de ouro)',
-    old: '    const pisoLoj = Math.max(0, Math.round(Number(valorVenda(base, qual, refinoIt)) || 0));',
-    new: '    const pisoLoj = 0;',
+    o_que: 'os dois pisos (Lojista e minimo do jogo) desaparecem -> uma oferta de 64 volta a ser referencia e um lendario cai para 58',
+    // NOTA (2026-10-23): a ancora antiga (`const pisoLoj = Math.max(0, ... valorVenda(..., refinoIt))`)
+    // deixou de existir quando o preco passou a ler `pisosDoItem` (Lojista + minimo do JOGO). A
+    // mutacao foi re-apontada para a linha que devolve os DOIS pisos — zerar so' o do Lojista nao
+    // reproduz o defeito, porque o minimo do jogo (7999 em 3190~B) continuaria a segurar o preco.
+    old: '    return { loj, jogo: pisoJogoDe(base, qual), total: Math.max(0, loj, pisoJogoDe(base, qual)) };',
+    new: '    return { loj: 0, jogo: 0, total: 0 };   // mutado: sem piso nenhum',
     esperado: 'P9: oferta de 64 (abaixo do Lojista) NAO e referencia -> sem preco (nunca 58)',
   },
   {
@@ -201,51 +207,167 @@ const MUTACOES = [
   },
 ];
 
+/* ---------------------------------------------------------------------------------------------
+ * O RUNNER. Porque isto nao pode demorar 17 minutos a dizer "falhou" (dono, 2026-10-23).
+ *
+ * A primeira versao corria as N mutacoes EM SERIE e so' no fim imprimia o veredicto. Medido: 1026 s
+ * para falhar, e a falha era UMA ancora podre (M13) — que se sabe em 0,05 s sem correr banco
+ * nenhum. Quatro correcoes, por ordem de poupanca:
+ *
+ *   1. PRE-VOO. A ancora de cada mutacao (`old`) tem de existir EXACTAMENTE uma vez na fonte. Se
+ *      alguma nao existir, imprime as podres e SAI antes de correr o banco. Ancora podre custa 0 s.
+ *   2. CACHE POR CONTEUDO. A chave e' o sha256 da fonte JA' MUTADA + o da populacao de testes. Se
+ *      esse par nao mudou desde a ultima vez que a mutacao foi PEGA, o resultado vale (`cached`).
+ *      Nao se cacheia SOBREVIVENTE: um buraco tem de voltar a doer em cada corrida.
+ *   3. PARALELO. Cada mutacao e' um processo independente sobre o seu proprio ficheiro temporario.
+ *      Corre em `--jobs N` de cada vez (por omissao nucleos-1, maximo 8).
+ *   4. PARAGEM CEDO. O `run.mjs` sai mal a assercao esperada falha (`LOLIDLE_ESPERADO`), em vez de
+ *      correr todas as suites so' para imprimir a mesma linha no fim.
+ *
+ * Uso:
+ *   node tools/testes/mutantes.mjs                # tudo, paralelo, com cache
+ *   node tools/testes/mutantes.mjs --refresh      # ignora a cache (corre todas)
+ *   node tools/testes/mutantes.mjs --jobs 4       # menos paralelismo (maquina ocupada)
+ *   node tools/testes/mutantes.mjs --fail-fast    # para no primeiro sobrevivente
+ * ------------------------------------------------------------------------------------------- */
+
 const original = fs.readFileSync(AUTOMATION_PATH, 'utf8');
+const TES = path.join(RAIZ, 'tools', 'testes');
+const CACHE = path.join(TES, '.mutantes-cache.json');
+const arg = (n) => process.argv.slice(2).includes(n);
+const refresh = arg('--refresh');
+const failFast = arg('--fail-fast');
+const verbose = arg('--verbose');
+
+const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
+
+/* Populacao de testes: tudo o que pode mudar o veredicto. `mutantes.mjs` sai de proposito — mudar
+ * uma mutacao nao invalida o resultado das OUTRAS (o `new` faz parte da chave de cada uma). */
+function shaPopulacao() {
+  const h = crypto.createHash('sha256');
+  const nomes = fs.readdirSync(TES)
+    .filter((n) => !n.startsWith('.') && (n.endsWith('.mjs') || n.endsWith('.js')))
+    .filter((n) => n !== 'mutantes.mjs' && n !== 'bateria.mjs' && n !== 'saude.mjs')
+    .sort();
+  for (const n of nomes) h.update(n + '=' + sha(fs.readFileSync(path.join(TES, n), 'utf8')) + '\n');
+  return h.digest('hex');
+}
+
 console.log('Mutation testing do banco de regressao');
 console.log('ALVO ' + AUTOMATION_REL + '  bytes=' + original.length);
-console.log('');
+
+/* ---- 1. PRE-VOO: ancora tem de existir exactamente uma vez ---- */
+const podres = [];
+for (const m of MUTACOES) {
+  const n = original.split(m.old).length - 1;
+  if (n !== 1) podres.push({ m, n });
+}
+if (podres.length) {
+  console.log('');
+  for (const { m, n } of podres) {
+    console.log('ANCORA-PODRE ' + m.id + ': ' + n + ' ocorrencias do trecho (esperado 1)');
+    console.log('  old: ' + JSON.stringify(m.old.slice(0, 110)));
+    console.log('  a fonte mudou. Re-aponta a mutacao em tools/testes/mutantes.mjs (REGRA No 7).');
+  }
+  console.log('');
+  console.log('MUTACOES ' + MUTACOES.length + '  ANCORAS-QUEBRADAS ' + podres.length + '  (nada foi executado)');
+  console.log('rc=1');
+  process.exit(1);
+}
+
+/* ---- 2. cache ---- */
+let cache = {};
+try { cache = JSON.parse(fs.readFileSync(CACHE, 'utf8')); } catch { cache = {}; }
+const gravarCache = () => { try { fs.writeFileSync(CACHE, JSON.stringify(cache, null, 1), 'utf8'); } catch { /* cache e' acessorio */ } };
+
+const pop = shaPopulacao();
+const argv = process.argv.slice(2);
+const nJobs = (() => {
+  const i = argv.findIndex((a) => a === '--jobs' || a.startsWith('--jobs='));
+  if (i < 0) return null;
+  const v = argv[i].includes('=') ? argv[i].split('=')[1] : argv[i + 1];
+  return Number(v) || null;
+})();
+const jobs = Math.max(1, nJobs || Math.min(8, Math.max(1, (os.cpus().length || 4) - 1)));
 
 fs.rmSync(TMP, { recursive: true, force: true });
 fs.mkdirSync(TMP, { recursive: true });
+console.log('PARALELO ' + jobs + ' processos  populacao=' + pop.slice(0, 12) + '  cache=' + Object.keys(cache).length);
+console.log('');
 
-let pegos = 0;
 const resultados = [];
-for (const m of MUTACOES) {
-  const ocorrencias = original.split(m.old).length - 1;
-  if (ocorrencias !== 1) {
-    resultados.push({ m: m, ok: false, nota: 'mutacao NAO aplicavel: ' + ocorrencias + ' ocorrencias do trecho (a fonte mudou?)' });
-    continue;
-  }
-  const ficheiro = path.join(TMP, m.id + '.js');
-  fs.writeFileSync(ficheiro, original.replace(m.old, m.new), 'utf8');
-  const r = spawnSync(process.execPath, [path.join('tools', 'testes', 'run.mjs')], {
-    cwd: RAIZ,
-    env: Object.assign({}, process.env, { LOLIDLE_AUTOMATION: ficheiro }),
-    encoding: 'utf8',
+let pegos = 0, saltados = 0, sobreviventes = 0, parar = false;
+const t0 = Date.now();
+
+function correr(m) {
+  return new Promise((resolver) => {
+    const mutado = original.replace(m.old, m.new);
+    const chave = sha(mutado + '|' + pop);
+    const c = cache[chave];
+    if (!refresh && c) { resolver({ m, estado: 'cached', nota: 'mesmo conteudo de ' + c.quando, ms: 0, chave }); return; }
+    const ficheiro = path.join(TMP, m.id + '.js');
+    fs.writeFileSync(ficheiro, mutado, 'utf8');
+    const t = Date.now();
+    const p = spawn(process.execPath, [path.join('tools', 'testes', 'run.mjs')], {
+      cwd: RAIZ,
+      env: Object.assign({}, process.env, { LOLIDLE_AUTOMATION: ficheiro, LOLIDLE_ESPERADO: m.esperado }),
+    });
+    let out = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.stderr.on('data', (d) => { out += d; });
+    p.on('close', (code) => {
+      try { fs.rmSync(ficheiro, { force: true }); } catch { /* ignore */ }
+      const vermelho = code !== 0;
+      const pego = out.includes('FALHOU: ' + m.esperado);
+      const ok = vermelho && pego;
+      const ms = Date.now() - t;
+      const nota = 'rc=' + code + ' assercaoEsperadaFalhou=' + pego
+        + (vermelho ? '' : ' <-- BURACO: mutacao sobreviveu em verde!');
+      resolver({ m, estado: ok ? 'pego' : 'sobrevivente', nota, ms, chave, ok, cedo: out.includes('PARAGEM-CEDO') });
+    });
   });
-  const saida = String(r.stdout || '');
-  const vermelho = r.status !== 0;
-  const assercaoPega = saida.indexOf('FALHOU: ' + m.esperado) >= 0;
-  const ok = vermelho && assercaoPega;
-  if (ok) pegos++;
-  resultados.push({
-    m: m, ok: ok,
-    nota: 'rc=' + r.status + ' assercaoEsperadaFalhou=' + assercaoPega
-      + (vermelho ? '' : ' <-- BURACO: mutacao sobreviveu em verde!'),
-  });
-  fs.rmSync(ficheiro, { force: true });
 }
+
+function anunciar(r) {
+  const s = (r.ms / 1000).toFixed(1) + 's';
+  if (r.estado === 'pego') { pegos++; console.log('PEGO    ' + r.m.id + '  (' + s + (r.cedo ? ', paragem cedo' : '') + ')'); }
+  else if (r.estado === 'cached') { saltados++; console.log('CACHED  ' + r.m.id); }
+  else { sobreviventes++; console.log('SOBREVIVEU ' + r.m.id + '  (' + s + ')  <-- BURACO NO BANCO'); }
+  if (verbose) console.log('  ' + r.m.o_que);
+}
+
+async function trabalhador(fila) {
+  while (fila.length && !parar) {
+    const m = fila.shift();
+    const r = await correr(m);
+    if (r.ok) { cache[r.chave] = { quando: new Date().toISOString().slice(0, 19), id: r.m.id }; gravarCache(); }
+    resultados.push(r);
+    anunciar(r);
+    if (r.estado === 'sobrevivente' && failFast) parar = true;
+  }
+}
+
+const fila = MUTACOES.slice();
+await Promise.all(Array.from({ length: Math.min(jobs, fila.length) }, () => trabalhador(fila)));
 fs.rmSync(TMP, { recursive: true, force: true });
 
-for (const r of resultados) {
-  console.log((r.ok ? 'PEGO   ' : 'FALHOU ') + r.m.id);
-  console.log('  mutacao: ' + r.m.o_que);
-  console.log('  esperado: FALHOU: ' + r.m.esperado);
-  console.log('  ' + r.nota);
+/* ---- 3. detalhe so' do que interessa ---- */
+const problemas = resultados.filter((r) => r.estado === 'sobrevivente');
+if (problemas.length) {
+  console.log('');
+  for (const r of problemas) {
+    console.log('SOBREVIVENTE ' + r.m.id);
+    console.log('  mutacao: ' + r.m.o_que);
+    console.log('  esperado: FALHOU: ' + r.m.esperado);
+    console.log('  ' + r.nota);
+  }
 }
+const naoCorridos = MUTACOES.length - resultados.length;
+if (naoCorridos) console.log('NAO CORRIDOS (paragem cedo pedida): ' + naoCorridos);
+
 console.log('');
-console.log('MUTACOES ' + MUTACOES.length + '  PEGAS ' + pegos + '  SOBREVIVENTES ' + (MUTACOES.length - pegos));
-const rc = pegos === MUTACOES.length ? 0 : 1;
+console.log('MUTACOES ' + MUTACOES.length + '  PEGAS ' + pegos + '  CACHED ' + saltados + '  SOBREVIVENTES ' + sobreviventes
+  + (naoCorridos ? '  NAO-CORRIDOS ' + naoCorridos : '') + '  em ' + ((Date.now() - t0) / 1000).toFixed(1) + 's');
+const rc = sobreviventes === 0 ? 0 : 1;
 console.log('rc=' + rc);
 process.exit(rc);

@@ -139,6 +139,14 @@ const checks = [];
 const notas = [];
 let populacaoExecutada = 0;
 
+/* PARAGEM CEDO PARA O MUTANTE (2026-10-23). Quem corre uma mutacao so' precisa de uma resposta:
+ * "a assercao esperada falhou?". Correr as 45 suites depois de ela falhar e' tempo do dono
+ * queimado — a primeira versao da bateria de mutacoes gastou 1026 s para dizer isto. Quando
+ * `LOLIDLE_ESPERADO` esta' definido, a corrida termina na suite onde a assercao falhou; o resto das
+ * suites nem arranca, e o cabecalho diz quantas ficaram por correr (jidoka: nada passa em claro). */
+const ESPERADO = process.env.LOLIDLE_ESPERADO || null;
+let pegaCedo = null;
+
 function criarT(nome) {
   return {
     nome: nome,
@@ -152,6 +160,8 @@ function criarT(nome) {
         origem: 'suite',
         detalhe: detalhe != null ? String(detalhe) : (ok ? '' : 'valor=' + String(cond)),
       });
+      // a assercao que o mutante tinha de derrubar: nao ha' mais nada a provar
+      if (!ok && ESPERADO && String(rotulo) === ESPERADO) pegaCedo = String(rotulo);
       return ok;
     },
     nota: (s) => notas.push('[' + nome + '] ' + String(s)),
@@ -172,6 +182,7 @@ for (const s of SUITES) {
   }
   const mundos = mundosCriados().slice(antes);
   porSuite.push({ suite: s, mundos: mundos, ms: Date.now() - t0 });
+  if (pegaCedo) break;              // o mutante ja' foi derrubado: nao vale a pena continuar
 }
 
 /* ----------- auditoria do stub: UNSTUBBED e erros async viram FALHA ----------- */
@@ -256,6 +267,7 @@ const totalIntervals = porSuite.reduce((s, p) => s + p.intervals, 0);
 console.log('UNSTUBBED ' + totalUnstubbed + (totalUnstubbed ? '  (cada buraco acima e uma FALHA: o stub nao conhece o seletor)' : '  (nenhum buraco: todos os seletores procurados estao no vocabulario do stub)'));
 console.log('INTERVALS ' + totalIntervals + ' registados e NAO disparados (limitacao declarada: o loop de fundo do jogo fica fora do banco)');
 if (filtro) console.log('FILTRO "' + filtro + '" aplicado na contagem (as suites correram inteiras para o UNSTUBBED nao mentir)');
+if (pegaCedo) console.log('PARAGEM-CEDO a assercao esperada falhou; ' + (SUITES.length - porSuite.length) + ' suítes nao chegaram a arrancar (LOLIDLE_ESPERADO)');
 if (notas.length) for (const n of notas) console.log('NOTA ' + n);
 console.log('rc=' + rc);
 process.exit(rc);
