@@ -2662,7 +2662,9 @@ switches: 'interruptores',
       // Risco de MOBS e de CHEFE são coisas diferentes (dono, 2026-10-23): a região pode ser
       // segura nos mobs e letal no chefe (Covil do Barão). Mostrar um veredicto só escondia isso.
       const mobs = x.mobsMatam === true ? '💀 mobs' : (x.mobsMatam === false ? '✔ mobs' : '- mobs');
-      const chefe = x.chefeMatam === true ? '💀 chefe' : (x.chefeMatam === false ? '✔ chefe' : '- chefe');
+      // D14 (2026-10-23): o campo que `rankRegioes` devolve e `chefeFatal` (automation.js:13240).
+      // A GUI testava `chefeMatam`, que NAO existe nesta linha: a coluna mostrava sempre "- chefe".
+      const chefe = x.chefeFatal === true ? '💀 chefe' : (x.chefeFatal === false ? '✔ chefe' : '- chefe');
       return mobs + ' · ' + chefe;
     };
     setHtml('ap-fm-rank', card('Ranking por ' + (obj === 'ouro' ? 'ouro' : obj === 'runas' ? 'runas' : 'experiência'), 'estimativa para o seu nível',

@@ -655,3 +655,49 @@ Honestidade sobre o alcance deste documento:
 - Nenhuma medição **ao vivo** foi feita para este documento. Todos os números de §4 são **derivados
   do código**, não observados. Onde o `automation.js` cita uma medição alheia (ex.: 42,75 s vs
   38,95 s em `10578`), isso está marcado como **citação do comentário**, não como medição minha.
+
+---
+
+## 7. ESTADO EM 2026-10-23 (o que fechou, com a prova)
+
+> Esta secção foi acrescentada no fim (Regra N.o 5: um escritor, acrescenta no fim). As linhas
+> citadas em §3 sao as de quando o documento foi escrito; varias ja' andaram. **Nao confiar nelas
+> sem re-medir** — e' exactamente o defeito que o Anexo A ja' registava.
+
+### 7.1 Fechadas, com banco a provar (tools/testes/matematica-unificada.test.mjs, 23 checks)
+
+| id | grandeza | antes | agora |
+|---|---|---|---|
+| D07 | tabela de `NIVEL_DIF` | `fatorDanoMonstroMotor` lia uma fotografia local (0,15 / max 3) | le `nivelDifMotor()` (a tabela do motor) — U1..U1d |
+| D08 | cura da pocao | `cura * 0,6` em `avaliar` vs `cura / EXAUSTAO` em `estimarLuta` | uma funcao, `curaPocaoS()` — U2..U2d |
+| D09 | preco da pocao | `* 110` fixo em tres sitios | `precoPocaoEmUso()` le o catalogo — U3, U3b |
+| D18 | roubo de vida no veredicto do chefe | `avaliar` chamado sem o DPS -> `curaRv = 0` | 5.o argumento passado — U4..U5d |
+| D20 (novo) | pocao | tratada como TAXA continua (`net - curaPocaoS()` = 2.200 hp/s para sempre -> `tMorrer = Infinity`) | RESERVATORIO: `n` cargas de `cura` (`pocoesEmMao()`, motor.js:1407-1416), `tMorrer = (vidaPool + n*cura) / liquido` — U6..U6d |
+
+Cada uma tem braco negativo em `tools/testes/mutantes.mjs` (M19, M20, M21, M22, M23): a mutacao
+reintroduz o defeito e o banco **falha na assercao certa**.
+
+**Medido ao vivo** (2026-10-23, `BUILD 2026-10-23-pocao-reservatorio`, `tools/_prova-math.mjs`):
+
+```
+riocuraTotalS=218.8 netS=-89.2   tMorrerS=null (nunca morre)  ganha=true
+dragao  netS=-28.3               ganha=true
+barao   netS=+204.0              tMorrerS=7359.5             ganha=true   (680 Supremas = 1,5M hp de reserva)
+anciao  netS=+1300.6             tMorrerS=1154.2             ganha=false  (mecanica fatal: piorMec >= vidaPool)
+```
+
+Antes do D20, o Anciao tambem dizia `tMorrerS: null` — "nunca morre" — com 1.300 hp/s de dano liquido.
+
+### 7.2 Aberto (declarado, nao fingir que esta fechado)
+
+- **D01 continua aberta.** Ha' ainda tres doutrinas: `avaliar.morre` (`liquido > 0 || !mix || mortal`),
+  `sobrevivenciaSet.morre` (`tMorrer < tKill`, sem cura nenhuma) e os chamadores de `avaliar` que
+  passam `pocao: curaPocaoS()` (uma TAXA) — `risco` de regiao e o veredicto em combate. Esses dois
+  ultimos mantem o defeito do D20 **num nivel acima**: uma regiao/chefe com `net > 0` pode aparecer
+  como segura porque o `liquido` do `avaliar` ficou negativo por causa da taxa infinita.
+- **D12** (`sobrevivenciaSet` vs `estimarLuta`) usa `dpsChefe` sem subtrair o sustento: e' o modelo
+  mais pessimista dos tres. O `potS` de `estimarLuta` passou a ser **cargas por segundo** (era
+  hp/s), por isso `nPocoes = potS * tFim` continua a dar cargas — mas a unidade mudou e quem ler
+  `potS` a pensar em hp/s engana-se.
+- **GUI**: `tMorrerS` de milhares de segundos e' aritmeticamente certo e inutil de ler. Um tecto de
+  apresentacao (ex.: "> 10 min") e' decisao do dono, nao do modelo.

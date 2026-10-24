@@ -173,5 +173,36 @@ export const suite = {
       t.check('M8: fetch a falhar -> obterItem devolve ok:false (sem rebentar)', r.ok === false);
       t.check('M8: fetch a falhar -> NAO abre o mercado (zero keydown)', teclas.length === 0);
     }
+
+    /* ---- M9 - P0 MEDIDO AO VIVO (2026-10-23): "ele ta voltando pra base de forma seguida. nao
+     * deu 10 segundos e voltou pra base de novo". Causa: `mercadoTemDaBuild()` respondia TRUE
+     * enquanto houvesse QUALQUER peca da build no mercado — mesmo que o campeao JA a tivesse em
+     * casa (havia uma Rabadon ~A a 148 e a Rabadon equipada) ou que o preco estourasse o tecto.
+     * A necessidade `comprar` nunca fechava: ia a Fonte, nao comprava nada, voltava em 20 s. ---- */
+    const cen = async (nome, montar, ofertas) => {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      const { alimentarCatalogo, definirCampeao } = await import('./dom-stub.mjs');
+      alimentarCatalogo(m); definirCampeao(m, 'aptest');
+      auto.setConfig({ enabled: true });
+      const base = String((auto.buildIdeal() || [])[0] || '');
+      m.montar('#st-ouro', [m.el({ label: 'st-ouro', textContent: '1M' })]);
+      if (montar) montar(m, base);
+      stubFetch(m, ofertas(base));
+      auto.atualizarMercadoServidor();
+      await new Promise((r) => setTimeout(r, 0));
+      return { v: auto.mercadoTemDaBuild(), base };
+    };
+    const r9a = await cen('pode comprar', null, (b) => [{ id: '1', item: b + '~A', preco: 1000, minha: false }]);
+    t.check('M9a: peca da build a venda, sem a ter, ouro chega -> true', r9a.v === true);
+    const r9b = await cen('ja tenho', (m, b) => {
+      m.montar('#equip > button.slot[data-id]', [m.el({
+        tag: 'button', label: 'equip:' + b, className: 'slot lendario',
+        attrs: { 'data-id': b + '~C', 'data-dica': '' },
+      })]);
+    }, (b) => [{ id: '1', item: b + '~A', preco: 1000, minha: false }]);
+    t.check('M9b: ... mas JA A TENHO equipada -> false (era o ciclo de 20 em 20 s)', r9b.v === false);
+    const r9c = await cen('caro demais', null, (b) => [{ id: '1', item: b + '~A', preco: 9000000, minha: false }]);
+    t.check('M9c: preco acima do tecto (nunca zera o ouro das pocoes) -> false', r9c.v === false);
   },
 };

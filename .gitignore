@@ -8,3 +8,9 @@ node_modules/
 _dsh-dump.txt
 # Binarios do Windows que um script meteu aqui por env var nao-expandida.
 %SystemDrive%/
+
+# Instrumentos de bateria: cache/logs locais (nao sao fonte, regeneram-se).
+tools/testes/.bateria-cache.json
+tools/testes/.bateria/
+tools/testes/.mutantes/
+tools/testes/.mut/

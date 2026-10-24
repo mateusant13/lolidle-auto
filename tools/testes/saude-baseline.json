@@ -1,0 +1,62 @@
+{
+  "automation.js": {
+    "bytes": 985958,
+    "linhas": 14188,
+    "defs": 512,
+    "funcaoMaisLonga": {
+      "nome": "planBag",
+      "linhas": 420
+    },
+    "catchVazios": 69
+  },
+  "background.js": {
+    "bytes": 922,
+    "linhas": 29,
+    "defs": 0,
+    "funcaoMaisLonga": {
+      "nome": "-",
+      "linhas": 0
+    },
+    "catchVazios": 0
+  },
+  "content.js": {
+    "bytes": 36716,
+    "linhas": 683,
+    "defs": 37,
+    "funcaoMaisLonga": {
+      "nome": "choosePotion",
+      "linhas": 63
+    },
+    "catchVazios": 4
+  },
+  "gui.js": {
+    "bytes": 356472,
+    "linhas": 4932,
+    "defs": 160,
+    "funcaoMaisLonga": {
+      "nome": "renderAgora",
+      "linhas": 198
+    },
+    "catchVazios": 8
+  },
+  "inject.js": {
+    "bytes": 46150,
+    "linhas": 769,
+    "defs": 29,
+    "funcaoMaisLonga": {
+      "nome": "snapshot",
+      "linhas": 56
+    },
+    "catchVazios": 2
+  },
+  "popup.js": {
+    "bytes": 10325,
+    "linhas": 201,
+    "defs": 8,
+    "funcaoMaisLonga": {
+      "nome": "desenharEstado",
+      "linhas": 71
+    },
+    "catchVazios": 0
+  }
+}

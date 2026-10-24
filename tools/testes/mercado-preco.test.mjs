@@ -321,5 +321,67 @@ export const suite = {
     t.check('P7d: venderBase NÃO vende o mítico (nem clica no slot)',
       res.ok === true && res.epicosVendidos.indexOf('9001~A') < 0
         && m3.clicksDePrefixo('slot:').indexOf('9001~A') < 0);
+
+    /* ================= P9 - PISO DO LOJISTA (P0 ao vivo, 2026-10-23) =====================
+     * O dono, verbatim: "eu acho que ele acabou de ou anunciar, ou vender ao lojista um item
+     * lendario. acho que era o medalhao solari ou capa de fogo. veja. aconteceu agora."
+     * MEDIDO no log: `reajuste de:7999 para:58` num Medalhão dos Solari de Ferro ~B (lendário) —
+     * 58 de ouro. A causa: o mercado tinha um `3190~A` a 64 (isco) e a regra "90% do menor"
+     * aceitava esse lixo como referência. A regra do JOGO que fecha isto: o Lojista paga
+     * `valorVenda` (motor.js:257) pelo mesmo item; uma oferta abaixo disso não é comparável e o
+     * nosso preço nunca desce abaixo disso. No catálogo do banco, `9500` custa 3.000 -> o
+     * Lojista paga 1.500 por um ~B. */
+    const PISO_B = 1500;
+    r = auto.precoDeAnuncio({ base: '9500', qual: 'B' }, [{ base: '9500', qual: 'B', preco: 64 }], CONF);
+    t.check('P9: oferta de 64 (abaixo do Lojista) NAO e referencia -> sem preco (nunca 58)',
+      r.preco === null && r.pisoLoj === PISO_B);
+    r = auto.precoDeAnuncio({ base: '9500', qual: 'B' },
+      [{ base: '9500', qual: 'B', preco: 64 }, { base: '9500', qual: 'B', preco: 20000 }], CONF);
+    t.check('P9b: com uma oferta sa de 20.000, o preco e 90% dela (18.000) - a de 64 e ignorada',
+      r.preco === 18000);
+    r = auto.precoDeAnuncio({ base: '9500', qual: 'B' }, [{ base: '9500', qual: 'B', preco: 1600 }], CONF);
+    t.check('P9c: 90% de 1.600 (1.440) NUNCA desce abaixo do Lojista -> 1.500', r.preco === PISO_B);
+
+    let ref = auto.referenciaPrecoMercado({ base: '9500', qual: 'B', item: '9500~B' },
+      [{ base: '9500', qual: 'B', preco: 64 }], CONF);
+    t.check('P9d: o REAJUSTE tambem nao aceita referencia abaixo do Lojista (null, nao 58)', ref === null);
+    ref = auto.referenciaPrecoMercado({ base: '9500', qual: 'B', item: '9500~B' },
+      [{ base: '9500', qual: 'B', preco: 20000 }], CONF);
+    t.check('P9e: reajuste com oferta sa -> 18.000', !!ref && ref.alvo === 18000);
+    ref = auto.referenciaPrecoMercado({ base: '9500', qual: 'B', item: '9500~B' },
+      [{ base: '9500', qual: 'B', preco: 1600 }], CONF);
+    t.check('P9f: reajuste nunca desce abaixo do Lojista (1.500)', !!ref && ref.alvo === PISO_B);
+
+    /* ================= P10 - O REAJUSTE É SIMÉTRICO (queixa: "os preços errados nunca mudam") ==
+     * Uma oferta MINHA a 1,5M com o MESMO tier a 20.000 na praça tem de DESCER — o "só sobe"
+     * antigo deixava-a lá para sempre (e ela nunca vende). O piso do Lojista (P9) é quem impede
+     * a queda para o lixo. */
+    m.sandbox.fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => ({
+        ofertas: [
+          OF('o10', '9500~B', 1500000, { minha: true }),
+          OF('o11', '9500~B', 20000, { minha: false }),
+        ],
+      }),
+    });
+    const p10 = await auto.planejarMercado();
+    const a10 = (p10.acoes || []).find((x) => x.id === 'o10');
+    t.check('P10: oferta a 1,5M com o MESMO tier a 20k -> DESCE para 18.000',
+      !!a10 && a10.para === 18000 && /descer/i.test(a10.acao));
+
+    /* ================= P11 - O MÍNIMO DO JOGO É PISO (medido ao vivo, 2026-10-23) ==========
+     * `#mj-minimo` (jogo.js:2700) diz o mínimo que o jogo aceita por item. Ao vivo, o de um
+     * Medalhão dos Solari de Ferro ~B era **7.999** — e o plano dizia 58. Sem guardar este valor,
+     * o reajuste cancelava e reanunciava no mesmo preço a cada 30 min (churn). Ele também não é
+     * um comparável: uma oferta abaixo do mínimo do jogo não existe. */
+    t.check('P11: sem leitura do mínimo, 90% de 9.500 é 8.550', auto.pisoJogoDe('9500', 'B') === 0
+      && auto.precoDeAnuncio({ base: '9500', qual: 'B' }, [{ base: '9500', qual: 'B', preco: 9500 }], CONF).preco === 8550);
+    auto.anotarMinimoJogo('9500~B', 9000);
+    t.check('P11b: mínimo do jogo lido (9.000) fica guardado por item+qualidade', auto.pisoJogoDe('9500', 'B') === 9000);
+    t.check('P11c: o preço nunca desce abaixo do mínimo do JOGO (8.550 -> 9.000)',
+      auto.precoDeAnuncio({ base: '9500', qual: 'B' }, [{ base: '9500', qual: 'B', preco: 9500 }], CONF).preco === 9000);
+    t.check('P11d: e ofertas abaixo do mínimo do jogo não são comparável nenhum',
+      auto.precoDeAnuncio({ base: '9500', qual: 'B' }, [{ base: '9500', qual: 'B', preco: 8000 }], CONF).preco === null);
   },
 };

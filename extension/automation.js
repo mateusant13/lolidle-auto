@@ -1974,7 +1974,7 @@
     const teoriaVale = !(lutasMedidas > 0 && mortesChefe === 0);
     const teoriaMobsVale = !(rr && rr.mobHpMinRel != null && mortesMob === 0);
     try {
-      const curaMob = { skill: 0, pocao: curaPocaoMax() * 0.6 };
+      const curaMob = { skill: 0, pocao: curaPocaoS() };   // D08: cura/EXAUSTAO, uma so formula
       // O DPS DE SAIDA entra no veredicto (5.o argumento do `avaliar`): sem ele `curaRv` fica 0
       // e o ROUBO DE VIDA — que o motor aplica em cada auto-ataque (motor.js:1332) e que a
       // AGENTS.md (prova n.o 5) mede em ~269 cura/s — era simplesmente ignorado. Era por isto
@@ -2521,7 +2521,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-23-config-real';
+  const BUILD = '2026-10-23-pocao-reservatorio';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -2556,11 +2556,24 @@ const CFG_VER = 4;
    *  senao a fotografia do motor (motor.js:1199). Devolve a tabela inteira, nao um escalar. */
   const nivelDifMotor = () => (META.nivelDif && typeof META.nivelDif === 'object') ? { ...NIVEL_DIF_FB, ...META.nivelDif } : NIVEL_DIF_FB;
   /** motor.js:1200 — diferença de nível EFECTIVA (desconta a faixa livre). É a base do fJ. */
-  const difNivelMotor = (nivelAlvo, nivelJogador) => Math.max(0, (Number(nivelAlvo) || 0) - (Number(nivelJogador) || 1) - NIVEL_DIF_FB.livre);
-  /** motor.js:1201 — o MONSTRO bem acima do nível bate mais forte (tecto maxDanoMonstro). */
-  const fatorDanoMonstroMotor = (d) => d ? Math.min(NIVEL_DIF_FB.maxDanoMonstro, 1 + NIVEL_DIF_FB.danoMonstro * d) : 1;   // motor.js:1201, recebe a DIFICULDADE
+  const difNivelMotor = (nivelAlvo, nivelJogador) => {
+    const livre = Number(nivelDifMotor().livre);
+    return Math.max(0, (Number(nivelAlvo) || 0) - (Number(nivelJogador) || 1) - (Number.isFinite(livre) ? livre : 4));
+  };
+  /** motor.js:1201 — o MONSTRO bem acima do nível bate mais forte (tecto maxDanoMonstro).
+   *  D07 (2026-10-23): lê a tabela EFECTIVA (`nivelDifMotor()`), não a fotografia — antes, um
+   *  buff/nerf da tabela no jogo nunca chegava a esta conta (REGRA Nº 3). */
+  const fatorDanoMonstroMotor = (d) => {
+    if (!d) return 1;
+    const ND = nivelDifMotor();
+    return Math.min(Number(ND.maxDanoMonstro) || 5, 1 + (Number(ND.danoMonstro) || 0) * d);
+  };
   /** motor.js:1305 — o JOGADOR contra monstro bem acima do nível: o dano DELE é reduzido (piso 0,25). */
-  const fatorDanoJogadorMotor = (d) => d ? Math.max(NIVEL_DIF_FB.minDanoJogador, 1 - NIVEL_DIF_FB.danoJogador * d) : 1;   // motor.js:1305, recebe a DIFICULDADE
+  const fatorDanoJogadorMotor = (d) => {
+    if (!d) return 1;
+    const ND = nivelDifMotor();
+    return Math.max(Number(ND.minDanoJogador) || 0, 1 - (Number(ND.danoJogador) || 0) * d);
+  };
 
   const KAT_FB = {
     Q: { max: 10, rec: (r) => 10 - 0.35 * (r - 1), base: (r) => 80 + 35 * (r - 1), ratio: (r) => 0.45 + 0.03 * (r - 1), mult: 3, alvo: '3 alvos', adaga: true },
@@ -3273,7 +3286,41 @@ const CFG_VER = 4;
     return 0;
   }
 
+  /** As poções que a mochila TEM, como RESERVATÓRIO: `n` cargas de `cura` cada.
+   *
+   *  O motor decrementa `estado.pocoes[k]` a cada uso (motor.js:1408) — uma poção ACABA. Modelá-la
+   *  como taxa contínua (`cura / EXAUSTAO` sem fim) é o que fazia `tMorrer = Infinity` em quase
+   *  toda a luta: medido ao vivo (2026-10-23), o Ancião com 1.268 hp/s de líquido devolvia
+   *  `tMorrerS: null` — "nunca morre" — e o campeão ia morrer. */
+  function pocoesEmMao() {
+    const p = readPotions() || {};
+    const k = (p.vidaS || 0) > 0 ? 'vidaS' : (p.vidaF || 0) > 0 ? 'vidaF' : 'vida';
+    const n = Math.max(0, Math.floor(Number(p[k]) || 0));
+    const cura = Number((pocaoInfo(k) || {}).cura) || Number(HEALVAL[k]) || 0;
+    return { k, n, cura, reserva: n * cura };
+  }
+
   const POTS = () => ['vida', 'vidaF', 'vidaS'].map((k) => ({ h: pocaoInfo(k).cura, c: pocaoInfo(k).preco, k }));
+  /** CURA/S EFECTIVA de poção — UMA fórmula (D08, 2026-10-23). O motor cura `p.cura` e põe
+   *  `EXAUSTAO` de espera entre poções (motor.js:1407-1416); logo a taxa sustentada é
+   *  `cura / EXAUSTAO`. Antes havia `cura * 0,6` em `avaliar` (1.320 hp/s) contra `cura / EXAUSTAO`
+   *  em `estimarLuta` (2.200) — factor 1,67 dentro do mesmo ficheiro. O piso de 1 hp/s é o
+   *  declarado para "sem poção" (evita divisão por zero em `potS`). */
+  function curaPocaoS() {
+    const c = Number(curaPocaoMax()) || 0;
+    const ex = Number(EXAUSTAO());
+    return (c > 0 ? c : 1) / (Number.isFinite(ex) && ex > 0 ? ex : 1);
+  }
+  /** PREÇO da poção que o bot REALMENTE carrega (o tier mais alto com stock), lido de
+   *  `pocaoInfo(k).preco` -> `META.pocoes` (motor.js:288-294). D09 (2026-10-23): havia `* 110`
+   *  FIXO em três sítios — 110 é o preço da FORTE; com a Suprema (260) o custo ficava 2,36x
+   *  subestimado (REGRA Nº 3: número lido, nunca copiado). */
+  function precoPocaoEmUso() {
+    const p = readPotions() || {};
+    const k = (p.vidaS || 0) > 0 ? 'vidaS' : (p.vidaF || 0) > 0 ? 'vidaF' : 'vida';
+    const c = Number((pocaoInfo(k) || {}).preco);
+    return Number.isFinite(c) && c > 0 ? c : POCAO_FB[k].preco;   // só se o catálogo não responder
+  }
   /** Mix mais barato de ATÉ n poções (cooldown = EXAUSTAO) que cobre `alvo` de dano. */
   function melhorMix(n, alvo) {
     if (alvo <= 0) return { a: 0, b: 0, c: 0, h: 0, cost: 0 };
@@ -3326,9 +3373,11 @@ const CFG_VER = 4;
     const p = player();
     const s = statsMonstro(target.name, target.level);
     if (!s || !p) return 0;
-    const ND = META.nivelDif || { livre: 4, danoMonstro: 0.15, maxDanoMonstro: 3 };
-    const dif = Math.max(0, target.level - (p.nivel || 1) - ND.livre);
-    const fM = dif ? Math.min(ND.maxDanoMonstro || 3, 1 + ND.danoMonstro * dif) : 1;
+    // D07 (2026-10-23): UMA tabela. Antes havia um fallback local com os valores de ANTES de
+    // 13/10 (0,15/3/0,07) — com `dif = 8` dava fM = 2,2 em vez de 3,8: o monstro batia +72,7%
+    // mais do que esta conta dizia, e o veredicto de TODAS as regiões ficava optimista.
+    const dif = difNivelMotor(target.level, p.nivel);
+    const fM = fatorDanoMonstroMotor(dif);
     const def = m.magico ? (p.rm || 0) : (p.armadura || 0);
     return s.ad * m.mult * fM * (100 / (100 + def));
   }
@@ -3480,10 +3529,11 @@ const CFG_VER = 4;
   function avaliar(monstro, nivel, player, cura, dps) {
     const s = statsMonstro(monstro, nivel);
     if (!s || !player) return null;
-    const dif = Math.max(0, nivel - (player.nivel || 1) - (META.nivelDif?.livre ?? 4));
-    const ND = META.nivelDif || { danoMonstro: 0.15, maxDanoMonstro: 3, danoJogador: 0.07, minDanoJogador: 0.25 };
-    const fM = dif ? Math.min(ND.maxDanoMonstro || 3, 1 + ND.danoMonstro * dif) : 1;
-    const fJ = dif ? Math.max(ND.minDanoJogador ?? 0.25, 1 - ND.danoJogador * dif) : 1;
+    // D07 (2026-10-23): a MESMA tabela do motor (`nivelDifMotor()`), sem cópia local. O fallback
+    // antigo (0,15/3/0,07) era a tabela de antes de 13/10 e subestimava o dano do monstro em 72,7%.
+    const dif = difNivelMotor(nivel, player.nivel);
+    const fM = fatorDanoMonstroMotor(dif);
+    const fJ = fatorDanoJogadorMotor(dif);
     // DEFESA DO KIT (Estandarte de Noxus, motor.js:1848/2004): enquanto activa, o motor multiplica
     // a armadura/RM por `1 + defesaBonus`. Ponderado por uptime em `sustentoDoKit`.
     const _defBonus = 1 + Math.max(0, Number(player.defesaPct) || 0);
@@ -3533,7 +3583,7 @@ const CFG_VER = 4;
     const alvoGolpe = Math.max(0, danoGolpe - curaSkill * intervalo); // o que a poção precisa cobrir por janela
     const mix = melhorMix(nPocoes, alvoGolpe);
     const tMorrer = liquido > 0 ? (vidaPool || 1) / liquido : Infinity;
-    return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), curaSkill, curaPocao, curaRv, curaGiroS, curaRegen, curaKit, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
+    return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), vidaPool, curaSkill, curaPocao, curaRv, curaGiroS, curaRegen, curaKit, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
   }
 
   /** Agrega os ciclos observados por região (médias por minuto + mortes).
@@ -3598,7 +3648,7 @@ const CFG_VER = 4;
       const curaSkillChefe = r.chn ? r.chs / r.chn : curaSkill; // cura/s das skills NO CHEFE
       let curaPocao = (r.hp / d) / 60;    // cura/s EFETIVA das poções (mobs)
       const curaPocaoChefe = r.chpn ? r.chp / r.chpn : curaPocao;
-      if (!curaPocaoChefe) curaPocao = cp * 0.6; // região nova: estimativa conservadora
+      if (!curaPocaoChefe) curaPocao = curaPocaoS(); // D08: mesma formula (cura/EXAUSTAO) // região nova: estimativa conservadora
       // CURA DO GIRO (motor.js:2188-2193): a Katarina cura sozinha enquanto gira. O `risco` e
       // o numero que decide se a regiao e segura (e quantas pocoes gasta) — tinha de a levar.
       // `_giroS` vem de FORA do map (não depende da região): ver o topo de `_agregarCorpo`.
@@ -7835,6 +7885,28 @@ const CFG_VER = 4;
     });
   }
 
+  /** PISO DO JOGO por item+qualidade (`#mj-minimo`, jogo.js:2700): o mercado recusa anunciar
+   *  abaixo do mínimo do próprio jogo, e esse mínimo é a avaliação que o jogo faz do item.
+   *  MEDIDO ao vivo (2026-10-23): o mínimo de um Medalhão dos Solari de Ferro ~B era **7.999** —
+   *  o mesmo valor a que a minha oferta estava. Guardar o valor OBSERVADO faz o plano parar de
+   *  planear um preço que o jogo vai subir (era isso que reanunciava a mesma oferta a cada 30 min).
+   *  É um número LIDO do jogo, nunca copiado (REGRA Nº 3). */
+  const _minimosMercado = {};
+  const chaveMin = (base, qual) => String(base == null ? '' : base).replace(/[+~].*$/, '') + '~' + String(qual || '').toUpperCase();
+  const pisoJogoDe = (base, qual) => Number(_minimosMercado[chaveMin(base, qual)]) || 0;
+  /** PISO DO LOJISTA + PISO DO JOGO do item: o preço nunca desce abaixo do maior dos dois. */
+  function pisosDoItem(base, qual, refino) {
+    const loj = Math.max(0, Math.round(Number(valorVenda(base, qual, refino)) || 0));
+    return { loj, jogo: pisoJogoDe(base, qual), total: Math.max(0, loj, pisoJogoDe(base, qual)) };
+  }
+  function anotarMinimoJogo(idCompleto, min) {
+    const m = Number(min) || 0;
+    if (m <= 0) return;
+    const p = parseSlotId(idCompleto);
+    if (!p || !p.base) return;
+    _minimosMercado[chaveMin(p.base, p.qual)] = Math.max(m, Number(_minimosMercado[chaveMin(p.base, p.qual)]) || 0);
+  }
+
   /** PREÇO DE ANÚNCIO de um lendário <A — PURA (testável sem UI/rede).
    *
    *  ORDEM DO DONO (2026-10-22, verbatim): "anunciou uma bota lendaria por 1.5kk. taria certo
@@ -7864,10 +7936,24 @@ const CFG_VER = 4;
     const fator = typeof fatorAnuncio === 'function' ? fatorAnuncio() : 0.9;
     const base = String((it && it.base) || '').replace(/[+~].*$/, '');
     const qual = String((it && it.qual) || '').toUpperCase();
-    const ofertas = (mercado || []).filter((x) => x && String(x.base) === base && Number(x.preco) > 0);
+    // PISO DO LOJISTA (2026-10-23, P0 MEDIDO AO VIVO): o mercado tinha um `3190~A` a 64 e o
+    // reajuste levou o MEU Medalhão dos Solari de Ferro `~B` (lendário) de 7.999 para **58 de
+    // ouro** — o dono viu-o e perguntou se o boneco tinha vendido um lendário. O Lojista paga
+    // pelo mesmo item (`valorVenda`, motor.js:257, LIDO do catálogo, nunca copiado), logo uma
+    // oferta abaixo disso é ISCO: não é comparável e nunca pode ser o nosso preço. Duas defesas,
+    // uma regra só:
+    //   (a) ofertas abaixo do piso do Lojista não contam como referência de mercado;
+    //   (b) o preço final nunca desce abaixo do piso do Lojista.
+    // A regra é do JOGO (o valor que o Lojista realmente paga), não uma escolha do dono.
+    const refinoIt = Number((it && it.refino) || 0) || 0;
+    const pisos = pisosDoItem(base, qual, refinoIt);
+    const pisoLoj = pisos.loj;
+    const pisoTudo = pisos.total;   // Lojista e/ou o mínimo do JOGO (o maior dos dois)
+    const ofertas = (mercado || []).filter((x) => x && String(x.base) === base && Number(x.preco) > 0
+      && (!pisoTudo || Number(x.preco) >= pisoTudo));
     const qDe = (x) => String(x.qual || '').toUpperCase();
     const menorDe = (arr) => arr.length ? Math.min(...arr.map((x) => Number(x.preco))) : null;
-    const out = (preco, regra, ref, n) => ({ preco: preco == null ? null : Math.max(1, Math.round(preco)), regra, refTier: ref == null ? null : ref, ofertasTier: n || 0, ofertasBase: ofertas.length });
+    const out = (preco, regra, ref, n) => ({ preco: preco == null ? null : Math.max(1, pisoTudo, Math.round(preco)), regra, refTier: ref == null ? null : ref, ofertasTier: n || 0, ofertasBase: ofertas.length, pisoLoj, pisoJogo: pisos.jogo });
     // PISO do Gume (dono, 2026-10-22): "quando é gume, é 10 milhoes pra mais." Aplica-se
     // DEPOIS de qualquer referência (mesmo tier ou superior) — o Gume nunca é anunciado
     // abaixo de 10M, porque o dono o trata como ficha premium, não como um tier B comum.
@@ -7907,19 +7993,29 @@ const CFG_VER = 4;
     const fator = typeof fatorAnuncio === 'function' ? fatorAnuncio() : 0.9;
     const base = String((o && o.base) || '').replace(/[+~].*$/, '');
     const qual = String((o && o.qual) || '').toUpperCase();
-    const ofertas = (mercado || []).filter((x) => x && String(x.base) === base && Number(x.preco) > 0);
+    // PISO DO LOJISTA — a MESMA regra do `precoDeAnuncio` (ver a doc lá): nem o REAJUSTE pode
+    // descer abaixo do que o Lojista paga, e uma oferta abaixo disso não é comparável. Foi este
+    // caminho que levou um lendário de 7.999 para 58 de ouro (`reajuste de:7999 para:58`).
+    let refinoO = Number(o && o.refino);
+    if (!Number.isFinite(refinoO)) {
+      try { refinoO = Number(parseSlotId((o && o.item) || (base + '~' + qual)).refino) || 0; } catch { refinoO = 0; }
+    }
+    const pisoLoj = Math.max(0, Math.round(Number(valorVenda(base, qual, refinoO)) || 0));
+    const pisoTudo = Math.max(pisoLoj, pisoJogoDe(base, qual));
+    const ofertas = (mercado || []).filter((x) => x && String(x.base) === base && Number(x.preco) > 0
+      && (!pisoTudo || Number(x.preco) >= pisoTudo));
     const qDe = (x) => String(x.qual || '').toUpperCase();
     const menorDe = (arr) => arr.length ? Math.min(...arr.map((x) => Number(x.preco))) : null;
     // Gume (3031): piso de 10M também no REAJUSTE — o dono não o quer abaixo disso.
     const pisoGume = base === '3031' ? Number((c.precoSemComparavelPorBase || {})['3031']) || 10000000 : 0;
-    const alvoDe = (ref) => Math.max(1, Math.round(Number(ref) * fator), pisoGume);
+    const alvoDe = (ref) => Math.max(1, pisoTudo, Math.round(Number(ref) * fator), pisoGume);
     const mesmo = ofertas.filter((x) => qDe(x) === qual);
     const refMesmo = menorDe(mesmo);
     const superior = ofertas.filter((x) => QUAL.includes(qDe(x)) && QUAL.includes(qual) && qIdx(qDe(x)) > qIdx(qual));
     const refSuperior = menorDe(superior);
     // MESMO tier manda. O superior só serve de referência quando aquele tier não tem oferta.
-    if (refMesmo != null) return { alvo: alvoDe(refMesmo), tipo: 'mesmo', ref: refMesmo, ofertasTier: mesmo.length };
-    if (refSuperior != null) return { alvo: alvoDe(refSuperior), tipo: 'superior', ref: refSuperior, ofertasTier: superior.length };
+    if (refMesmo != null) return { alvo: alvoDe(refMesmo), tipo: 'mesmo', ref: refMesmo, ofertasTier: mesmo.length, pisoLoj };
+    if (refSuperior != null) return { alvo: alvoDe(refSuperior), tipo: 'superior', ref: refSuperior, ofertasTier: superior.length, pisoLoj };
     return null;
   }
 
@@ -8013,13 +8109,16 @@ const CFG_VER = 4;
         continue;
       }
       const alvo = ref.alvo;
-      // MESMO tier: mantém a regra do dono "só sobe" (ele quer CARO; o mínimo do jogo é lixo).
-      // Tier SUPERIOR mais barato: aqui a regra NOVA manda DESCER — um tier pior não pode
-      // custar mais do que um tier melhor já à venda (foi o caso da bota de 1,5M).
+      // A REGRA DO DONO É SIMÉTRICA (2026-10-23): "o primeiro mais barato anunciado na loja é 30k
+      // tier b" -> o preço É 90% do menor do MESMO tier, para cima E para baixo. O "só sobe"
+      // antigo deixava uma oferta minha a 1,5M com o mesmo tier a 39.995 na praça (queixa do
+      // dono: "os preços errados nunca mudam") — e nunca vendia. Quem impede o preço de cair
+      // para o lixo é o PISO DO LOJISTA (dentro de `referenciaPrecoMercado`/`alvo`), não a
+      // assimetria. O tier SUPERIOR só entra quando não há nenhuma oferta do mesmo tier.
       if (o.preco < alvo * 0.95) {
         acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, item: o.item || null, de: o.preco, para: alvo, refTier: ref.ref, tipoRef: ref.tipo, acao: ref.tipo === 'superior' ? 'reanunciar (subir p/ 90% do tier superior)' : 'reanunciar (subir p/ 90% do menor)' });
-      } else if (ref.tipo === 'superior' && o.preco > alvo * 1.05) {
-        acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, item: o.item || null, de: o.preco, para: alvo, refTier: ref.ref, tipoRef: ref.tipo, acao: 'reanunciar (descer p/ 90% do tier superior)' });
+      } else if (o.preco > alvo * 1.05) {
+        acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, item: o.item || null, de: o.preco, para: alvo, refTier: ref.ref, tipoRef: ref.tipo, acao: ref.tipo === 'superior' ? 'reanunciar (descer p/ 90% do tier superior)' : 'reanunciar (descer p/ 90% do menor)' });
       } else acoes.push({ id: o.id, nome: o.nome, qual: o.qual, acao: 'ok' });
     }
     const plano = { at: Date.now(), mercado: mercado.length, minhas: minhas.length, saturado: minhas.length >= 10, acoes, mercadoPrecos: mercado };
@@ -8131,6 +8230,9 @@ const CFG_VER = 4;
     // NUNCA anuncia sem preço PRÓPRIO (o mínimo do jogo é MUITO baixo — vendia barato!)
     if (!(preco >= 1)) return { ok: false, motivo: 'sem preco de referencia (nao anuncia no minimo)' };
     const precoFinal = min ? Math.max(preco, min) : preco;
+    // MEMÓRIA DO MÍNIMO DO JOGO: o plano passa a saber que este item nunca é anunciado abaixo
+    // daquilo (ver `_minimosMercado`). Número LIDO, não copiado.
+    try { anotarMinimoJogo(escolhido || alvo || '', min); } catch { /* ignore */ }
     const inp = m.querySelector('#vender-preco');
     if (inp) { inp.value = String(precoFinal); inp.dispatchEvent(new Event('input', { bubbles: true })); }
     const an = m.querySelector('[data-anunciar]');
@@ -8199,7 +8301,14 @@ const CFG_VER = 4;
         mm?.querySelector('[data-aba="minhas"]')?.click(); await humano(320);
         await cancelarOferta(a.id); await humano(480);
         const r = await anunciarItemPorBase(a.base, a.para, a.item || (a.qual ? a.base + '~' + a.qual : null));
-        logEvent('mercado', { acao: 'reajuste', id: a.id, base: a.base, qual: a.qual, de: a.de, para: a.para, feito: !!r.ok, motivo: r.motivo || null });
+        // O LOG DIZ O QUE O JOGO ACEITOU, NÃO O QUE O PLANO QUERIA (2026-10-23): o jogo tem um
+        // PREÇO MÍNIMO por item (`#mj-minimo`, jogo.js:2700) e `anunciarItemPorBase` sobe o valor
+        // até ele. Sem isto o histórico dizia `de:7999 para:58` num lendário cujo mínimo do JOGO
+        // era 7999 — o dono leu "vendeu por 58" e o servidor nunca teve 58. `para` = o preço
+        // REALMENTE anunciado; `plano` = o alvo da política; `min` = o mínimo do jogo.
+        logEvent('mercado', { acao: 'reajuste', id: a.id, base: a.base, qual: a.qual, de: a.de,
+          plano: a.para, para: (r && r.preco) || a.para, min: (r && r.min) || null,
+          feito: !!r.ok, motivo: r.motivo || null });
         if (r.ok) feitos++;
       } else {
         mm?.querySelector('[data-aba="minhas"]')?.click(); await humano(300);
@@ -10111,9 +10220,10 @@ const CFG_VER = 4;
       const r = await anunciarItemPorBase(it.base, preco, it.id);
       // O que o dono precisa de ver no histórico: DE ONDE veio o preço, quantas ofertas do tier
       // havia, e qual cópia foi. É a prova do "90% do mais barato do mesmo tier".
+      // `preco` = o que o JOGO aceitou (pode ser o mínimo dele); `plano` = o alvo da política.
       logEvent('mercado', { acao: 'preco', base: it.base, id: it.id, qual: it.qual,
         refTier: pr.refTier, ofertasTier: pr.ofertasTier, ofertasBase: pr.ofertasBase,
-        preco, regra: pr.regra });
+        pisoLoj: pr.pisoLoj, plano: preco, preco: (r && r.preco) || preco, min: (r && r.min) || null, regra: pr.regra });
       // NÃO se faz `break` (defeito medido 2026-10-23): UM item que o jogo não deixava anunciar
       // abortava todos os seguintes — a mochila ficava com anúncios nenhuns. Agora falha só ele.
       if (r.ok) { anunciados.push({ base: it.base, qual: it.qual, id: it.id, preco, refTier: pr.refTier, ofertasTier: pr.ofertasTier }); limparFalhaAnuncio(it.base); }
@@ -10619,7 +10729,7 @@ const CFG_VER = 4;
             : Infinity;
           const sobrevive = luta.tKill <= tMorrerPocao;
           const pot = sobrevive ? Math.ceil(((lutaBase && lutaBase.potS) || 0) * luta.tKill) : null;
-          info = { sobrevive, tKill: luta.tKill, tMorrer: luta.tMorrer, ouro: pot == null ? null : pot * 110, pot, score: b.score, luta };
+          info = { sobrevive, tKill: luta.tKill, tMorrer: luta.tMorrer, ouro: pot == null ? null : pot * precoPocaoEmUso(), pot, score: b.score, luta };
         } else {
           let dps = -Infinity;
           try { const e = estimarSet(b.ids, alvoScore, { pj: ctx.pj, sk: ctx.sk, champ: c, curStats: ctx.curStats }); dps = (e && e.dps) || -Infinity; } catch { dps = -Infinity; }
@@ -11312,6 +11422,9 @@ const CFG_VER = 4;
       const compras = [];
       for (const base of ideal) {
         if (tenho.has(base)) continue;
+        // Já recusada por preço/"farmar vale mais" há menos de 30 min: nem tenta (a tentativa
+        // abria o mercado e prendia a rotina por nada).
+        if (compraBloqueada(base)) { compras.push({ base, comprou: false, motivo: 'em espera (falhou por preco/farmar ha <30min)' }); continue; }
         // Lista do dono: nunca comprar estes (cfg.naoComprar). Se já os tiver, usa-os.
         if (proibidos.has(String(base))) { compras.push({ base, comprou: false, motivo: 'nao comprar (cfg.naoComprar)' }); continue; }
         // O item que o dono pos na VIGIA (com jogadores) e comprado pela VIGIA, do
@@ -11352,10 +11465,10 @@ const CFG_VER = 4;
         const minP = cfg.minPotion || { vida: 200, vidaF: 100, vidaS: 30 };
         const custoMin = (minP.vida || 0) * PRECO_POCAO.vida + (minP.vidaF || 0) * PRECO_POCAO.vidaF + (minP.vidaS || 0) * PRECO_POCAO.vidaS;
         const reservaPoc = Math.max(20000, custoMin * 2);
-        const teto = Math.max(0, Math.floor(ouro - reservaPoc));
-        if (melhor.preco > teto) { compras.push({ base, preco: melhor.preco, comprou: false, motivo: 'caro demais' }); continue; }
+        const teto = tetoCompra(ouro);   // UMA conta só (a mesma que a necessidade usa)
+        if (melhor.preco > teto) { compras.push({ base, preco: melhor.preco, comprou: false, motivo: 'caro demais' }); marcarCompraFalha(base, 'caro demais'); continue; }
         const v = valeComprar(base, melhor.preco);
-        if (!v.ok) { compras.push({ base, preco: melhor.preco, comprou: false, motivo: 'farmar vale mais (' + (v.motivo || '') + ' ' + (v.tempoMin || '?') + 'min)' }); continue; }
+        if (!v.ok) { compras.push({ base, preco: melhor.preco, comprou: false, motivo: 'farmar vale mais (' + (v.motivo || '') + ' ' + (v.tempoMin || '?') + 'min)' }); marcarCompraFalha(base, 'farmar vale mais'); continue; }
         const b = q1(`#janela-mercado [data-comprar="${melhor.id}"]`);
         if (!b) continue;
         if (pausado) { compras.push({ base, preco: melhor.preco, comprou: false, motivo: 'pausado' }); break; }
@@ -11364,6 +11477,7 @@ const CFG_VER = 4;
         clicarDialogo(/^\s*comprar\s*$|^\s*sim\s*$/i); await esperar(650);
         ouro = readGold();
         compras.push({ base, nome: (infoItem(base) || {}).nome, preco: melhor.preco, comprou: true, ouroDepois: ouro });
+        limparCompraFalha(base);                                          // fechou: a memória de falha cai
         break;                                                            // 1 compra por passada (evita travar)
       }
       logEvent('mercado', { acao: 'comprar', compras });
@@ -11512,6 +11626,37 @@ const CFG_VER = 4;
   // recordar: só conta como necessidade quando a pré-checagem (rota do servidor, de qualquer
   // lugar) viu algo da BUILD à venda. Sem leitura (desconhecido) NÃO bloqueia — fail-open.
   let _mercadoServidor = { at: 0, ok: false, ofertas: [] };
+  /** BASES que o campeão já tem EM CASA (equipado + mochila), com cache curta — `scanBag`/`readEquip`
+   *  são DOM e o tick corre a ~70 ms. */
+  let _basesCasaAt = 0, _basesCasa = null;
+  function basesEmCasa() {
+    if (_basesCasa && Date.now() - _basesCasaAt < 5000) return _basesCasa;
+    const s = new Set();
+    try { for (const e of readEquip()) s.add(String(e.base)); } catch { /* sem DOM */ }
+    try { for (const i of ((scanBag() || {}).items || [])) if (i.kind === 'item') s.add(String(i.base)); } catch { /* sem DOM */ }
+    _basesCasaAt = Date.now(); _basesCasa = s;
+    return s;
+  }
+  /** TECTO de ouro de UMA compra (nunca zera o ouro: reserva o stock de poções ×2, como sempre).
+   *  UMA conta só, usada pelo actor (`comprarNoMercado`) e pela necessidade (`mercadoTemDaBuild`) —
+   *  duas contas diferentes foi o que fez a necessidade pedir uma compra que o actor recusava. */
+  function tetoCompra(ouro) {
+    const minP = cfg.minPotion || { vida: 200, vidaF: 100, vidaS: 30 };
+    const custoMin = (minP.vida || 0) * PRECO_POCAO.vida + (minP.vidaF || 0) * PRECO_POCAO.vidaF + (minP.vidaS || 0) * PRECO_POCAO.vidaS;
+    const reservaPoc = Math.max(20000, custoMin * 2);
+    const o = ouro != null ? Number(ouro) : Number(readGold()) || 0;
+    return Math.max(0, Math.floor(o - reservaPoc));
+  }
+  /** COMPRAS que JÁ FALHARAM por preço/«farmar vale mais»: a necessidade fecha por 30 min em vez de
+   *  mandar o boneco à Fonte a cada 20 s para bater na mesma parede (P0 medido 2026-10-23). */
+  const _compraFalhas = {};
+  const COMPRA_FALHA_MS = 30 * 60000;
+  function compraBloqueada(base) {
+    const f = _compraFalhas[String(base)];
+    return !!f && (Date.now() - f.at) < COMPRA_FALHA_MS;
+  }
+  function marcarCompraFalha(base, motivo) { _compraFalhas[String(base)] = { at: Date.now(), motivo: String(motivo || '') }; }
+  function limparCompraFalha(base) { delete _compraFalhas[String(base)]; _basesCasaAt = 0; }
   function baseReservadaWatch(base) {
     try {
       const w = cfg.mercadoWatch || {};
@@ -11530,13 +11675,28 @@ const CFG_VER = 4;
       // BASE, logo um B à venda fazia o boneco ir à Fonte comprar um B (ordem do dono, 2026-10-21).
       const minTier = String(cfg.compraMinTier || 'A').toUpperCase();
       const minIdx = QUAL.includes(minTier) ? qIdx(minTier) : qIdx('A');
+      // P0 MEDIDO AO VIVO (2026-10-23) — o ciclo "volta à base de 20 em 20 s": esta função dizia
+      // TRUE enquanto o mercado tivesse QUALQUER peça da build, mesmo que o campeão já a tivesse,
+      // mesmo que o preço estourasse o tecto, mesmo que o actor já tivesse recusado comprá-la. A
+      // necessidade `comprar` nunca fechava: ele ia à Fonte, a rotina não comprava nada e repetia.
+      // Agora a pergunta é a MESMA que o actor faz — "há uma compra que eu VOU fazer?".
+      const casa = basesEmCasa();
+      const teto = tetoCompra();
       for (const o of _mercadoServidor.ofertas) {
         if (!o || o.minha || (o.para && o.paraMim !== true)) continue;
         const base = baseDoItemMercado(o.item);
-        if (base && proibidos.has(String(base))) continue;      // não se compra (cfg.naoComprar)
+        if (!base) continue;
+        if (proibidos.has(String(base))) continue;              // não se compra (cfg.naoComprar)
+        if (casa.has(String(base))) continue;                   // JÁ TENHO em casa (equipado/mochila)
+        if (compraBloqueada(base)) continue;                    // já falhou por preço/vale-mais
         const q = parseSlotId(o.item || '').qual;
         if (QUAL.includes(q) && qIdx(q) < minIdx) continue;     // tier abaixo do piso
-        if (base && ideal.has(String(base)) && !baseReservadaWatch(base)) return true;
+        if (!ideal.has(String(base))) continue;                 // não é peça da build de agora
+        if (baseReservadaWatch(base)) continue;                 // compra-se pela vigia, não aqui
+        const preco = Number(o.preco);
+        if (!(preco > 0)) continue;
+        if (preco > teto) { marcarCompraFalha(base, 'caro demais (' + preco + ' > tecto ' + teto + ')'); continue; }
+        return true;
       }
       return false;
     } catch { return null; }
@@ -12646,7 +12806,10 @@ const CFG_VER = 4;
     } catch { /* ignore */ }
     // `p.rv` (roubo de vida) e `p.vidaEff` (vida + escudo) agora existem em `player()` e o
     // `avaliar` usa-os: cura = dano x rv (motor.js:1226-1228).
-    const av = avaliar(boss, nivel, p, { skill: curaSkill, pocao: 0 });
+    // D18 (2026-10-23): o 5.º argumento é o DPS — é dele que sai o roubo de vida (`curaRv`,
+    // `avaliar` 3516). Sem ele `curaRv = 0` e o comentário abaixo mentia. `meDps` é o DPS MEDIDO
+    // do campeão (o mesmo que já se usa para `meuDpsBoss`).
+    const av = avaliar(boss, nivel, p, { skill: curaSkill, pocao: 0 }, meuDps() || 0);
     const efEq = efeitosEquipados();
     const meDps = meuDps() || 0;
     // `armEf` JÁ levava a penetração mágica dos itens (tooltip c/ refino) mas FALTAVA o RM_MONSTRO: o dano medido do campeão contra o chefe é MÁGICO (a penetração usada é a mágica) -> motor.js:1305.
@@ -12662,24 +12825,39 @@ const CFG_VER = 4;
     const tKill = meuDpsBossFJ > 0 ? s.hp / meuDpsBossFJ : Infinity;
     // ROUBO DE VIDA (motor.js:1226-1228) + CURA DO GIRO (motor.js:2169) ja entraram no
     // `curaTotal` do `avaliar`; aqui a conta liquida usa essa cura total.
-    const net = av.dpsTomado - av.curaTotal;                                 // perda líquida/s sem poção
-    const curaPocaoS = Math.max(1, curaPocaoMax()) / EXAUSTAO();            // melhor poção disponível ÷ cooldown do motor
-    const netEfetivo = Math.max(0, net - curaPocaoS);
-    // VIDA EFECTIVA = vida maxima + ESCUDO activo (motor.js:2718): o `(+N)` do HUD.
-    const tMorrer = netEfetivo > 0 ? (p.vidaEff || p.vida) / netEfetivo : Infinity;
+    // UMA taxa (D01/D12): `av.liquido` e' o que o `avaliar` ja' calculou — nao uma segunda conta.
+    const net = Number.isFinite(av.liquido) ? av.liquido : (av.dpsTomado - av.curaTotal);
+    // POÇÕES SAO RESERVATORIO FINITO, NAO TORNEIRA (motor.js:1407-1416, `estado.pocoes[k]--`).
+    // DEFEITO MEDIDO AO VIVO (2026-10-23): a conta era `net - curaPocaoS()`, isto e', a cura da
+    // poção como TAXA CONTINUA. Com a Suprema (2.200 hp) e EXAUSTAO = 1 s sao 2.200 hp/s para
+    // sempre -> `tMorrer = Infinity` em quase toda a luta. Medido: Anciao com liquido 1.268 hp/s
+    // devolvia `tMorrerS: null` ("nunca morre") e o campeao ia morrer. As N cargas ACABAM.
+    const pm = pocoesEmMao();
+    // VIDA EFECTIVA = vida maxima + ESCUDO activo (motor.js:2718) + vidas extra dos itens
+    // (Anjo Guardiao / Pele de Aco, motor.js:2999-3004) — o `vidaPool` do `avaliar`.
+    const vidaPool = Number.isFinite(av.vidaPool) ? av.vidaPool : ((p.vidaEff || p.vida) || 0);
+    const tMorrer = net > 0 ? (vidaPool + pm.reserva) / net : Infinity;
     // EMPÍRICO: se já observei lutas contra este chefe, prefiro tempo/poções REAIS à teoria
     const realMs = reg?.bossMs || null;
     const potReal = (reg && reg.potChefe != null) ? Math.round(reg.potChefe) : null;
-    const ganha = tKill <= tMorrer;
-    const potS = net > 0 ? net / curaPocaoS : 0;                            // poções/s necessárias p/ cobrir o líquido
+    // Poções que a luta INTEIRA exige (o que o liquido consome / o que cada carga devolve).
+    const potNecessarias = (net > 0 && Number.isFinite(tKill) && pm.cura > 0) ? Math.ceil((net * tKill) / pm.cura) : 0;
+    // Ganhar exige TRES coisas: matar antes de morrer, nao ter mecanica fatal, e ter as poções.
+    const ganha = Number.isFinite(tKill) && tKill <= tMorrer && !av.mortal && potNecessarias <= pm.n;
+    const potS = net > 0 && pm.cura > 0 ? net / pm.cura : 0;                   // cargas/s que o liquido exige
     return { fJ,
       regiao: loc.nome.replace(/ nível.*/, ''), boss, nivel, hpBoss: Math.round(s.hp), armadura: Math.round(s.armadura),
       dpsChefe: Math.round(av.dpsTomado), curaSkill: Math.round(curaSkill), danoGolpe: Math.round(av.danoGolpe), intervalo: +av.intervalo.toFixed(1),
       meuDpsBoss: Math.round(meuDpsBossFJ), tKillS: realMs ? +(realMs / 1000).toFixed(1) : +tKill.toFixed(1), tMorrerS: tMorrer === Infinity ? null : +tMorrer.toFixed(1),
-      ganha, potS: +potS.toFixed(2),
+      // OBSERVABILIDADE (2026-10-23): as duas parcelas que produzem `tMorrerS`. Sem elas, um
+      // `tMorrerS: null` não diz se é "nunca morre" (net <= 0) ou "conta estragada" (NaN).
+      curaTotalS: Number.isFinite(av.curaTotal) ? +av.curaTotal.toFixed(1) : null,
+      netS: Number.isFinite(net) ? +net.toFixed(1) : null,
+      vidaPool: Math.round(vidaPool), pocoesNaMochila: pm.n, pocoesDaMochila: pm.cura, potNecessarias: net > 0 ? potNecessarias : 0,
+      ganha, potS: +potS.toFixed(4),
       tKillRealS: realMs ? +(realMs / 1000).toFixed(1) : null, potReal,
-      potTotal: potReal != null ? potReal : (ganha ? Math.ceil(potS * tKill) : null),
-      ouroPocao: ganha ? Math.round((potReal != null ? potReal : potS * tKill) * 110) : null,
+      potTotal: potReal != null ? potReal : (net > 0 ? potNecessarias : 0),
+      ouroPocao: net > 0 ? Math.round((potReal != null ? potReal : potNecessarias) * precoPocaoEmUso()) : 0,
       fonte: realMs ? 'empirico' : 'teorico',
       mortal: !!av.mortal, morre: !!av.morre, piorMec: av.piorMec || null,
     };
@@ -12710,7 +12888,7 @@ const CFG_VER = 4;
     // Pocoes ate' o FIM da luta: se ganha, `tKill`; se morre, `tMorrer`.
     const tFim = Math.min(tMorrer, tKill);
     const nPocoes = (potS > 0 && isFinite(tFim)) ? Math.ceil(potS * tFim) : 0;
-    return { vida, tMorrer, morre, dps, tKill, nPocoes, ouroPocao: nPocoes * 110 };
+    return { vida, tMorrer, morre, dps, tKill, nPocoes, ouroPocao: nPocoes * precoPocaoEmUso() };
   };
   /** Ranking por SOBREVIVENCIA (F5-F9): cada candidato entra no conjunto base; ordena por `tMorrer`
    *  (o que da uma ordem DIFERENTE do `rankItens`, que e so DPS - o criterio novo do dono). */
@@ -13143,6 +13321,15 @@ const CFG_VER = 4;
   let _ultimaVenda = 0, _baseBusy = false, _ultimaBase = 0, _ultimaCompra = 0, _baseFalhas = 0;
   // "aba oculta + na base" -> sair a farmar (ver o bloco em `supervisarBase`). Throttle próprio.
   let _hiddenSaidaAt = 0;
+  /** HISTERESE DA BASE INTERROMPIDA (2026-10-23, P0 ao vivo). Queixa do dono, verbatim: "ele ta
+   *  voltando pra base de forma seguida. nao deu 10 segundos e voltou pra base de novo vender item
+   *  epico". Causa MEDIDA no log: a rotina da base aborta com "aba escondida a meio de tarefas"
+   *  (os diálogos do jogo dependem de timers que o Chrome atrasa numa aba oculta), as necessidades
+   *  ficam abertas e o `supervisarBase` volta a mandá-lo à Fonte 20 s depois — para bater na mesma
+   *  parede. Uma rotina interrompida pela aba oculta NÃO é motivo para nova viagem: descansa 2 min
+   *  e, entretanto, farma (é o que a aba oculta permite). */
+  let _baseEscondidaAte = 0;
+  const BASE_ESCONDIDA_MS = 120000;
   /** MODO FARM FORÇADO: 3 visitas seguidas à base SEM fechar NENHUMA necessidade = a base não
    *  tem o que ele precisa. Em vez de continuar a andar para trás e para a frente (a queixa
    *  do dono), ignora-se a base por `FARM_FORCADO_MS` e farma-se — com o motivo no log. */
@@ -13346,6 +13533,9 @@ const CFG_VER = 4;
       }
       // NA BASE com algo pendente → roda a rotina AGORA (antes só esperava o AFK de 3 min)
       if (motivo && !_baseBusy && (urgenteWatch || Date.now() - _ultimaBase > 20000)) {
+        // HISTERESE: a última rotina foi interrompida pela aba oculta → não re-começar já (ver
+        // `_baseEscondidaAte`). A excepção é a oferta da vigia, que tem lock de 3 min.
+        if (!urgenteWatch && Date.now() < _baseEscondidaAte) { _ultimaBase = 0; return; }
         _ultimaBase = Date.now();
         _baseBusy = true;
         // MOTIVO COM VALOR (pedido do Lead): o dono tem de ver PORQUE é que ele foi à base,
@@ -13366,6 +13556,14 @@ const CFG_VER = 4;
           // MESMA conta que decide a IDA (`motivosDeViagem`): se não paga viagem, não segura.
           let faltaAgora = [], necessAgora = null;
           try { necessAgora = necessidadesBase(); faltaAgora = motivosDeViagem(faltandoNaBase(necessAgora), necessAgora); } catch { /* ignore */ }
+          // ABA ESCONDIDA A MEIO: a rotina não falhou por regra nenhuma, falhou por não poder
+          // correr. Insistir é o ping-pong que o dono viu. Descansa 2 min e deixa o farm andar.
+          if (res && res.abaEscondida && !urgenteWatch) {
+            _baseEscondidaAte = Date.now() + BASE_ESCONDIDA_MS;
+            logEvent('base', { espera: 'rotina interrompida pela aba oculta: nao volto a base por ' + (BASE_ESCONDIDA_MS / 1000) + 's', falta: faltaAgora });
+          } else if (res && res.ok) {
+            _baseEscondidaAte = 0;
+          }
           // SÓ volta a farmar se a rotina da base REALMENTE concluiu E nada falta.
           // `podeFazer('autoplay')` em vez de `cfg.enabled` (correcção do Lead, 2026-10-14):
           // o actor pergunta à HIERARQUIA — viajar para farmar é auto-play, e o auto-play tem
@@ -13452,7 +13650,8 @@ const CFG_VER = 4;
       // MODO FARM FORÇADO no campo: NÃO recorda (era este o `press('b')` que fechava o ciclo
       // "viaja, mata 1 mob, volta"). Fica a farmar e marca-se activo.
       marcarAtiva();
-    } else if (!teste && motivoViagem && Date.now() - _ultimaVenda > 20000) {
+    } else if (!teste && motivoViagem && Date.now() - _ultimaVenda > 20000
+      && (Date.now() >= _baseEscondidaAte || urgenteWatch)) {   // histersese: rotina interrompida pela aba oculta
       _ultimaVenda = Date.now();
       // MOTIVO COM VALOR: `venda:{itens,valor}` + `custoIda:{ouro,seg}` - o dono vê a conta.
       logEvent('base', { ir: motivoViagem, ...info });
@@ -13884,7 +14083,8 @@ const CFG_VER = 4;
     // Seam de teste (2026-10-21): constantes que o banco tem de conferir sem as copiar.
     PCT_CARTA, fatorAnuncio,
     // ---- POLÍTICA DE PREÇO DO MERCADO (dono, 2026-10-22): pura, testável sem UI ----
-    precoDeAnuncio, referenciaPrecoMercado, tierPermitidoWatch,
+    precoDeAnuncio, referenciaPrecoMercado, tierPermitidoWatch, anotarMinimoJogo, pisoJogoDe,
+    pisosDoItem, curaPocaoS, precoPocaoEmUso, curaPocaoMax,
     // ---- RARIDADE NOVA (`mitica`, 2026-10-22): o conjunto é a regra, não o nome ----
     ehRaridadeNova, RARIDADES_CONHECIDAS, isProtected,
     // Banco (REGRA N.o 6): o `handleLog` e o caminho REAL da frase do jogo -> ciclo/fase.
@@ -13898,7 +14098,7 @@ const CFG_VER = 4;
     prepararFiltrosMercado, clicarDialogo, confirmarCompraWatch,
     vigiarMercadoPasso, mercadoWatchEstado,
     // PRE-CHECAGEM do mercado (2026-10-19): ler de qualquer sitio, sem recordar só para olhar.
-    mercadoTemDaBuild, atualizarMercadoServidor };
+    mercadoTemDaBuild, atualizarMercadoServidor, basesEmCasa, tetoCompra, compraBloqueada, marcarCompraFalha, _compraFalhas };
 
   // AUTO-LIMPEZA: se o script JÁ rodou (reinjeção), cancela os timers antigos.
   // Sem isso cada injeção empilha outro conjunto de loops e TRAVA o jogo.

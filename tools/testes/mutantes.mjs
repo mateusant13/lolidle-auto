@@ -40,8 +40,8 @@ const MUTACOES = [
   {
     id: 'M3-base-com-refino-nao-parseada',
     o_que: "scanBag() deixa de tirar o '+refino' do id (3089+2 vira base '3089+2')",
-    old: "const base = String(baseRaw || '').replace(/\\+.*$/, '');",
-    new: "const base = String(baseRaw || '');",
+    old: "        const base = String(baseRaw || '').replace(/#.*$/, '').replace(/\\+.*$/, '');",
+    new: "        const base = String(baseRaw || '').replace(/#.*$/, '');",
     esperado: "T10: scanBag reconhece '3089+2~C' como base 3089",
   },
   {
@@ -96,8 +96,8 @@ const MUTACOES = [
   {
     id: 'M12-venda-exige-mochila-cheia-outra-vez',
     o_que: 'n.vender volta a exigir `mochilaQuaseCheia` (o bug de 2026-10-20: epicos/espolios nao sao vendidos na Fonte)',
-    old: "n.vender = podeFazer('vender').pode && prioridade;",
-    new: "n.vender = podeFazer('vender').pode && prioridade && mochilaQuaseCheia;",
+    old: "      n.vender = podeFazer('vender').pode && (prioridade || (temEspolio && (naBase() || mochilaQuaseCheia)));",
+    new: "      n.vender = podeFazer('vender').pode && prioridade && mochilaQuaseCheia;",
     esperado: 'V1: mochila NAO cheia + itens marcados -> n.vender VERDADEIRO',
   },
   {
@@ -117,8 +117,8 @@ const MUTACOES = [
   {
     id: 'M15-anti-oscilacao-sempre-falso',
     o_que: 'barraIdeal deixa de bloquear uma skill que acabou de sair (volta a oscilar a cada ciclo)',
-    old: 'const saidaRecente = (t) => barraCheia && _barraSaidas.has(t);',
-    new: 'const saidaRecente = (t) => false;',
+    old: "    const saidaRecente = (t) => barraCheia && _barraSaidas.has(t)",
+    new: "    const saidaRecente = (t) => false && barraCheia && _barraSaidas.has(t)",
     esperado: 'B5: skill que acabou de sair NAO volta com a barra cheia',
   },
   {
@@ -148,6 +148,56 @@ const MUTACOES = [
     old: "if (c.distancia) return 'atirador';",
     new: "if (false && c.distancia) return 'atirador';",
     esperado: 'T8: distancia muda o perfil (dano -> atirador)',
+  },
+  {
+    id: 'M13-sem-piso-do-lojista',
+    o_que: 'o piso do Lojista desaparece (oferta de 64 volta a ser referencia -> um lendario cai para 58 de ouro)',
+    old: '    const pisoLoj = Math.max(0, Math.round(Number(valorVenda(base, qual, refinoIt)) || 0));',
+    new: '    const pisoLoj = 0;',
+    esperado: 'P9: oferta de 64 (abaixo do Lojista) NAO e referencia -> sem preco (nunca 58)',
+  },
+  {
+    id: 'M14-compra-sem-olhar-se-ja-tenho',
+    o_que: 'mercadoTemDaBuild deixa de verificar se o campeao ja tem o item (volta o ciclo de voltar a base de 20 em 20 s)',
+    old: '        if (casa.has(String(base))) continue;                   // JÁ TENHO em casa (equipado/mochila)',
+    new: '        if (false) continue;',
+    esperado: 'M9b: ... mas JA A TENHO equipada -> false (era o ciclo de 20 em 20 s)',
+  },
+  /* ---------------- D07/D08/D09/D18 (docs/math-graph.md) - a matematica voltar a divergir ---------------- */
+  {
+    id: 'M19-d07-tabela-de-nivel-congelada',
+    o_que: 'fatorDanoMonstroMotor volta a usar a fotografia (0,35 / max 5) em vez da tabela do motor - o buff/nerf do jogo nunca chega a conta',
+    old: '    return Math.min(Number(ND.maxDanoMonstro) || 5, 1 + (Number(ND.danoMonstro) || 0) * d);',
+    new: '    return Math.min(5, 1 + 0.35 * d);   // mutado: tabela congelada',
+    esperado: 'U1d: se o motor mudar a tabela, a conta muda com ela (0,5 x 4 = x3)',
+  },
+  {
+    id: 'M20-d08-cura-da-pocao-vezes-0,6',
+    o_que: 'curaPocaoS() volta a `cura * 0,6` (1.320 hp/s em vez de 2.200) - a divergencia que o D08 fechou',
+    old: '    return (c > 0 ? c : 1) / (Number.isFinite(ex) && ex > 0 ? ex : 1);',
+    new: '    return (c > 0 ? c : 1) * 0.6;   // mutado: D08',
+    esperado: 'U2b: cura/s = cura / EXAUSTAO (motor.js:1407-1416), e NAO cura x 0,6',
+  },
+  {
+    id: 'M21-d09-preco-da-pocao-110',
+    o_que: 'precoPocaoEmUso() volta ao literal 110 (preco da FORTE) mesmo com a Suprema na mochila (260)',
+    old: '    const c = Number((pocaoInfo(k) || {}).preco);',
+    new: '    const c = 110;   // mutado: D09',
+    esperado: 'U3: o preco vem do catalogo do jogo (META.pocoes), nunca do literal 110',
+  },
+  {
+    id: 'M22-d18-estimar-luta-sem-dps',
+    o_que: 'estimarLuta volta a chamar avaliar SEM o DPS medido -> curaRv = 0 no veredicto do chefe',
+    old: '    const av = avaliar(boss, nivel, p, { skill: curaSkill, pocao: 0 }, meuDps() || 0);',
+    new: '    const av = avaliar(boss, nivel, p, { skill: curaSkill, pocao: 0 });',
+    esperado: 'U5c: com rv 0,15 o roubo de vida ENTRA no veredicto (>= 60 hp/s) - era 0 antes do D18',
+  },
+  {
+    id: 'M23-d20-pocao-como-torneira',
+    o_que: 'estimarLuta volta a tratar a pocao como TAXA continua (`net - curaPocaoS()`) - o Anciao devolvia "nunca morre"',
+    old: '    const tMorrer = net > 0 ? (vidaPool + pm.reserva) / net : Infinity;',
+    new: '    const tMorrer = (net > 0 && net - curaPocaoS() > 0) ? vidaPool / (net - curaPocaoS()) : Infinity;   // mutado: D20',
+    esperado: 'U6b: 5 Supremas somam 11.000 hp ao POOL: (2.000 + 11.000) / 3.266 ~ 4,0 s',
   },
 ];
 

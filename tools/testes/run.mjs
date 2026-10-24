@@ -92,6 +92,10 @@ import { suite as suiteSustento } from './sustento.test.mjs';
 // o jogo CORRE com a aba oculta (pulso.js por Worker, medido: 14 -> 28 abates em 30 s) e quem
 // desistia era o supervisarBase. Agora escondida+base+pendencia = sair a farmar.
 import { suite as suiteOculta } from './oculta.test.mjs';
+// MATEMATICA UNIFICADA (dono, 2026-10-23): 'faz todas as contas fazerem sentido entre si'.
+// Prova as divergencias D07 (tabela de nivel), D08 (cura da pocao), D09 (preco da pocao) e
+// D18 (roubo de vida no veredicto) de docs/math-graph.md.
+import { suite as suiteMatUnificada } from './matematica-unificada.test.mjs';
 
 const argv = process.argv.slice(2);if (argv.indexOf('--help') >= 0 || argv.indexOf('-h') >= 0) {
   console.log('uso: node tools/testes/run.mjs [--verbose] [--filter <nome>]');
@@ -129,6 +133,7 @@ const SUITES = [
   suiteAbandono,
   suiteSustento,
   suiteOculta,
+  suiteMatUnificada,
 ];
 const checks = [];
 const notas = [];
