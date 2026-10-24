@@ -254,6 +254,13 @@ const MUTACOES = [
     new: '    const morre = liquido > 0 || !mix || mortal;   // mutado: D01',
     esperado: 'U14b: chefe que NAO te mata antes de morrer -> `morre` falso (dano liquido nao e morte)',
   },
+  {
+    id: 'M31-d01b-pocao-como-torneira',
+    o_que: 'o fallback da cura de pocao volta a ser 0/constante (sem reservatorio) - o chefe parece seguro com stock infinito',
+    old: '    const curaPocao = cura?.pocao || _curaPocaoModelo;',
+    new: '    const curaPocao = cura?.pocao || 0;   // mutado: D01b',
+    esperado: 'U15: a cura da pocao escala com 1/tMatar (e um RESERVATORIO, nao uma taxa fixa)',
+  },
 ];
 
 /* ---------------------------------------------------------------------------------------------

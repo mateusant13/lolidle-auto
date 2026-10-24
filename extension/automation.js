@@ -2534,7 +2534,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-24-d01-adjudicador';
+  const BUILD = '2026-10-24-d01b-pocao-reservatorio';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -3579,7 +3579,23 @@ const CFG_VER = 4;
     vidaPool += Math.max(0, Number(player.extraVida) || 0);
     const mortal = piorMec > 0 && piorMec >= vidaPool;
     const curaSkill = Math.max(0, cura?.skill || 0);            // cura/s medida das skills (sem poção)
-    const curaPocao = cura?.pocao || 0;            // cura/s EFETIVA medida das poções
+    // D01b (2026-10-24): A POCAO NAO E' UMA TAXA. Ha' N pocoes na mao (`pocoesEmMao()`), cada uma
+    // cura `cura` NUM INSTANTE (motor.js:1408 `estado.pocoes[k]--`) e EXAUSTAO entre elas
+    // (motor.js:1412). A taxa media sustentada num combate de `tMatar` segundos e'
+    //     min( N*cura / tMatar , cura / EXAUSTAO )
+    // - o stock limita o TOTAL, o cooldown limita o PICO. O fallback antigo era `curaMax * 0,6`
+    // (1.320 hp/s com stock infinito): medido no risco do Barao, `curaTotal` dava 1.322 hp/s e o
+    // chefe parecia seguro. Uma MEDIDA (`cura.pocao` de um ciclo real) continua a mandar sobre o
+    // modelo; o modelo so' entra quando nao ha' medicao.
+    const tMatar = dps > 0 ? (s.hp || 0) / dps : null;
+    const _pmAvaliar = pocoesEmMao();
+    const _curaPocaoModelo = (() => {
+      if (!_pmAvaliar || !(_pmAvaliar.n > 0) || !(_pmAvaliar.cura > 0)) return 0;
+      const teto = _pmAvaliar.cura / (Number(EXAUSTAO()) || 1);
+      const stock = tMatar && tMatar > 0 ? (_pmAvaliar.n * _pmAvaliar.cura) / tMatar : null;
+      return stock == null ? teto : Math.min(stock, teto);
+    })();
+    const curaPocao = cura?.pocao || _curaPocaoModelo;   // cura/s: medida quando existe, senao reservatorio
     // ROUBO DE VIDA (motor.js:1226-1228): cura = dano × rv, e o dano e o DEPOIS de mitigar
     // (o `golpear` aplica `mitigar` e so depois multiplica pelo rv). Logo cura/s = rv × dps × mit.
     // CURA DO GIRO (motor.js:2169-2170) entra por `cura.giro` quando o chamador a conhece.
@@ -3604,7 +3620,7 @@ const CFG_VER = 4;
     // pocao que cubra a janela). Sem DPS de saida nao ha' tMatar - ai' fica-se no criterio
     // conservador de antes (liquido > 0), porque "nao sei" nao pode virar "sobrevive".
     // A mesma regra que `sobrevivenciaSet` ja usava (`tMorrer < tKill || mortal || semPocao`).
-    const tMatar = dps > 0 ? (s.hp || 0) / dps : null;
+    // (`tMatar` foi calculado em cima, antes da cura da pocao: o reservatorio depende dele.)
     const morre = mortal || !mix || (liquido > 0 && (tMatar == null || tMorrer < tMatar));
     return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), vidaPool, curaSkill, curaPocao, curaRv, curaGiroS, curaRegen, curaKit, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, tMatar, morre, chefe: s.chefe, magico: s.magico };
   }
@@ -3665,7 +3681,6 @@ const CFG_VER = 4;
       if (c.bossDurMs) { r.bossMs += c.bossDurMs; r.bossN++; }
     }
     const pl = player();
-    const cp = curaPocaoMax();
     // `curaGiroS()` NÃO depende da região: calcular UMA vez, fora do `.map`. Lá dentro era uma
     // chamada por região — e é exactamente ela que entra no ciclo de recursão da guarda acima.
     const _giroS = curaGiroS();
@@ -3689,7 +3704,11 @@ const CFG_VER = 4;
       // D15: valor velho e' melhor que zero — ver `dpsMedido`.
       const _dpm = dpsMedido();
       const dpsMed = _dpm.v;
-      const risco = r.boss && nivelChefe ? avaliar(r.boss, nivelChefe, pl, { skill: curaSkillChefe, pocao: curaPocaoChefe || cp * 0.6, giro: _giroS }, dpsMed) : null;
+      // D01b: se ha' medida de cura/pocao no chefe, ela manda; sem medida entra o RESERVATORIO
+      // (`pocoesEmMao()` x cura / EXAUSTAO, limitado pelo stock) dentro do `avaliar` - nunca `cp * 0,6`.
+      const curaRisco = { skill: curaSkillChefe, giro: _giroS };
+      if (curaPocaoChefe) curaRisco.pocao = curaPocaoChefe;
+      const risco = r.boss && nivelChefe ? avaliar(r.boss, nivelChefe, pl, curaRisco, dpsMed) : null;
       return { region: r.region, n: r.n, janelas: r.janelas, deaths: r.deaths, boss: r.boss, goldMin: r.g / d, xpMin: r.x / d, killsMin: r.k / d, mobHpMinRel: r.hpm, potMin: r.p / d, goldPotionMin: r.gp / d, healSkillS: curaSkill, healSkillChefeS: curaSkillChefe, healPotionS: curaPocao, bossMs: r.bossN ? r.bossMs / r.bossN : null, potChefe: r.bpc ? r.bpoc / r.bpc : null, risco: risco ? { nivel: nivelChefe, hp: risco.hp, dps: risco.dpsTomado, danoGolpe: risco.danoGolpe, intervalo: risco.intervalo, nPocoes: risco.nPocoes, curaSkill: risco.curaSkill, curaPocao: risco.curaPocao, curaTotal: risco.curaTotal, liquido: risco.liquido, mixTxt: risco.mixTxt, custoPocaoS: risco.custoPocaoS, tMorrer: risco.tMorrer, fM: risco.fM, piorMec: risco.piorMec, mecFatalNome: risco.mecFatalNome, mortal: risco.mortal, morre: risco.morre } : null };
     });
     arr.sort((a, b) => b.goldMin - a.goldMin);
@@ -3925,7 +3944,6 @@ const CFG_VER = 4;
   function planejar(ids) {
     const p = player();
     const agg = agregar();
-    const cp = curaPocaoMax();
     const out = [];
     for (const id of (ids || [])) {
       const o = META.ondeItem?.[id];
@@ -3949,8 +3967,12 @@ const CFG_VER = 4;
         const reg = agg.find((r) => zona.nome && r.region.startsWith(zona.nome));
         // CURA DO GIRO (motor.js:2188-2193) — ver `curaGiroS`: entra no mob e no chefe.
         const _giroS = curaGiroS();
-        const curaMob = reg ? { skill: reg.healSkillS || 0, pocao: reg.healPotionS || cp * 0.6, giro: _giroS } : { skill: 0, pocao: cp * 0.6, giro: _giroS };
-        const curaChefe = reg ? { skill: reg.healSkillChefeS || 0, pocao: reg.healPotionS || cp * 0.6, giro: _giroS } : curaMob;
+        // D01b: `cp * 0,6` era a pocao como TAXA com stock infinito. Sem medida, o `avaliar` calcula
+        // o reservatorio; com medida, a medida manda.
+        const curaMob = reg ? { skill: reg.healSkillS || 0, giro: _giroS } : { skill: 0, giro: _giroS };
+        if (reg && reg.healPotionS) curaMob.pocao = reg.healPotionS;
+        const curaChefe = reg ? { skill: reg.healSkillChefeS || 0, giro: _giroS } : curaMob;
+        if (reg && reg.healPotionS) curaChefe.pocao = reg.healPotionS;
         const avMob = mobs[0] ? avaliar(mobs[0], nivel, p, curaMob) : null;
         const avChefe = bossNome ? avaliar(bossNome, nivel + 2, p, curaChefe) : null;
         // A TABELA DE DROP DEPENDE DA CLASSE (motor.js:383 DROPS vs 397 DROPS_AP; 407 carrega as duas).

@@ -359,7 +359,9 @@ export const suite = {
         fraco: { hp: 1, ad: 1, as: 1, armadura: 1, xp: 1, ouro: 1 },
         brutamontes: { hp: 1, ad: 3000, as: 1, armadura: 1, xp: 1, ouro: 1 },
       } };
-      const w = mundoLuta(0, { pocoes: { vidaS: 5 }, meta });
+      // SEM stock de pocao: o termo da pocao fica a 0 e o liquido volta a ser positivo. Com stock
+      // o reservatorio mudava `liquido` e este teste deixava de medir o adjudicador de morte (D01).
+      const w = mundoLuta(0, { meta });
       await new Promise((r) => setTimeout(r, 120));
       const pj = { nivel: 10, vida: 2000, armadura: 40, rm: 30, regen: 0 };
       const avFraco = w.avaliar('fraco', 10, pj, { skill: 0, pocao: 0 }, 500);
@@ -373,6 +375,33 @@ export const suite = {
       const semDps = w.avaliar('fraco', 10, pj, { skill: 0, pocao: 0 });
       t.check('U14d: SEM dps de saida nao se inventa sobrevivencia (criterio conservador de antes)',
         !!semDps && semDps.tMatar === null && semDps.liquido > 0 && semDps.morre === true);
+    }
+
+    /* ---------------- U15 / D01b - a pocao e' RESERVATORIO, nao torneira ----------------
+     * O fallback era `curaMax * 0,6` = 1.320 hp/s com stock INFINITO (medido: `curaTotal` do risco
+     * do Barao dava 1.322 hp/s). Agora, sem medida, a taxa e' min(N*cura/tMatar, cura/EXAUSTAO):
+     * o stock limita o total e o cooldown limita o pico. */
+    {
+      const meta = { monstros: { fraco: { hp: 1, ad: 1, as: 1, armadura: 1, xp: 1, ouro: 1 } } };
+      const w = mundoLuta(0, { pocoes: { vidaS: 5 }, meta });
+      await new Promise((r) => setTimeout(r, 120));
+      const pj = { nivel: 10, vida: 2000, armadura: 40, rm: 30, regen: 0 };
+      const longo = w.avaliar('fraco', 10, pj, { skill: 0 }, 10);
+      const medio = w.avaliar('fraco', 10, pj, { skill: 0 }, 100);
+      // Stock limitado nos dois: o PRODUTO taxa x tMatar e' o stock (N*cura) e nao muda com o DPS.
+      const stockLongo = longo.curaPocao * longo.tMatar;
+      const stockMedio = medio.curaPocao * medio.tMatar;
+      t.check('U15: a cura da pocao escala com 1/tMatar (e um RESERVATORIO, nao uma taxa fixa)',
+        longo.curaPocao > 0 && longo.curaPocao < 100
+        && Math.abs(stockLongo - stockMedio) / Math.max(1, stockLongo) < 1e-6);
+      const semPocao = mundoLuta(0, { meta });
+      await new Promise((r) => setTimeout(r, 80));
+      const vazio = semPocao.avaliar('fraco', 10, pj, { skill: 0 }, 10);
+      t.check('U15b: sem pocao na mao a cura da pocao e ZERO (nunca um fallback inventado)',
+        !!vazio && vazio.curaPocao === 0);
+      const medido = w.avaliar('fraco', 10, pj, { skill: 0, pocao: 3.5 }, 100);
+      t.check('U15c: uma MEDIDA de cura/pocao manda sobre o modelo (medicao > teoria)',
+        !!medido && medido.curaPocao === 3.5);
     }
   },
 };
