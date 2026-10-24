@@ -767,6 +767,23 @@ Antes do D20, o Anciao tambem dizia `tMorrerS: null` — "nunca morre" — com 1
   ganha a de penetracao, e no tier epico a de CDR perde tambem no chefe. Por isso a escolha nao pode
   ser um id fixo: tem de sair do modelo por fase (`estimarSet`/`scoreSet` com o alvo da fase), que e'
   como `buildIdeal`/`montarBuildDe` ja tratam as botas (pool separado por `espaco === 'botas'`,
-  `automation.js:9375-9540`). **Por medir:** se o MODELO concorda com o JOGO nestas quatro linhas -
-  e' o passo seguinte (o resto do modelo ja foi validado contra o motor nas outras grandezas).
+  `automation.js:9375-9540`).
+
+  **O modelo contra o jogo (MEDIDO, `node tools/botas-modelo-vs-jogo.mjs`)** - o que a extensao
+  escolheria, contra o que o motor faz (mesmo campeao, mesmo catalogo real lido de
+  `docs/game-src/itens.js`, kit vivo da Katarina):
+
+  | tier | fase | modelo escolhe | jogo diz | |
+  |---|---|---|---|---|
+  | epico | mobs | 3020 (pen, 178 dps) | empate | concorda |
+  | epico | chefe | 3020 (pen, 156 dps) | PEN (121,25 vs 123,5 s) | **concorda** |
+  | lendario | chefe | 3171 (CDR, 187 dps) | **CDR** (107,2 vs 113,4 s) | **concorda** |
+  | lendario | mobs | 3171 (CDR, 215 dps) | PEN (10,75 vs 11,55 s) | **DIVERGE** |
+
+  Uma divergencia, e' a unica: em **mobs** o modelo da' 215 dps ao CDR contra 195 ao pen, e o motor
+  mata mais depressa com o pen. A diferenca no jogo e' 0,8 s por mob (7%) e em mobs de rotina os dois
+  matam ao mesmo ritmo (o tecto e' o respawn, nao o DPS) - logo a troca que o modelo faz **nao custa
+  ouro nem abranda o farm**; custa 0,8 s por mob gordo. Fica registado em vez de escondido: um modelo
+  que so' concorda 3 em 4 e' um modelo a vigiar, nao um modelo provado. O que **nao** se faz e' voltar
+  a fixar um id de bota no codigo para "acertar" a quarta linha.
 
