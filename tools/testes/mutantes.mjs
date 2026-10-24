@@ -247,6 +247,13 @@ const MUTACOES = [
     new: "else if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('S')) acts.push({ action: 'GUARDAR_COFRE', it, why:",
     esperado: 'R7: épico S+ NUNCA é mandado para o cofre',
   },
+  {
+    id: 'M30-d01-dano-liquido-e-morte',
+    o_que: 'avaliar volta a chamar MORTE ao dano liquido (`liquido > 0`) - 28 s de tMorrer passam a ser o mesmo que 0,6 s',
+    old: '    const morre = mortal || !mix || (liquido > 0 && (tMatar == null || tMorrer < tMatar));',
+    new: '    const morre = liquido > 0 || !mix || mortal;   // mutado: D01',
+    esperado: 'U14b: chefe que NAO te mata antes de morrer -> `morre` falso (dano liquido nao e morte)',
+  },
 ];
 
 /* ---------------------------------------------------------------------------------------------

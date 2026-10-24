@@ -716,9 +716,10 @@ Antes do D20, o Anciao tambem dizia `tMorrerS: null` — "nunca morre" — com 1
 | D15 | `_dpsCache` de 60 s | passados 60 s sem medicao devolvia **0** -> `curaRv = 0` -> `liquido` subia -> `morre` virava true -> regiao recomendada mudava | `dpsMedido()` devolve SEMPRE a ultima medida com `idadeMs`/`stale`; uma leitura falhada (0) ja' nao apaga uma medida boa | — |
 | D17 | politica de preco | tres copias da escada (anunciar / reajustar / cancelar) e o piso do Gume so' existia em duas | `politicaPreco()` e' a UNICA escada; `precoDeAnuncio`/`referenciaPrecoMercado` sao invólucros finos; `motivoCancelarSemRef()` serve o `planejarMercado` | suite `mercado-preco` (56 checks) + M13 (piso do Lojista) |
 | D19 | bonus de VIP | `1.2` escrito a mao em tres sitios, e o `carregarMeta` **deitava fora** o campo `vip` que o inject ja' enviava | `meta.vip = M.VIP` (motor.js:152), `'vip'` na lista do `carregarMeta`, `vipFx()`, `VIP_FB` como fallback DECLARADO, `cfg.vipAtivo` como escolha do dono | U7..U7d (o fixture muda `VIP.xp` para 1,5); mutacao M25 |
+| D01 | adjudicador de morte | `avaliar.morre = liquido > 0` (DANO LIQUIDO): com o Barao a 28 s de `tMorrer` e 165 s de `tMatar` dizia MORTE, a mesma resposta que a 0,6 s. E `sobrevivenciaSet` ja' usava outra regra (D12) - duas doutrinas | `morre = mortal \|\| !mix \|\| (liquido > 0 && (tMatar == null \|\| tMorrer < tMatar))`, com `tMatar = hp do alvo / dps de saida` exposto. Sem DPS de saida fica o criterio conservador de antes ("nao sei" nao vira "sobrevive") | U14..U14d; mutacao M30 |
 | D02/D16 | `recomendar` | `sobrevive: true` literal nos dois ramos; `ouroLiquidoMin` era "medido" num ramo e "teorico real" no outro, impressos como a mesma grandeza | `sobrevive` CALCULADO (coerente com `chefeFatal`), `base: 'medido'|'teorico'`, e `goldMin`/`goldPotionMin`/`ouroLiquidoMin` sempre com a mesma conta; `mortesMedidas` | U13..U13c; mutacao M27 |
 
-**Bateria de mutacoes: 31 mutacoes, 31 apanhadas, 0 sobreviventes, 0 quebradas**
+**Bateria de mutacoes: 32 mutacoes, 32 apanhadas, 0 sobreviventes, 0 quebradas**
 (`node tools/testes/mutantes.mjs`, 30 em cache numa segunda corrida).
 
 ### 8.1 Duas licoes que a bateria deu (e que ficaram no codigo)
@@ -748,10 +749,13 @@ Antes do D20, o Anciao tambem dizia `tMorrerS: null` — "nunca morre" — com 1
 
 ### 8.3 Continua aberto (nao fingir que esta fechado)
 
-- **D01** — as doutrinas de sobrevivencia ainda sao varias: `avaliar.morre`, `sobrevivenciaSet.morre`
-  (agora na mesma regua do `estimarLuta`, mas ainda um segundo veredicto) e os chamadores que
-  passam `pocao` como TAXA. Falta UM adjudicador.
-- **D03/D04/D06** — `recomendar` continua a so' ver regioes com chefe (`agregar` so' cria `risco`
+- **D01b - o resto do D01: a pocao ainda entra como TAXA no `avaliar`.** O `avaliar` soma
+  `cura.pocao` a `curaTotal` como se fosse cura/s; `estimarLuta`/`sobrevivenciaSet` ja' usam o
+  RESERVATORIO (cada pocao cura 2.200 NUM INSTANTE, nao 2.200 por segundo). Medido no `risco` do
+  chefe: `curaTotal` **1.322 hp/s** com 5 Supremas - absurdo que faz o `recomendar` optimista nessa
+  parcela. Fechar = o `avaliar` receber a reserva e o tempo de luta, como o `estimarLuta`.
+
+- **D03/D04/D06** - `recomendar` continua a so' ver regioes com chefe (`agregar` so' cria `risco`
   quando ha `r.boss`); `scoreRegiao` continua a ordenar por ouro bruto; o CDR tem tres fontes.
 - **A bota: MEDIDA (2026-10-24), e a afirmacao NAO e' universal.** `node tools/botas-cdr-vs-pen.mjs`
   corre as lutas no motor do jogo (Katarina nv36, base 3115/3089/3168/3031), com seed deterministica:

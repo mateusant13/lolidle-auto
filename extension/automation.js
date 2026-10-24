@@ -2534,7 +2534,7 @@ const CFG_VER = 4;
    *  se a página não mostrar este valor, o Chrome está a servir SCRIPT VELHO (reload não feito).
    *  Criado porque `fetch(chrome.runtime.getURL(...))` falha por CSP no mundo isolado — sem um
    *  marcador não se distingue código novo de código velho. Mudar a string a cada entrega. */
-  const BUILD = '2026-10-24-math-d02-d19-e-cofre';
+  const BUILD = '2026-10-24-d01-adjudicador';
   const MIGRACOES_CFG = [
     { ver: 1, chave: 'barraPorDisponibilidade', de: false, para: true,
       porquê: 'default invertido false -> true (pedido do dono, 2026-10-14)' },
@@ -3596,7 +3596,17 @@ const CFG_VER = 4;
     const alvoGolpe = Math.max(0, danoGolpe - curaSkill * intervalo); // o que a poção precisa cobrir por janela
     const mix = melhorMix(nPocoes, alvoGolpe);
     const tMorrer = liquido > 0 ? (vidaPool || 1) / liquido : Infinity;
-    return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), vidaPool, curaSkill, curaPocao, curaRv, curaGiroS, curaRegen, curaKit, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, morre: liquido > 0 || !mix || mortal, chefe: s.chefe, magico: s.magico };
+    // D01 (2026-10-24): UM ADJUDICADOR DE MORTE. `morre` era `liquido > 0` - ou seja "o chefe
+    // tira-te mais vida do que curas" - e isso e' um DANO LIQUIDO, nao uma morte. Com o Barao a
+    // 28 s de tMorrer e a 165 s de tMatar a conta dizia a MESMA coisa que a 0,6 s. A regra do dono
+    // e' "sobrevive? mata em quantos segundos?": morre-se quando o tempo de morrer e' MENOR que o
+    // tempo de matar (ou quando uma mecanica do rodizio atravessa a piscina, ou quando nao ha'
+    // pocao que cubra a janela). Sem DPS de saida nao ha' tMatar - ai' fica-se no criterio
+    // conservador de antes (liquido > 0), porque "nao sei" nao pode virar "sobrevive".
+    // A mesma regra que `sobrevivenciaSet` ja usava (`tMorrer < tKill || mortal || semPocao`).
+    const tMatar = dps > 0 ? (s.hp || 0) / dps : null;
+    const morre = mortal || !mix || (liquido > 0 && (tMatar == null || tMorrer < tMatar));
+    return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), vidaPool, curaSkill, curaPocao, curaRv, curaGiroS, curaRegen, curaKit, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, tMatar, morre, chefe: s.chefe, magico: s.magico };
   }
 
   /** Agrega os ciclos observados por região (médias por minuto + mortes).

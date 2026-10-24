@@ -348,5 +348,31 @@ export const suite = {
         !!rm && rm.base === 'medido' && rm.sobrevive === (rm.chefeFatal !== true)
         && rm.mortesMedidas != null && Math.abs(rm.ouroLiquidoMin - (rm.goldMin - rm.goldPotionMin)) < 1e-9);
     }
+
+    /* ---------------- U14 / D01 - UM adjudicador de morte ----------------
+     * `avaliar.morre` era `liquido > 0` (dano liquido), nao "morre antes de matar": com o Barao a
+     * 28 s de tMorrer e 165 s de tMatar dizia MORTE - a mesma resposta que a 0,6 s. A regra e' a do
+     * dono: sobrevive? mata em quantos segundos? Agora `morre` = tMorrer < tMatar (ou mecanica
+     * fatal, ou nenhuma pocao cobre a janela); sem DPS de saida fica conservador. */
+    {
+      const meta = { monstros: {
+        fraco: { hp: 1, ad: 1, as: 1, armadura: 1, xp: 1, ouro: 1 },
+        brutamontes: { hp: 1, ad: 3000, as: 1, armadura: 1, xp: 1, ouro: 1 },
+      } };
+      const w = mundoLuta(0, { pocoes: { vidaS: 5 }, meta });
+      await new Promise((r) => setTimeout(r, 120));
+      const pj = { nivel: 10, vida: 2000, armadura: 40, rm: 30, regen: 0 };
+      const avFraco = w.avaliar('fraco', 10, pj, { skill: 0, pocao: 0 }, 500);
+      const avBruto = w.avaliar('brutamontes', 10, pj, { skill: 0, pocao: 0 }, 500);
+      t.check('U14: `avaliar` expoe tMatar (hp do alvo / dps de saida) quando ha DPS',
+        !!avFraco && avFraco.tMatar > 0 && Math.abs(avFraco.tMatar - (avFraco.hp / 500)) < 1e-6);
+      t.check('U14b: chefe que NAO te mata antes de morrer -> `morre` falso (dano liquido nao e morte)',
+        !!avFraco && avFraco.liquido > 0 && avFraco.tMorrer > avFraco.tMatar && avFraco.morre === false);
+      t.check('U14c: quem te mata antes de morrer -> `morre` verdadeiro',
+        !!avBruto && avBruto.tMorrer < avBruto.tMatar && avBruto.morre === true);
+      const semDps = w.avaliar('fraco', 10, pj, { skill: 0, pocao: 0 });
+      t.check('U14d: SEM dps de saida nao se inventa sobrevivencia (criterio conservador de antes)',
+        !!semDps && semDps.tMatar === null && semDps.liquido > 0 && semDps.morre === true);
+    }
   },
 };
