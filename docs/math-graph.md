@@ -701,3 +701,57 @@ Antes do D20, o Anciao tambem dizia `tMorrerS: null` — "nunca morre" — com 1
   `potS` a pensar em hp/s engana-se.
 - **GUI**: `tMorrerS` de milhares de segundos e' aritmeticamente certo e inutil de ler. Um tecto de
   apresentacao (ex.: "> 10 min") e' decisao do dono, nao do modelo.
+
+## 8. ESTADO EM 2026-10-24 (segunda vaga: o que fechou, com o numero)
+
+> Acrescentado no fim (Regra N.o 5). As linhas de §3 continuam a ser as do dia em que o
+> documento foi escrito: **re-medir antes de citar**. O que conta aqui e' o NUMERO das duas
+> versoes e o teste que o prende.
+
+| id | grandeza | antes | agora (com o numero) | prova |
+|---|---|---|---|---|
+| D11 | tecto de spawn | `respawnS = clear + local` = 2,7 s -> **66,7** abates/min (3 mobs) | `respawnS = clear` = 1,5 s -> **120** abates/min. `local` (1,2 s) e' o respawn de VIAGEM (motor.js:3321), nao de cada wave (motor.js:1739) | U11; mutacao M26 |
+| D12 | sobrevivencia da BUILD | `tMorrer = vida / dpsChefe` bruto: sem roubo de vida, giro, regen, kit, nem reserva de pocoes | mesma regua do `estimarLuta`: `net = dpsChefe - curaFixa - curaRv*(dpsCand/dpsBase)`; `tMorrer = (vida + reserva) / net`; `morre = tMorrer < tKill || mortal || semPocao`. `estimarLuta` passa a expor `curaRvS` e `reservaPocoes` | U8..U8e; mutacao M24 |
+| D13 | duplicacao de funcoes | `statsMonstro` definida DUAS vezes (a de baixo vencia por hoisting; a de cima era morta) e o nivel do chefe em duas contas | uma definicao de cada; `nivelChefeDe()` delega em `nivelAlvo(local,'chefe',...)` | U12, U12b (contam definicoes na fonte) |
+| D15 | `_dpsCache` de 60 s | passados 60 s sem medicao devolvia **0** -> `curaRv = 0` -> `liquido` subia -> `morre` virava true -> regiao recomendada mudava | `dpsMedido()` devolve SEMPRE a ultima medida com `idadeMs`/`stale`; uma leitura falhada (0) ja' nao apaga uma medida boa | — |
+| D17 | politica de preco | tres copias da escada (anunciar / reajustar / cancelar) e o piso do Gume so' existia em duas | `politicaPreco()` e' a UNICA escada; `precoDeAnuncio`/`referenciaPrecoMercado` sao invólucros finos; `motivoCancelarSemRef()` serve o `planejarMercado` | suite `mercado-preco` (56 checks) + M13 (piso do Lojista) |
+| D19 | bonus de VIP | `1.2` escrito a mao em tres sitios, e o `carregarMeta` **deitava fora** o campo `vip` que o inject ja' enviava | `meta.vip = M.VIP` (motor.js:152), `'vip'` na lista do `carregarMeta`, `vipFx()`, `VIP_FB` como fallback DECLARADO, `cfg.vipAtivo` como escolha do dono | U7..U7d (o fixture muda `VIP.xp` para 1,5); mutacao M25 |
+| D02/D16 | `recomendar` | `sobrevive: true` literal nos dois ramos; `ouroLiquidoMin` era "medido" num ramo e "teorico real" no outro, impressos como a mesma grandeza | `sobrevive` CALCULADO (coerente com `chefeFatal`), `base: 'medido'|'teorico'`, e `goldMin`/`goldPotionMin`/`ouroLiquidoMin` sempre com a mesma conta; `mortesMedidas` | U13..U13c; mutacao M27 |
+
+**Bateria de mutacoes: 31 mutacoes, 31 apanhadas, 0 sobreviventes, 0 quebradas**
+(`node tools/testes/mutantes.mjs`, 30 em cache numa segunda corrida).
+
+### 8.1 Duas licoes que a bateria deu (e que ficaram no codigo)
+
+1. **Mutacao que parte o ficheiro nao e' "sobrevivente".** O M29 punha um `//` no meio de uma
+   expressao, perdia o `});` e o banco saia `rc=1` **sem imprimir a assercao** — e o runner
+   dizia BURACO. Era falso: o mutante nem chegava a correr. Agora ha' `node --check` no ficheiro
+   mutado antes de o executar, e o resultado sai como `QUEBRADA` (conta para o `rc`), com a
+   mensagem de sintaxe. Provado nos dois sentidos (M99 de prova: `QUEBRADAS 1`, `rc=1`;
+   removido: 31/31 em cache, `rc=0`).
+2. **Ancora de varias linhas passou a ser legal.** O `old`/`new` do registry escreve-se com
+   `\n` e o runner normaliza para o EOL da fonte. Sem isso, distinguir dois ramos identicos
+   obrigava a escolher outro sitio para mutar (era o que impedia o M27 de apontar ao ramo do
+   `recomendar` teorico).
+
+### 8.2 Cofre e mercado: a politica que o dono pediu (2026-10-23/24)
+
+- **Epico NUNCA ao cofre.** O ramo mandava o epico S+ para o cofre (o dono: "nenhum epico no
+  cofre"); passa a `PROTEGER` (intocavel, nao se vende, fica na mochila) e o melhor do slot
+  continua a ser apanhado pelo `EQUIPAR`. R7 (duas copias, para o ramo ser mesmo atravessado);
+  mutacao M29.
+- **Lendario indesejado no cofre SAI.** `pioresDoCofre()` so' olhava C/B, por isso um lendario B/C
+  fora da build envelhecia la' para sempre. `lendariosIndesejadosCofre(n)` devolve os que nao sao
+  build, componente, reservado, especial, prioridade extrema nem da classe; `passoCofre` saca no
+  maximo 2 por ida (so' com espaco na mochila) e o `planBag` seguinte anuncia-os no mercado —
+  nunca ao Lojista. R8/R8b; mutacao M28.
+
+### 8.3 Continua aberto (nao fingir que esta fechado)
+
+- **D01** — as doutrinas de sobrevivencia ainda sao varias: `avaliar.morre`, `sobrevivenciaSet.morre`
+  (agora na mesma regua do `estimarLuta`, mas ainda um segundo veredicto) e os chamadores que
+  passam `pocao` como TAXA. Falta UM adjudicador.
+- **D03/D04/D06** — `recomendar` continua a so' ver regioes com chefe (`agregar` so' cria `risco`
+  quando ha `r.boss`); `scoreRegiao` continua a ordenar por ouro bruto; o CDR tem tres fontes.
+- **A bota (CDR vs penetracao)** — a afirmacao "a bota de CDR ganha a de penetracao" ainda NAO
+  tem prova calculada por fase (mobs vs chefe) nem troca automatica por fase. E' o proximo item.

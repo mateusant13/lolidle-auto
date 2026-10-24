@@ -464,6 +464,9 @@
     meta.nivelDif = M.NIVEL_DIF || null;        // fator de nível (livre/+dano/cap/piso), direto do motor
     meta.rmMonstro = M.RM_MONSTRO != null ? M.RM_MONSTRO : null;   // motor.js:1194, RM dos monstros = 60% da armadura (lido, nao copiado)
     meta.habChefe = M.HAB_CHEFE || null;         // carrega/espera de cada mecânica do chefe
+    // BÓNUS DE VIP (D19): `VIP = { xp: 1.2, drop: 1.2, ... }` (motor.js:152). O factor é LIDO
+    // daqui em vez de escrito 1.2 no automation (REGRA Nº 3); se o jogo o mudar, acompanha.
+    meta.vip = M.VIP || null;
     // grupoSpawn (motor.js:1137) e respawn (motor.js:1646 wave limpa / :3069 troca de
     // local) sao LITERAIS INLINE no motor e nao sao exportados: a unica forma de os
     // LER — em vez de os copiar a mao, o que fazia este ficheiro e o que a REGRA N.o 3

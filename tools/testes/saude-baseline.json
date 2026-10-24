@@ -1,11 +1,11 @@
 {
   "automation.js": {
-    "bytes": 985958,
-    "linhas": 14188,
-    "defs": 512,
+    "bytes": 993515,
+    "linhas": 14322,
+    "defs": 518,
     "funcaoMaisLonga": {
       "nome": "planBag",
-      "linhas": 420
+      "linhas": 424
     },
     "catchVazios": 69
   },
@@ -30,18 +30,18 @@
     "catchVazios": 4
   },
   "gui.js": {
-    "bytes": 356472,
-    "linhas": 4932,
+    "bytes": 359189,
+    "linhas": 4968,
     "defs": 160,
     "funcaoMaisLonga": {
       "nome": "renderAgora",
-      "linhas": 198
+      "linhas": 225
     },
     "catchVazios": 8
   },
   "inject.js": {
-    "bytes": 46150,
-    "linhas": 769,
+    "bytes": 46371,
+    "linhas": 772,
     "defs": 29,
     "funcaoMaisLonga": {
       "nome": "snapshot",

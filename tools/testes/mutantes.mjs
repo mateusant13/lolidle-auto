@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { RAIZ, AUTOMATION_PATH, AUTOMATION_REL } from './dom-stub.mjs';
 
@@ -205,6 +205,48 @@ const MUTACOES = [
     new: '    const tMorrer = (net > 0 && net - curaPocaoS() > 0) ? vidaPool / (net - curaPocaoS()) : Infinity;   // mutado: D20',
     esperado: 'U6b: 5 Supremas somam 11.000 hp ao POOL: (2.000 + 11.000) / 3.266 ~ 4,0 s',
   },
+  {
+    id: 'M24-d12-build-sem-sustento',
+    o_que: 'sobrevivenciaSet volta a medir tMorrer = vida / dpsChefe BRUTO (sem roubo de vida, giro, regen, reserva de poções) - a build escolhida por outra regua',
+    old: '    const tMorrer = net > 0 ? +(((vida || 0) + reserva) / net).toFixed(1) : Infinity;',
+    new: '    const tMorrer = dIn > 0 ? +(((vida || 0)) / dIn).toFixed(1) : Infinity;   // mutado: D12',
+    esperado: 'U8b: com roubo de vida o tMorrer da BUILD e maior que vida/dpsBruto (sustento entra)',
+  },
+  {
+    id: 'M25-d19-vip-copiado',
+    o_que: 'vipFx() ignora META.vip e devolve sempre o fallback 1.2 (o numero volta a ser copiado)',
+    old: '    if (v && Number.isFinite(Number(v.xp))) return { xp: Number(v.xp), drop: Number(v.drop) };',
+    new: '    if (false && v && Number.isFinite(Number(v.xp))) return { xp: Number(v.xp), drop: Number(v.drop) };   // mutado: D19',
+    esperado: 'U7b: o factor e LIDO do motor (VIP.xp=1.5 no fixture), nao copiado como 1.2',
+  },
+  {
+    id: 'M26-d11-spawn-soma-dois-respawns',
+    o_que: 'estimarRegiao volta a somar respawn da wave limpa (1,5) com o da viagem (1,2): tecto de spawn 44% baixo',
+    old: '    const respawnS = opts.respawnS != null ? opts.respawnS : rsp.clear;',
+    new: '    const respawnS = opts.respawnS != null ? opts.respawnS : (rsp.clear + (rsp.local || 0));   // mutado: D11',
+    esperado: 'U11: com 3 mobs/wave e respawn de 1,5 s o tecto e 120 abates/min (nao 66,7)',
+  },
+  {
+    id: 'M27-d16-ouro-bruto-no-liquido',
+    o_que: 'recomendar (ramo teorico) volta a publicar ouro bruto sem a parte das pocoes no liquido',
+    old: '        goldMin: Number(m.goldMin) || 0,\n        goldPotionMin: Number(m.goldPotionMin) || 0,\n        ouroLiquidoMin: liq(m),\n        xpMin: m.xpMin || 0,\n        chefe: m.chefe || null,',
+    new: '        goldMin: 0,\n        goldPotionMin: Number(m.goldPotionMin) || 0,\n        ouroLiquidoMin: liq(m),\n        xpMin: m.xpMin || 0,\n        chefe: m.chefe || null,   // mutado: D16',
+    esperado: 'U13b: o ouro liquido e SEMPRE goldMin - goldPotionMin (uma conta, dois ramos)',
+  },
+  {
+    id: 'M28-cofre-lendario-indesejado-fica',
+    o_que: 'lendariosIndesejadosCofre deixa de reconhecer lendarios: o indesejado fica no cofre para sempre',
+    old: "      if (rar !== 'lendario') continue;",
+    new: "      if (true) continue;   // mutado: cofre",
+    esperado: 'R8: o lendário B fora da build é RETIRADO do cofre (vai ao mercado)',
+  },
+  {
+    id: 'M29-epico-volta-ao-cofre',
+    o_que: 'o epico S+ volta a ser mandado para o COFRE (o defeito que o dono mandou arrumar)',
+    old: "else if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('S')) acts.push({ action: 'PROTEGER', it, why:",
+    new: "else if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('S')) acts.push({ action: 'GUARDAR_COFRE', it, why:",
+    esperado: 'R7: épico S+ NUNCA é mandado para o cofre',
+  },
 ];
 
 /* ---------------------------------------------------------------------------------------------
@@ -232,6 +274,11 @@ const MUTACOES = [
  * ------------------------------------------------------------------------------------------- */
 
 const original = fs.readFileSync(AUTOMATION_PATH, 'utf8');
+// As ancoras podem ser ESCRITAS com `\n` (legivel no registry) mesmo que a fonte seja CRLF:
+// normaliza-se antes de procurar. Sem isto, uma mutacao de duas linhas era impossivel de escrever
+// e o formato do ficheiro ditava o formato do teste (a cauda a abanar o cao).
+const EOL_FONTE = original.includes('\r\n') ? '\r\n' : '\n';
+const norm = (t) => String(t).replace(/\r?\n/g, EOL_FONTE);
 const TES = path.join(RAIZ, 'tools', 'testes');
 const CACHE = path.join(TES, '.mutantes-cache.json');
 const arg = (n) => process.argv.slice(2).includes(n);
@@ -259,7 +306,7 @@ console.log('ALVO ' + AUTOMATION_REL + '  bytes=' + original.length);
 /* ---- 1. PRE-VOO: ancora tem de existir exactamente uma vez ---- */
 const podres = [];
 for (const m of MUTACOES) {
-  const n = original.split(m.old).length - 1;
+  const n = original.split(norm(m.old)).length - 1;
   if (n !== 1) podres.push({ m, n });
 }
 if (podres.length) {
@@ -296,17 +343,28 @@ console.log('PARALELO ' + jobs + ' processos  populacao=' + pop.slice(0, 12) + '
 console.log('');
 
 const resultados = [];
-let pegos = 0, saltados = 0, sobreviventes = 0, parar = false;
+let pegos = 0, saltados = 0, sobreviventes = 0, quebradas = 0, parar = false;
 const t0 = Date.now();
 
 function correr(m) {
   return new Promise((resolver) => {
-    const mutado = original.replace(m.old, m.new);
+    const mutado = original.replace(norm(m.old), norm(m.new));
     const chave = sha(mutado + '|' + pop);
     const c = cache[chave];
     if (!refresh && c) { resolver({ m, estado: 'cached', nota: 'mesmo conteudo de ' + c.quando, ms: 0, chave }); return; }
     const ficheiro = path.join(TMP, m.id + '.js');
     fs.writeFileSync(ficheiro, mutado, 'utf8');
+    // GUARDA DE SINTAXE (2026-10-24): uma mutacao cujo `new` parte o ficheiro (ex.: um `//` no
+    // meio de uma expressao) fazia o banco sair rc=1 SEM imprimir a assercao esperada — e o
+    // runner chamava-lhe "SOBREVIVENTE". Era falso: o mutante nem chegou a correr. Medido com o
+    // M29 (perdia o `});` da linha). `node --check` custa ~50 ms e distingue as duas coisas.
+    const chk = spawnSync(process.execPath, ['--check', ficheiro], { encoding: 'utf8' });
+    if (chk.status !== 0) {
+      try { fs.rmSync(ficheiro, { force: true }); } catch { /* ignore */ }
+      const detalhe = String(chk.stderr || '').split('\n').filter((l) => l.trim()).slice(0, 2).join(' | ');
+      resolver({ m, estado: 'quebra', nota: 'SINTAXE: ' + detalhe, ms: 0, chave, ok: false });
+      return;
+    }
     const t = Date.now();
     const p = spawn(process.execPath, [path.join('tools', 'testes', 'run.mjs')], {
       cwd: RAIZ,
@@ -332,6 +390,7 @@ function anunciar(r) {
   const s = (r.ms / 1000).toFixed(1) + 's';
   if (r.estado === 'pego') { pegos++; console.log('PEGO    ' + r.m.id + '  (' + s + (r.cedo ? ', paragem cedo' : '') + ')'); }
   else if (r.estado === 'cached') { saltados++; console.log('CACHED  ' + r.m.id); }
+  else if (r.estado === 'quebra') { quebradas++; console.log('QUEBRADA ' + r.m.id + '  (' + s + ')  <-- a mutacao parte o ficheiro, nao e' + "'" + ' um buraco: ' + r.nota); }
   else { sobreviventes++; console.log('SOBREVIVEU ' + r.m.id + '  (' + s + ')  <-- BURACO NO BANCO'); }
   if (verbose) console.log('  ' + r.m.o_que);
 }
@@ -352,11 +411,11 @@ await Promise.all(Array.from({ length: Math.min(jobs, fila.length) }, () => trab
 fs.rmSync(TMP, { recursive: true, force: true });
 
 /* ---- 3. detalhe so' do que interessa ---- */
-const problemas = resultados.filter((r) => r.estado === 'sobrevivente');
+const problemas = resultados.filter((r) => r.estado === 'sobrevivente' || r.estado === 'quebra');
 if (problemas.length) {
   console.log('');
   for (const r of problemas) {
-    console.log('SOBREVIVENTE ' + r.m.id);
+    console.log((r.estado === 'quebra' ? 'QUEBRADA' : 'SOBREVIVENTE') + ' ' + r.m.id);
     console.log('  mutacao: ' + r.m.o_que);
     console.log('  esperado: FALHOU: ' + r.m.esperado);
     console.log('  ' + r.nota);
@@ -366,8 +425,8 @@ const naoCorridos = MUTACOES.length - resultados.length;
 if (naoCorridos) console.log('NAO CORRIDOS (paragem cedo pedida): ' + naoCorridos);
 
 console.log('');
-console.log('MUTACOES ' + MUTACOES.length + '  PEGAS ' + pegos + '  CACHED ' + saltados + '  SOBREVIVENTES ' + sobreviventes
+console.log('MUTACOES ' + MUTACOES.length + '  PEGAS ' + pegos + '  CACHED ' + saltados + '  SOBREVIVENTES ' + sobreviventes + '  QUEBRADAS ' + quebradas
   + (naoCorridos ? '  NAO-CORRIDOS ' + naoCorridos : '') + '  em ' + ((Date.now() - t0) / 1000).toFixed(1) + 's');
-const rc = sobreviventes === 0 ? 0 : 1;
+const rc = (sobreviventes === 0 && quebradas === 0) ? 0 : 1;
 console.log('rc=' + rc);
 process.exit(rc);

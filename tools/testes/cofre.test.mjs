@@ -897,5 +897,60 @@ export const suite = {
         nec.cofreA === true && nec.cofre === false
         && auto.motivosDeViagem(auto.faltandoNaBase(nec), nec).indexOf('cofreA') < 0);
     }
+
+    /* R7 - ÉPICO NUNCA AO COFRE (ordem do dono, 2026-10-23). O ramo antigo mandava o épico S+
+     *      para o cofre; ele quer o cofre para o que PRESTA (lendário A+ da build, componentes).
+     *      DUAS cópias de propósito: a melhor da peça é EQUIPAR e a segunda é a que chega ao ramo
+     *      do épico. Com uma só, o EQUIPAR escondia o ramo e o teste passava sem o exercitar
+     *      (a mutação M29 sobreviveu — REGRA Nº 6, verde sem prova). */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m); definirCampeao(m, 'adtest', { nivel: 30 }); auto.setConfig({ enabled: true });
+      m.montar('#npc-troca', [m.el({ tag: 'section', label: 'npc-troca', textContent: 'Cofre 10/40 Mochila 30/30' })]);
+      montarGradeCofreMotor(m, Array.from({ length: 10 }, () => ({ base: '1005', qual: 'C', nome: 'Adaga Inutil [C]' })));
+      auto.salvarCofre();
+      const slots = [];
+      for (let i = 0; i < 25; i++) slots.push({ id: '1005~C', raridade: 'basico' });
+      slots.push({ id: '9500~S', raridade: 'epico' }, { id: '9500~S', raridade: 'epico' });
+      montarMochila(m, slots, 30);
+      const acts = auto.planBag(auto.scanBag(true), 10, 10, { cofreA: true }).acts
+        .filter((a) => String(a.it.id) === '9500~S');
+      t.check('R7: épico S+ NUNCA é mandado para o cofre',
+        acts.length === 2 && acts.every((a) => a.action !== 'GUARDAR_COFRE'));
+      t.check('R7: ...e continua intocável (PROTEGER ou EQUIPAR, nunca Lojista)',
+        acts.length === 2 && acts.every((a) => ['PROTEGER', 'EQUIPAR'].includes(a.action)));
+    }
+
+    /* R8 - LENDÁRIO INDESEJADO NO COFRE SAI (para o mercado). O `pioresDoCofre` só olha C/B, por
+     *      isso um lendário B/C fora da build envelhecia no cofre para sempre. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m); definirCampeao(m, 'adtest', { nivel: 30 }); auto.setConfig({ enabled: true });
+      montarGradeCofreMotor(m, [
+        { base: '9500', qual: 'B', nome: 'Lendario Fraco [B]', rar: 'lendario' },
+        { base: '3031', qual: 'B', nome: 'Gume do Infinito [B]', rar: 'lendario' },  // prioridade extrema
+      ]);
+      const ind = auto.lendariosIndesejadosCofre();
+      t.check('R8: o lendário B fora da build é RETIRADO do cofre (vai ao mercado)',
+        ind.some((s) => String(s.base) === '9500'));
+      t.check('R8: prioridade extrema (3031) nunca é retirada', ind.every((s) => String(s.base) !== '3031'));
+    }
+
+    /* R8b - controlo: o lendário que FAZ parte da build ideal do campeão não sai do cofre. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m); definirCampeao(m, 'adtest', { nivel: 30 }); auto.setConfig({ enabled: true });
+      const ideal = (auto.buildIdeal() || []).map(String);
+      t.check('R8b: o campeão de teste tem build ideal (pré-condição do controlo)', ideal.length > 0);
+      if (ideal.length) {
+        montarGradeCofreMotor(m, [{ base: ideal[0], qual: 'A', nome: 'Da Build [A]', rar: 'lendario' }]);
+        const ind = auto.lendariosIndesejadosCofre();
+        t.check('R8b: lendário da build ideal NÃO é retirado do cofre',
+          ind.every((s) => String(s.base) !== String(ideal[0])));
+      }
+    }
   },
 };

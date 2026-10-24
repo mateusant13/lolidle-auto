@@ -21,7 +21,8 @@
  * CONTRATO: t.check(rotulo, condicao) so passa com condicao === true.
  */
 
-import { criarMundo, carregarAutomation, alimentarCatalogo, alimentarMeta, definirCampeao } from './dom-stub.mjs';
+import fs from 'node:fs';
+import { criarMundo, carregarAutomation, alimentarCatalogo, alimentarMeta, definirCampeao, AUTOMATION_PATH } from './dom-stub.mjs';
 
 const MONSTROS = { lobo: { hp: 1.0, ad: 1.0, as: 1.0, armadura: 1.0, xp: 1.0, ouro: 1.0 } };
 
@@ -35,7 +36,7 @@ function mundo(opts) {
     nivel: opts.nivel != null ? opts.nivel : 10,
     stats: { hp: 2000, hpperlevel: 100, hpregen: 10, hpregenperlevel: 0.5, armor: 40, spellblock: 30, ad: 100 },
   });
-  alimentarMeta(m, { monstros: MONSTROS, nivelDif: opts.nivelDif });
+  alimentarMeta(m, Object.assign({ monstros: MONSTROS, nivelDif: opts.nivelDif }, opts.meta || {}));
   m.montar('#hud-vida-txt', [m.el({ label: 'hud-vida-txt', textContent: '2000 / 2000' })]);
   m.montar('.st', [
     m.el({ label: 'st-dano', textContent: 'Dano 300' }),
@@ -66,14 +67,14 @@ function mundoLuta(rv, opt) {
   opt = opt || {};
   const store = {
     'lolidleAutoPotion:farm': {
-      cycles: [{
+      cycles: [Object.assign({
         region: 'Covil do Barao', gold: 3000, xp: 9000, fase: 'mobs', janela: 'jE',
         mobFase: {
           startedAt: 0, durMs: 60000,
           perMin: { gold: 3000, xp: 9000, kills: 30, potions: 0, goldPotion: 0, healSkill: 0, healPotion: 0 },
           gold: 3000, xp: 9000, kills: 30,
         },
-      }],
+      }, opt.ciclo || {})],
       log: [], issues: [], deaths: [],
     },
   };
@@ -84,7 +85,9 @@ function mundoLuta(rv, opt) {
     nivel: 10,
     stats: { hp: 2000, hpperlevel: 100, hpregen: 10, hpregenperlevel: 0.5, armor: 40, spellblock: 30, ad: 100 },
   });
-  alimentarMeta(m, {
+  // `opt.meta` sobrepoe o meta do cenario (o D19 precisa de um VIP com numeros proprios: se o
+  // teste usasse 1,2 igual ao literal, um vipFx() que copiasse o numero passaria na mesma).
+  alimentarMeta(m, Object.assign({
     monstros: {
       barao: { hp: 40, ad: 30, as: 1.5, armadura: 1.8, xp: 6, ouro: 6, chefe: true },
       mob: { hp: 1, ad: 1, as: 1, armadura: 1, xp: 1, ouro: 1 },
@@ -94,7 +97,7 @@ function mundoLuta(rv, opt) {
       id: 'covil', nome: 'Covil do Barao', nm: [10, 20], faixa: [10, 20], tier: 1,
       monstros: [['mob', 1]], chefe: ['barao'],
     }],
-  });
+  }, (opt && opt.meta) || {}));
   m.montar('#hud-vida-txt', [m.el({ label: 'hud-vida-txt', textContent: '2000 / 2000' })]);
   m.montar('.st', [
     m.el({ label: 'st-dano', textContent: 'Dano 300' }),
@@ -215,6 +218,135 @@ export const suite = {
         !!e5 && e5.ganha === false);
       t.check('U6d: as cargas que a luta exigiria excedem as 5 da mochila (por isso perde)',
         !!e5 && e5.pocoesNaMochila === 5 && e5.potNecessarias > e5.pocoesNaMochila);
+    }
+
+    /* ---------------- U7 / D19 - o bonus de VIP e' LIDO, nao copiado ----------------
+     * O inject ja' mandava `meta.vip = M.VIP` (motor.js:152) e o `carregarMeta` deitava o campo
+     * fora; o `1.2` estava escrito a mao em tres sitios. O fixture poe VIP.xp = 1.5: um vipFx()
+     * que devolvesse o literal 1.2 passaria despercebido se o teste usasse 1.2. */
+    {
+      const semVip = mundo({ meta: { locais: [{ id: 'campo', nome: 'Campo', nm: [10, 12], faixa: [10, 12], tier: 0, monstros: [['lobo', 1]] }] } });
+      const base = semVip.auto.estimarRegiao('campo', { mobLevel: 10, mobsPerWave: 2, dps: 0, vip: false });
+      const comVip = semVip.auto.estimarRegiao('campo', { mobLevel: 10, mobsPerWave: 2, dps: 0, vip: true });
+      t.check('U7: sem motor lido o fallback DECLARADO e 1.2 (nao um null silencioso)',
+        !!base && !!comVip && base.xpMin > 0 && Math.abs((comVip.xpMin / base.xpMin) - 1.2) < 1e-3);
+
+      const comMotor = mundoLuta(0, { meta: {
+        monstros: {
+          barao: { hp: 40, ad: 30, as: 1.5, armadura: 1.8, xp: 6, ouro: 6, chefe: true },
+          mob: { hp: 1, ad: 1, as: 1, armadura: 1, xp: 1, ouro: 1 },
+        },
+        vip: { xp: 1.5, drop: 1.5 },
+      } });
+      await new Promise((r) => setTimeout(r, 80));
+      const s1 = comMotor.estimarRegiao('covil', { mobLevel: 10, mobsPerWave: 2, dps: 0, vip: false });
+      const s2 = comMotor.estimarRegiao('covil', { mobLevel: 10, mobsPerWave: 2, dps: 0, vip: true });
+      t.check('U7b: o factor e LIDO do motor (VIP.xp=1.5 no fixture), nao copiado como 1.2',
+        !!s1 && !!s2 && Math.abs((s2.xpMin / s1.xpMin) - 1.5) < 1e-3);
+
+      // A escolha do DONO (ligar/desligar) e' `cfg.vipAtivo`; o NUMERO continua a vir do motor.
+      comMotor.setConfig({ vipAtivo: false });
+      const desligado = comMotor.estimarRegiao('covil', { mobLevel: 10, mobsPerWave: 2, dps: 0 });
+      comMotor.setConfig({ vipAtivo: true });
+      const ligado = comMotor.estimarRegiao('covil', { mobLevel: 10, mobsPerWave: 2, dps: 0 });
+      t.check('U7c: `cfg.vipAtivo` desliga o bonus sem mexer no factor lido (motor: x1.5)',
+        !!desligado && !!ligado && Math.abs(desligado.xpMin - s1.xpMin) < 1e-6
+        && Math.abs((ligado.xpMin / desligado.xpMin) - 1.5) < 1e-3);
+
+      // O defeito real: o `carregarMeta` tinha uma lista de campos permitidos e `vip` nao estava
+      // nela (o inject mandava, a extensao deitava fora). Prova na fonte, porque o sintoma e' a
+      // AUSENCIA de um campo quando o relay responde.
+      const fonte = fs.readFileSync(AUTOMATION_PATH, 'utf8');
+      // A lista e' o `for (const k of [...])` do `carregarMeta` (a que comeca em 'pocoes').
+      const lista = (fonte.match(/for \(const k of \[([^\]]*'pocoes'[^\]]*)\]\)/) || [])[1] || '';
+      t.check('U7d: `vip` esta na lista de campos que o `carregarMeta` aceita',
+        /['\"]vip['\"]/.test(lista));
+    }
+
+    /* ---------------- U8 / D12 - a BUILD medida com a regua do `estimarLuta` ----------------
+     * `sobrevivenciaSet` era a unica das oito definicoes de sobrevivencia que media
+     * `vida / dpsChefe` BRUTO: sem roubo de vida, giro, regeneracao, kit nem reserva de pocoes.
+     * E' a funcao que escolhe a build final (`alvoEquip`), logo escolhia por outra conta. */
+    {
+      // CHEFE MODERADO (ad 3): com o chefe do U5 (ad 30, dpsChefe 3.268) o roubo de vida valia
+      // 64 hp/s em 3.268 - arredondado a 1 decimal dava o MESMO tMorrer (0,6) e o teste passava
+      // sem distinguir a regua velha da nova. Aqui o sustento e' 35% do dano tomado.
+      const MODERADO = { monstros: {
+        barao: { hp: 4, ad: 3, as: 1, armadura: 1, xp: 6, ouro: 6, chefe: true },
+        mob: { hp: 1, ad: 1, as: 1, armadura: 1, xp: 1, ouro: 1 },
+      } };
+      const rv0 = mundoLuta(0, { meta: MODERADO });
+      const rv15 = mundoLuta(15, { meta: MODERADO });
+      const comPocao = mundoLuta(15, { meta: MODERADO, pocoes: { vidaS: 5 } });
+      await new Promise((r) => setTimeout(r, 120));
+      const e0 = rv0.estimarLuta('covil');
+      const e15 = rv15.estimarLuta('covil');
+      const eP = comPocao.estimarLuta('covil');
+      const s0 = rv0.sobrevivenciaSet([], 'covil', 'covil', { luta: e0 });
+      const s15 = rv15.sobrevivenciaSet([], 'covil', 'covil', { luta: e15 });
+      const sP = comPocao.sobrevivenciaSet([], 'covil', 'covil', { luta: eP });
+      const bruto = s15.vida / e15.dpsChefe;
+      t.check('U8: o liquido da BUILD e dpsChefe - cura fixa - cura do roubo (nada bruto)',
+        !!s15 && Math.abs(s15.net - (e15.dpsChefe - s15.curaFixa - s15.curaRv)) < 0.2 && s15.curaFixa > 0);
+      t.check('U8b: com roubo de vida o tMorrer da BUILD e maior que vida/dpsBruto (sustento entra)',
+        !!s15 && isFinite(s15.tMorrer) && s15.tMorrer > bruto * 1.05);
+      t.check('U8c: sem roubo de vida o sustento e so a parte fixa (curaRv = 0)',
+        !!s0 && s0.curaRv === 0 && s0.net > s15.net);
+      t.check('U8d: 5 Supremas somam RESERVA ao pool (sem pocao reserva = 0)',
+        s0.reserva === 0 && sP.reserva > 0 && sP.tMorrer > s0.tMorrer);
+      t.check('U8e: `morre` sai do conjunto (tMorrer < tKill | mortal | semPocao), nunca de um literal',
+        !!sP && sP.morre === (sP.tMorrer < sP.tKill || sP.mortal === true || sP.semPocao === true));
+    }
+
+    /* ---------------- U11 / D11 - um respawn por wave, nao dois ----------------
+     * 1,5 s e' o respawn DEPOIS DE LIMPAR A WAVE (motor.js:1739); 1,2 s e' o da CHEGADA
+     * (motor.js:3321). Somados davam 2,7 s -> tecto de 66,7 abates/min em vez de 120. */
+    {
+      const { auto } = mundo({ meta: { locais: [{ id: 'campo', nome: 'Campo', nm: [10, 12], faixa: [10, 12], tier: 0, monstros: [['lobo', 1]] }] } });
+      const r = auto.estimarRegiao('campo', { mobLevel: 10, mobsPerWave: 3, dps: 0, vip: false });
+      t.check('U11: com 3 mobs/wave e respawn de 1,5 s o tecto e 120 abates/min (nao 66,7)',
+        !!r && Math.abs(r.killsMin - 120) < 1);
+    }
+
+    /* ---------------- U12 / D13 - uma definicao por funcao ---------------- */
+    {
+      const fonte = fs.readFileSync(AUTOMATION_PATH, 'utf8');
+      const defs = (fonte.match(/function statsMonstro\s*\(/g) || []).length;
+      t.check('U12: `statsMonstro` tem UMA definicao (havia duas; a de baixo vencia por hoisting)',
+        defs === 1);
+      const { auto } = mundo();
+      const loc = { id: 'x', nome: 'X', nm: [10, 20], faixa: [10, 20], tier: 1, monstros: [['lobo', 1]], chefe: ['lobo'] };
+      t.check('U12b: `nivelChefeDe` delega no `nivelAlvo` (uma conta, nao duas)',
+        auto.nivelChefeDe(loc, 10) === auto.nivelAlvo(loc, 'chefe', 10));
+    }
+
+    /* ---------------- U13 / D02+D16 - o que o `recomendar` diz tem de ser o que se mediu ------
+     * `sobrevive` era o LITERAL `true` nos dois ramos e o `ouroLiquidoMin` era "medido" num e
+     * "teorico real" no outro, impressos como a mesma grandeza. */
+    {
+      const campo = [{ id: 'campo', nome: 'Campo', nm: [10, 12], faixa: [10, 12], tier: 0, monstros: [['lobo', 1]] }];
+      const teorico = mundo({ meta: { locais: campo } });
+      const rt = teorico.auto.recomendar();
+      t.check('U13: sem ciclos medidos o `recomendar` diz `base: teorico` (e nao finge medicao)',
+        !!rt && rt.base === 'teorico' && rt.mortesMedidas === null);
+      t.check('U13b: o ouro liquido e SEMPRE goldMin - goldPotionMin (uma conta, dois ramos)',
+        !!rt && rt.goldMin > 0 && Math.abs(rt.ouroLiquidoMin - (rt.goldMin - rt.goldPotionMin)) < 1e-9);
+
+      // Com ciclos medidos numa regiao cujo chefe NAO mata: o ramo `medido`, com veredicto calculado.
+      // O chefe tem de ser INOFENSIVO para o veredicto ser `sobrevive` (ad 0.2 < sustento com
+      // pocoes); e `region` com a faixa "10-20" porque e' o TEXTO da regiao que da o nivel do
+      // chefe (automation.js:`nivelChefeDe({nm:[n0,n1]})`) - sem a faixa nao ha risco nenhum.
+      const medido = mundoLuta(0, { pocoes: { vidaS: 5 }, meta: {
+        monstros: {
+          barao: { hp: 2, ad: 0.2, as: 1, armadura: 1, xp: 6, ouro: 6, chefe: true },
+          mob: { hp: 1, ad: 1, as: 1, armadura: 1, xp: 1, ouro: 1 },
+        },
+      }, ciclo: { boss: 'barao', region: 'Covil do Barao 10-20' } });
+      await new Promise((r) => setTimeout(r, 120));
+      const rm = medido.recomendar();
+      t.check('U13c: com ciclos medidos `base: medido`, veredicto calculado e mortes contadas',
+        !!rm && rm.base === 'medido' && rm.sobrevive === (rm.chefeFatal !== true)
+        && rm.mortesMedidas != null && Math.abs(rm.ouroLiquidoMin - (rm.goldMin - rm.goldPotionMin)) < 1e-9);
     }
   },
 };

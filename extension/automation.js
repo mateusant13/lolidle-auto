@@ -196,6 +196,11 @@
     // catálogo (não o nome, que pode ser traduzido). `precoSemComparavel` (1,5M) continua a ser
     // SÓ para tier A; estas duas fichas são as únicas excepções de tier B/C.
     precoSemComparavelPorBase: { '3089': 1500000, '3031': 10000000 },
+    // BONUS DE VIP NA TEORIA (D19): os FACTORES sao LIDOS do motor (`META.vip`,
+    // motor.js:152 `VIP = { xp: 1.2, drop: 1.2, ... }`). O "esta ligado?" e' escolha do dono: a
+    // rotina automatica so' corre com VIP (motor.js:163 `rotinaAtiva = ehVip`), logo o default e'
+    // ligado. Desligar aqui (conta sem VIP) faz o xp/min teorico descer 20% em vez de mentir p/ cima.
+    vipAtivo: true,
     // ===== ANÚNCIO NO MERCADO: agora CONFIGURÁVEL (ordem do dono, 2026-10-23: "anunciar lendarios
     // no mercado nao tem configuracao decente"). Antes o desconto era um 0,90 cravado em
     // `fatorAnuncio()` e o tecto de qualidade era o literal `'A'` dentro do filtro de candidatos —
@@ -859,15 +864,19 @@
       else if (it.raridade === 'lendario' && acimaDeA(it)) acts.push({ action: 'PROTEGER', it, why: 'lendário A/S/SS, nunca mexer' });
       // ALINHADO com o `venderBase` (que agora só protege S+): antes mandava épico A+ para o cofre
       // enquanto o ator podia vendê-lo — risco de venda não intencional.
-      else if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('S')) acts.push({ action: 'GUARDAR_COFRE', it, why: `épico ${it.qual} (S+), só pro cofre` });
+      // ÉPICO NO COFRE: NUNCA (ordem do dono, 2026-10-23). O ramo antigo mandava o épico S+
+      // para o cofre; o dono quer o cofre para o que PRESTA (lendário A+ da build, componentes),
+      // não para épicos. S+ continua intocável (não se vende), por isso fica na mochila (PROTEGER),
+      // e é apanhado pelo ramo EQUIPAR quando for o melhor da peça.
+      else if (it.raridade === 'epico' && qIdx(it.qual) >= qIdx('S')) acts.push({ action: 'PROTEGER', it, why: `épico ${it.qual} (S+): intocável (não se vende) e épico NÃO vai ao cofre` });
       // ÉPICO A: VENDE-SE (ordem do dono, 2026-10-23, verbatim: "é pra vender epico tier a tambem").
       // O ramo antigo prendia o `épico A+ da minha classe` na mochila; a regra do dono é que só S+
       // é intocável ("a nao ser q seja tier s mais"). O MELHOR do slot continua a ser apanhado
       // pelo ramo `EQUIPAR` mais abaixo, e o S+ vai para o cofre na linha de cima.
       // ============ REGRA DO DONO (verbatim, 2026-10-14) ============
       // "item basico, epico, duplicado: vende no lojista. a nao ser q seja tier s mais."
-      // As excepções S+ já estão tratadas ACIMA (lendário A/S/SS -> PROTEGER; épico A/S/SS
-      // -> GUARDAR_COFRE). Aqui: básico, épico e duplicado vão TODOS para o Lojista.
+      // As excepções S+ já estão tratadas ACIMA (lendário A/S/SS -> PROTEGER; épico S+ -> PROTEGER,
+      // porque épico não vai ao cofre). Aqui: básico, épico A e duplicado vão TODOS para o Lojista.
       //
       // BUG QUE ISTO CORRIGE (medido): os básicos de qualidade A caíam no `else` final
       // ("sem regra" -> GUARDAR) porque `basExcesso` só apanha básicos SEM uso na build e
@@ -1700,7 +1709,7 @@
       if (d.ondeItem) META.ondeItem = d.ondeItem;
       // `curvaPorNivel`/`rmMonstro` (TK-INT-01): curva REAL avaliada por nível e o RM dos
       // monstros, ambos LIDOS do motor pelo inject.js — quem consome é o `curva()`/`rmMonstro()`.
-      for (const k of ['pocoes', 'exaustao', 'pocaoPvp', 'noturno', 'furioso', 'gemas', 'recall', 'grupo', 'nivelMax', 'espacos', 'curva', 'curvaPorNivel', 'rmMonstro', 'kit', 'champ', 'rodizio', 'mecanicas', 'kits', 'mochila', 'ciclo', 'fuso', 'grupoSpawn', 'respawn', 'modelos', 'dicaAtributos', 'nivelDif', 'habChefe', 'contrato']) if (d[k] != null) META[k] = d[k];
+      for (const k of ['pocoes', 'exaustao', 'pocaoPvp', 'noturno', 'furioso', 'gemas', 'recall', 'grupo', 'nivelMax', 'espacos', 'curva', 'curvaPorNivel', 'rmMonstro', 'kit', 'champ', 'rodizio', 'mecanicas', 'kits', 'mochila', 'ciclo', 'fuso', 'grupoSpawn', 'respawn', 'modelos', 'dicaAtributos', 'nivelDif', 'habChefe', 'contrato', 'vip']) if (d[k] != null) META[k] = d[k];
       if (d.kit || d.kits) aplicarKit();
       if (META.monstros && META.locais && META.balanco) {
         META.at = Date.now(); META.erro = null;
@@ -1735,24 +1744,11 @@
    *  nao ha nivel do jogador (motor.js:1121, ramo `nivelJogador == null`). */
   /** Nome do MOTOR para o nivel do chefe (o banco chama `nivelDoChefe(local, nivelJogador)`). */
   const nivelDoChefe = (local, nivelJogador) => nivelChefeDe(local, nivelJogador);
-  function nivelChefeDe(local, nivelJogador) {
-    if (!local) return null;
-    const nm = local.nm || local.faixa || null;
-    if (!nm) return null;
-    const n0 = +nm[0] || 1, n1 = nm[1] != null ? +nm[1] : n0;
-    // `undefined` = nao passado -> le o jogador; `null` = EXPLICITAMENTE sem jogador -> ramo do motor (n1+2)
-    const p = nivelJogador === undefined ? (player() || {}).nivel : (nivelJogador == null ? null : +nivelJogador);
-    if (p == null || !(p > 0)) return n1 + 2;
-    return Math.max(n0 + 2, Math.min(n1 + 2, p + 4));
-  }
+  function nivelChefeDe(local, nivelJogador) { return nivelAlvo(local, 'chefe', nivelJogador); }
 
-  /** Stats de um monstro/chefe num nível (do motor). */
-  function statsMonstro(nome, nivel) {
-    const m = META.monstros?.[nome];
-    if (!m) return null;
-    const c = curva(nivel);
-    return { nome, nivel, hp: c.hp * m.hp, ad: c.ad * m.ad, as: m.as, armadura: c.armadura * m.armadura, xp: c.xp * m.xp, ouro: c.ouro * m.ouro * 0.75, chefe: !!m.chefe, magico: !!m.magico };
-  }
+  /* `statsMonstro` esta definida UMA vez (perto de `nivelAlvo`, mais abaixo). Havia uma segunda
+   * copia AQUI, com o corpo identico (D13): por hoisting a de baixo vencia e esta era codigo morto.
+   * Duas copias = deriva garantida (corrigir uma e esquecer a outra). Fica uma so'. */
 
   // ============ TECTOS DO MOTOR — UM sitio só, cada um com o file:linha ============
   // Os limites do jogo estavam espalhados por 6 `Math.min(...)` soltos no ficheiro, copiados.
@@ -1873,13 +1869,27 @@
     return null;
   }
 
+  /**
+   * Factores de VIP LIDOS do motor (`VIP = { xp: 1.2, drop: 1.2, ... }`, motor.js:152).
+   * `VIP_FB` e' um FALLBACK DECLARADO: so' entra quando o inject ainda nao leu o motor
+   * (`META.vip == null`) - o oposto de copiar o numero (REGRA No 3).
+   */
+  const VIP_FB = { xp: 1.2, drop: 1.2 };
+  const vipFx = () => {
+    const v = META.vip;
+    if (v && Number.isFinite(Number(v.xp))) return { xp: Number(v.xp), drop: Number(v.drop) };
+    return VIP_FB;
+  };
+
   /** Estima XP/ouro por minuto de uma região (mesmo nunca jogada), com meta + waves. */
   function estimarRegiao(id, opts) {
     opts = opts || {};
     const loc = (META.locais || []).find((l) => l.id === id);
     if (!loc || !loc.monstros) return null;
     const p = player();
-    const vip = opts.vip != null ? opts.vip : true;
+    // D19: o "esta ligado?" e' escolha do dono (`cfg.vipAtivo`); os FACTORES vem do motor.
+    const vip = opts.vip != null ? opts.vip : (cfg.vipAtivo !== false);
+    const vf = vipFx();
     const bonus = opts.bonus || 1;
     // O mob nasce perto do jogador (motor.js:1110): nivel = clamp(P-2+rand(0..3), n0, n1) → média P-0,5
     const [n0, n1] = loc.nm || [p.nivel, p.nivel];
@@ -1888,7 +1898,7 @@
     let wsum = 0, xpK = 0, goldK = 0, hpAvg = 0;
     for (const [nome, w] of loc.monstros) {
       const s = statsMonstro(nome, L); if (!s) continue;
-      xpK += w * s.xp * fx * (vip ? 1.2 : 1) * bonus;
+      xpK += w * s.xp * fx * (vip ? vf.xp : 1) * bonus;
       goldK += w * s.ouro * fs * bonus;
       hpAvg += w * s.hp; wsum += w;
     }
@@ -1907,7 +1917,10 @@
     const mm = multMedio(mobsPerWave);
     xpK *= mm.xp; goldK *= mm.ouro;
     const rsp = META.respawn || { clear: 1.5, local: 1.2 };
-    const respawnS = opts.respawnS != null ? opts.respawnS : (rsp.clear + rsp.local);   // motor.js: respawn 1,5 (wave limpa) + 1,2 (chegada)
+    // D11 (2026-10-23): eram rsp.clear + rsp.local = 2,7 s. No motor, 1,5 s e' o respawn DEPOIS DE
+    // LIMPAR A WAVE (motor.js:1739) e 1,2 s e' o respawn AO VIAJAR (motor.js:3321) - nunca os dois na
+    // mesma wave. Somados, o tecto de spawn ficava 44% baixo (66,7 em vez de 120 abates/min com 3 mobs).
+    const respawnS = opts.respawnS != null ? opts.respawnS : rsp.clear;   // motor.js: respawn 1,5 (wave limpa) + 1,2 (chegada)
     const spawnKillsMin = (mobsPerWave / respawnS) * 60;
     const myDps = opts.dps != null ? opts.dps : (meuDps() || 0);
     let killsMin = spawnKillsMin, modo = 'spawn';
@@ -1918,9 +1931,9 @@
     }
     const kx = opts.kXp != null ? opts.kXp : ((cfg.kReg || {})[id]?.kXp || cfg.kXp || 1), ko = opts.kOuro != null ? opts.kOuro : ((cfg.kReg || {})[id]?.kOuro || cfg.kOuro || 1);
     const gk = 1 + (loc.tier || 0) * 0.1;                       // runas: +10% de chance por tier
-    const multR = (vip ? 1.2 : 1) * fs;                          // runas levam o bônus de drop VIP e o fatorSaque
+    const multR = (vip ? vf.drop : 1) * fs;                          // runas levam o bônus de drop VIP e o fatorSaque
     let runasKill = 0; for (const gid of ['sorte', 'arcana', 'protecao']) runasKill += Math.min(1, GEMA_CH[gid] * gk * multR);
-    const runasChefe = loc.chefe ? (GEMA_CHEFE.sorte + GEMA_CHEFE.arcana + GEMA_CHEFE.protecao) * (vip ? 1.2 : 1) : 0;
+    const runasChefe = loc.chefe ? (GEMA_CHEFE.sorte + GEMA_CHEFE.arcana + GEMA_CHEFE.protecao) * (vip ? vf.drop : 1) : 0;
     // ---- SOBREVIVÊNCIA EM TODAS AS REGIÕES (correcção do Lead, 2026-10-14) --------------------
     // MEDIDO AO VIVO (Katarina nv 29): `estimarRegiao('barao')` devolvia { goldMin: 5428,
     // xpMin: 15765 } SEM campo `morte` — e a `regiaoIdeal` filtrava com `!x.e.morte`, onde
@@ -3603,6 +3616,15 @@ const CFG_VER = 4;
    *  `_agregarCorpo` le-o para o roubo de vida do `risco` do chefe; declarado AQUI (antes de
    *  `agregar`) para nunca cair na TDZ de um `let` declarado mais abaixo. */
   let _dpsCache = { at: 0, v: 0 };
+  /** DPS medido COM A IDADE DECLARADA (D15). Um campo com validade temporal nao pode alimentar uma
+   *  decisao sem validade temporal: antes, 60 s sem `atualizarDpsCache` devolvia 0 -> `curaRv = 0` em
+   *  `avaliar` -> `liquido` subia -> `morre` virava true -> `recomendar` mudava de regiao. Agora devolve
+   *  SEMPRE o ultimo valor medido e diz se envelheceu (`stale`); 0 so' quando nunca houve medida. */
+  function dpsMedido() {
+    const v = Number(_dpsCache.v) || 0;
+    const idadeMs = _dpsCache.at ? Date.now() - _dpsCache.at : null;
+    return { v, idadeMs, stale: idadeMs == null || idadeMs >= 60000 };
+  }
   function agregar() {
     if (_agregarEmCurso) { _agregarReentradas++; return _agregarUltimo; }
     _agregarEmCurso = true;
@@ -3654,7 +3676,9 @@ const CFG_VER = 4;
       // `_giroS` vem de FORA do map (não depende da região): ver o topo de `_agregarCorpo`.
       // DPS de saida (cache de 60 s, ver `tickAutoplay`): sem ele o `risco` do chefe tambem
       // ignorava o roubo de vida e marcava `morre` em lutas que o dono ganha.
-      const dpsMed = (_dpsCache && Date.now() - _dpsCache.at < 60000) ? (_dpsCache.v || 0) : 0;
+      // D15: valor velho e' melhor que zero — ver `dpsMedido`.
+      const _dpm = dpsMedido();
+      const dpsMed = _dpm.v;
       const risco = r.boss && nivelChefe ? avaliar(r.boss, nivelChefe, pl, { skill: curaSkillChefe, pocao: curaPocaoChefe || cp * 0.6, giro: _giroS }, dpsMed) : null;
       return { region: r.region, n: r.n, janelas: r.janelas, deaths: r.deaths, boss: r.boss, goldMin: r.g / d, xpMin: r.x / d, killsMin: r.k / d, mobHpMinRel: r.hpm, potMin: r.p / d, goldPotionMin: r.gp / d, healSkillS: curaSkill, healSkillChefeS: curaSkillChefe, healPotionS: curaPocao, bossMs: r.bossN ? r.bossMs / r.bossN : null, potChefe: r.bpc ? r.bpoc / r.bpc : null, risco: risco ? { nivel: nivelChefe, hp: risco.hp, dps: risco.dpsTomado, danoGolpe: risco.danoGolpe, intervalo: risco.intervalo, nPocoes: risco.nPocoes, curaSkill: risco.curaSkill, curaPocao: risco.curaPocao, curaTotal: risco.curaTotal, liquido: risco.liquido, mixTxt: risco.mixTxt, custoPocaoS: risco.custoPocaoS, tMorrer: risco.tMorrer, fM: risco.fM, piorMec: risco.piorMec, mecFatalNome: risco.mecFatalNome, mortal: risco.mortal, morre: risco.morre } : null };
     });
@@ -3662,27 +3686,67 @@ const CFG_VER = 4;
     return arr;
   }
 
-  /** Recomenda a melhor região: maior ouro/min LÍQUIDO entre as sobrevivíveis. */
+  /** Recomenda a melhor região: maior ouro/min LÍQUIDO entre as sobrevivíveis.
+   *
+   *  D02/D16 (2026-10-23) — o campo `sobrevive` era o LITERAL `true` nos dois ramos e o
+   *  `ouroLiquidoMin` significava "medido" num ramo e "teórico real" no outro, com a GUI a
+   *  imprimir os dois como a mesma grandeza. Os consumidores tratam `sobrevive` como VEREDICTO
+   *  (`gui.js:2030` "⚠ Nessa região o chefe mata você" só se `sobrevive === false` → nunca
+   *  aparecia; `gui.js:3687` "(região onde você sobrevive ao chefe)" aparecia sempre, mesmo numa
+   *  região onde `estimarLuta.ganha === false`). Agora:
+   *    - `sobrevive` é CALCULADO e diz "o chefe desta região não me mata" (o critério que decide);
+   *    - `base` diz de onde vem o número (`medido` = ciclos observados; `teorico` = estimativa);
+   *    - `goldMin`/`goldPotionMin`/`ouroLiquidoMin` são sempre a MESMA conta, com as três parcelas;
+   *    - `mortesMedidas` é o que se observou na região (0 = nenhuma morte registada).
+   */
   function recomendar() {
     const agg = agregar();
     const viaveis = agg.filter((r) => r.risco && !r.risco.morre);
     if (viaveis.length) {
-      const liq = (r) => (r.goldMin || 0) - (r.goldPotionMin || 0);
+      const liq = (r) => (Number(r.goldMin) || 0) - (Number(r.goldPotionMin) || 0);
       const m = viaveis.slice().sort((a, b) => liq(b) - liq(a))[0];
-      return { regiao: m.region, ouroLiquidoMin: liq(m), xpMin: m.xpMin || 0, chefe: m.boss, sobrevive: true, mix: m.risco?.mixTxt || null, sinalUlt: valeUlt(), ritmo: ritmoMobs() };
+      return {
+        regiao: m.region,
+        goldMin: Number(m.goldMin) || 0,
+        goldPotionMin: Number(m.goldPotionMin) || 0,
+        ouroLiquidoMin: liq(m),
+        xpMin: m.xpMin || 0,
+        chefe: m.boss,
+        sobrevive: !(m.risco && m.risco.morre),
+        chefeFatal: !!(m.risco && m.risco.morre),
+        mortesMedidas: Number(m.deaths) || 0,
+        base: 'medido',
+        mix: (m.risco && m.risco.mixTxt) || null,
+        sinalUlt: valeUlt(),
+        ritmo: ritmoMobs(),
+      };
     }
     const rank = (typeof rankRegioes === 'function' ? rankRegioes() : []).filter((r) => r.sobrevive === true);
     if (rank.length) {
       const m = rank[0];
       // OURO LÍQUIDO **NUNCA** É `null` (defeito medido 2026-10-23: o painel mostrava
       // "0 ouro limpo/min" para o Covil do Barão porque `fmt(null)` imprime 0 — o número existia:
-      // 6.345 - 113 de poções = 6.232). A mesma conta do ramo de cima, aqui.
-      const liq = (r) => {
-        const g = Number(r.goldMin) || 0;
-        const p = Number(r.goldPotionMin) || 0;
-        return g - p;
+      // 6.345 - 113 de poções = 6.232). A MESMA conta do ramo de cima, aqui.
+      const liq = (r) => (Number(r.goldMin) || 0) - (Number(r.goldPotionMin) || 0);
+      return {
+        regiao: m.id,
+        goldMin: Number(m.goldMin) || 0,
+        goldPotionMin: Number(m.goldPotionMin) || 0,
+        ouroLiquidoMin: liq(m),
+        xpMin: m.xpMin || 0,
+        chefe: m.chefe || null,
+        // O rank já só tem `sobrevive === true`; o CHEFE pode ainda matar (regra larga do dono:
+        // `morte === false || mobsSeguros === true`, `13298`). Quem mostra "sobrevive ao chefe"
+        // precisa do campo separado — antes era o mesmo literal `true` para tudo.
+        sobrevive: m.chefeFatal !== true,
+        chefeFatal: m.chefeFatal === true,
+        mobsSeguros: m.mobsSeguros === true || m.sobrevive === true && m.chefeFatal !== true,
+        mortesMedidas: null,
+        base: 'teorico',
+        mix: null,
+        sinalUlt: valeUlt(),
+        ritmo: ritmoMobs(),
       };
-      return { regiao: m.id, ouroLiquidoMin: liq(m), goldMin: Number(m.goldMin) || 0, goldPotionMin: Number(m.goldPotionMin) || 0, xpMin: m.xpMin || 0, chefe: m.chefe || null, sobrevive: true, mix: null, sinalUlt: valeUlt(), ritmo: ritmoMobs() };
     }
     return null;
   }
@@ -5391,10 +5455,13 @@ const CFG_VER = 4;
   const passoCofre = async () => {
     const bag = scanBag(true); const p = bag ? planBag(bag, 10, 10, { cofreA: true }) : null;
     const cofre = p ? (p.acts || []).filter((a) => a.action === 'GUARDAR_COFRE') : [];
-    if (!cofre.length) return { ok: true, itens: 0, trocas: 0 };
+    // SAIR do cofre também é trabalho deste passo: um lendário indesejado lá guardado nunca mais
+    // era visto (`pioresDoCofre` só olha C/B). Só se abre o cofre se houver algo a fazer.
+    const haIndesejados = lendariosIndesejadosCofre(1).length > 0;
+    if (!cofre.length && !haIndesejados) return { ok: true, itens: 0, trocas: 0, retirados: 0 };
     const abriu = await abrirCofreTesoureira();
     if (!abriu || !abriu.ok) return { ok: false, itens: 0, trocas: 0, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
-    let guardados = 0, trocas = 0;
+    let guardados = 0, trocas = 0, retirados = 0;
     const TROCA_MAX = 4;                 // tecto por ida: nunca uma rotina longa por causa do cofre
     try {
       for (const a of cofre) {
@@ -5419,8 +5486,22 @@ const CFG_VER = 4;
         }
         guardados++;
       }
+      // RETIRAR LENDÁRIOS INDESEJADOS (ordem do dono, 2026-10-23): "lendario duplicado com o
+      // mercado cheio" não fica no cofre a envelhecer — vai para a mochila e o `planBag` seguinte
+      // anuncia-o (`ANUNCIAR_MERCADO`; nunca Lojista). Tecto de 2 por ida e só com espaço na
+      // mochila: sacar sem vaga falha e deixa a rotina a meio.
+      const indesejados = (retirados < 2) ? lendariosIndesejadosCofre(2) : [];
+      const livres = Math.max(0, (Number(bag && bag.cap) || 0)
+        - ((Number(bag && bag.used) || 0) - guardados + retirados));
+      for (const s of indesejados.slice(0, Math.min(2 - retirados, livres))) {
+        const r = await retirarDoCofre(String(s.base));
+        if (r && r.ok) {
+          retirados++;
+          logEvent('cofre', { retirouIndesejado: r.nome || s.base, qual: s.qual, refino: s.refino, porque: 'fora da build e nao reservado: vai ao mercado' });
+        }
+      }
     } finally { fecharJanelas(); }
-    return { ok: true, itens: guardados, pedidos: cofre.length, trocas };
+    return { ok: true, itens: guardados, pedidos: cofre.length, trocas, retirados };
   };
 
   const PASSOS_BASE = [
@@ -5924,6 +6005,41 @@ const CFG_VER = 4;
       || String(x.base).localeCompare(String(y.base)));
     return n == null ? cand : cand.slice(0, Math.max(0, n));
   }
+  /** LENDÁRIOS INDESEJADOS NO COFRE (pedido do dono, 2026-10-23): um lendário que NÃO é da
+   *  build, nem componente, nem reservado, nem especial, nem prioridade extrema, não pode ficar
+   *  a envelhecer no cofre — o sítio dele é o MERCADO. `pioresDoCofre` só olha a C/B (para trocar
+   *  por A), por isso um lendário B/C indesejado ficava lá para sempre.
+   *
+   *  Devolve os slots (com base/qual/refino) que devem SAIR para a mochila; o `planBag` seguinte
+   *  é que decide o destino (mercado, nunca Lojista — regra dura do dono). */
+  function lendariosIndesejadosCofre(n) {
+    let slots = [];
+    try { slots = (cofreConhecido() || []).filter((s) => s.acao === 'retirar' || s.acao === 'sacar'); } catch { return []; }
+    if (!slots.length) return [];
+    let ideal = new Set(), comps = new Set(), reserv = new Set();
+    try { ideal = new Set((buildIdeal() || []).map(String)); } catch { /* sem campeao */ }
+    try { comps = componentesDaBuild(); } catch { /* ignore */ }
+    try { reserv = basesReservadas(); } catch { /* ignore */ }
+    const out = [];
+    for (const s of slots) {
+      const base = String(s.base == null ? '' : s.base);
+      if (!base) continue;
+      let rar = '';
+      try { rar = rarDe(base); } catch { rar = ''; }
+      if (rar !== 'lendario') continue;
+      if (ehRaridadeNova(rar) || ehPrioridadeExtrema(base) || ehEspecialMeu(base) || ehReservado(base) || reserv.has(base)) continue;
+      if (ideal.has(base) || comps.has(base)) continue;         // peça final / componente: fica
+      if (sbBaseEhLendarioDaClasse(base)) continue;             // lendário da build da classe: nunca se move
+      out.push(s);
+    }
+    out.sort((x, y) => (qIdx(x.qual) - qIdx(y.qual)) || ((x.refino || 0) - (y.refino || 0)));
+    return n == null ? out : out.slice(0, Math.max(0, n));
+  }
+  /** `ehLendarioDaBuild` sem lançar quando ainda não há campeão (usado pela política do cofre). */
+  function sbBaseEhLendarioDaClasse(base) {
+    try { return !!ehLendarioDaBuild(base); } catch { return false; }
+  }
+
   /** TROCA NO COFRE: saca o PIOR C/B para a mochila e deposita `itemEntrando` no lugar.
    *  Usado pelo passo `cofre` quando o depósito directo falhou (cofre cheio) e quando o item é
    *  A+ (o cofre converge para o que é bom, em vez de ficar cheio de B/C). O saque e o depósito
@@ -7907,117 +8023,99 @@ const CFG_VER = 4;
     _minimosMercado[chaveMin(p.base, p.qual)] = Math.max(m, Number(_minimosMercado[chaveMin(p.base, p.qual)]) || 0);
   }
 
-  /** PREÇO DE ANÚNCIO de um lendário <A — PURA (testável sem UI/rede).
-   *
-   *  ORDEM DO DONO (2026-10-22, verbatim): "anunciou uma bota lendaria por 1.5kk. taria certo
-   *  se nao tivesse uma bota igual, com tier melhor, mais barata. e esse preço aí, é só pra
-   *  tier a. item tier b por esse preço só faz sentido quando é rabadon. quando é gume, é 10
-   *  milhoes pra mais."
-   *
-   *  Regras, por ordem:
-   *   1) oferta do MESMO tier -> 90% da mais barata. PONTO FINAL: é o preço DAQUELE tier no
-   *      mercado (ordem do dono, 2026-10-23, verbatim: "explica por que meu boneco ta vendendo
-   *      o mesmo item a 7999 tier b sendo que o primeiro mais barato anunciado na loja é 30k
-   *      tier b"). MEDIDO ao vivo: base 3190 tinha uma `~A` de 64 (lixo de alguém) e a `~B` mais
-   *      barata a 29.997 — o tecto do tier superior puxava a B para 58 (e antes para 7999).
-   *      Um tier A barato é o preço do tier A, não o preço do B;
-   *   2) SEM oferta do mesmo tier, com oferta de tier SUPERIOR -> 90% da mais barata do tier
-   *      superior. Aí (e só aí) o tier melhor funciona como TECTO — foi o caso da bota B a 1,5M
-   *      com uma A mais barata e NENHUMA B à venda: preço inventado acima do mercado real;
-   *   3) tier A sem referência -> `precoSemComparavel` (1,5M). SÓ tier A;
-   *   4) tier B/C sem referência -> NÃO usa 1,5M. Excepções nomeadas pelo dono, por ID-base:
-   *      Rabadon (3089) -> 1,5M; Gume (3031) -> 10M+ (piso). Sem referência e sem excepção,
-   *      devolve `preco:null` e o chamador NÃO anuncia.
-   *
-   *  Devolve `{ preco, regra, refTier, ofertasTier, ofertasBase }`. `preco:null` = não anunciar.
-   */
-  function precoDeAnuncio(it, mercado, conf) {
-    const c = conf || cfg || {};
-    const fator = typeof fatorAnuncio === 'function' ? fatorAnuncio() : 0.9;
-    const base = String((it && it.base) || '').replace(/[+~].*$/, '');
-    const qual = String((it && it.qual) || '').toUpperCase();
-    // PISO DO LOJISTA (2026-10-23, P0 MEDIDO AO VIVO): o mercado tinha um `3190~A` a 64 e o
-    // reajuste levou o MEU Medalhão dos Solari de Ferro `~B` (lendário) de 7.999 para **58 de
-    // ouro** — o dono viu-o e perguntou se o boneco tinha vendido um lendário. O Lojista paga
-    // pelo mesmo item (`valorVenda`, motor.js:257, LIDO do catálogo, nunca copiado), logo uma
-    // oferta abaixo disso é ISCO: não é comparável e nunca pode ser o nosso preço. Duas defesas,
-    // uma regra só:
-    //   (a) ofertas abaixo do piso do Lojista não contam como referência de mercado;
-    //   (b) o preço final nunca desce abaixo do piso do Lojista.
-    // A regra é do JOGO (o valor que o Lojista realmente paga), não uma escolha do dono.
-    const refinoIt = Number((it && it.refino) || 0) || 0;
-    const pisos = pisosDoItem(base, qual, refinoIt);
-    const pisoLoj = pisos.loj;
-    const pisoTudo = pisos.total;   // Lojista e/ou o mínimo do JOGO (o maior dos dois)
-    const ofertas = (mercado || []).filter((x) => x && String(x.base) === base && Number(x.preco) > 0
-      && (!pisoTudo || Number(x.preco) >= pisoTudo));
-    const qDe = (x) => String(x.qual || '').toUpperCase();
-    const menorDe = (arr) => arr.length ? Math.min(...arr.map((x) => Number(x.preco))) : null;
-    const out = (preco, regra, ref, n) => ({ preco: preco == null ? null : Math.max(1, pisoTudo, Math.round(preco)), regra, refTier: ref == null ? null : ref, ofertasTier: n || 0, ofertasBase: ofertas.length, pisoLoj, pisoJogo: pisos.jogo });
-    // PISO do Gume (dono, 2026-10-22): "quando é gume, é 10 milhoes pra mais." Aplica-se
-    // DEPOIS de qualquer referência (mesmo tier ou superior) — o Gume nunca é anunciado
-    // abaixo de 10M, porque o dono o trata como ficha premium, não como um tier B comum.
-    const pisoGume = base === '3031' ? Number((c.precoSemComparavelPorBase || {})['3031']) || 10000000 : 0;
-    const outP = (preco, regra, ref, n) => {
-      const p = preco == null ? null : Math.max(Number(preco) || 0, pisoGume);
-      return out(p, regra, ref, n);
-    };
-
-    const mesmoTier = ofertas.filter((x) => qDe(x) === qual);
-    const refMesmo = menorDe(mesmoTier);
-    // Tier SUPERIOR: FALLBACK, não tecto. Só entra quando NÃO há oferta do mesmo tier (ver a
-    // doc acima: em 2026-10-23 o tecto punha uma B a 58 com a B do mercado a 29.997).
-    const superior = ofertas.filter((x) => QUAL.includes(qDe(x)) && QUAL.includes(qual) && qIdx(qDe(x)) > qIdx(qual));
-    const refSuperior = menorDe(superior);
-    if (refMesmo != null) return outP(refMesmo * fator, '90% do menor do MESMO tier', refMesmo, mesmoTier.length);
-    if (refSuperior != null) return outP(refSuperior * fator, 'sem oferta do MESMO tier: 90% do menor de tier SUPERIOR', refSuperior, superior.length);
-
-    // Excepções do dono, por ID-base (não por nome traduzido).
-    const exc = (c.precoSemComparavelPorBase || {})[base];
-    if (exc != null) {
-      const p = Number(exc) || 0;
-      return outP(p, 'excepcao por item (dono)', null, 0);
-    }
-
-    // 1,5M SÓ para tier A.
-    if (qual === 'A') return outP(numOr(c.precoSemComparavel, 1500000), 'tier A sem comparavel -> precoSemComparavel', null, 0);
-    return outP(null, `tier ${qual || '?'} sem comparavel: 1,5M e SO tier A (nao anuncia)`, null, 0);
+  /** Refino do item: `refino` explicito se vier; senao lido do id exacto (`item`). */
+  function refinoDoItemEm(item, base, qual) {
+    const r = Number(item && item.refino);
+    if (Number.isFinite(r)) return r;
+    try { return Number(parseSlotId((item && item.item) || (base + '~' + qual)).refino) || 0; } catch { return 0; }
   }
 
-  /** REFERÊNCIA de preço de uma oferta MINHA no mercado (PURA). Usa o MESMO critério do
-   *  `precoDeAnuncio`: MESMO tier primeiro (é o preço daquele tier); o tier SUPERIOR só entra
-   *  quando não há NENHUMA oferta do mesmo tier. Devolve `{ alvo, tipo, ref, ofertasTier }` ou
-   *  `null` (sem comparável). */
-  function referenciaPrecoMercado(o, mercado, conf) {
+  /**
+   * POLÍTICA DE PREÇO DO MERCADO — UMA implementação (D17, 2026-10-23).
+   *
+   * Havia TRÊS cópias da mesma escada: `precoDeAnuncio` (anunciar), `referenciaPrecoMercado`
+   * (reajustar as minhas) e um ramo dentro de `planejarMercado` (cancelar B/C a 1,5M sem ref.).
+   * As três repetiam piso do Lojista + mínimo do jogo, filtro das ofertas, MESMO tier primeiro e
+   * SUPERIOR como fallback — e já divergiam no piso do Gume, que só existia em duas.
+   *
+   * Escada, por ordem (ordem do dono, 2026-10-22/23):
+   *   1) oferta do MESMO tier -> 90% da mais barata. PONTO. É o preço DAQUELE tier
+   *      ("explica por que meu boneco ta vendendo o mesmo item a 7999 tier b sendo que o primeiro
+   *      mais barato anunciado na loja é 30k tier b");
+   *   2) sem MESMO tier, com tier SUPERIOR -> 90% da mais barata do superior (FALLBACK, não tecto);
+   *   3) sem nada -> `alvo: null`. Quem ANUNCIA aplica depois as excepções do dono e o 1,5M (só
+   *      tier A); quem REAJUSTA não inventa preço (mantém a oferta).
+   *
+   * Toda oferta abaixo do piso (Lojista, motor.js:257 — LIDO do catálogo — ou mínimo do jogo,
+   * `#mj-minimo`) é descartada como referência: é isco, não é mercado.
+   */
+  function politicaPreco(item, mercado, conf) {
     const c = conf || cfg || {};
     const fator = typeof fatorAnuncio === 'function' ? fatorAnuncio() : 0.9;
-    const base = String((o && o.base) || '').replace(/[+~].*$/, '');
-    const qual = String((o && o.qual) || '').toUpperCase();
-    // PISO DO LOJISTA — a MESMA regra do `precoDeAnuncio` (ver a doc lá): nem o REAJUSTE pode
-    // descer abaixo do que o Lojista paga, e uma oferta abaixo disso não é comparável. Foi este
-    // caminho que levou um lendário de 7.999 para 58 de ouro (`reajuste de:7999 para:58`).
-    let refinoO = Number(o && o.refino);
-    if (!Number.isFinite(refinoO)) {
-      try { refinoO = Number(parseSlotId((o && o.item) || (base + '~' + qual)).refino) || 0; } catch { refinoO = 0; }
-    }
-    const pisoLoj = Math.max(0, Math.round(Number(valorVenda(base, qual, refinoO)) || 0));
-    const pisoTudo = Math.max(pisoLoj, pisoJogoDe(base, qual));
+    const base = String((item && item.base) || '').replace(/[+~].*$/, '');
+    const qual = String((item && item.qual) || '').toUpperCase();
+    const refino = refinoDoItemEm(item, base, qual);
+    const pisos = pisosDoItem(base, qual, refino);
     const ofertas = (mercado || []).filter((x) => x && String(x.base) === base && Number(x.preco) > 0
-      && (!pisoTudo || Number(x.preco) >= pisoTudo));
+      && (!pisos.total || Number(x.preco) >= pisos.total));
     const qDe = (x) => String(x.qual || '').toUpperCase();
-    const menorDe = (arr) => arr.length ? Math.min(...arr.map((x) => Number(x.preco))) : null;
-    // Gume (3031): piso de 10M também no REAJUSTE — o dono não o quer abaixo disso.
+    const menorDe = (arr) => (arr.length ? Math.min(...arr.map((x) => Number(x.preco))) : null);
+    // PISO do Gume (dono, 2026-10-22): "quando é gume, é 10 milhoes pra mais." Aplica-se DEPOIS
+    // de qualquer referência — o Gume nunca é anunciado abaixo disso.
     const pisoGume = base === '3031' ? Number((c.precoSemComparavelPorBase || {})['3031']) || 10000000 : 0;
-    const alvoDe = (ref) => Math.max(1, pisoTudo, Math.round(Number(ref) * fator), pisoGume);
+    const alvoDe = (ref) => Math.max(1, pisos.total, Math.round(Number(ref) * fator), pisoGume);
     const mesmo = ofertas.filter((x) => qDe(x) === qual);
     const refMesmo = menorDe(mesmo);
     const superior = ofertas.filter((x) => QUAL.includes(qDe(x)) && QUAL.includes(qual) && qIdx(qDe(x)) > qIdx(qual));
     const refSuperior = menorDe(superior);
-    // MESMO tier manda. O superior só serve de referência quando aquele tier não tem oferta.
-    if (refMesmo != null) return { alvo: alvoDe(refMesmo), tipo: 'mesmo', ref: refMesmo, ofertasTier: mesmo.length, pisoLoj };
-    if (refSuperior != null) return { alvo: alvoDe(refSuperior), tipo: 'superior', ref: refSuperior, ofertasTier: superior.length, pisoLoj };
-    return null;
+    const comum = { base, qual, pisoLoj: pisos.loj, pisoJogo: pisos.jogo, pisoGume, ofertasBase: ofertas.length };
+    if (refMesmo != null) return { ...comum, alvo: alvoDe(refMesmo), tipo: 'mesmo', ref: refMesmo, ofertasTier: mesmo.length };
+    if (refSuperior != null) return { ...comum, alvo: alvoDe(refSuperior), tipo: 'superior', ref: refSuperior, ofertasTier: superior.length };
+    return { ...comum, alvo: null, tipo: null, ref: null, ofertasTier: 0 };
   }
+
+  /** Sem NENHUMA oferta comparável (D17): o 1,5M só é preço de tier A. Uma oferta B/C a esse
+   *  preço e sem excepção por base é preço inventado na praça -> devolve o motivo do cancelamento.
+   *  `null` = pode ficar (tier A, ou base com excepção do dono). */
+  function motivoCancelarSemRef(base, qual, preco, conf) {
+    const c = conf || cfg || {};
+    const q = String(qual || '').toUpperCase();
+    if (!q || q === 'A') return null;
+    if ((c.precoSemComparavelPorBase || {})[String(base)] != null) return null;
+    const piso = Number(c.precoSemComparavel) || 1500000;
+    return Number(preco) >= piso ? 'cancelar (tier B/C a 1,5M sem referencia)' : null;
+  }
+
+  /** PREÇO DE ANÚNCIO de um lendário. É a `politicaPreco` + as excepções do dono.
+   *  Devolve `{ preco, regra, refTier, ofertasTier, ofertasBase, pisoLoj, pisoJogo }`.
+   *  `preco: null` = NÃO anunciar. */
+  function precoDeAnuncio(it, mercado, conf) {
+    const c = conf || cfg || {};
+    const pol = politicaPreco(it, mercado, c);
+    const clamp = (p) => (p == null ? null : Math.max(1, pol.pisoLoj, pol.pisoJogo, Math.round(Number(p) || 0), pol.pisoGume));
+    const out = (preco, regra) => ({
+      preco: clamp(preco), regra,
+      refTier: pol.ref, ofertasTier: pol.ofertasTier, ofertasBase: pol.ofertasBase,
+      pisoLoj: pol.pisoLoj, pisoJogo: pol.pisoJogo,
+    });
+    if (pol.tipo === 'mesmo') return out(pol.alvo, '90% do menor do MESMO tier');
+    if (pol.tipo === 'superior') return out(pol.alvo, 'sem oferta do MESMO tier: 90% do menor de tier SUPERIOR');
+    // Excepções do dono, por ID-base (não por nome traduzido).
+    const exc = (c.precoSemComparavelPorBase || {})[pol.base];
+    if (exc != null) return out(Number(exc) || 0, 'excepcao por item (dono)');
+    // 1,5M SÓ para tier A.
+    if (pol.qual === 'A') return out(numOr(c.precoSemComparavel, 1500000), 'tier A sem comparavel -> precoSemComparavel');
+    return out(null, `tier ${pol.qual || '?'} sem comparavel: 1,5M e SO tier A (nao anuncia)`);
+  }
+
+  /** REFERÊNCIA de preço de uma oferta MINHA (PURA). Mesma escada (`politicaPreco`), mas NÃO
+   *  inventa preço: sem comparável devolve `null` e o chamador mantém a oferta. */
+  function referenciaPrecoMercado(o, mercado, conf) {
+    const pol = politicaPreco(o, mercado, conf);
+    if (pol.alvo == null) return null;
+    return { alvo: pol.alvo, tipo: pol.tipo, ref: pol.ref, ofertasTier: pol.ofertasTier, pisoLoj: pol.pisoLoj, pisoJogo: pol.pisoJogo, pisoGume: pol.pisoGume };
+  }
+
 
   /** Lê os preços do mercado (aba Comprar): [{ base, qual, preco, txt }]. */
   function lerMercado() {
@@ -8095,14 +8193,12 @@ const CFG_VER = 4;
       }
       const ref = referenciaPrecoMercado(o, mercado, cfg);
       if (!ref) {
-        // SEM comparável: 1,5M só é preço de tier A. Uma oferta B/C a esse preço (sem ser
-        // Rabadon/Gume) é o bug que o dono viu — cancela para não ficar a praça com um preço
-        // inventado. O `anunciarLendarios` volta a decidir com a política nova.
-        const qual = String(o.qual || '').toUpperCase();
-        const exc = (cfg.precoSemComparavelPorBase || {})[String(o.base)];
-        const piso = Number(cfg.precoSemComparavel) || 1500000;
-        if (qual && qual !== 'A' && Number(o.preco) >= piso && exc == null) {
-          acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, item: o.item || null, de: o.preco, acao: 'cancelar (tier B/C a 1,5M sem referencia)' });
+        // SEM comparável: a MESMA regra para todos os caminhos (`motivoCancelarSemRef`, D17).
+        // 1,5M só é preço de tier A — uma oferta B/C a esse preço, sem excepção por base, é o
+        // preço inventado que o dono viu na praça. O `anunciarLendarios` volta a decidir.
+        const motivoCancelar = motivoCancelarSemRef(o.base, o.qual, o.preco, cfg);
+        if (motivoCancelar) {
+          acoes.push({ id: o.id, base: o.base, nome: o.nome, qual: o.qual, item: o.item || null, de: o.preco, acao: motivoCancelar });
         } else {
           acoes.push({ id: o.id, nome: o.nome, qual: o.qual, acao: 'manter (sem comparativo no mercado)' });
         }
@@ -12853,6 +12949,10 @@ const CFG_VER = 4;
       // `tMorrerS: null` não diz se é "nunca morre" (net <= 0) ou "conta estragada" (NaN).
       curaTotalS: Number.isFinite(av.curaTotal) ? +av.curaTotal.toFixed(1) : null,
       netS: Number.isFinite(net) ? +net.toFixed(1) : null,
+      // D12 (2026-10-23): as duas parcelas que o `sobrevivenciaSet` precisa para usar a MESMA
+      // regua - o roubo de vida (que escala com o DPS do candidato) e a reserva de pocoes.
+      curaRvS: Number.isFinite(av.curaRv) ? +av.curaRv.toFixed(1) : 0,
+      reservaPocoes: Math.round(pm.reserva),
       vidaPool: Math.round(vidaPool), pocoesNaMochila: pm.n, pocoesDaMochila: pm.cura, potNecessarias: net > 0 ? potNecessarias : 0,
       ganha, potS: +potS.toFixed(4),
       tKillRealS: realMs ? +(realMs / 1000).toFixed(1) : null, potReal,
@@ -12873,22 +12973,53 @@ const CFG_VER = 4;
     const vida = ((pl && pl.vida) || 0) - (cur.vida || 0) + (S.vida || 0);
     let luta = O.luta || null;
     if (!luta) { try { luta = estimarLuta(tipo) || estimarLuta(alvo); } catch { luta = null; } }
-    const dIn = (luta && luta.dpsChefe) ? luta.dpsChefe : 0;
-    const tMorrer = dIn > 0 ? +(vida / dIn).toFixed(1) : Infinity;
-    const potS = (luta && luta.potS) || 0;
     let dps = 0;
     try { const e = estimarSet(base || [], alvo, { ...O, pj: pl, S }); dps = (e && e.dps) || (luta && luta.meuDpsBoss) || 0; } catch { dps = (luta && luta.meuDpsBoss) || 0; }
     const hp = (luta && luta.hpBoss) || 0;
-    // DEFEITO CORRIGIDO (2026-10-22): `morre` usava o `luta.tKillS` do equipamento
-    // ACTUAL, enquanto o `tKill` devolvido era recalculado com o dps do CANDIDATO.
-    // Resultado medido: `tMorrer=27,1 < tKill=33,5` e `morre:false` — o `morre` era
-    // de outra build. Agora o `tKill` e' calculado UMA vez e serve as duas contas.
+    /* D12 (2026-10-23) — A MESMA RÉGUA DO `estimarLuta`: RESERVATÓRIO, não vida/dps bruto.
+     *
+     * DEFEITO MEDIDO: `tMorrer = vida / luta.dpsChefe` era a única das oito definições de
+     * sobrevivência que não descontava o sustento (`curaTotal`: roubo de vida, giro da Katarina,
+     * regeneração, kit) nem a reserva de poções. A escolha FINAL da build (`alvoEquip`) usa esta
+     * função e o `morre` dela; logo a build era escolhida por uma conta que nenhuma das outras
+     * produzia (o doc chamava-lhe "conta híbrida").
+     *
+     * A única coisa que o candidato muda nesta conta é o DANO dele — e o dano muda o roubo de vida
+     * (`cura = dano × rv`, motor.js:1226-1228). Por isso se escala o `curaRv` pela razão entre o
+     * DPS do candidato e o DPS base, e a cura fixa (skills/giro/regen/kit) fica igual.
+     *
+     * As poções continuam a ser RESERVATÓRIO (motor.js:1407-1416): N cargas que acabam, não uma
+     * torneira. `tMorrer` soma a reserva ao pool; `nPocoes` diz quantas o líquido consome até ao
+     * fim da luta e `morre` fica verdadeiro se não houver cargas suficientes.
+     */
+    const dIn = Number(luta && luta.dpsChefe) || 0;
+    const curaTotalBase = Number(luta && luta.curaTotalS) || 0;
+    const curaRvBase = Number(luta && luta.curaRvS) || 0;
+    const curaFixa = Math.max(0, curaTotalBase - curaRvBase);
+    const dpsBase = Number(luta && luta.meuDpsBoss) || 0;
+    const kDps = dpsBase > 0 && dps > 0 ? dps / dpsBase : 1;
+    const curaRv = Math.max(0, curaRvBase) * kDps;
+    const net = dIn - curaFixa - curaRv;
+    const reserva = Math.max(0, Number(luta && luta.reservaPocoes) || 0);
     const tKill = (dps > 0 && hp > 0) ? +(hp / dps).toFixed(1) : ((luta && luta.tKillS) != null ? luta.tKillS : Infinity);
-    const morre = tMorrer < tKill;
-    // Pocoes ate' o FIM da luta: se ganha, `tKill`; se morre, `tMorrer`.
+    const tMorrer = net > 0 ? +(((vida || 0) + reserva) / net).toFixed(1) : Infinity;
+    // ESCUDO / vidas extra: o `luta.vidaPool` já os soma; troca-se só a parcela de vida.
+    const bonusPool = Math.max(0, (Number(luta && luta.vidaPool) || 0) - ((pl.vidaEff != null ? pl.vidaEff : pl.vida) || 0));
+    const poolCand = (vida || 0) + bonusPool;
+    const piorMec = Number(luta && luta.piorMec) || 0;
+    const mortal = piorMec > 0 && piorMec >= poolCand;
+    const curaPocao = Number(luta && luta.pocoesDaMochila) || 0;   // hp por carga
+    const nDisp = Number(luta && luta.pocoesNaMochila) || 0;
     const tFim = Math.min(tMorrer, tKill);
-    const nPocoes = (potS > 0 && isFinite(tFim)) ? Math.ceil(potS * tFim) : 0;
-    return { vida, tMorrer, morre, dps, tKill, nPocoes, ouroPocao: nPocoes * precoPocaoEmUso() };
+    const potS = net > 0 && curaPocao > 0 ? net / curaPocao : 0;    // cargas/s que o líquido exige
+    const nPocoes = potS > 0 && isFinite(tFim) ? Math.ceil(potS * tFim) : 0;
+    const semPocao = nDisp > 0 && nPocoes > nDisp;
+    const morre = tMorrer < tKill || mortal || semPocao;
+    return {
+      vida, poolCand, tMorrer, morre, mortal, semPocao,
+      net: +net.toFixed(1), curaFixa: +curaFixa.toFixed(1), curaRv: +curaRv.toFixed(1), reserva,
+      dps, tKill, nPocoes, nDisponiveis: nDisp, ouroPocao: nPocoes * precoPocaoEmUso(),
+    };
   };
   /** Ranking por SOBREVIVENCIA (F5-F9): cada candidato entra no conjunto base; ordena por `tMorrer`
    *  (o que da uma ordem DIFERENTE do `rankItens`, que e so DPS - o criterio novo do dono). */
@@ -13677,8 +13808,11 @@ const CFG_VER = 4;
   function atualizarDpsCache() {
     try {
       if (Date.now() - _dpsCache.at < 60000) return _dpsCache.v;
-      const v = meuDps();
-      _dpsCache = { at: Date.now(), v: (Number(v) || 0) };
+      const v = Number(meuDps()) || 0;
+      // medicao falhada (0) NAO apaga uma medida boa: so' actualiza o `at` se havia valor, senao o
+      // ultimo DPS real ficaria perdido ate' a proxima leitura boa (D15).
+      if (v > 0) _dpsCache = { at: Date.now(), v };
+      else if (!_dpsCache.at) _dpsCache = { at: Date.now(), v: 0 };
       return _dpsCache.v;
     } catch { return 0; }
   }
@@ -14042,7 +14176,7 @@ const CFG_VER = 4;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, veredictoBase, quarentenaBase, chefeVivo, podeRecordar, regenDoJogo, sustentoDoKit, motivosDeViagem, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
+  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, veredictoBase, quarentenaBase, chefeVivo, podeRecordar, regenDoJogo, sustentoDoKit, motivosDeViagem, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, lendariosIndesejadosCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },

@@ -52,7 +52,6 @@
 
   const ORDER = ['vidaS', 'vidaF', 'vida'];
   const POCAO_NOME = { vidaS: 'Suprema', vidaF: 'Forte', vida: 'Normal' };
-  const POCAO_CURA = { vidaS: 2200, vidaF: 900, vida: 300 };
   const RABADON = '3089';
   const LOGO = 'https://lolidle.com/assets/img/logo.png';
   // ---- ícones de item --------------------------------------------------------
@@ -1266,7 +1265,7 @@ switches: 'interruptores',
       + '<small><span class="bf-nome">' + esc(nome) + '</span> · ' + esc(FONTE_NOME[fonte] || fonte) + '</small></span>';
   }
   /** Uma COLUNA (a build de mobs ou a de chefe). */
-  function bfColuna(p, fase) {
+  function bfColuna(p, fase, eqAgora) {
     const titulo = fase === 'mobs' ? 'Build de MOBS' : 'Build de CHEFE';
     const dica = fase === 'mobs'
       ? 'para limpar grupos: dano em área e velocidade de ataque valem mais'
@@ -1277,12 +1276,20 @@ switches: 'interruptores',
     const emUso = !!p.ativa && p.on !== false;
     const faltam = (p.faltam || []);
     const buscar = (p.buscar || []);
+    // IDEAL vs ATUAL (pedido do dono, 2026-10-23): a coluna mostra a build IDEAL (a que a
+    // automação escolhe) e, logo abaixo, o que está VESTIDO agora. Sem esta linha, uma peça
+    // "em falta" parecia igual a uma equipada.
+    const atuais = (eqAgora || []).map((e) => '<span class="bf-item equipado" title="' + esc((infoItem(e.base) || {}).nome || e.base) + '">'
+      + '<img src="' + ITEM_IMG(e.base) + '" alt="" loading="lazy" onerror="this.style.opacity=.25">'
+      + (e.qual ? '<b class="q">' + esc(e.qual) + '</b>' : '') + '</span>').join('');
     return '<div class="bf-col' + (emUso ? ' em-uso' : '') + '">'
       + '<h4>' + titulo
       + (emUso ? '<span class="tag">em uso agora</span>' : (p.equipadaAgora ? '<span class="tag ok">equipada</span>' : ''))
       + '</h4>'
       + '<p class="bf-dica">' + dica + '</p>'
+      + '<p class="bf-dica"><b>ideal</b></p>'
       + '<div class="bf-itens">' + ordenarItens(p.itens || []).map(bfItem).join('') + '</div>'
+      + (atuais ? '<p class="bf-dica"><b>vestido agora</b></p><div class="bf-itens">' + atuais + '</div>' : '')
       + (faltam.length
         ? '<p class="hint">Falta: ' + faltam.map((i) => '<b>' + esc(i.nome) + '</b>').join(', ') + ', farmar ou comprar no mercado.</p>'
         : '<p class="hint">Você tem as ' + (p.itens || []).length + ' peças desta build.</p>')
@@ -1306,6 +1313,8 @@ switches: 'interruptores',
     const pMob = temMotor ? planoFase('mobs') : null;
     const pChefe = temMotor ? planoFase('chefe') : null;
     const ident = identidade() || {};
+    // O que está VESTIDO agora (para a coluna dizer "ideal" vs "atual"). Lido do equipamento.
+    const eqAgora = (() => { try { return ler('readEquip', []) || []; } catch { return []; } })();
     const estado = !temMotor ? 'a automação ainda não carregou nesta página (F5)'
       : !on ? 'desligado: uma build só, como antes'
         : !pMob ? 'à espera do campeão (o HUD ainda não carregou)'
@@ -1314,7 +1323,7 @@ switches: 'interruptores',
     const corpo = tg('ap-cfg-buildPorFase', 'Trocar a build sozinho quando a luta muda',
       'Em mobs veste a build de limpeza; quando o chefe aparece veste a de alvo único. O que sai fica na mochila e nunca é vendido.', on)
       + (on ? '' : '<p class="aviso warn">Desligado: a automação volta usando uma build só e deixa de reservar as peças da outra.</p>')
-      + '<div class="bf-grid">' + bfColuna(pMob, 'mobs') + bfColuna(pChefe, 'chefe') + '</div>'
+      + '<div class="bf-grid">' + bfColuna(pMob, 'mobs', eqAgora) + bfColuna(pChefe, 'chefe', eqAgora) + '</div>'
       + '<p class="hint tira">Campeão: <b>' + esc(ident.nome || '-') + '</b>. Cada peça diz DE ONDE vem: <b>equipado</b>, <b>na mochila</b>, <b>no mercado</b> (oferta sua) ou <b>no cofre</b>. "Falta" = não existe em lado nenhum.</p>';
     // Cabeçalho próprio (não usa card()) porque leva o botão de minimizar ao lado do estado.
     setHtml('ap-build-fase',
@@ -1477,17 +1486,44 @@ switches: 'interruptores',
     const pot = (status && status.potions) || null;
     const counts = ler('readPotions', {}) || {};
     const min = c.minPotion || { vida: 200, vidaF: 100, vidaS: 30 };
+    // CURA e PREÇO LIDOS do catálogo do jogo (`META.pocoes`, motor.js:288-294) pelo `pocaoInfo`.
+    // Estavam escritos à mão aqui (300/900/2200) - REGRA Nº 3.
+    const infoP = (k) => { try { return ler('pocaoInfo', {}, k) || {}; } catch { return {}; } };
+    // GASTO MEDIDO em poções (ouro/min) na região onde o boneco está: vem do `agregar()` (ciclos
+    // observados), nunca de uma conta nova. `null` = ainda sem medida.
+    let gastoPotMin = null;
+    try {
+      const loc = String(ler('readLocation') || '');
+      const rows = ler('agregar') || [];
+      const r = loc ? rows.find((x) => loc.indexOf(String(x.region || '').split(' nível')[0]) >= 0) : null;
+      gastoPotMin = r ? Number(r.goldPotionMin) : (rows[0] ? Number(rows[0].goldPotionMin) : null);
+    } catch { gastoPotMin = null; }
+    const valorStock = ORDER.reduce((s, k) => s + (Number(counts[k] || 0) * (Number(infoP(k).preco) || 0)), 0);
     const ultima = status && status.lastAction;
     const cartoes = ORDER.map((k) => {
       const n = Number(counts[k] || 0);
       const baixo = n < Number(min[k] || 0);
+      const ip = infoP(k);
+      const cura = Number(ip.cura) || 0;
+      const preco = Number(ip.preco) || 0;
+      const custo = n * preco;
+      // A COLUNA DO DONO (2026-10-23): QUANTIDADE **e** OURO. Antes só aparecia a contagem - ele
+      // perguntou quanto custava. Agora: quantidade, ouro por unidade e o valor do stock.
       return '<div class="pot ' + (baixo ? 'baixo' : '') + '">' + (potIcon(k) ? '<img src="' + potIcon(k) + '" alt="">' : '')
-        + '<div><span class="q">' + fmt(n) + '</span><small>' + POCAO_NOME[k] + ' · cura ' + fmt(POCAO_CURA[k]) + ' · mínimo ' + fmt(min[k]) + '</small></div></div>';
+        + '<div><span class="q">' + fmt(n) + '</span><small>' + POCAO_NOME[k]
+        + (cura ? ' · cura ' + fmt(cura) : '') + ' · mínimo ' + fmt(min[k])
+        + (preco ? ' · ' + fmt(preco) + ' ouro cada' : '')
+        + (preco ? ' · stock ' + fmt(custo) + ' ouro' : '') + '</small></div></div>';
     }).join('');
     const planoPocao = ler('planPotions', null, counts);
     setHtml('ap-now-pocoes', card('Poções', 'a auto-poção usa a mais fraca que for suficiente',
       '<div class="pots">' + cartoes + '</div>'
       + '<p class="hint tira">A auto-poção decide pelo <b>golpe que o monstro acabou de dar</b> (não por médias) e conta a cura das suas habilidades. Se a cura chegar, não gasta poção.</p>'
+      // O DINHEIRO, à vista: quanto vale o stock que está na mochila e quanto se gasta por minuto.
+      + (valorStock
+        ? '<p class="aviso ok">Stock de poções: <b>' + fmt(valorStock) + '</b> ouro para repor tudo'
+          + (gastoPotMin != null ? ' · gasto medido: <b>' + fmt(gastoPotMin) + '</b> ouro/min' : '') + '</p>'
+        : '')
       + (ultima ? '<p class="aviso ok">Última decisão: usou <b>' + esc(POCAO_NOME[ultima.k] || ultima.k) + '</b>, ' + esc(ultima.reason || '') + '</p>' : '<p class="vazio">ainda não usou nenhuma poção</p>')
       + (planoPocao ? '<p class="aviso warn">Em falta: ' + esc((planoPocao.faltas || []).map((k) => POCAO_NOME[k]).join(', ')) + '. Vai comprar: '
         + esc(ORDER.filter((k) => planoPocao.comprar[k] > 0).map((k) => POCAO_NOME[k] + ' ×' + fmt(planoPocao.comprar[k])).join(' · ') || 'nada (sem ouro)') + '</p>'
@@ -3279,7 +3315,7 @@ switches: 'interruptores',
       + kv('poções agora', ORDER.map((k) => POCAO_NOME[k] + ' ' + fmt((pot && pot[k]) || 0)).join(' · '))
       + '</div>'
       + '<p class="diag-t">Gatilho de cada poção (regra simples, por vida perdida)</p>'
-      + ORDER.map((k) => '<div class="ctl"><div class="ctl-l"><b>' + POCAO_NOME[k] + ' (cura ' + fmt(POCAO_CURA[k]) + ')</b><small id="ap-pc-t-' + k + '">-</small></div>'
+      + ORDER.map((k) => '<div class="ctl"><div class="ctl-l"><b>' + POCAO_NOME[k] + ' (cura ' + fmt(((function () { try { return (ler('pocaoInfo', {}, k) || {}).cura || 0; } catch (e) { return 0; } })())) + ')</b><small id="ap-pc-t-' + k + '">-</small></div>'
         + '<div class="ctl-c"><label class="tg" style="padding:3px 7px"><input type="checkbox" id="ap-pc-on-' + k + '"><span class="sw"></span></label>'
         + '<input type="number" id="ap-pc-v-' + k + '" min="0" step="1">'
         + '<select id="ap-pc-m-' + k + '"><option value="pct">% da vida perdida</option><option value="lost">vida perdida (valor)</option></select></div></div>').join('')
