@@ -779,21 +779,29 @@ Antes do D20, o Anciao tambem dizia `tMorrerS: null` — "nunca morre" — com 1
   como `buildIdeal`/`montarBuildDe` ja tratam as botas (pool separado por `espaco === 'botas'`,
   `automation.js:9375-9540`).
 
-  **O modelo contra o jogo (MEDIDO, `node tools/botas-modelo-vs-jogo.mjs`)** - o que a extensao
-  escolheria, contra o que o motor faz (mesmo campeao, mesmo catalogo real lido de
-  `docs/game-src/itens.js`, kit vivo da Katarina):
+  **O modelo contra o jogo (MEDIDO 2026-10-24, `node tools/botas-modelo-vs-jogo.mjs`).**
+  A PRIMEIRA versao deste paragrafo comparou o `estimarSet.dps` com o tempo de morte do motor e
+  concluiu "diverge em mobs". **Estava errada no instrumento**: o `estimarSet.dps` soma SKILLS +
+  procs de item + burn e **nao conta auto-ataques** - nao e' a grandeza que decide a build nem a
+  que o jogo mede. A grandeza que decide e' o `scoreSet` com o alvo DA FASE (o que `buildIdeal` /
+  `montarBuildDe` usam). Re-medido com ela:
 
-  | tier | fase | modelo escolhe | jogo diz | |
-  |---|---|---|---|---|
-  | epico | mobs | 3020 (pen, 178 dps) | empate | concorda |
-  | epico | chefe | 3020 (pen, 156 dps) | PEN (121,25 vs 123,5 s) | **concorda** |
-  | lendario | chefe | 3171 (CDR, 187 dps) | **CDR** (107,2 vs 113,4 s) | **concorda** |
-  | lendario | mobs | 3171 (CDR, 215 dps) | PEN (10,75 vs 11,55 s) | **DIVERGE** |
+  | tier | fase | score CDR | score PEN | o modelo escolhe | jogo diz | |
+  |---|---|---|---|---|---|---|
+  | epico | mobs | 169 | **202** | PEN | empate (13,85 vs 13,95 s) | concorda |
+  | epico | chefe | 153 | **182** | PEN | PEN (121,25 vs 123,5 s) | **concorda** |
+  | lendario | mobs | 235 | **240** | PEN | PEN (10,75 vs 11,55 s) | **concorda** |
+  | lendario | chefe | 210 | **216** | PEN | **CDR** (107,2 s / 59 pocoes vs 113,4 s / 62) | **DIVERGE** |
 
-  Uma divergencia, e' a unica: em **mobs** o modelo da' 215 dps ao CDR contra 195 ao pen, e o motor
-  mata mais depressa com o pen. A diferenca no jogo e' 0,8 s por mob (7%) e em mobs de rotina os dois
-  matam ao mesmo ritmo (o tecto e' o respawn, nao o DPS) - logo a troca que o modelo faz **nao custa
-  ouro nem abranda o farm**; custa 0,8 s por mob gordo. Fica registado em vez de escondido: um modelo
-  que so' concorda 3 em 4 e' um modelo a vigiar, nao um modelo provado. O que **nao** se faz e' voltar
-  a fixar um id de bota no codigo para "acertar" a quarta linha.
+  Ou seja: a discordancia existe, e' **uma so'**, e nao e' onde a primeira medicao dizia. E' na
+  fase de CHEFE no tier LENDARIO - exactamente onde o dono afirmou que a bota de CDR ganha. O
+  modelo escolhe a de penetracao por 3% de score (216 vs 210) e o motor mata 6 s mais depressa e
+  com 3 pocoes a menos de CDR. **Nao e' uma divergencia legitima: e' um defeito do `scoreSet`.**
+  Ele e' um agregado estatico tipo-DPS e nao tem TEMPO de luta: numa luta de 107 s o CDR paga-se
+  em rotacoes completas, e numa de 2 s nao. O jogo mede o tempo; o score nao o conhece.
+
+  **A correcao (proximo passo):** a decisao da bota (e do item) por fase tem de ser tomada pela
+  regua do dono - `estimarLuta` (tempo de morte, pocoes, ouro), que ja' existe e ja' e' o
+  adjudicador de sobrevivencia - e nao por um score sem tempo. Ate isso acontecer, o modelo
+  escolhe PEN no chefe lendario e custa 6 s + 3 pocoes por luta.
 

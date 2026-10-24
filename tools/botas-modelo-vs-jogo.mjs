@@ -62,3 +62,12 @@ const escolhe = (l, i) => l.slice().sort((a, b) => b[i] - a[i])[0][0];
 console.log("");
 console.log("MODELO -> epico    mobs:" + escolhe(linhas, 1) + "  chefe:" + escolhe(linhas, 2));
 console.log("MODELO -> lendario mobs:" + escolhe(lend, 1) + "  chefe:" + escolhe(lend, 2));
+// ---- O NUMERO QUE DECIDE: `scoreSet` com o alvo DA FASE (e' o que `buildIdeal`/`montarBuildDe`
+// usam). `estimarSet.dps` conta so' SKILLS + procs (nao conta auto-ataques) - comparar esse numero
+// com o tempo de morte do jogo e' comparar duas grandezas diferentes, e foi esse o erro do
+// primeiro relatorio (2026-10-24).
+for (const [nome, alvo] of [["mobs", alvoMob], ["chefe", alvoChefe]]) {
+  const sc = (b) => Math.round(auto.scoreSet([b].concat(base), alvo));
+  console.log("SCORE " + nome + " (epico 3158 CDR vs 3020 PEN): " + sc("3158") + " vs " + sc("3020"));
+  console.log("SCORE " + nome + " (lendario 3171 CDR vs 3175 PEN): " + sc("3171") + " vs " + sc("3175"));
+}
