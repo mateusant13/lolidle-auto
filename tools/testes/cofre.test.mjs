@@ -463,11 +463,24 @@ export const suite = {
         { id: '4002~C', dica: 'Couraca Epica (epico)' },
         { id: '4001~C', dica: 'Refugo Epico (epico)' },
       ]);
+      // ORDEM POR DESEJO (2026-10-24, ordem do dono: vender "as coisas menos desejadas"): a lista
+      // do lixo deixou de sair na ordem do DOM (`Object.keys`) e passou a sair do MENOS desejado
+      // para o mais desejado. O que o teste tem de fixar é (i) o CONJUNTO vendido e (ii) que a
+      // ordem é a da lista — não um literal copiado da implementação antiga.
+      const lixoAntesSlots = auto.lixoDoCofreLista();
+      const lixoAntes = lixoAntesSlots.map((s) => String(s.base));
       const r = await auto.venderLixoDoCofre();
       const clicks = m.estado.clicks;
       t.check('C14: venderLixoDoCofre correu', r.ok === true);
-      t.check('C14: vendidos = [1005, 4001, 4002] (exactamente os 3 lixos, ordem numerica de Object.keys)',
-        Array.isArray(r.vendidos) && r.vendidos.length === 3 && r.vendidos.join(',') === '1005,4001,4002');
+      t.check('C14: vendidos = exactamente os 3 lixos (conjunto), sem o lendário',
+        Array.isArray(r.vendidos) && r.vendidos.length === 3
+        && r.vendidos.slice().sort().join(',') === '1005,4001,4002'
+        && !r.vendidos.includes('9500'));
+      t.check('C14: a ordem da venda é a da lista por DESEJO (' + lixoAntes.join(',') + ')',
+        r.vendidos.map(String).join(',') === lixoAntes.join(','));
+      const vDesejo = lixoAntesSlots.map((s) => Number(auto.valorDe(String(s.base), null, { qual: s.qual, refino: s.refino })) || 0);
+      t.check('C14: e a lista é CRESCENTE em valor de fase (menos desejável primeiro)',
+        vDesejo.length === 3 && vDesejo[0] <= vDesejo[1] && vDesejo[1] <= vDesejo[2]);
       t.check('C14: clicou nos 3 slots de lixo',
         clicks.indexOf('cofre-slot:1005~C') >= 0 && clicks.indexOf('cofre-slot:4002~C') >= 0 && clicks.indexOf('cofre-slot:4001~C') >= 0);
       t.check('C14: o LENDARIO (9500) NUNCA foi clicado', clicks.indexOf('cofre-slot:9500~S') < 0);
@@ -477,7 +490,8 @@ export const suite = {
       t.check('C14: o cofre ficou so com o lendario (re-render com k actual)',
         cofreFinal.length === 1 && cofreFinal[0].dataset.k === '0' && cofreFinal[0].dataset.nome === 'Lendario Fraco [S]');
       const ev = (auto.getFarm().log || []).find((e) => e.type === 'cofre' && e.acao === 'vender-lixo');
-      t.check('C14: logEvent cofre/vender-lixo com 3 vendidos', !!ev && ev.vendidos.join(',') === '1005,4001,4002');
+      t.check('C14: logEvent cofre/vender-lixo com os 3 vendidos na ordem da lista',
+        !!ev && Array.isArray(ev.vendidos) && ev.vendidos.map(String).join(',') === lixoAntes.join(','));
     }
 
     /* ============ C14a — DOM filtrado por acao: mochila e cofre com o MESMO data-k ======== */
@@ -951,6 +965,108 @@ export const suite = {
         t.check('R8b: lendário da build ideal NÃO é retirado do cofre',
           ind.every((s) => String(s.base) !== String(ideal[0])));
       }
+    }
+    /* =====================================================================================
+     * R9 - ORDEM DO DONO (2026-10-24), verbatim: *"faz o boneco botar coisa no cofre e vender
+     *      as coisas menos desejadas no cofre, quando a mochila ta enchendo."*
+     *
+     *      Três coisas que a extensão NÃO fazia (lidas no código, não supostas):
+     *      (a) `venderLixoCofre` só ardia se o lixo PAGASSE a ida à Fonte e se a cadência de
+     *          10 min tivesse passado — com a mochila cheia o depósito era recusado ("cofre
+     *          recusou") e o boneco ia-se embora com o lixo lá dentro;
+     *      (b) `lixoDoCofreLista()` devolvia os slots na ordem do DOM, não por DESEJO;
+     *      (c) a limpeza e o depósito eram visitas separadas (ou nenhuma).
+     * ===================================================================================== */
+
+    /* R9a - A ORDEM É POR DESEJO (menos desejável primeiro), não a do DOM. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest', { nivel: 30 });
+      // DOM de propósito ao contrário do desejo: o épico (k=1) primeiro, o básico (k=2) depois.
+      montarGradeCofreMotor(m, [
+        { base: '4002', qual: 'C', nome: 'Couraca Epica [C]', rar: 'epico' },
+        { base: '1005', qual: 'C', nome: 'Adaga Inutil [C]', rar: 'basico' },
+      ], { semSaque: true });
+      const lixo = auto.lixoDoCofreLista();
+      const desejo = (s) => { try { return Number(auto.valorDe(String(s.base), null, { qual: s.qual, refino: s.refino })) || 0; } catch { return 0; } };
+      const vals = lixo.map(desejo);
+      t.check('R9a: o cofre tem os dois lixos (pré-condição)', lixo.length === 2);
+      t.check('R9a: a lista sai do MENOS desejado para o mais desejado (' + vals.map((v) => v.toFixed(2)).join(' <= ') + ')',
+        vals.length === 2 && vals[0] <= vals[1] && String(lixo[0].base) === '1005');
+      t.check('R9a: ...e não é a ordem do DOM (que tem o épico em k=1)', String(lixo[0].base) !== '4002');
+    }
+
+    /* R9b - PRESSÃO DA MOCHILA: o lixo do cofre sai MESMO sem pagar a ida. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest', { nivel: 30 });
+      m.montar('#equip > button.slot[data-id]', [
+        m.el({ tag: 'button', label: 'equip:2007', className: 'slot lendario', attrs: { 'data-id': '2007~S', 'data-dica': 'Botas AD (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2001', className: 'slot lendario', attrs: { 'data-id': '2001~S', 'data-dica': 'Lendario AD 1 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2004', className: 'slot lendario', attrs: { 'data-id': '2004~S', 'data-dica': 'Lendario AD 2 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2005', className: 'slot lendario', attrs: { 'data-id': '2005~S', 'data-dica': 'Lendario AD 3 (lendario)' } }),
+        m.el({ tag: 'button', label: 'equip:2006', className: 'slot lendario', attrs: { 'data-id': '2006~S', 'data-dica': 'Lendario AD 4 (lendario)' } }),
+      ]);
+      montarLocal(m, 'Fonte');
+      // DUAS cópias do mesmo básico: a pior é lixo (uma fica, a build pode precisar). O valor de
+      // venda de UMA é MENOR que a ida à Fonte — é o caso que o portão de valor recusava.
+      montarGradeCofreMotor(m, [
+        { base: '1005', qual: 'B', nome: 'Adaga Inutil [B]', rar: 'basico' },
+        { base: '1005', qual: 'C', nome: 'Adaga Inutil [C]', rar: 'basico' },
+      ]);
+      montarLojista(m, [{ id: '1005~C', dica: 'Adaga Inutil (basico)' }]);
+      // 29/30: a mochila está a encher (a mesma regra do `planBag`).
+      const quase = [];
+      for (let i = 0; i < 28; i++) quase.push({ id: '3020~C', raridade: 'basico' });
+      quase.push({ id: '9500~A', raridade: 'lendario' });
+      montarMochila(m, quase, 30);
+      auto.setConfig({ enabled: true });
+      const n = auto.necessidadesBase();
+      t.check('R9b: mochila a encher -> `_lixoCofre.pressao` true', !!n._lixoCofre && n._lixoCofre.pressao === true);
+      t.check('R9b: e o lixo NÃO paga a ida (é o portão que a pressão anula)', !!n._lixoCofre && n._lixoCofre.valor < n._lixoCofre.custoOuro);
+      t.check('R9b: venderLixoCofre arde mesmo assim', n.venderLixoCofre === true);
+      t.check('R9b: `motivosDeViagem` inclui a venda pela pressão',
+        auto.motivosDeViagem(auto.faltandoNaBase(n), n).indexOf('venderLixoCofre') >= 0);
+
+      /* (c) A LIMPEZA ACONTECE NO MESMO PASSO, ANTES DO DEPÓSITO — e o que sai é vendido. */
+      const pedidoCofre = auto.PASSOS_BASE.find((p) => p[0] === 'cofre');
+      t.check('R9c: o passo `cofre` existe na tabela (pré-condição)', !!pedidoCofre && typeof pedidoCofre[2] === 'function');
+      const r = await pedidoCofre[2]();
+      t.check('R9c: com pressão, o passo TENTA limpar o cofre (' + (r && r.limpeza ? 'limpeza presente' : 'limpeza ausente') + ')',
+        !!r && r.limpeza != null);
+      t.check('R9c: e a limpeza SACOU mesmo o lixo para vender',
+        !!r && r.limpeza && Array.isArray(r.limpeza.vendidos) && r.limpeza.vendidos.join(',') === '1005');
+      t.check('R9c: o depósito continuou a ser pedido na mesma visita',
+        !!r && r.pedidos >= 1);
+    }
+
+    /* R9d - CONTROLO: com FOLGA o lixo do cofre fica (o portão de valor continua a valer), e o
+     *       passo corre pelo depósito de oportunidade — logo não sai cedo. */
+    {
+      const m = criarMundo();
+      const auto = carregarAutomation(m);
+      alimentarCatalogo(m);
+      definirCampeao(m, 'adtest', { nivel: 30 });
+      m.montar('#equip > button.slot[data-id]', [
+        m.el({ tag: 'button', label: 'equip:2007', className: 'slot lendario', attrs: { 'data-id': '2007~S', 'data-dica': 'Botas AD (lendario)' } }),
+      ]);
+      montarLocal(m, 'Fonte');
+      montarGradeCofreMotor(m, [
+        { base: '1005', qual: 'B', nome: 'Adaga Inutil [B]', rar: 'basico' },
+        { base: '1005', qual: 'C', nome: 'Adaga Inutil [C]', rar: 'basico' },
+      ]);
+      montarLojista(m, [{ id: '1005~C', dica: 'Adaga Inutil (basico)' }]);
+      montarMochila(m, [{ id: '9500~A', raridade: 'lendario' }], 30);   // 1/30: sem pressão
+      auto.setConfig({ enabled: true });
+      const n = auto.necessidadesBase();
+      t.check('R9d: CONTROLO - com folga a pressão é false', !!n._lixoCofre && n._lixoCofre.pressao === false);
+      t.check('R9d: CONTROLO - e o lixo NÃO arde (não paga a ida)', n.venderLixoCofre === false);
+      const r = await (auto.PASSOS_BASE.find((p) => p[0] === 'cofre') || [])[2]();
+      t.check('R9d: CONTROLO - o passo não limpa o cofre', !!r && r.limpeza == null);
     }
   },
 };

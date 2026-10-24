@@ -2855,19 +2855,42 @@ switches: 'interruptores',
       const lista = (porItem.get(String(id)) || []).slice().sort((a, b) => (b.dropsH || 0) - (a.dropsH || 0));
       if (!lista.length) { semZona.push(id); continue; }
       lista.forEach((x, i) => {
+        // VEREDICTO DO CHEFE (2026-10-24): três respostas, não duas. `veredictoChefe` é a que o
+        // modelo PODE afirmar; `chefeFatal` continua a ser a decisão de rota. Antes a linha era
+        // `chefeFatal === true ? '💀 mata você'`, e o `true` vinha de uma conta sem DPS de saída
+        // (o `planejar` não o passava) - ou seja, "não sei" impresso como "mata você".
+        const vc = x.veredictoChefe || null;
+        const celChefe = vc === 'mata' ? '💀 mata você'
+          : vc === 'nao-mata' ? '✔ você ganha'
+            : (x.chefeFatal === true ? '💀 (sem medição)' : '? não sei');
         linhas.push('<tr class="' + (i === 0 ? 'melhor' : '') + '">'
           + '<td>' + (i === 0 ? '<img src="' + ITEM_IMG(id) + '" alt="" loading="lazy" onerror="this.style.opacity=.2">' : '↳ ') + esc(x.nome || nomeItem(id)) + '</td>'
           + '<td>' + esc(limparNivel(x.zonaNome || x.zona)) + '</td>'
           + '<td>' + (x.faixa ? esc(String(x.faixa[0]) + '–' + String(x.faixa[1])) : '-') + '</td>'
           + '<td>' + (x.chance ? (x.chance * 100).toFixed(4) + '%' : '-') + '</td>'
-          + '<td>' + (x.dropsH == null ? '-' : fmt1(x.dropsH)) + '</td>'
+          + '<td>' + (x.dropsH == null ? '- sem medição' : fmt1(x.dropsH)) + '</td>'
           + '<td>' + (x.sobreviveMob === false ? '💀 morre' : x.sobreviveMob === true ? '✔ ok' : '-') + '</td>'
-          + '<td>' + (x.chefeFatal === true ? '💀 mata você' : x.chefeFatal === false ? '✔ ok' : '-') + '</td>'
+          + '<td>' + celChefe + '</td>'
           + '</tr>');
       });
     }
-    const viaveis = plano.filter((x) => x.chefeFatal !== true);
-    const alvo = (viaveis.length ? viaveis : plano).slice().sort((a, b) => (b.dropsH || 0) - (a.dropsH || 0))[0] || null;
+    // "MELHOR DESTINO": só se AFIRMA o que o modelo sabe.
+    // DEFEITO MEDIDO (2026-10-24, queixa do dono: *"prova que mata"*): a frase dizia
+    // "Melhor destino: Covil do Barão · 0 drops/hora · ⚠ o chefe mata você" - três afirmações
+    // sem prova: o 0 vinha de `killsMin = 0` (zona nunca medida, não zero medido) e o "mata você"
+    // vinha do ramo conservador do adjudicador (sem DPS de saída não há tempo de matar).
+    // A regra nova: sem medição diz-se "sem medição"; sem DPS de saída diz-se "não sei"; e quando
+    // nenhum destino é seguro a frase NOMEIA isso em vez de recomendar o menos mau.
+    const medido = plano.filter((x) => x.dropsH != null && x.dropsH > 0);
+    const viaveis = medido.filter((x) => x.chefeFatal === false && x.sobreviveMob !== false);
+    const alvo = (viaveis.length ? viaveis : (medido.length ? medido : plano)).slice()
+      .sort((a, b) => (b.dropsH || 0) - (a.dropsH || 0))[0] || null;
+    const aviso = (x) => {
+      const vc = x.veredictoChefe;
+      if (vc === 'mata') return ' · ⚠ o chefe dessa zona mata você (a automação fica só nos mobs)';
+      if (vc === 'nao-sei') return ' · ? não há DPS medido para saber se o chefe mata (não é uma prova de perigo)';
+      return '';
+    };
     setHtml('ap-plan-out',
       tabela(['item', 'onde dropa', 'faixa', 'chance por abate', 'drops/hora', 'mobs', 'chefe'], linhas, 'sem dados de drop')
       + (semZona.length
@@ -2876,8 +2899,8 @@ switches: 'interruptores',
         : '')
       + (alvo
         ? '<p class="aviso ok">Melhor destino para a sua escolha: <b>' + esc(limparNivel(alvo.zonaNome || alvo.zona)) + '</b>'
-          + (alvo.dropsH != null ? ' · ' + fmt1(alvo.dropsH) + ' drops/hora de ' + esc(alvo.nome) : '')
-          + (alvo.chefeFatal === true ? ' · ⚠ o chefe dessa zona mata você (a automação fica só nos mobs)' : '') + '.</p>'
+          + (alvo.dropsH != null ? ' · ' + fmt1(alvo.dropsH) + ' drops/hora de ' + esc(alvo.nome) : ' · drops/hora ainda sem medição')
+          + aviso(alvo) + '.</p>'
         : '')
       + '<p class="hint tira">A primeira linha de cada item é a melhor zona dele. <b>Chance por abate</b> e <b>drops/hora</b> são contas da automação (catálogo do jogo × abates medidos na região); ", " = a automação não tem esse número.</p>');
   }
@@ -4067,13 +4090,19 @@ switches: 'interruptores',
       const plano = planoItens();
       if (plano === null) return { ok: false, motivo: erroLegivel(planoItensCache.erro, 'planejar') };
       if (!plano.length) return { ok: false, motivo: 'a automação não sabe onde estes itens dropam (catálogo incompleto?)' };
-      const viaveis = plano.filter((x) => x.chefeFatal !== true);
-      const alvo = (viaveis.length ? viaveis : plano).slice().sort((a, b) => (b.dropsH || 0) - (a.dropsH || 0))[0];
+      const medidoA = plano.filter((x) => x.dropsH != null && x.dropsH > 0);
+      const viaveis = medidoA.filter((x) => x.chefeFatal === false && x.sobreviveMob !== false);
+      const alvo = (viaveis.length ? viaveis : (medidoA.length ? medidoA : plano)).slice().sort((a, b) => (b.dropsH || 0) - (a.dropsH || 0))[0];
       if (!alvo) return { ok: false, motivo: 'nenhum destino calculado' };
+      const notaChefe = alvo.veredictoChefe === 'mata'
+        ? '⚠ O chefe desta zona MATA você (medido): a automação vai ficar só nos mobs.'
+        : alvo.veredictoChefe === 'nao-sei'
+          ? '? Não há DPS medido para dizer se o chefe mata - isto é falta de medição, não prova de perigo.'
+          : '';
       const sim = await confirmar('Ir farmar estes itens', [
         'Destino escolhido: <b>' + esc(limparNivel(alvo.zonaNome || alvo.zona)) + '</b> para <b>' + esc(alvo.nome) + '</b>.',
         'Isto liga o auto-play e viaja já para lá.',
-        viaveis.length ? '' : '⚠ Nenhuma região é segura para você: o chefe dessa zona mata, e a automação vai ficar só nos mobs.',
+        notaChefe,
       ].filter(Boolean), 'Ligar e viajar');
       if (!sim) { fbAviso('Cancelado, o plano está calculado, mas não viajei.'); return { ok: true, msg: 'plano calculado (não viajei).' }; }
       definirLigado(true);

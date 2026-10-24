@@ -403,5 +403,45 @@ export const suite = {
       t.check('U15c: uma MEDIDA de cura/pocao manda sobre o modelo (medicao > teoria)',
         !!medido && medido.curaPocao === 3.5);
     }
+
+    /* ---------------- U16 - UM ADJUDICADOR DE LUTA (2026-10-24) ----------------
+     * Havia QUATRO vereditos de morte no mesmo ficheiro (`avaliar.morre`, o `segMatar` do
+     * `estimarRegiao`, `estimarLuta.ganha`, `sobrevivenciaSet.morre`). Agora ha' `adjudicarLuta`.
+     * Estes checks prendem as TRES provas directas e a diferenca entre o veredicto CONSERVADOR
+     * (rota/equipamento) e o que a GUI pode AFIRMAR (`nao-sei` sem tempo de matar). */
+    {
+      const { auto } = mundo();
+      const A = auto.adjudicarLuta;
+      t.check("U16a: mecanica fatal e' morte PROVADA mesmo com tempo de matar enorme",
+        !!A && (() => { const r = A({ tKill: 1e9, tMorrer: 1e9, mortal: true });
+          return r.morre === true && r.veredicto === 'mata'; })());
+      t.check("U16b: sem reservatorio de pocao que cubra a janela, e' morte PROVADA",
+        !!A && (() => { const r = A({ tKill: 1, tMorrer: 1e9, semPocao: true });
+          return r.morre === true && r.veredicto === 'mata'; })());
+      t.check('U16c: morre antes de matar vs mata antes de morrer (mesma funcao, dois desfechos)',
+        !!A && A({ tKill: 100, tMorrer: 10 }).veredicto === 'mata'
+        && A({ tKill: 10, tMorrer: 100 }).veredicto === 'nao-mata'
+        && A({ tKill: 10, tMorrer: 100 }).morre === false);
+      t.check("U16d: a margem de seguranca (1,5) e' o UNICO parametro local - 12 s para morrer contra 10 s para matar da 'mata' com margem 1,5",
+        !!A && A({ tKill: 10, tMorrer: 12 }).veredicto === 'nao-mata'
+        && A({ tKill: 10, tMorrer: 12, margem: 1.5 }).veredicto === 'mata');
+      t.check("U16e: sem tempo de matar o veredicto e' 'nao-sei' mas o conservador NAO promete sobrevivencia",
+        !!A && (() => { const r = A({ tKill: null, tMorrer: 5, semTempoMorre: true });
+          return r.veredicto === 'nao-sei' && r.morre === true; })());
+    }
+    {
+      // O `avaliar` TEM de usar o adjudicador unico (era uma das quatro copias).
+      const meta = { monstros: { fraco: { hp: 1, ad: 1, as: 1, armadura: 1, xp: 1, ouro: 1 } } };
+      const w = mundoLuta(0, { pocoes: { vidaS: 5 }, meta });
+      await new Promise((r) => setTimeout(r, 120));
+      const pj = { nivel: 10, vida: 2000, armadura: 40, rm: 30, regen: 0 };
+      const av = w.avaliar('fraco', 10, pj, { skill: 0 }, 10);
+      const espelho = w.adjudicarLuta({
+        tKill: av.tMatar, tMorrer: av.tMorrer, mortal: av.mortal,
+        semPocao: !av.mix, semTempoMorre: av.liquido > 0,
+      });
+      t.check("U16f: o veredicto do `avaliar` e' o do adjudicador unico (nao uma quinta copia da regra)",
+        !!av && espelho.veredicto === av.veredicto && espelho.morre === av.morre);
+    }
   },
 };

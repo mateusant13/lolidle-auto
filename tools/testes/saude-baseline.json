@@ -1,8 +1,8 @@
 {
   "automation.js": {
-    "bytes": 996005,
-    "linhas": 14354,
-    "defs": 518,
+    "bytes": 1008250,
+    "linhas": 14530,
+    "defs": 521,
     "funcaoMaisLonga": {
       "nome": "planBag",
       "linhas": 424
@@ -30,8 +30,8 @@
     "catchVazios": 4
   },
   "gui.js": {
-    "bytes": 359189,
-    "linhas": 4968,
+    "bytes": 361115,
+    "linhas": 4997,
     "defs": 160,
     "funcaoMaisLonga": {
       "nome": "renderAgora",

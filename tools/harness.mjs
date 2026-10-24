@@ -261,15 +261,45 @@ function monstro(m, nome, nv) {
 }
 function CURVAxx(m, campo, n, coef) { return m.CURVA[campo](n) * (coef || 1); }
 
+/** Resolve um `id`/`id+refino~qual` OU o NOME do item para o id do motor.
+ *
+ *  DEFEITO CORRIGIDO (2026-10-24): `item "Adaga Inutil"` rebentava com
+ *  `Cannot read properties of undefined (reading 'nome')` — `infoItem` faz `ITENS[baseId(x)]`
+ *  e um nome não é chave de `ITENS`, logo espalhava `undefined`. Só os ids funcionavam, e o
+ *  utilizador do harness não tem como saber o id de cor. A busca por nome é NOS DADOS DO JOGO
+ *  (`ITENS` do motor), nunca numa lista nossa (REGRA Nº 3); nome ambíguo é ERRO com candidatos,
+ *  não uma escolha silenciosa (REGRA Nº 6: um verde que escolhe por nós é pior que um erro). */
+function idDeItem(m, ref) {
+  const s = String(ref).trim();
+  if (m.ITENS[s]) return s;
+  // Separa o sufixo de instância (`+refino` e/ou `~qualidade`) do nome/id base.
+  // Ex.: `Botas+2~A` -> base `Botas`, sufixo `+2~A`; `Adaga` -> base `Adaga`, sufixo ''.
+  const base = s.replace(/[+~].*$/, '');
+  const sufixo = s.slice(base.length);
+  if (m.ITENS[base]) return base + sufixo;
+  const norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const alvo = norm(base);
+  const achados = Object.keys(m.ITENS).filter((k) => norm(m.ITENS[k].nome).includes(alvo));
+  if (achados.length === 1) return achados[0] + sufixo;
+  if (achados.length > 1) {
+    const exatos = achados.filter((k) => norm(m.ITENS[k].nome) === alvo);
+    if (exatos.length === 1) return exatos[0] + sufixo;
+    throw new Error('nome ambíguo (' + achados.length + '): '
+      + achados.slice(0, 8).map((k) => k + '=' + m.ITENS[k].nome).join(' | '));
+  }
+  throw new Error('item desconhecido: ' + ref);
+}
+
 function item(m, ref) {
-  if (!ref) throw new Error('uso: item <id|ref>');
-  const ii = m.infoItem(ref);
+  if (!ref) throw new Error('uso: item <id|ref|nome>');
+  const chave = idDeItem(m, ref);
+  const ii = m.infoItem(chave);
   if (!ii) throw new Error('item desconhecido: ' + ref);
   const usados = ['ad', 'ap', 'mana', 'vida', 'armadura', 'rm', 'va', 'rv', 'critico', 'regen', 'cdr', 'penMag', 'penArmadura', 'efeito'];
   const stats = Object.fromEntries(usados.filter((k) => ii[k]).map((k) => [k, ii[k]]));
-  out({ ref, ...ii, valor: tryCall(() => m.valorVenda(ref)), refino: tryCall(() => m.precoRefino(ref)) },
-    `${ii.nome} [${ref}] (${ii.raridade}${ii.lendario ? ', lendário' : ''}, espaço ${ii.espaco})\n` +
-    `  stats: ${JSON.stringify(stats)}\n  preço: ${ii.preco}   valorVenda: ${tryCall(() => m.valorVenda(ref))}\n  resumo/efeito: ${ii.efeito || ii.resumo || '-'}`);
+  out({ ref: chave, pedido: ref, ...ii, valor: tryCall(() => m.valorVenda(chave)), refino: tryCall(() => m.precoRefino(chave)) },
+    `${ii.nome} [${chave}] (${ii.raridade}${ii.lendario ? ', lendário' : ''}, espaço ${ii.espaco})\n` +
+    `  stats: ${JSON.stringify(stats)}\n  preço: ${ii.preco}   valorVenda: ${tryCall(() => m.valorVenda(chave))}\n  resumo/efeito: ${ii.efeito || ii.resumo || '-'}`);
 }
 function tryCall(f) { try { const v = f(); return typeof v === 'object' ? v : n1(v); } catch { return null; } }
 

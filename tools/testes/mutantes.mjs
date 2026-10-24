@@ -194,8 +194,8 @@ const MUTACOES = [
   {
     id: 'M22-d18-estimar-luta-sem-dps',
     o_que: 'estimarLuta volta a chamar avaliar SEM o DPS medido -> curaRv = 0 no veredicto do chefe',
-    old: '    const av = avaliar(boss, nivel, p, { skill: curaSkill, pocao: 0 }, meuDps() || 0);',
-    new: '    const av = avaliar(boss, nivel, p, { skill: curaSkill, pocao: 0 });',
+    old: '    const av = avaliar(boss, nivel, p, { skill: curaSkill, pocao: 0 }, meDps, dpsContra(boss, nivel, meDps));',
+    new: '    const av = avaliar(boss, nivel, p, { skill: curaSkill, pocao: 0 }, 0, 0);   // mutado: D18 (sem o DPS medido)',
     esperado: 'U5c: com rv 0,15 o roubo de vida ENTRA no veredicto (>= 60 hp/s) - era 0 antes do D18',
   },
   {
@@ -250,8 +250,8 @@ const MUTACOES = [
   {
     id: 'M30-d01-dano-liquido-e-morte',
     o_que: 'avaliar volta a chamar MORTE ao dano liquido (`liquido > 0`) - 28 s de tMorrer passam a ser o mesmo que 0,6 s',
-    old: '    const morre = mortal || !mix || (liquido > 0 && (tMatar == null || tMorrer < tMatar));',
-    new: '    const morre = liquido > 0 || !mix || mortal;   // mutado: D01',
+    old: '    const _adj = adjudicarLuta({ tKill: tMatar, tMorrer, mortal, semPocao: !mix, semTempoMorre: liquido > 0 });',
+    new: '    const _adj = adjudicarLuta({ tKill: tMatar, tMorrer, mortal: mortal || liquido > 0, semPocao: !mix, semTempoMorre: liquido > 0 });   // mutado: D01',
     esperado: 'U14b: chefe que NAO te mata antes de morrer -> `morre` falso (dano liquido nao e morte)',
   },
   {
@@ -260,6 +260,77 @@ const MUTACOES = [
     old: '    const curaPocao = cura?.pocao || _curaPocaoModelo;',
     new: '    const curaPocao = cura?.pocao || 0;   // mutado: D01b',
     esperado: 'U15: a cura da pocao escala com 1/tMatar (e um RESERVATORIO, nao uma taxa fixa)',
+  },
+  /* ---- 2026-10-24: o tri-estado do chefe ("prova que mata") e a limpeza do cofre sob pressao.
+   *      As ancoras sao as linhas LIDAS em automation.js; se a fonte mudar, o proprio mutantes.mjs
+   *      acusa ANCORA-PODRE (REGRA Nº 7) em vez de passar em verde. */
+  {
+    id: 'M32-tri-estado-colapsado',
+    o_que: "avaliar() volta a ter DUAS respostas (colapsa 'nao-sei' em 'mata'/'nao-mata')",
+    old: "    const veredicto = determinante ? 'mata'\n      : (tKill == null ? 'nao-sei' : (morrePorTempo ? 'mata' : 'nao-mata'));",
+    new: "    const veredicto = determinante ? 'mata'\n      : (morrePorTempo ? 'mata' : 'nao-mata');   // mutado: sem tri-estado",
+    esperado: 'P8: sem DPS medido o chefe e "nao-sei" (nao "mata")',
+  },
+  {
+    id: 'M33-planejar-chefe-sem-dps',
+    o_que: 'planejar() volta a chamar avaliar(chefe, ...) com QUATRO argumentos (o defeito da queixa)',
+    old: 'avaliar(bossNome, nivelChefe, p, curaChefe, dpsBase, dpsContra(bossNome, nivelChefe, dpsBase))',
+    // SEM comentario `//` no `new`: ele cai no MEIO da expressao (`? ... : null`) e comenta o
+    // resto da linha -> o ficheiro mutado nao compila e o resultado seria "QUEBRADA", nao "PEGO".
+    // Aconteceu aos 41 mutantes de 2026-10-24 (M33/M34). O porque fica no `o_que`.
+    new: 'avaliar(bossNome, nivelChefe, p, curaChefe)',
+    esperado: 'P7: com DPS medido, o chefe tem veredicto PROVADO (nao e "nao-sei")',
+  },
+  {
+    id: 'M34-planejar-mob-sem-dps',
+    o_que: 'planejar() deixa de passar o DPS ao MOB (o mesmo defeito, no outro chamador)',
+    old: 'avaliar(mobs[0], nivelMob, p, curaMob, dpsBase, dpsContra(mobs[0], nivelMob, dpsBase))',
+    new: 'avaliar(mobs[0], nivelMob, p, curaMob)',
+    esperado: 'P7b: e o veredicto do mob tambem saiu do "nao sei"',
+  },
+  {
+    id: 'M35-dropsh-zero-sem-medicao',
+    o_que: 'drops/h volta a prometer 0 quando a zona NUNCA foi medida (ausencia de dado vira numero)',
+    old: '        const dropsH = killsH != null && chance ? killsH * chance : null;',
+    new: '        const dropsH = killsH != null && chance ? killsH * chance : 0;   // mutado: 0 sem medicao',
+    esperado: 'P8c: zona nunca medida nao promete 0 abates/hora (dropsH null, nao 0)',
+  },
+  {
+    id: 'M36-chefeFatal-colapsa-nao-sei',
+    o_que: "chefeFatal colapsa 'nao-sei' em false (falta de dado passa a 'chefe seguro')",
+    old: "          chefeFatal: verChefe == null ? null : (verChefe === 'mata' ? true : (verChefe === 'nao-sei' ? null : false)),",
+    new: "          chefeFatal: verChefe == null ? null : verChefe === 'mata',   // mutado: nao-sei -> false",
+    esperado: 'P8b: e `chefeFatal` fica NULL (nao `false`: nao e prova de seguranca)',
+  },
+  {
+    id: 'M37-lixo-do-cofre-ao-contrario',
+    o_que: 'lixoDoCofreLista() ordena do MAIS desejado para o menos (vende o melhor primeiro)',
+    old: '    lixo.sort((x, y) => (desejo(x) - desejo(y))',
+    new: '    lixo.sort((x, y) => (desejo(y) - desejo(x))   // mutado: ordem invertida',
+    esperado: 'R9a: a lista sai do MENOS desejado para o mais desejado',
+  },
+  {
+    id: 'M38-pressao-da-mochila-sempre-falsa',
+    o_que: 'mochilaEnchendo() volta a ser sempre false (a pressao que o dono pediu deixa de existir)',
+    old: '  function mochilaEnchendo(bagLida) {',
+    new: '  function mochilaEnchendo(bagLida) { if (true) return false;   // mutado: sem pressao',
+    esperado: 'R9b: mochila a encher -> `_lixoCofre.pressao` true',
+  },
+  {
+    id: 'M39-passo-cofre-nao-limpa',
+    o_que: 'passoCofre() deixa de vender o lixo antes de depositar (volta o "cofre recusou")',
+    old: '    if (pressao && cofre.length && lixoDoCofreLista().length) {',
+    new: '    if (false && pressao && cofre.length && lixoDoCofreLista().length) {   // mutado',
+    esperado: 'R9c: e a limpeza SACOU mesmo o lixo para vender',
+  },
+  {
+    // O adjudicador unico (2026-10-24). Sem as duas provas directas (`mortal`, `semPocao`) o
+    // veredicto volta a depender so' do tempo - e uma mecanica insta-kill passa a "nao-mata".
+    id: 'M40-adjudicador-ignora-prova-directa',
+    o_que: 'adjudicarLuta() ignora `mortal` e `semPocao` (as provas directas de morte)',
+    old: '    const determinante = !!(D.mortal || D.semPocao);',
+    new: '    const determinante = false;   // mutado: ignora a prova directa',
+    esperado: "U16a: mecanica fatal e' morte PROVADA mesmo com tempo de matar enorme",
   },
 ];
 
@@ -420,7 +491,18 @@ async function trabalhador(fila) {
   }
 }
 
-const fila = MUTACOES.slice();
+// `--so=<regex>`: corre so' os mutantes cujo id casa (ex.: `--so=M33|M34`). Um défice de âncora
+// ou uma mutação que parte o ficheiro obriga a repetir; repetir os 41 para verificar 2 custa ~30 min
+// da máquina do dono (medido 2026-10-24: 1838,9 s com --jobs 2).
+const so = (() => {
+  const i = argv.findIndex((a) => a === '--so' || a.startsWith('--so='));
+  if (i < 0) return null;
+  const v = argv[i].includes('=') ? argv[i].split('=')[1] : argv[i + 1];
+  if (!v) return null;
+  try { return new RegExp(v, 'i'); } catch { return null; }
+})();
+const fila = (so ? MUTACOES.filter((m) => so.test(m.id)) : MUTACOES).slice();
+if (so) console.log('FILTRO --so=' + so.source + '  (de ' + MUTACOES.length + ' para ' + fila.length + ')');
 await Promise.all(Array.from({ length: Math.min(jobs, fila.length) }, () => trabalhador(fila)));
 fs.rmSync(TMP, { recursive: true, force: true });
 

@@ -1869,6 +1869,28 @@
     return null;
   }
 
+  /** DPS de SAÍDA contra um MONSTRO CONCRETO — o 5.º argumento do `avaliar`, a grandeza que o
+   *  adjudicador de morte (D01) precisa para ter `tMatar`. É a MESMA conta da `estimarLuta`:
+   *  medido (`meuDps`) × mitigação da saída contra a armadura do alvo (`mitSaida`, motor.js:1305)
+   *  × `fJ` do nível (motor.js:1200-1201). `null` = NÃO medido.
+   *
+   *  DEFEITO QUE ISTO FECHA (2026-10-24, queixa do dono: *"prova que mata"*): o `planejar` chamava
+   *  `avaliar(chefe, nivel, p, cura)` — QUATRO argumentos. Sem DPS, `tMatar` fica `null` e o
+   *  adjudicador cai no critério conservador `liquido > 0`; a GUI imprimia *"o chefe dessa zona
+   *  mata você"* a partir dessa FALTA DE DADO, não de uma luta. Era exatamente o defeito que o
+   *  D01 disse ter fechado, num chamador que ficou de fora.
+   *
+   *  `baseMedido` permite calcular o `meuDps` UMA vez por plano (ele percorre o histórico e chama
+   *  `estimarRegiao`; repeti-lo por zona seria caro à toa). */
+  function dpsContra(monstro, nivel, baseMedido) {
+    const base = baseMedido == null ? (meuDps() || 0) : Number(baseMedido) || 0;
+    if (!(base > 0)) return null;                    // "não sei" — nunca se inventa DPS
+    const s = statsMonstro(monstro, nivel);
+    if (!s) return null;
+    const fJ = fatorDanoJogadorMotor(difNivelMotor(nivel, (player() || {}).nivel));
+    return base * mitSaida(s, magiaChamp()) * fJ;
+  }
+
   /**
    * Factores de VIP LIDOS do motor (`VIP = { xp: 1.2, drop: 1.2, ... }`, motor.js:152).
    * `VIP_FB` e' um FALLBACK DECLARADO: so' entra quando o inject ainda nao leu o motor
@@ -2005,7 +2027,7 @@
       const acima = nivelMin != null && (p.nivel || 1) + 6 < nivelMin;
       if (acima) { mobsMatam = true; chefeMatam = !!loc.chefe; }
       for (const par of (loc.monstros || [])) {
-        const a = avaliar(par[0], Math.round(L), p, curaMob, dpsSaida);
+        const a = avaliar(par[0], Math.round(L), p, curaMob, dpsSaida, dpsContra(par[0], Math.round(L), dpsSaida));
         if (!a) continue;
         avaliados++;
         // (ii) MECÂNICA INSTA-KILL (o `mortal` do avaliador: o pior golpe do rodízio passa da vida).
@@ -2013,8 +2035,14 @@
         //       Só quando há DPS conhecido — com DPS 0 o critério seria "morre sempre" e travava
         //       o farm todo (é a diferença entre uma medida e um chute).
         const usaTempo = (myDps || 0) > 0 && a.hp && Number.isFinite(a.tMorrer);
-        const segMatar = usaTempo ? a.hp / Math.max(1, (myDps || 0) * (a.fJ || 1)) : null;
-        if (teoriaMobsVale && (a.mortal || (usaTempo && a.tMorrer < segMatar * 1.5))) { mobsMatam = true; riscoMob = par[0]; }
+        // O tempo de matar vem do PROPRIO `avaliar` (ja' com a armadura do alvo, via `dpsContra`),
+        // em vez de uma segunda conta `hp / (myDps * fJ)` que ignorava a mitIGACAO do bicho: duas
+        // respostas para a mesma pergunta dentro da mesma funcao (2026-10-24).
+        const segMatar = usaTempo && Number.isFinite(a.tMatar) ? a.tMatar : null;
+        // A regua e' a MESMA do `avaliar`/`estimarLuta` (`adjudicarLuta`, 2026-10-24). A folga de
+        // 50% e' a unica coisa local: e' uma MARGE de seguranca do dono, nao outra doutrina.
+        const _adjMob = adjudicarLuta({ tKill: segMatar, tMorrer: a.tMorrer, mortal: a.mortal, margem: 1.5 });
+        if (teoriaMobsVale && _adjMob.morre) { mobsMatam = true; riscoMob = par[0]; }
         if (Number.isFinite(a.dpsTomado)) riscoDps = Math.max(riscoDps || 0, Math.round(a.dpsTomado));
         if (Number.isFinite(a.tMorrer)) riscoTMorrer = Math.min(riscoTMorrer == null ? Infinity : riscoTMorrer, +a.tMorrer.toFixed(1));
         curaRvMax = Math.max(curaRvMax, Number(a.curaRv) || 0);
@@ -2030,7 +2058,7 @@
       try {
         if (loc.chefe && loc.chefe[0]) {
           const nc = nivelChefeDe(loc);
-          const avc = avaliar(loc.chefe[0], nc, p, curaMob, dpsSaida);
+          const avc = avaliar(loc.chefe[0], nc, p, curaMob, dpsSaida, dpsContra(loc.chefe[0], nc, dpsSaida));
           if (avc) {
             avaliados++;
             if (avc.mortal) { chefeMatam = true; if (!riscoMob) riscoMob = loc.chefe[0]; }
@@ -2047,8 +2075,15 @@
             //  (c) SEM DPS conhecido: se o chefe bate mais do que a cura estimada cobre
             //      (`liquido > 0`), não há prova de que a luta se ganha — fail-closed.
             const usaTempoC = (myDps || 0) > 0 && avc.hp && Number.isFinite(avc.tMorrer);
-            const segMatarC = usaTempoC ? avc.hp / Math.max(1, (myDps || 0) * (avc.fJ || 1)) : null;
-            if (teoriaVale && (avc.mortal || (usaTempoC && avc.tMorrer < segMatarC * 1.5) || (!usaTempoC && avc.liquido > 0))) {
+            // Mesmo numero do `avaliar` (com a armadura do chefe), nao uma segunda conta.
+            const segMatarC = usaTempoC && Number.isFinite(avc.tMatar) ? avc.tMatar : null;
+            // MESMA regua (`adjudicarLuta`). Sem tempo de matar, o criterio e' o conservador: se o
+            // liquido ainda e' positivo nao ha' prova de vitoria -> fail-closed.
+            const _adjChefe = adjudicarLuta({
+              tKill: segMatarC, tMorrer: avc.tMorrer, mortal: avc.mortal, margem: 1.5,
+              semTempoMorre: !usaTempoC && avc.liquido > 0,
+            });
+            if (teoriaVale && _adjChefe.morre) {
               chefeMatam = true; if (!riscoMob) riscoMob = loc.chefe[0];
             }
           }
@@ -3539,7 +3574,49 @@ const CFG_VER = 4;
    *      vale ~269 cura/s numa base AD (AGENTS.md, prova n.o 5) e decidia a luta do Chefe.
    *    · CURA DO GIRO — motor.js:2169-2170 (Katarina).
    *  Sem `dps` as duas ficam a 0 (nao se inventa cura sem saber o dano que a produz). */
-  function avaliar(monstro, nivel, player, cura, dps) {
+  /** ADJUDICADOR UNICO DE LUTA (2026-10-24) - a regua do dono num so' sitio.
+   *
+   *  Antes desta funcao o ficheiro tinha QUATRO veredictos de morte que podiam discordar:
+   *    `avaliar.morre`, o `segMatar` local do `estimarRegiao`, `estimarLuta.ganha` e
+   *    `sobrevivenciaSet.morre`. Todos respondiam a MESMA pergunta - "morre-se antes de matar?" -
+   *    e cada um acrescentava a sua excepcao. Resultado medido: a mesma luta era "segura" num
+   *    sitio e "fatal" noutro, e o consumidor via o numero que calhasse.
+   *
+   *  Entradas (todas opcionais; `null` = NAO MEDIDO, nunca 0):
+   *    tKill         segundos ate' matar o alvo (`null` = sem DPS de saida medido)
+   *    tMorrer       segundos ate' morrer, ja' com o sustento e o reservatorio de pocoes
+   *    mortal        true = uma mecanica do rodizio atravessa a piscina de vida (insta-kill)
+   *    semPocao      true = o reservatorio de pocoes nao cobre a janela
+   *    semTempoMorre true = sem tempo de matar, o liquido ainda e' positivo (criterio conservador
+   *                  antigo: sem prova de vitoria nao se promete sobrevivencia)
+   *    margem        folga exigida sobre `tKill` (1,5 = exigir 50% de margem), por omissao 1
+   *
+   *  Saidas:
+   *    morre      o veredicto CONSERVADOR (quem decide rota/equipamento usa este)
+   *    veredicto  'mata' | 'nao-mata' | 'nao-sei' - o que a GUI pode AFIRMAR
+   */
+  function adjudicarLuta(d) {
+    const D = d || {};
+    const tKill = Number.isFinite(D.tKill) ? D.tKill : null;
+    const tMorrer = Number.isFinite(D.tMorrer) ? D.tMorrer : Infinity;
+    const margem = Number(D.margem) > 0 ? Number(D.margem) : 1;
+    // Mecanica fatal e reservatorio vazio sao prova DIRECTA de morte: nao dependem de tempo.
+    const determinante = !!(D.mortal || D.semPocao);
+    const morrePorTempo = tKill != null && tMorrer < tKill * margem;
+    const morre = determinante || (tKill == null ? !!D.semTempoMorre : morrePorTempo);
+    const veredicto = determinante ? 'mata'
+      : (tKill == null ? 'nao-sei' : (morrePorTempo ? 'mata' : 'nao-mata'));
+    return { morre, veredicto, tKill, tMorrer, determinante, margem };
+  }
+
+  /** `dpsEfetivo` (6.o argumento, 2026-10-24): o DPS JA' MITIGADO contra ESTE monstro
+   *  (`dpsContra`). Serve para o `tMatar` (tempo de matar conta a armadura do alvo). O roubo de
+   *  vida continua a usar o DPS MEDIDO (`dps`), porque `avaliar` aplica `mitSaida` la' dentro
+   *  (motor.js:1211 -> 1226: `cura = dano_ja_mitigado x rv`). Passar o DPS ja' mitigado nos dois
+   *  sitios descontava a armadura DUAS vezes: medido, o `curaRv` caiu de 73,8 para 49 hp/s com rv
+   *  0,15 e 625 de DPS, e o U5c do banco apanhou-o.
+   */
+  function avaliar(monstro, nivel, player, cura, dps, dpsEfetivo) {
     const s = statsMonstro(monstro, nivel);
     if (!s || !player) return null;
     // D07 (2026-10-23): a MESMA tabela do motor (`nivelDifMotor()`), sem cópia local. O fallback
@@ -3587,7 +3664,10 @@ const CFG_VER = 4;
     // (1.320 hp/s com stock infinito): medido no risco do Barao, `curaTotal` dava 1.322 hp/s e o
     // chefe parecia seguro. Uma MEDIDA (`cura.pocao` de um ciclo real) continua a mandar sobre o
     // modelo; o modelo so' entra quando nao ha' medicao.
-    const tMatar = dps > 0 ? (s.hp || 0) / dps : null;
+    const tMatar = (() => {
+      const d = Number.isFinite(dpsEfetivo) && dpsEfetivo > 0 ? dpsEfetivo : dps;
+      return d > 0 ? (s.hp || 0) / d : null;
+    })();
     const _pmAvaliar = pocoesEmMao();
     const _curaPocaoModelo = (() => {
       if (!_pmAvaliar || !(_pmAvaliar.n > 0) || !(_pmAvaliar.cura > 0)) return 0;
@@ -3621,8 +3701,19 @@ const CFG_VER = 4;
     // conservador de antes (liquido > 0), porque "nao sei" nao pode virar "sobrevive".
     // A mesma regra que `sobrevivenciaSet` ja usava (`tMorrer < tKill || mortal || semPocao`).
     // (`tMatar` foi calculado em cima, antes da cura da pocao: o reservatorio depende dele.)
-    const morre = mortal || !mix || (liquido > 0 && (tMatar == null || tMorrer < tMatar));
-    return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), vidaPool, curaSkill, curaPocao, curaRv, curaGiroS, curaRegen, curaKit, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, tMatar, morre, chefe: s.chefe, magico: s.magico };
+    // ADJUDICADOR UNICO (2026-10-24): `morre` e `veredicto` saem os dois de `adjudicarLuta`,
+    // com as duas provas directas (`mortal`, `!mix`) e o criterio conservador quando nao ha'
+    // tempo de matar. Antes esta funcao tinha a sua propria copia da regra - uma das quatro.
+    const _adj = adjudicarLuta({ tKill: tMatar, tMorrer, mortal, semPocao: !mix, semTempoMorre: liquido > 0 });
+    const morre = _adj.morre;
+    const veredicto = _adj.veredicto;
+    // TRI-ESTADO (2026-10-24). `morre` continua a ser CONSERVADOR (sem DPS de saída não se promete
+    // sobrevivência — é a regra do D01). Mas quem MOSTRA tem de distinguir três respostas:
+    //   'mata'     — a conta diz que se morre (mecânica fatal, sem poção que cubra, ou morre antes);
+    //   'nao-mata' — há `tMatar` e a conta diz que se ganha;
+    //   'nao-sei'  — NÃO há DPS de saída, logo não há tempo de matar. Dizer "mata" aqui é inventar.
+    // A GUI mostrava "o chefe mata você" no caso 'nao-sei' (o `planejar` não passava o DPS).
+    return { monstro, nivel, dif, fM, fJ, fPapel: (typeof _recebido === 'number' ? _recebido : 1), hp: s.hp, as, intervalo, nPocoes, dpsTomado, danoGolpe, piorMec, mecFatalNome, mortal, hpSeguro: Math.max(danoGolpe, piorMec), vidaPool, curaSkill, curaPocao, curaRv, curaGiroS, curaRegen, curaKit, curaTotal, liquido, alvoGolpe, mix, mixTxt: mixLabel(mix), custoPocaoS: mix ? mix.cost / intervalo : null, tMorrer, tMatar, morre, veredicto, chefe: s.chefe, magico: s.magico };
   }
 
   /** Agrega os ciclos observados por região (médias por minuto + mortes).
@@ -3944,6 +4035,9 @@ const CFG_VER = 4;
   function planejar(ids) {
     const p = player();
     const agg = agregar();
+    // DPS MEDIDO uma vez por plano (é o que dá `tMatar` ao adjudicador de morte — ver `dpsContra`).
+    let dpsBase = 0;
+    try { dpsBase = meuDps() || 0; } catch { dpsBase = 0; }
     const out = [];
     for (const id of (ids || [])) {
       const o = META.ondeItem?.[id];
@@ -3963,7 +4057,11 @@ const CFG_VER = 4;
         if (!loc || !ehRegiaoDeFarm(loc)) continue;
         const mobs = (zona.monstros || []).map((m) => m[0]);
         const bossNome = zona.chefe ? zona.chefe[0] : null;
-        const nivel = zona.nm ? Math.round((zona.nm[0] + zona.nm[1]) / 2) : (zona.faixa ? Math.round((zona.faixa[0] + zona.faixa[1]) / 2) : null);
+        // NÍVEL DO MOTOR, não uma média da faixa (D13: uma definição por grandeza). O mob nasce
+        // `clamp(P-2+rand, n0, n1)` e o chefe `max(n0+2, min(n1+2, P+4))` (motor.js:1217/1219) —
+        // o `nivel+2` que aqui estava somava a uma MÉDIA e dava outro nível que não existe.
+        const nivelMob = nivelAlvo(loc, 'mob') || (zona.faixa ? Math.round((zona.faixa[0] + zona.faixa[1]) / 2) : null);
+        const nivelChefe = nivelAlvo(loc, 'chefe') || (nivelMob == null ? null : nivelMob + 2);
         const reg = agg.find((r) => zona.nome && r.region.startsWith(zona.nome));
         // CURA DO GIRO (motor.js:2188-2193) — ver `curaGiroS`: entra no mob e no chefe.
         const _giroS = curaGiroS();
@@ -3973,17 +4071,35 @@ const CFG_VER = 4;
         if (reg && reg.healPotionS) curaMob.pocao = reg.healPotionS;
         const curaChefe = reg ? { skill: reg.healSkillChefeS || 0, giro: _giroS } : curaMob;
         if (reg && reg.healPotionS) curaChefe.pocao = reg.healPotionS;
-        const avMob = mobs[0] ? avaliar(mobs[0], nivel, p, curaMob) : null;
-        const avChefe = bossNome ? avaliar(bossNome, nivel + 2, p, curaChefe) : null;
+        // O DPS DE SAÍDA VAI JUNTO (2026-10-24): sem ele o `avaliar` não tem `tMatar` e devolve
+        // 'nao-sei' — que a GUI mostrava como "mata você".
+        const avMob = mobs[0] ? avaliar(mobs[0], nivelMob, p, curaMob, dpsBase, dpsContra(mobs[0], nivelMob, dpsBase)) : null;
+        const avChefe = bossNome ? avaliar(bossNome, nivelChefe, p, curaChefe, dpsBase, dpsContra(bossNome, nivelChefe, dpsBase)) : null;
         // A TABELA DE DROP DEPENDE DA CLASSE (motor.js:383 DROPS vs 397 DROPS_AP; 407 carrega as duas).
         // MEDIDO: o Barao tem o 3031 Gume do Infinito em DROPS e o 3089 Rabadon em DROPS_AP. Antes isto
         // preferia SEMPRE `.ap`, logo respondia a tabela errada a um campeao AD.
         const minhaClasse = (META.champAtual && META.champAtual.magia) ? 'ap' : 'ad';
         const chance = z.porClasse ? (z.porClasse[minhaClasse] || 0) : 0;
-        const killsH = reg ? (reg.killsMin || 0) * 60 : null;
-        const dropsH = killsH && chance ? killsH * chance : null;
+        // ABATES/HORA: só quando há MEDIÇÃO. `killsMin = 0` (zona nunca farmada) dava
+        // `dropsH = 0` — e a GUI imprimia "0 drops/hora", um número que parece medido e é
+        // ausência de dado. Zero medido e "sem medição" têm de ser coisas diferentes.
+        const killsH = reg && (reg.killsMin || 0) > 0 ? (reg.killsMin * 60) : null;
+        const dropsH = killsH != null && chance ? killsH * chance : null;
         const sobreviveMobObs = reg && reg.mobHpMinRel != null ? reg.mobHpMinRel > (cfg.mobHpMinRel || 0.15) : null;
-        out.push({ item: id, nome: it ? it.nome : id, zona: zid, zonaNome: zona.nome, faixa: zona.faixa, mobs, chefe: bossNome, chance, sobreviveMob: sobreviveMobObs != null ? sobreviveMobObs : (avMob ? !avMob.morre : null), sobreviveMobObs, chefeFatal: avChefe ? avChefe.morre : null, dropsH });
+        const verMob = avMob ? avMob.veredicto : null;
+        const verChefe = avChefe ? avChefe.veredicto : null;
+        out.push({
+          item: id, nome: it ? it.nome : id, zona: zid, zonaNome: zona.nome, faixa: zona.faixa, mobs, chefe: bossNome,
+          chance, dropsH,
+          sobreviveMob: sobreviveMobObs != null ? sobreviveMobObs : (verMob == null ? null : verMob === 'nao-mata'),
+          sobreviveMobObs, veredictoMob: verMob, veredictoChefe: verChefe,
+          // `chefeFatal` mantém o sentido de ROTA (true = não contar com o chefe; null = não sei)
+          // e o `veredictoChefe` é o que a GUI pode AFIRMAR. Os dois não se confundem.
+          // TRI-ESTADO, não booleano (2026-10-24): colapsar 'nao-sei' em `false` fazia os
+          // consumidores que comparam `=== false` (gui.js:2885/4094) tratarem a FALTA DE DADO
+          // como "o chefe é seguro, conta com ele" — o erro optimista, espelho do antigo.
+          chefeFatal: verChefe == null ? null : (verChefe === 'mata' ? true : (verChefe === 'nao-sei' ? null : false)),
+        });
       }
     }
     return out.sort((a, b) => (b.dropsH || 0) - (a.dropsH || 0));
@@ -5421,15 +5537,22 @@ const CFG_VER = 4;
       // este o "voltou pra base sem motivo decente" de 2026-10-22: havia 1 básico A no cofre.
       let valorLixo = 0;
       for (const x of lixo) { const v = valorVenda(x.base, x.qual, x.refino); valorLixo += Number(v) || 0; }
-      n._lixoCofre = { itens: lixo.length, valor: Math.round(valorLixo), custoOuro: Math.round(Number(custo && custo.ouro) || 0) };
+      // MOCHILA A ENCHER (ordem do dono, 2026-10-24): *"faz o boneco botar coisa no cofre e vender
+      // as coisas menos desejadas no cofre, quando a mochila ta enchendo"*. Com a mochila em
+      // pressão o cofre é o destino do que presta — e o lixo do cofre tem de sair para o depósito
+      // caber. Aqui a cadência e o portão de valor NÃO se aplicam: o depósito que vem a seguir
+      // depende destas vagas, e o boneco já vai estar na Fonte.
+      const pressaoBag = mochilaEnchendo();
+      n._lixoCofre = { itens: lixo.length, valor: Math.round(valorLixo), custoOuro: Math.round(Number(custo && custo.ouro) || 0), pressao: pressaoBag };
       // P0 MEDIDO (2026-10-23): a necessidade ardia com 1 item de 300 de ouro e a ida a Fonte
       // custava 340 — o boneco ia, vendia, voltava e repetia. O PORTÃO do valor tem de estar
       // AQUI (onde a necessidade nasce) e não só em `motivosDeViagem`: assim o passo nem corre.
       // Sem valores medidos (ouro do lixo = 0) mantém-se a regra antiga — não se inventa custo.
       const custoOuroLixo = Number(custo && custo.ouro) || 0;
       const lixoPaga = !custoOuroLixo || !valorLixo || valorLixo >= custoOuroLixo;
-      n.venderLixoCofre = podeFazer('cofre').pode && lixo.length > 0 && lixoPaga
-        && (!_ultimaVendaCofre || (Date.now() - _ultimaVendaCofre) > cadLixo);
+      n.venderLixoCofre = podeFazer('cofre').pode && lixo.length > 0
+        && (pressaoBag || lixoPaga)
+        && (pressaoBag || !_ultimaVendaCofre || (Date.now() - _ultimaVendaCofre) > cadLixo);
     } catch { n.venderLixoCofre = false; }
     n.mercado = n.anunciar;      // só vai ao mercado se houver lendário <A p/ anunciar
     // CARTAS: há item equipado sem carta E carta na bolsa. NÃO é primária (não paga a viagem):
@@ -5490,9 +5613,25 @@ const CFG_VER = 4;
     // SAIR do cofre também é trabalho deste passo: um lendário indesejado lá guardado nunca mais
     // era visto (`pioresDoCofre` só olha C/B). Só se abre o cofre se houver algo a fazer.
     const haIndesejados = lendariosIndesejadosCofre(1).length > 0;
-    if (!cofre.length && !haIndesejados) return { ok: true, itens: 0, trocas: 0, retirados: 0 };
+    // ------------------------------------------------------------------------------------
+    // ORDEM DO DONO (2026-10-24, verbatim): *"faz o boneco botar coisa no cofre e vender as
+    // coisas menos desejadas no cofre, quando a mochila ta enchendo."*
+    // Com a mochila a encher, o depósito e a limpeza do cofre são a MESMA visita: se o cofre
+    // estiver cheio de lixo, `guardarNoCofre` é recusado em silêncio ("cofre recusou") e o
+    // boneco ia-se embora com a mochila cheia e o lixo no cofre — o ciclo que o dono descreveu.
+    // Aqui o lixo sai PRIMEIRO (liberta as vagas), depois entra o que presta.
+    // ------------------------------------------------------------------------------------
+    const pressao = mochilaEnchendo(bag);
+    let limpeza = null;
+    if (pressao && cofre.length && lixoDoCofreLista().length) {
+      try { limpeza = await venderLixoDoCofre(); } catch { limpeza = null; }
+    }
+    if (!cofre.length && !haIndesejados) return { ok: true, itens: 0, trocas: 0, retirados: 0, limpeza };
     const abriu = await abrirCofreTesoureira();
-    if (!abriu || !abriu.ok) return { ok: false, itens: 0, trocas: 0, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
+    // A `limpeza` VAI NO RESULTADO mesmo quando o cofre não abre: sem isso a tentativa de vender
+    // o lixo desaparecia do relatório e o defeito (limpeza a correr e a falhar em silêncio) não
+    // se distinguia de "nunca tentou". Regra Nº 6: reportar o que se fez.
+    if (!abriu || !abriu.ok) return { ok: false, itens: 0, trocas: 0, limpeza, motivo: (abriu && abriu.motivo) || 'sem cofre aqui' };
     let guardados = 0, trocas = 0, retirados = 0;
     const TROCA_MAX = 4;                 // tecto por ida: nunca uma rotina longa por causa do cofre
     try {
@@ -5533,7 +5672,7 @@ const CFG_VER = 4;
         }
       }
     } finally { fecharJanelas(); }
-    return { ok: true, itens: guardados, pedidos: cofre.length, trocas, retirados };
+    return { ok: true, itens: guardados, pedidos: cofre.length, trocas, retirados, limpeza };
   };
 
   const PASSOS_BASE = [
@@ -5641,7 +5780,7 @@ const CFG_VER = 4;
       // mesma quando o boneco já lá está (PASSOS_BASE), e é assim que a capacidade do cofre
       // chega ao plano — mas sem voltar à Fonte de 10 em 10 min só para ler.
       if (f === 'lerCofre') return false;
-      if (f === 'venderLixoCofre') return !!lixo && lixo.itens > 0 && lixoVale;
+      if (f === 'venderLixoCofre') return !!lixo && lixo.itens > 0 && (!!lixo.pressao || lixoVale);
       if (f === 'cofreA') return false;            // oportunidade: só se já estiver na base
       return true;
     });
@@ -6706,7 +6845,36 @@ const CFG_VER = 4;
       const melhor = todas.slice().sort(_melhorCopia)[0];
       for (const s of doCofre) if (s !== melhor.ref) empurrar(s);  // não é a melhor cópia -> lixo
     }
+    // ORDEM DE DESEJO (ordem do dono, 2026-10-24): *"vender as coisas MENOS desejadas no cofre,
+    // quando a mochila ta enchendo"*. "Menos desejável" = `valorDeFase` — a MESMA conta de
+    // stats/pesos-da-classe que a build e o mercado de A já usam (`planBag`, `automation.js:777`);
+    // desempate por qualidade, refino e base. Antes a lista saía na ordem de leitura do DOM e o
+    // lote de 5 a 8 vendia ao acaso: podia levar o épico A de componente e deixar o básico C.
+    const faseLixo = (() => { try { return faseAtual(); } catch { return null; } })();
+    const desejo = (s) => {
+      try { return Number(valorDeFase(s.base, null, faseLixo, { qual: s.qual, refino: s.refino })) || 0; }
+      catch { return 0; }
+    };
+    lixo.sort((x, y) => (desejo(x) - desejo(y))
+      || (qIdx(x.qual) - qIdx(y.qual))
+      || ((x.refino || 0) - (y.refino || 0))
+      || String(x.base).localeCompare(String(y.base)));
     return lixo;
+  }
+  /** A MOCHILA ESTÁ A ENCHER? A pergunta que o dono fez em 2026-10-24 (*"quando a mochila ta
+   *  enchendo"*) — a MESMA definição de pressão do `planBag` (`automation.js:764`: acima da folga
+   *  `cfg.venderFolga`, ou já acima da capacidade). `false` sem leitura da mochila — não se
+   *  inventa pressão. */
+  function mochilaEnchendo(bagLida) {
+    try {
+      const b = bagLida || scanBag(true) || {};
+      const cap = Number(b.cap) || 0;
+      if (!cap) return false;
+      const usados = Number(b.used) || 0;
+      if (usados > cap) return true;
+      const folga = Math.max(0, Number(cfg.venderFolga != null ? cfg.venderFolga : 2) || 0);
+      return usados >= Math.max(1, cap - folga);
+    } catch { return false; }
   }
   /** Saca UM slot do cofre (TK-03): abre o cofre se preciso, RELÊ os slots e clica no slot
    *  ACTUAL que casa com o alvo por {base, qual, refino} exacto. O `data-k` é o ÍNDICE do
@@ -12937,18 +13105,21 @@ const CFG_VER = 4;
     // D18 (2026-10-23): o 5.º argumento é o DPS — é dele que sai o roubo de vida (`curaRv`,
     // `avaliar` 3516). Sem ele `curaRv = 0` e o comentário abaixo mentia. `meDps` é o DPS MEDIDO
     // do campeão (o mesmo que já se usa para `meuDpsBoss`).
-    const av = avaliar(boss, nivel, p, { skill: curaSkill, pocao: 0 }, meuDps() || 0);
-    const efEq = efeitosEquipados();
+    // 2026-10-24: passa a entrar pela MESMA porta que o resto da casa (`dpsContra`) — mitiga
+    // contra a armadura do chefe e aplica o `fJ` do nível. O `avaliar` cru recebia o DPS MEDIDO
+    // sem mitigação, logo o `tMatar` dele era optimista e o `av.morre` exposto mentia para o lado
+    // contrário do `ganha` (duas doutrinas outra vez).
     const meDps = meuDps() || 0;
+    const av = avaliar(boss, nivel, p, { skill: curaSkill, pocao: 0 }, meDps, dpsContra(boss, nivel, meDps));
+    const efEq = efeitosEquipados();
     // `armEf` JÁ levava a penetração mágica dos itens (tooltip c/ refino) mas FALTAVA o RM_MONSTRO: o dano medido do campeão contra o chefe é MÁGICO (a penetração usada é a mágica) -> motor.js:1305.
     const mitBoss = 100 / (100 + armMagicaEfetiva(s.armadura, efEq.penMag));
     const meuDpsBoss = meDps * mitBoss;
     // motor.js:1200-1202 — monstro BEM ACIMA do nível do jogador aguenta mais (d = nivelAlvo - nivelJogador - livre;
     // fJ = max(minDanoJogador, 1 - danoJogador*d), com piso 0,25). Sem isto o tempo de matar saía optimista.
-    const _nd = META.nivelDif || {};
-    const _livre = _nd.livre != null ? _nd.livre : 4;
-    const _dNiv = Math.max(0, (Number(nivel) || 0) - (Number(p.nivel) || 1) - _livre);
-    const fJ = _dNiv ? Math.max(_nd.minDanoJogador != null ? _nd.minDanoJogador : 0.25, 1 - (_nd.danoJogador != null ? _nd.danoJogador : 0.12) * _dNiv) : 1;
+    // D13 (2026-10-24): a tabela vem de `nivelDifMotor()` (o MESMO sítio do `avaliar`), não de uma
+    // terceira cópia escrita aqui com literais de reserva (4 / 0,12 / 0,25).
+    const fJ = fatorDanoJogadorMotor(difNivelMotor(nivel, p.nivel));
     const meuDpsBossFJ = meuDpsBoss * fJ;
     const tKill = meuDpsBossFJ > 0 ? s.hp / meuDpsBossFJ : Infinity;
     // ROUBO DE VIDA (motor.js:1226-1228) + CURA DO GIRO (motor.js:2169) ja entraram no
@@ -12971,7 +13142,13 @@ const CFG_VER = 4;
     // Poções que a luta INTEIRA exige (o que o liquido consome / o que cada carga devolve).
     const potNecessarias = (net > 0 && Number.isFinite(tKill) && pm.cura > 0) ? Math.ceil((net * tKill) / pm.cura) : 0;
     // Ganhar exige TRES coisas: matar antes de morrer, nao ter mecanica fatal, e ter as poções.
-    const ganha = Number.isFinite(tKill) && tKill <= tMorrer && !av.mortal && potNecessarias <= pm.n;
+    // ADJUDICADOR UNICO (2026-10-24): a regra e' a de `adjudicarLuta`, nao uma copia local.
+    // `tKill` infinito (`sem DPS`) devolve 'nao-sei' -> nao se promete vitoria (fail-closed).
+    const _adjLuta = adjudicarLuta({
+      tKill: Number.isFinite(tKill) ? tKill : null, tMorrer,
+      mortal: av.mortal, semPocao: potNecessarias > pm.n,
+    });
+    const ganha = _adjLuta.veredicto === 'nao-mata';
     const potS = net > 0 && pm.cura > 0 ? net / pm.cura : 0;                   // cargas/s que o liquido exige
     return { fJ,
       regiao: loc.nome.replace(/ nível.*/, ''), boss, nivel, hpBoss: Math.round(s.hp), armadura: Math.round(s.armadura),
@@ -12991,7 +13168,7 @@ const CFG_VER = 4;
       potTotal: potReal != null ? potReal : (net > 0 ? potNecessarias : 0),
       ouroPocao: net > 0 ? Math.round((potReal != null ? potReal : potNecessarias) * precoPocaoEmUso()) : 0,
       fonte: realMs ? 'empirico' : 'teorico',
-      mortal: !!av.mortal, morre: !!av.morre, piorMec: av.piorMec || null,
+      mortal: !!av.mortal, morre: !!av.morre, veredicto: av.veredicto || null, piorMec: av.piorMec || null,
     };
   }
   const sobrevivenciaSet = (base, alvo, tipo, opt) => {
@@ -13046,9 +13223,12 @@ const CFG_VER = 4;
     const potS = net > 0 && curaPocao > 0 ? net / curaPocao : 0;    // cargas/s que o líquido exige
     const nPocoes = potS > 0 && isFinite(tFim) ? Math.ceil(potS * tFim) : 0;
     const semPocao = nDisp > 0 && nPocoes > nDisp;
-    const morre = tMorrer < tKill || mortal || semPocao;
+    // ADJUDICADOR UNICO (2026-10-24): a mesma regua das outras tres portas. Antes esta era a
+    // quinta copia (`tMorrer < tKill || mortal || semPocao`) - igual por sorte, nao por contrato.
+    const _adjSet = adjudicarLuta({ tKill, tMorrer, mortal, semPocao });
+    const morre = _adjSet.morre;
     return {
-      vida, poolCand, tMorrer, morre, mortal, semPocao,
+      vida, poolCand, tMorrer, morre, mortal, semPocao, veredicto: _adjSet.veredicto,
       net: +net.toFixed(1), curaFixa: +curaFixa.toFixed(1), curaRv: +curaRv.toFixed(1), reserva,
       dps, tKill, nPocoes, nDisponiveis: nDisp, ouroPocao: nPocoes * precoPocaoEmUso(),
     };
@@ -14208,7 +14388,7 @@ const CFG_VER = 4;
     return cfg;
   }
 
-  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, veredictoBase, quarentenaBase, chefeVivo, podeRecordar, regenDoJogo, sustentoDoKit, motivosDeViagem, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, lendariosIndesejadosCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
+  window.__lolidleAuto = { BUILD, kitAtual: () => KAT, logEvent, veredictoBase, quarentenaBase, chefeVivo, podeRecordar, regenDoJogo, sustentoDoKit, motivosDeViagem, ofertasPorBase, melhoraOferta, porqueNaoAnunciar, anuncioBloqueado, registrarFalhaAnuncio, limparFalhaAnuncio, buildIdeal, buildIdealAgora, planejarRota, iniciarRota, pararRota, rotaPasso, cartasNaBolsa, cartasParaEncaixar, abrirCartasMisteriosas, encaixarCartas, melhorCartaDisponivel, pesosCartas, diariaEstado, diariaAceitavel, diariaContaLocal, diariaValeAPena, premioDiariaOuro, regiaoQueContaDiaria, diariaRegiaoForcada, parseQtdDiaria, receberDiariasProntas, itensParaCarta, limiteItemWatch, rankItensSobrevivencia, sobrevivenciaSet, nivelDoChefe, nivelDifMotor, classeItem, fatorDanoJogadorMotor, CFG_VER, MIGRACOES_CFG, fatorDanoMonstroMotor, difNivelMotor, farmarItemPasso, recomendarAtributos, folhasDeReceitaFaltando, clicarIgnorarBasicos, buildIncompleta, mediaWaveDe, NIVEL_DIF_FB, farmarItemEstado, farmarItemParar, farmarItemTenho, larvasInvoca, checarChefeFatal, eventosContadores, eventosVivos, estadoVivo, consumirEvento, statsDePeca, pecaConhecida, escolherConjunto, porMelhorBase, nivelMobDe, farmarItem, migrarCfg, localId, nivelAlvo, press, readGold, readLocation, readPotions, scanBag, planBag, planPotions, readMap, readSkills, readEquip, readStats, player, dpsPorHabilidade, trocarSkills, skillsDisponiveis, rotacaoSkills, ehUltimate, areaDificil, ritmoMobs, valeUlt, estimarSet, previaSet, decidirPocao, modoPocao, estimarLuta, estado, infoItem, cdrEquipado, efeitosEquipados, parseDica, analisarLutaBoss, statsMonstro, avaliar, dpsContra, adjudicarLuta, agregar, recomendar, rankItens, planejar, analisarWaves, analisarRun, getRunLog, estimarRegiao, meuDps, calibrar, ehNoite, clickNPC, andarParaCima, subirNaFonte, voltarAoCentroDaFonte, centroDaFonte, clicarNpcDoCofre, curarBase, venderBase, reporPocoes, acaoBase, regiaoIdeal, regiaoRecomendada, rankRegioes, supervisarBase, diagnosticoBase, tickAutoplay, saudeAutoplay, pausar, pausarPor, despausar, estaPausado, podeAgir, desligarTudo, religarTudo, limparEstadoAtivo, alternarTodosSwitches, estadoSwitches, chavesSwitches, snapshotEstado, lerMinhasOfertasServidor, mercadoDoServidor, cancelarOferta, anunciarItem, fecharMercado, lerCofre, lerCofreSlots, abrirCofreTesoureira, salvarCofre, melhorDoCofre, retirarDoCofre, lixoDoCofreLista, sacarSlotDoCofre, venderLixoDoCofre, vagasCofre, pioresDoCofre, lendariosIndesejadosCofre, trocarNoCofre, obterItem, parseSlotId, melhorSlot, lerMercado, planejarMercado, anunciarItemPorBase, executarMercado, melhorSet, scoreSet, dpsItens, dpsCenarios, previsorHistorico, preverBuild, rankBuildsTestadas, rankNormalizado, checarItens, guardarNoCofre, aceitarTarefa, entregarTarefa, aceitarDiarias, tarefaEstado, clicarTarefaPronta, distribuirAtributos, equiparMelhores, setConfig, anunciarLendarios, mercadoSaturado, parseNum, refinarMelhores, receitasOrnn, montarItem, componentesDaBuild, montarMelhorReceita, pularTutorial, subirHabilidades, pegarPresentes, poderItem, valorDe, sinergiaDe, valorPassiva, perfilCampeao, identidadeCampeao, classeCampeao, alvoEquip, planoEquipar, cmpEquip, ehUsavelPeloCampeao, rarDe, mapaEspecial, especialDe, ehEspecialMeu, ehEspecialErrado, ITENS_ESPECIAIS, barraIdeal, lerBarra, aplicarBarra, habilidadeAtivaNoPve,
     // Seam de teste (nao usado pelo runtime): permite provar a trava anti-oscilacao e a
     // regra "com VAGA, enche" sem depender de cliques reais no DOM.
     barraMarcarSaida: lembrarSaidaBarra, barraLimparSaidas: () => { _barraSaidas.clear(); _barraContexto = ''; },

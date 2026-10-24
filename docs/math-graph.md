@@ -805,3 +805,158 @@ Antes do D20, o Anciao tambem dizia `tMorrerS: null` — "nunca morre" — com 1
   adjudicador de sobrevivencia - e nao por um score sem tempo. Ate isso acontecer, o modelo
   escolhe PEN no chefe lendario e custa 6 s + 3 pocoes por luta.
 
+### 8.4 "Prova que mata": a frase da GUI era a FALTA DE DADO a falar (2026-10-24)
+
+**A queixa, verbatim:** *"prova que mata"* — sobre a linha
+
+> `Melhor destino para a sua escolha: Covil do Barão · 0 drops/hora de Capuz da Morte de Rabadon ·
+> ⚠ o chefe dessa zona mata você`
+
+**As três afirmações, uma por uma, com o `file:linha` da causa:**
+
+| # | o que a GUI dizia | de onde vinha | o que passa a ser |
+|---|---|---|---|
+| 1 | `0 drops/hora` | `planejar` fazia `dropsH = killsH * chance` e `killsH = reg.killsMin * 60`; numa zona NUNCA medida `killsMin` é `0`, logo o produto é **0** — um zero que parece medição e é ausência de dado | `killsH = null` quando `killsMin <= 0`; `dropsH = null` (`automation.js:4083`); a GUI imprime **"- sem medição"** (`gui.js:2871`) |
+| 2 | `⚠ o chefe mata você` | `planejar` chamava `avaliar(chefe, nivel, p, cura)` — **quatro** argumentos. Em `avaliar`, `tMatar = dps > 0 ? hp/dps : null` (`automation.js:3663`); sem `tMatar` o adjudicador D01 caía no critério conservador `liquido > 0`. A GUI lia `morre` e imprimia a frase como se fosse uma luta | o DPS de saída passa a entrar pelo `dpsContra` (`automation.js:1885`: medido × `mitSaida` × `fJ`), e o `avaliar` devolve um **tri-estado** `veredicto: 'mata' \| 'nao-mata' \| 'nao-sei'` — hoje vindo do adjudicador único (`:3703`, §8.5). A GUI mostra as três respostas e, sem DPS medido, diz **"? não sei"** — com a nota explícita de que "não é uma prova de perigo" (`gui.js:2858-2893`) |
+| 3 | `Melhor destino` | escolhia entre os destinos **medidos**; sem nenhum, caía no `plano` cru e apresentava o menos mau como recomendação | continua a preferir medido + `chefeFatal === false` + mobs seguros, mas **diz o veredicto** na mesma linha em vez de o esconder (`gui.js:2885-2893`) |
+
+**Dois números que a frase não podia ter — e que o motor responde.** `node tools/prova-chefe-mata.mjs`
+corre a luta no MOTOR REAL (a mesma fonte que o jogo usa, via `tools/harness.mjs`), com a build do
+dono em 2026-10-23 (`3175~A+4, 3089~B+2, 3135~A+4, 4629~A+3, 3100`) e o chefe no nível que o motor
+gera (`max(n0+2, min(n1+2, P+4))`):
+
+| campeão | Barão | poções | resultado (medido 2026-10-24) |
+|---|---|---|---|
+| nv 40 | nv 44 (o que o motor gera: `max(42, min(50, 44))`), seed 1 | automáticas | **mata em 70,45 s** — 7 poções, 1.820 de ouro |
+| nv 35 | nv 44 (imposto à mão; o automático seria 42), seed 1 | automáticas | **mata em 190 s** — 62 poções, 16.120 de ouro |
+| nv 30 | nv 44 (imposto à mão), seed 1 | automáticas | **morre aos 21,5 s** — dano recebido 33.515, 12 poções gastas |
+| nv 35 | nv 44 (imposto à mão), seed 1 | **nenhuma** | **morre aos 7,2 s** — dano recebido 4.963 |
+
+**A linha antiga desta tabela ("nv 35 morre aos 159,1 s") NÃO se reproduz** e foi substituída pelas
+quatro medições acima. Ela media a mesma build sem o `--pocaoAuto` do comando publicado? Não se sabe:
+o comando não ficou registado com as flags, e por isso o número não era repetível. O que fica no lugar
+é o que qualquer um repete com `node tools/prova-chefe-mata.mjs --niveis=<nv> --seeds=1 --nvOff=<dif>`
+e `node tools/harness.mjs lutar ... --pocaoAuto=0 --pocoes=none` (a última linha).
+
+Ou seja: a mesma build **mata** o Barão nv44 a nv40 e a nv35, **morre** a nv30, e **morre a nv35 sem
+poção**. A frase da GUI era uma afirmação **absoluta** sobre um facto que depende do nível **e do
+consumível** — e, no caso medido, era **falsa**. E há um segundo número que a frase não dava e que o
+dono pediu (o custo): a 35 vs 44 a vitória custa **62 poções / 16.120 de ouro**, contra 7 / 1.820 a
+nv40. É exactamente a régua dele ("sobrevive?, em quantos segundos?, quantas poções e quanto custam?").
+
+**O `chefeFatal` é TRI-ESTADO, não booleano.** Colapsar `'nao-sei'` em `false` fazia os consumidores
+que comparam `=== false` (`gui.js:2885`, `:4094`) tratarem a falta de dado como "o chefe é seguro,
+conta com ele" — o erro optimista, espelho do antigo. Agora `null` é `null` e os filtros são
+fail-closed (`automation.js:4037`).
+
+**Provas que prendem isto** (suite `planejar`, `tools/testes/planejar.test.mjs`):
+
+| check | o que exige |
+|---|---|
+| P7 | com DPS medido (`meuDps` = 1265 do ciclo de 12 abates/min), o chefe tem veredicto PROVADO — nunca `'nao-sei'` |
+| P7b | o mob também saiu do "não sei" |
+| P7c | `chefeFatal === (veredictoChefe === 'mata')` |
+| P8/P8b | sem medição: `'nao-sei'` e `chefeFatal === null` (não `false`) |
+| P8c | zona nunca medida não promete 0 abates/hora (`dropsH === null`) |
+| P9/P9b/P9c | `dpsContra` sem medição é `null` (não 0); com medição, a armadura do alvo MORDE (Larva 1,0× leva mais DPS que o Barão 1,8× no mesmo nível) |
+
+Mutações novas (M32..M36) devolvem cada um destes defeitos ao código e o banco tem de os apanhar.
+
+**O outro lado da mesma ordem do dono — o cofre (R9).** Verbatim: *"faz o boneco botar coisa no cofre
+e vender as coisas menos desejadas no cofre, quando a mochila ta enchendo."* O que faltava era
+**gatilho**, **ordem** e **sequência**:
+
+- `lixoDoCofreLista()` devolvia os slots na ordem do DOM; agora ordena por `valorDeFase` ascendente
+  (menos desejável primeiro), com desempate por qualidade, refino e base (`automation.js:6787-6800`).
+- `necessidadesBase()` só acendia `venderLixoCofre` se o lixo **pagasse a ida** e a cadência de 10 min
+  tivesse passado. Com `mochilaEnchendo()` (`:6804`, a MESMA regra de pressão do `planBag`) a
+  cadência e o portão de valor não se aplicam: o depósito que vem a seguir depende dessas vagas
+  (`:5479-5494`), e `motivosDeViagem` passa a deixar a venda pagar a viagem.
+- `passoCofre` faz a limpeza **primeiro** e o depósito **depois**, na mesma visita (`:5563-5567`), e a
+  `limpeza` vai no resultado mesmo quando o cofre não abre — antes essa tentativa desaparecia do
+  relatório.
+
+Provas: R9a (ordem por desejo, contra um DOM de propósito ao contrário), R9b (pressão acende a
+necessidade com o lixo a valer MENOS que a ida), R9c (limpeza antes do depósito, e o que sai é
+vendido), R9d (controlo com folga: nada é vendido). Mutações M37..M39.
+
+**FECHADO em 2026-10-24 (§8.5):** os cinco sítios passaram a um só adjudicador. **Continua aberto:**
+(1) o `chefeFatal` ainda governa só a rota de FARM; (2) o `scoreSet` não tem TEMPO de luta (ver o fim
+de §8.3).
+
+---
+
+### 8.5 UM ADJUDICADOR DE LUTA (2026-10-24) — o fim das quatro cópias da mesma regra
+
+**O defeito.** O `automation.js` respondia à pergunta "morre-se antes de matar?" em **cinco** sítios
+(quatro funções), cada um com a sua excepção:
+
+| # | sítio | a regra que tinha |
+|---|---|---|
+| 1 | `avaliar` (`automation.js:3703`) | `mortal \|\| !mix \|\| (liquido > 0 && (tMatar == null \|\| tMorrer < tMatar))` |
+| 2 | `estimarRegiao`, mobs (`:2041`) | `a.mortal \|\| (usaTempo && a.tMorrer < segMatar * 1,5)` |
+| 3 | `estimarRegiao`, chefe (`:2078`) | `mortal \|\| (usaTempo && tMorrer < segMatar * 1,5) \|\| (!usaTempo && liquido > 0)` |
+| 4 | `estimarLuta.ganha` (`:13143`) | `finite(tKill) && tKill <= tMorrer && !mortal && potNecessarias <= pm.n` |
+| 5 | `sobrevivenciaSet.morre` (`:13224`) | `tMorrer < tKill \|\| mortal \|\| semPocao` |
+
+A mesma luta podia ser "segura" num sítio e "fatal" noutro, e quem lia o número não sabia qual das
+cinco doutrinas tinha apanhado. **Não era um bug de matemática: era a mesma matemática escrita cinco
+vezes.** (É a REGRA Nº 1 ao contrário: em vez de uma fonte, cinco resumos.)
+
+**A correcção.** Uma função, `adjudicarLuta(d)` (`automation.js:3594`), com entradas que dizem
+explicitamente **o que não se sabe** (`null`, nunca 0) e duas saídas:
+
+```js
+adjudicarLuta({ tKill, tMorrer, mortal, semPocao, semTempoMorre, margem })
+  -> { morre, veredicto, tKill, tMorrer, determinante, margem }
+```
+
+- `determinante = mortal || semPocao` — prova **directa** de morte: uma mecânica do rodízio atravessa a
+  piscina de vida, ou o reservatório de poções não cobre a janela. Não depende de tempo nenhum.
+- `morrePorTempo = tKill != null && tMorrer < tKill * margem` — a régua do dono: morre-se se o tempo
+  até morrer for menor que o tempo até matar (com folga opcional).
+- `morre` é o veredicto **conservador**: sem `tKill` medido **não se promete sobrevivência**
+  (`semTempoMorre`), porque "não sei" não pode virar "sobrevive". É este que a rota e o equipamento usam.
+- `veredicto` é o que a GUI pode **afirmar**: `'mata' | 'nao-mata' | 'nao-sei'`. Sem `tKill` é
+  `'nao-sei'` mesmo que `morre` seja `true` — as duas respostas não são a mesma pergunta.
+
+Os cinco sítios passaram a chamar esta função. `margem` é o **único** parâmetro local: o
+`estimarRegiao` usa `1,5` (a folga de 50% que já usava, com a mesma semântica), os outros usam `1`.
+
+**Um defeito apanhado no caminho (e que o banco tinha apanhado antes de mim).** Ao passar o DPS de
+saída ao `avaliar` pelo `dpsContra` — que já aplica `mitSaida` — o `curaRv` passou a descontar a
+armadura do alvo **duas vezes**. Medido com rv 0,15 e 625 de DPS: `curaRv` caiu de **73,8** para
+**49 hp/s**, e o check **U5c** (`>= 60 hp/s`) falhou. A correcção foi separar os dois usos: o `avaliar`
+passou a receber o DPS **medido** como 5.º argumento (para o roubo de vida, que ele mesmo mitiga lá
+dentro) e o DPS **efectivo** como 6.º (`dpsEfetivo`, só para `tMatar`). Um valor, dois usos, dois
+argumentos — em vez de um número que serve mal a ambos.
+
+**E o mesmo tipo de divergência dentro do `estimarRegiao`.** Ele calculava o tempo de matar com uma
+segunda conta própria, `hp / (myDps * fJ)`, que **ignorava a armadura do bicho** — enquanto o `avaliar`,
+logo acima, já devolvia `tMatar` com a mitigação. Duas respostas para a mesma pergunta **dentro da mesma
+função**. Agora as duas linhas (`automation.js:2041` e `:2079`) leem `a.tMatar`/`avc.tMatar` e o
+`avaliar` recebe o `dpsContra` como 6.º argumento, pelo que o adjudicador recebe **um** número. Isto não
+tem check próprio: é coerência interna, provada pela suite inteira continuar verde com os veredictos de
+região (`P7`..`P9c`); fica registado como tal, em vez de ser vendido como prova que não existe.
+
+**Provas (suite `matematica-unificada`, checks U16a..U16f):**
+
+| check | o que exige |
+|---|---|
+| U16a | mecânica fatal é morte **PROVADA** mesmo com tempo de matar enorme |
+| U16b | reservatório de poção que não cobre a janela é morte **PROVADA** |
+| U16c | `tKill 100 / tMorrer 10` → `'mata'`; `tKill 10 / tMorrer 100` → `'nao-mata'` (mesma função, dois desfechos) |
+| U16d | `margem 1,5` transforma "12 s para morrer contra 10 s para matar" de `'nao-mata'` em `'mata'` — é o único parâmetro local |
+| U16e | sem `tKill`: `veredicto === 'nao-sei'` **mas** `morre === true` (conservador ≠ afirmação) |
+| U16f | o `veredicto`/`morre` do `avaliar` são **os do adjudicador** (não uma sexta cópia da regra) |
+
+Mutação **M40** (`determinante = false`, ignorar as provas directas) é apanhada por U16a. As mutações
+M30 (o antigo `liquido > 0` = morte) e M32 (colapso do tri-estado) foram **re-apontadas** para o código
+novo — o refactor tinha-lhes levado a âncora, e uma âncora podre não é um buraco: é uma bateria que não
+corre (REGRA Nº 7).
+
+**O que isto NÃO resolve.** O `scoreSet` continua a ordenar por dano **sem tempo de luta**; a decisão da
+bota de CDR vs PEN está medida contra o motor (§8.3) e o que decide a build de chefe é o
+`sobrevivenciaSet`/`estimarLuta`, não o `scoreSet` (que é o podador do beam). A divergência do §8.3 é do
+**podador**, e fechá-la pede um termo de tempo medido — não um número inventado.
+
